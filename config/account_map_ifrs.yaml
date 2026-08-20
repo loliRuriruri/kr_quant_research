@@ -1,0 +1,177 @@
+version: "1.0.0"
+mapping_policy: account_id_then_approved_extension
+no_double_count: true
+
+accounts:
+  revenue:
+    statement: [IS, CIS]
+    sign: +
+    concepts:
+      - ifrs-full_Revenue
+      - ifrs-full_RevenueFromContractsWithCustomers
+    approved_names: [매출액, 영업수익, 수익(매출액)]
+  operating_profit:
+    statement: [IS, CIS]
+    sign: +
+    concepts:
+      - ifrs-full_ProfitLossFromOperatingActivities
+      - dart_OperatingIncomeLoss
+    approved_names: [영업이익, 영업이익(손실)]
+  pretax_income:
+    statement: [IS, CIS]
+    sign: +
+    concepts:
+      - ifrs-full_ProfitLossBeforeTax
+    approved_names: [법인세비용차감전순이익, 법인세차감전순이익]
+  net_income:
+    statement: [IS, CIS]
+    sign: +
+    concepts:
+      - ifrs-full_ProfitLoss
+    approved_names: [당기순이익, 당기순이익(손실)]
+  net_income_owners:
+    statement: [IS, CIS]
+    sign: +
+    concepts:
+      - ifrs-full_ProfitLossAttributableToOwnersOfParent
+    approved_names: [지배기업의 소유주에게 귀속되는 당기순이익(손실), 지배주주순이익]
+  income_tax:
+    statement: [IS, CIS]
+    sign: +
+    concepts:
+      - ifrs-full_IncomeTaxExpenseContinuingOperations
+      - ifrs-full_IncomeTaxExpense
+    approved_names: [법인세비용, 법인세비용(수익)]
+  interest_expense:
+    statement: [IS, CIS]
+    sign: +
+    concepts:
+      - ifrs-full_InterestExpense
+      - ifrs-full_FinanceCosts
+    approved_names: [이자비용, 금융원가]
+  total_assets:
+    statement: [BS]
+    sign: +
+    concepts: [ifrs-full_Assets]
+    approved_names: [자산총계]
+  total_liabilities:
+    statement: [BS]
+    sign: +
+    concepts: [ifrs-full_Liabilities]
+    approved_names: [부채총계]
+  total_equity:
+    statement: [BS]
+    sign: +
+    concepts: [ifrs-full_Equity]
+    approved_names: [자본총계]
+  equity_owners:
+    statement: [BS]
+    sign: +
+    concepts: [ifrs-full_EquityAttributableToOwnersOfParent]
+    approved_names: [지배기업 소유주지분, 지배주주지분]
+  nci:
+    statement: [BS]
+    sign: +
+    concepts: [ifrs-full_NoncontrollingInterests]
+    approved_names: [비지배지분]
+  cash:
+    statement: [BS]
+    sign: +
+    concepts: [ifrs-full_CashAndCashEquivalents]
+    approved_names: [현금및현금성자산]
+  short_term_financial_assets:
+    statement: [BS]
+    sign: +
+    concepts:
+      - ifrs-full_CurrentFinancialAssets
+      - ifrs-full_ShorttermDepositsNotClassifiedAsCashEquivalents
+      - dart_ShortTermFinancialInstruments
+    approved_names: [단기금융상품, 유동금융자산, 당기손익-공정가치측정금융자산]
+  current_assets:
+    statement: [BS]
+    sign: +
+    concepts: [ifrs-full_CurrentAssets]
+    approved_names: [유동자산]
+  current_liabilities:
+    statement: [BS]
+    sign: +
+    concepts: [ifrs-full_CurrentLiabilities]
+    approved_names: [유동부채]
+  short_term_borrowings:
+    statement: [BS]
+    sign: +
+    concepts:
+      - ifrs-full_ShorttermBorrowings
+      - dart_ShortTermBorrowings
+    approved_names: [단기차입금]
+  current_portion_ltd:
+    statement: [BS]
+    sign: +
+    concepts:
+      - ifrs-full_CurrentPortionOfLongtermBorrowings
+      - dart_CurrentPortionOfLongTermDebt
+    approved_names: [유동성장기부채, 유동성장기차입금, 유동성사채]
+  long_term_borrowings:
+    statement: [BS]
+    sign: +
+    concepts:
+      - ifrs-full_LongtermBorrowings
+      - ifrs-full_NoncurrentPortionOfNoncurrentLoansReceived
+      - dart_LongTermBorrowings
+    approved_names: [장기차입금]
+  bonds:
+    statement: [BS]
+    sign: +
+    concepts:
+      - ifrs-full_BondsIssued
+      - ifrs-full_NoncurrentPortionOfNoncurrentBondsIssued
+      - dart_Bonds
+    approved_names: [사채]
+  lease_liabilities:
+    statement: [BS]
+    sign: +
+    concepts:
+      - ifrs-full_LeaseLiabilities
+      - ifrs-full_CurrentLeaseLiabilities
+      - ifrs-full_NoncurrentLeaseLiabilities
+    approved_names: [리스부채]
+    no_double_count_group: lease
+  cfo:
+    statement: [CF]
+    sign: +
+    concepts:
+      - ifrs-full_CashFlowsFromUsedInOperatingActivities
+    approved_names: [영업활동현금흐름, 영업활동으로 인한 현금흐름]
+  ppe_acquisition:
+    statement: [CF]
+    sign: outflow_abs
+    concepts:
+      - ifrs-full_PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities
+    approved_names: [유형자산의 취득, 유형자산의취득]
+  intangible_acquisition:
+    statement: [CF]
+    sign: outflow_abs
+    concepts:
+      - ifrs-full_PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities
+    approved_names: [무형자산의 취득, 무형자산의취득]
+  diluted_shares:
+    statement: [IS, CIS]
+    sign: +
+    concepts:
+      - ifrs-full_AdjustedWeightedAverageShares
+      - ifrs-full_DilutedWeightedAverageOrdinaryShares
+    approved_names: [희석가중평균유통보통주식수, 가중평균유통보통주식수]
+  period_end_shares:
+    statement: [BS]
+    sign: +
+    concepts:
+      - ifrs-full_NumberOfSharesOutstanding
+    approved_names: [발행주식수]
+
+parent_child_exclusions:
+  - parent: ifrs-full_Revenue
+    children: [ifrs-full_RevenueFromContractsWithCustomers]
+  - parent: ifrs-full_LeaseLiabilities
+    children: [ifrs-full_CurrentLeaseLiabilities, ifrs-full_NoncurrentLeaseLiabilities]
+  - parent: ifrs-full_CurrentFinancialAssets
+    children: [dart_ShortTermFinancialInstruments]

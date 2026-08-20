@@ -1,0 +1,163 @@
+model:
+  id: kr_equity_quant
+  version: 1.1.0-share-adj-momentum
+  timezone: Asia/Seoul
+  currency: KRW
+  score_max: 100
+  risk_penalty_cap: 15
+
+# 공식 수정주가는 없다. 대신 KRX 상장주식수·시가총액으로 액면분할만 보정한다. 배당 재투자는 포함하지 않는다.
+corporate_actions:
+  adjusted_price_feed: false
+  listed_shares_adjustment: true
+  allow_raw_price_as_adjusted: false
+
+# D2 권장안 B: 수동 상태 CSV가 없으면 run_status=partial
+status_feed:
+  required_for_success: true
+  path: data/raw/status/manual_status.csv
+
+universe:
+  markets: [KOSPI, KOSDAQ]
+  security_types: [COMMON_STOCK]
+  exclude_models: [FINANCIAL, REIT, INFRA_FUND, SPAC]
+  min_market_cap_krw: 30000000000
+  liquidity:
+    window_trading_days: 60
+    min_median_trading_value_krw: 300000000
+    lookback_trading_days: 63
+    min_observations_in_63d: 45
+  top100:
+    min_weighted_coverage: 0.80
+    min_data_confidence: 70
+  top20:
+    min_weighted_coverage: 0.90
+    min_data_confidence: 80
+    require_positive: [operating_profit_ttm, net_income_owners_ttm, cfo_ttm]
+
+point_in_time:
+  financial_source_priority: [CFS, OFS]
+  never_mix_fs_div_within_ttm: true
+  action_date: NEXT_TRADING_DAY
+  correction_policy: AS_AVAILABLE
+  stale_financial_days: 270
+  ttm_duration_min_days: 330
+  ttm_duration_max_days: 400
+  accounting_identity_tol: 0.005
+
+peers:
+  hierarchy:
+    - {level: industry, min_valid_n: 20}
+    - {level: sector, min_valid_n: 40}
+    - {level: market, min_valid_n: 40}
+  winsor:
+    large_n: {min_n: 40, lower: 0.025, upper: 0.975}
+    medium_n: {min_n: 20, lower: 0.05, upper: 0.95}
+  tie_method: average
+  last_resort_min_n: 2
+
+factors:
+  value:
+    max_points: 30
+    metrics:
+      ev_ebit: {weight: 9, direction: lower, invalid_if: "op_ttm <= 0"}
+      fcf_yield: {weight: 8, direction: higher, invalid_if: "fcf_ttm <= 0"}
+      earnings_yield: {weight: 7, direction: higher, invalid_if: "nio_ttm <= 0"}
+      pbr: {weight: 6, direction: lower, invalid_if: "equity_owners <= 0"}
+  quality:
+    max_points: 25
+    metrics:
+      roic: {weight: 9, direction: higher}
+      operating_margin: {weight: 5, direction: higher}
+      roe: {weight: 4, direction: higher}
+      cfo_net_income: {weight: 4, direction: higher}
+      margin_stability_8q: {weight: 3, direction: lower}
+  growth:
+    max_points: 25
+    metrics:
+      revenue_yoy_ttm: {weight: 6, direction: higher}
+      op_yoy_ttm: {weight: 6, direction: higher, state_policy: profit_growth_v1}
+      revenue_cagr_3y: {weight: 5, direction: higher}
+      eps_yoy_ttm: {weight: 4, direction: higher, state_policy: profit_growth_v1}
+      op_cagr_3y: {weight: 4, direction: higher, state_policy: profit_growth_v1}
+  momentum:
+    max_points: 10
+    enabled: true
+    requires_adjusted_price: false
+    adjustment: listed_shares
+    metrics:
+      return_3m: {weight: 2, direction: higher, lookback: 63}
+      return_6m: {weight: 3, direction: higher, lookback: 126}
+      return_12m: {weight: 2, direction: higher, lookback: 252}
+      market_relative_6m: {weight: 2, direction: higher, lookback: 126}
+      high_52w_distance: {weight: 1, direction: higher, lookback: 252}
+  financial_stability:
+    max_points: 10
+    metrics:
+      net_debt_assets: {weight: 2, direction: lower}
+      debt_ratio: {weight: 2, direction: lower}
+      interest_coverage: {weight: 2, direction: higher}
+      cfo_assets: {weight: 2, direction: higher}
+      current_ratio: {weight: 2, direction: higher}
+
+formulas:
+  default_tax_rate: 0.25
+  tax_rate_max: 0.35
+  tax_rate_min: 0.0
+  small_ic_asset_ratio: 0.05
+  thin_equity_ratio: 0.05
+  include_lease_in_debt: true
+  deduct_all_short_term_financial_assets: true
+  ev_deduct_sfa: true
+  net_debt_deduct_sfa: false
+
+data_confidence:
+  weights:
+    coverage: 0.45
+    pit_integrity: 0.20
+    freshness: 0.15
+    reconciliation: 0.10
+    history: 0.10
+  freshness_days:
+    full: 150
+    high: 210
+    mid: 270
+  factor_unreliable_coverage: 0.60
+
+risk:
+  soft_penalty_cap: 15
+  rules:
+    rev_decline_streak: {penalty: 2}
+    op_decline_streak: {penalty: 3}
+    fcf_deterioration: {penalty: 3}
+    leverage_stress: {penalty: 4, net_debt_assets_gt: 0.40, coverage_lt: 2.0}
+    thin_equity: {penalty: 2, equity_assets_lt: 0.05}
+    dilution_12m_medium: {penalty: 2, pct_gte: 0.05, pct_lt: 0.10}
+    dilution_12m_high: {penalty: 4, pct_gte: 0.10}
+    cb_bw_overhang: {penalty: 3, potential_dilution_gte: 0.10}
+    repeated_cb_bw: {penalty: 2, count_24m_gte: 2}
+    one_off_earnings_risk: {penalty: 4}
+
+changes:
+  score_up: 5
+  score_down: -5
+  rank_abs: 50
+  rank_percentile_points: 10
+
+core_metrics:
+  - market_cap
+  - revenue_ttm
+  - operating_profit_ttm
+  - net_income_owners_ttm
+  - total_assets
+  - total_liabilities
+  - total_equity
+  - cfo_ttm
+  - capex_ttm
+  - close
+
+ingest:
+  krx_base_url: https://data-dbg.krx.co.kr/svc/apis
+  opendart_base_url: https://opendart.fss.or.kr/api
+  default_lookback_years: 5
+  report_codes: ["11013", "11012", "11014", "11011"]

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "gpt_research_output_v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "security_id",
+    "quant_snapshot_hash_ack",
+    "research_score",
+    "research_confidence",
+    "research_decision"
+  ],
+  "properties": {
+    "schema_version": { "const": "gpt_research_output_v1" },
+    "run_id": { "type": "string" },
+    "security_id": { "type": "string" },
+    "quant_snapshot_hash_ack": { "type": "string" },
+    "model": { "type": "string" },
+    "prompt_version": { "type": "string" },
+    "researched_at": { "type": "string" },
+    "research_score": { "type": "number" },
+    "research_confidence": { "type": "number" },
+    "research_decision": { "enum": ["PASS", "REJECT", "RESEARCH_INCOMPLETE"] },
+    "score_components": { "type": "object" },
+    "thesis": { "type": "object" },
+    "recent_results": { "type": "array" },
+    "catalysts": { "type": "array" },
+    "capital_allocation": { "type": "object" },
+    "dilution_and_accounting": { "type": "object" },
+    "value_trap_assessment": { "type": "object" },
+    "scenarios": { "type": "object" },
+    "thesis_breakers": { "type": "array" },
+    "unknowns": { "type": "array" },
+    "claims": { "type": "array" },
+    "source_coverage": { "type": "object" }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["quant_score"] },
+      { "required": ["quant_rank"] },
+      { "required": ["quant_score_raw"] }
+    ]
+  }
+}

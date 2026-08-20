@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "gpt_research_input_v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "as_of_date",
+    "quant_snapshot",
+    "quant_snapshot_hash",
+    "research_tasks"
+  ],
+  "properties": {
+    "schema_version": { "const": "gpt_research_input_v1" },
+    "run_id": { "type": "string" },
+    "as_of_date": { "type": "string" },
+    "cutoff_ts": { "type": "string" },
+    "security": { "type": "object" },
+    "quant_snapshot": {
+      "type": "object",
+      "required": ["read_only"],
+      "properties": {
+        "read_only": { "const": true }
+      }
+    },
+    "quant_snapshot_hash": { "type": "string" },
+    "evidence": { "type": "array" },
+    "research_tasks": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "version": "4.0.0",
+  "required_top_sections": [
+    "45초 총평",
+    "최신 뉴스·공시·이벤트",
+    "재무·최근 실적·이익의 질",
+    "밸류에이션",
+    "성장성·경제적 해자·업계",
+    "정책·테마·거시",
+    "기술적 위치·거래량·수급·유사국면",
+    "핵심 리스크",
+    "목표가·Price & Action Map",
+    "사용자별 전략",
+    "Final Action Playbook"
+  ],
+  "required_reasoning_fields": [
+    "충돌 서사",
+    "Reported",
+    "Consensus",
+    "Normalized",
+    "가장 강한 반증",
+    "다음 판정 KPI"
+  ],
+  "required_price_fields": [
+    "Bear",
+    "Base",
+    "Bull",
+    "1차",
+    "2차",
+    "3차",
+    "돌파매수",
+    "추격금지",
+    "비중축소",
+    "기술 무효화",
+    "Thesis Invalidation"
+  ],
+  "required_auto_modules": [
+    "재무",
+    "업계",
+    "경제적 해자",
+    "차트 패턴",
+    "오실레이터",
+    "거래량",
+    "과거 유사국면"
+  ],
+  "forbidden_visible_sections": [
+    "Audit Stamp",
+    "Price Permission",
+    "Valuation Readiness",
+    "Technical Readiness"
+  ],
+  "hard_fail_patterns": [
+    "샘플 수치 재사용",
+    "원인 단정",
+    "과거 유사국면 생략",
+    "명확한 최종 행동 없음"
+  ]
+}

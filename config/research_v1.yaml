@@ -1,0 +1,37 @@
+# AI 분석은 사용자가 버튼을 눌렀을 때만 호출한다. Quant 점수는 수정하지 않는다.
+enabled: true
+default_provider: xai
+schema_version: gpt_research_input_v1
+prompt_version: research_v1.0.0
+top_n: 20
+providers:
+  xai:
+    label: Grok (xAI)
+    base_url: https://api.x.ai/v1
+    model: grok-4.6
+  deepseek:
+    label: DeepSeek
+    base_url: https://api.deepseek.com
+    model: deepseek-chat
+  openrouter:
+    label: OpenRouter
+    base_url: https://openrouter.ai/api/v1
+    model: openai/gpt-4o-mini
+tasks:
+  - business_model
+  - revenue_mix
+  - growth_drivers
+  - competition
+  - industry_growth
+  - moat
+  - roic_durability
+  - management
+  - capital_allocation
+  - recent_results
+  - recent_filings
+  - catalysts
+  - dilution
+  - accounting_risk
+  - value_trap
+  - counter_evidence
+  - bull_base_bear

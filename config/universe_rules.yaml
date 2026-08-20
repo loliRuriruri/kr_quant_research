@@ -1,0 +1,46 @@
+markets:
+  include: [KOSPI, KOSDAQ]
+  raw_aliases:
+    KOSPI: [KOSPI, 유가증권, 유가증권시장, 코스피]
+    KOSDAQ: [KOSDAQ, 코스닥]
+
+security_types:
+  include: [COMMON_STOCK]
+  common_stock_aliases: [보통주, 보통주식, COMMON, COMMON_STOCK]
+  preferred_aliases: [우선주, 우선주식, PREFERRED]
+  exclude_security_groups:
+    - ETF
+    - ETN
+    - ELW
+    - 신주인수권
+    - 수익증권
+    - 외국주권
+
+name_patterns:
+  spac: '(스팩|SPAC|기업인수목적)'
+  reit: '(리츠|REIT|부동산투자회사)'
+  infra_fund: '(인프라펀드|선박투자|투융자회사)'
+
+financial_ksic_prefixes:
+  - "64"
+  - "65"
+  - "66"
+
+exclude_reasons:
+  financial: FINANCIAL_MODEL_NOT_AVAILABLE
+  reit: REIT_MODEL_NOT_AVAILABLE
+  infra: INFRA_FUND_MODEL_NOT_AVAILABLE
+  spac: SPAC
+  preferred: PREFERRED_SHARE
+  etf_like: NON_COMMON_SECURITY
+  negative_equity: NEGATIVE_EQUITY
+  audit: AUDIT_OPINION_FAIL
+  distress: DISTRESS_STATUS
+  stale: STALE_FINANCIALS
+  core: CORE_DATA_INCOMPLETE
+  status: TRADING_STATUS_EXCLUDED
+  liquidity: LIQUIDITY_FAIL
+  market_cap: MARKET_CAP_FAIL
+  not_common: NOT_COMMON_STOCK
+  not_listed: NOT_LISTED_ON_AS_OF
+  share_mismatch: SHARE_COUNT_MISMATCH

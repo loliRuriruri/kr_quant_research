@@ -1,0 +1,18 @@
+# Codex Strategy Lab overlay. Quant 점수에 합산하지 않는다.
+enabled: true
+used_in_quant: false
+universe: top20
+minimum_history_days: 40
+preferred_history_days: 750
+costs:
+  commission_bps: 0
+  slippage_bps: 5
+splits:
+  oos_ratio: 0.20
+walk_forward:
+  train_days: 40
+  test_days: 15
+  step_days: 15
+robustness:
+  minimum_trade_count: 8
+note: next-bar 시가 체결. 일봉 OHLC는 KRX. 실시간 호가 아님.

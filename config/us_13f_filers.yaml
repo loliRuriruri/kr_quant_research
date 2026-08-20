@@ -1,0 +1,75 @@
+used_in_quant: false
+disclaimer: 13F는 분기 말 보유이며 45일 시차입니다. WhaleWisdom을 긁지 않고 SEC EDGAR를 씁니다. Quant 점수와 무관합니다.
+filers:
+  - id: berkshire
+    name: Berkshire Hathaway
+    name_ko: 버크셔 해서웨이
+    who_ko: 워런 버핏
+    cik: "0001067983"
+    whale: https://whalewisdom.com/filer/berkshire-hathaway-inc
+  - id: bridgewater
+    name: Bridgewater Associates
+    name_ko: 브리지워터
+    who_ko: 레이 달리오
+    cik: "0001350694"
+    whale: https://whalewisdom.com/filer/bridgewater-associates-lp
+  - id: renaissance
+    name: Renaissance Technologies
+    name_ko: 르네상스 테크놀로지
+    who_ko: 퀀트 헤지펀드
+    cik: "0001037389"
+    whale: https://whalewisdom.com/filer/renaissance-technologies-llc
+  - id: citadel
+    name: Citadel Advisors
+    name_ko: 시타델
+    who_ko: 켄 그리핀
+    cik: "0001423053"
+    whale: https://whalewisdom.com/filer/citadel-advisors-llc
+  - id: pershing
+    name: Pershing Square
+    name_ko: 퍼싱 스퀘어
+    who_ko: 빌 애크먼
+    cik: "0001336528"
+    whale: https://whalewisdom.com/filer/pershing-square-capital-management-l-p
+  - id: tiger
+    name: Tiger Global
+    name_ko: 타이거 글로벌
+    who_ko: 체이스 콜먼
+    cik: "0001167483"
+    whale: https://whalewisdom.com/filer/tiger-global-management-llc
+  - id: coatue
+    name: Coatue Management
+    name_ko: 코튜
+    who_ko: 필립 라폰
+    cik: "0001535392"
+    whale: https://whalewisdom.com/filer/coatue-management-llc
+  - id: duquesne
+    name: Duquesne (Druckenmiller)
+    name_ko: 듀케인
+    who_ko: 스탠리 드러켄밀러
+    cik: "0001536411"
+    whale: https://whalewisdom.com/filer/duquesne-family-office-llc
+  - id: scion
+    name: Scion (Burry)
+    name_ko: 사이언
+    who_ko: 마이클 버리
+    cik: "0001649339"
+    whale: https://whalewisdom.com/filer/scion-asset-management-llc
+  - id: ark
+    name: ARK Investment
+    name_ko: ARK 인베스트
+    who_ko: 캐시 우드
+    cik: "0001697748"
+    whale: https://whalewisdom.com/filer/ark-investment-management-llc
+  - id: soros
+    name: Soros Fund Management
+    name_ko: 소로스 펀드
+    who_ko: 조지 소로스
+    cik: "0001029160"
+    whale: https://whalewisdom.com/filer/soros-fund-management-llc
+  - id: baupost
+    name: Baupost Group
+    name_ko: 바우포스트
+    who_ko: 세스 클라만
+    cik: "0001061768"
+    whale: https://whalewisdom.com/filer/baupost-group-llc-ma
