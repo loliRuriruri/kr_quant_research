@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.6.1" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.6.2" />
 </head>
 <body>
   <aside class="nav">
@@ -514,7 +514,7 @@
         </div>
         <p class="hint" style="margin-top:2px;">TOP20 종목 외에도 분석하고 싶은 <b>모든 개별 종목</b>의 과거 3개년 일봉 데이터로 4대 타이밍 전략(RSI, 볼린저밴드, 골든크로스, 돈치안)을 즉시 백테스트합니다.</p>
         <div class="custom-backtest-bar">
-          <input id="custom-strategy-q" type="text" placeholder="종목명 또는 6자리 코드 입력 (예: 삼성전자, SK하이닉스, 현대차, 삼양식품, 005930 등)" />
+          <div class="autocomplete-wrap"><input id="custom-strategy-q" type="text" autocomplete="off" placeholder="종목명 또는 6자리 코드 입력 (예: 경동나비엔, 삼성전자, 005930 등 - 실시간 자동완성 지원)" /><ul id="custom-strategy-menu" class="stock-autocomplete-menu" style="display:none;"></ul></div>
           <button id="btn-custom-strategy" class="primary" style="white-space:nowrap; padding:0 20px;">⚡ 백테스트 실행</button>
         </div>
         <div class="custom-backtest-tags">
@@ -821,6 +821,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=1.6.1"></script>
+  <script src="/static/app.js?v=1.6.2"></script>
 </body>
 </html>

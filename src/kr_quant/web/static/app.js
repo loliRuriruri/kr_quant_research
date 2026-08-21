@@ -1,4 +1,153 @@
 
+// Korean Chosung Decomposer for Frontend
+const CHOSUNG_LIST = ["ㄱ", "ㄲ", "ㄴ", "ㄷ", "ㄸ", "ㄹ", "ㅁ", "ㅂ", "ㅃ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅉ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"];
+
+function getChosung(str) {
+  let res = "";
+  for (let i = 0; i < (str || "").length; i++) {
+    const code = str.charCodeAt(i);
+    if (code >= 0xac00 && code <= 0xd7a3) {
+      const idx = Math.floor((code - 0xac00) / (21 * 28));
+      res += CHOSUNG_LIST[idx];
+    } else {
+      res += str[i];
+    }
+  }
+  return res;
+}
+
+let cachedUniverse = null;
+
+async function getStockUniverse() {
+  if (cachedUniverse) return cachedUniverse;
+  try {
+    const data = await api("/api/stocks/all");
+    if (data && data.items && data.items.length) {
+      cachedUniverse = data.items;
+      return cachedUniverse;
+    }
+  } catch (e) {
+    console.warn("Could not fetch stock universe:", e);
+  }
+  return [];
+}
+
+function setupStockAutocomplete(inputEl, menuEl, onSelect) {
+  if (!inputEl || !menuEl) return;
+  let activeIndex = -1;
+  let currentItems = [];
+  let debounceTimer = null;
+
+  function highlightMatch(text, query) {
+    if (!query) return escapeHtml(text);
+    const escaped = escapeHtml(text);
+    const qEsc = escapeHtml(query);
+    const regex = new RegExp(`(${qEsc.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&")})`, "gi");
+    return escaped.replace(regex, "<mark>$1</mark>");
+  }
+
+  function renderDropdown(items, query) {
+    currentItems = items;
+    activeIndex = -1;
+    if (!items.length) {
+      menuEl.style.display = "none";
+      menuEl.innerHTML = "";
+      return;
+    }
+
+    menuEl.innerHTML = items.map((it, idx) => {
+      const rankBadge = it.quant_rank ? `<span class="chip" style="font-size:10.5px; padding:1px 5px; color:#38bdf8;">퀀트 ${it.quant_rank}위</span>` : "";
+      return `
+        <li class="stock-autocomplete-item" data-idx="${idx}">
+          <div>
+            <b>${highlightMatch(it.company, query)}</b>
+            <span style="color:#94a3b8; font-size:12px; margin-left:4px;">(${highlightMatch(it.ticker, query)})</span>
+          </div>
+          <div class="meta-right">
+            ${rankBadge}
+            <span class="chip" style="font-size:10px; padding:1px 4px;">${escapeHtml(it.market || "KOSPI")}</span>
+            <span>${escapeHtml(it.sector || "")}</span>
+          </div>
+        </li>
+      `;
+    }).join("");
+
+    menuEl.style.display = "block";
+
+    menuEl.querySelectorAll(".stock-autocomplete-item").forEach((el) => {
+      el.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        const idx = Number(el.dataset.idx);
+        if (currentItems[idx]) {
+          const item = currentItems[idx];
+          menuEl.style.display = "none";
+          onSelect(item);
+        }
+      });
+    });
+  }
+
+  async function search(val) {
+    const q = (val || "").trim();
+    if (!q) {
+      menuEl.style.display = "none";
+      return;
+    }
+
+    try {
+      const res = await api(`/api/stocks/search?q=${encodeURIComponent(q)}&limit=12`);
+      if (res && res.items) {
+        renderDropdown(res.items, q);
+      }
+    } catch (e) {
+      console.error("Autocomplete search error:", e);
+    }
+  }
+
+  inputEl.addEventListener("input", (e) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => search(e.target.value), 100);
+  });
+
+  inputEl.addEventListener("focus", (e) => {
+    if (e.target.value.trim()) search(e.target.value);
+  });
+
+  inputEl.addEventListener("blur", () => {
+    setTimeout(() => { menuEl.style.display = "none"; }, 200);
+  });
+
+  inputEl.addEventListener("keydown", (e) => {
+    if (menuEl.style.display !== "block" || !currentItems.length) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      activeIndex = (activeIndex + 1) % currentItems.length;
+      updateActiveItem();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIndex = (activeIndex - 1 + currentItems.length) % currentItems.length;
+      updateActiveItem();
+    } else if (e.key === "Enter" && activeIndex >= 0) {
+      e.preventDefault();
+      const item = currentItems[activeIndex];
+      menuEl.style.display = "none";
+      onSelect(item);
+    } else if (e.key === "Escape") {
+      menuEl.style.display = "none";
+    }
+  });
+
+  function updateActiveItem() {
+    const items = menuEl.querySelectorAll(".stock-autocomplete-item");
+    items.forEach((el, idx) => {
+      el.classList.toggle("active", idx === activeIndex);
+      if (idx === activeIndex) el.scrollIntoView({ block: "nearest" });
+    });
+  }
+}
+
+
 function aiReportBtn(ticker, company) {
   const code = padTicker(ticker);
   const name = company || code;

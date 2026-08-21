@@ -1117,6 +1117,114 @@ def api_flow_post(body: FlowIn) -> dict[str, Any]:
     return scan_flow(s, days=max(1, min(body.days, 20)), force=True)
 
 
+
+# Korean Chosung Decomposer
+_CHOSUNG_LIST = ["ㄱ", "ㄲ", "ㄴ", "ㄷ", "ㄸ", "ㄹ", "ㅁ", "ㅂ", "ㅃ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅉ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"]
+
+
+def _to_chosung(text: str) -> str:
+    res: list[str] = []
+    for ch in str(text or ""):
+        code = ord(ch)
+        if 0xAC00 <= code <= 0xD7A3:
+            chosung_idx = (code - 0xAC00) // (21 * 28)
+            res.append(_CHOSUNG_LIST[chosung_idx])
+        else:
+            res.append(ch)
+    return "".join(res)
+
+
+@app.get("/api/stocks/search")
+def api_stocks_search(q: str = "", limit: int = 15) -> dict[str, Any]:
+    query = str(q or "").strip()
+    if not query:
+        return {"items": []}
+
+    s = load_settings()
+    # Try loading latest_all_stocks.parquet
+    df = None
+    for p in (s.output_dir / "latest_all_stocks.parquet", s.output_dir / "all_stocks.parquet"):
+        if p.exists():
+            try:
+                df = pd.read_parquet(p)
+                break
+            except Exception:
+                pass
+
+    if df is None or df.empty:
+        from kr_quant.strategy.run import _prices
+        df = _prices(s)
+
+    if df is None or df.empty:
+        return {"items": []}
+
+    q_lower = query.lower()
+    q_is_digit = query.isdigit()
+    q_is_chosung = all(ch in _CHOSUNG_LIST for ch in query)
+
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for rec in df.to_dict("records"):
+        ticker = str(rec.get("ticker") or "").zfill(6)
+        if not ticker or ticker in seen:
+            continue
+        company = str(rec.get("company") or "")
+        company_lower = company.lower()
+
+        matched = False
+        if q_is_digit and query in ticker:
+            matched = True
+        elif not q_is_digit:
+            if query in company or q_lower in company_lower:
+                matched = True
+            elif q_is_chosung and query in _to_chosung(company):
+                matched = True
+
+        if matched:
+            seen.add(ticker)
+            r_score = rec.get("quant_score")
+            r_rank = rec.get("quant_rank")
+            score_num = round(float(r_score), 1) if pd.notna(r_score) and r_score else None
+            rank_num = int(r_rank) if pd.notna(r_rank) and r_rank else None
+
+            items.append({
+                "ticker": ticker,
+                "company": company or ticker,
+                "market": str(rec.get("market") or "KOSPI"),
+                "sector": str(rec.get("sector") or ""),
+                "quant_score": score_num,
+                "quant_rank": rank_num,
+            })
+            if len(items) >= limit:
+                break
+
+    return {"items": items}
+
+
+@app.get("/api/stocks/all")
+def api_stocks_all() -> dict[str, Any]:
+    s = load_settings()
+    p = s.output_dir / "latest_all_stocks.parquet"
+    if p.exists():
+        try:
+            df = pd.read_parquet(p)
+            items = [
+                {
+                    "t": str(r.get("ticker") or "").zfill(6),
+                    "c": str(r.get("company") or ""),
+                    "m": str(r.get("market") or "KOSPI"),
+                    "s": str(r.get("sector") or ""),
+                }
+                for r in df.to_dict("records")
+                if r.get("ticker")
+            ]
+            return {"items": items}
+        except Exception:
+            pass
+    return {"items": []}
+
+
 @app.get("/api/strategy")
 def api_strategy_get() -> dict[str, Any]:
     from kr_quant.strategy.run import load_strategy
