@@ -1360,9 +1360,117 @@ body.modal-open { overflow: hidden; }
   transition: all 0.15s ease;
 }
 .sector-stock-pill:hover {
-  background: #253960;
+  background: #253b66;
   border-color: #4c8dff;
   color: #fff;
+}
+
+/* Sector 4-Quadrant Phase Matrix */
+.sector-phase-matrix {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 12px 0 20px;
+}
+@media (max-width: 900px) {
+  .sector-phase-matrix { grid-template-columns: repeat(2, 1fr); }
+}
+.sector-phase-box {
+  background: #0f172a;
+  border-radius: 10px;
+  padding: 12px;
+  border: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+  min-height: 110px;
+}
+.sector-phase-box.leading { border-top: 3px solid #10b981; background: linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, #0f172a 100%); }
+.sector-phase-box.improving { border-top: 3px solid #3b82f6; background: linear-gradient(180deg, rgba(59, 130, 246, 0.08) 0%, #0f172a 100%); }
+.sector-phase-box.weakening { border-top: 3px solid #f59e0b; background: linear-gradient(180deg, rgba(245, 158, 11, 0.08) 0%, #0f172a 100%); }
+.sector-phase-box.lagging { border-top: 3px solid #ef4444; background: linear-gradient(180deg, rgba(239, 68, 68, 0.08) 0%, #0f172a 100%); }
+
+.sector-phase-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.sector-phase-box.leading .sector-phase-header { color: #34d399; }
+.sector-phase-box.improving .sector-phase-header { color: #60a5fa; }
+.sector-phase-box.weakening .sector-phase-header { color: #fbbf24; }
+.sector-phase-box.lagging .sector-phase-header { color: #f87171; }
+
+.sector-phase-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sector-phase-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.sector-phase-chip:hover {
+  background: #1e293b;
+  border-color: #3b82f6;
+  transform: translateY(-1px);
+}
+.sector-phase-chip b { font-size: 11px; color: #94a3b8; }
+
+/* Full Sector RS Comparison Bar Chart */
+.sector-rs-chart-wrap {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+.sector-rs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 24px;
+}
+@media (max-width: 800px) {
+  .sector-rs-grid { grid-template-columns: 1fr; }
+}
+.sector-rs-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 42px;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+}
+.sector-rs-name {
+  color: #cbd5e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.sector-rs-bar-bg {
+  height: 8px;
+  background: #1e293b;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.sector-rs-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+}
+.sector-rs-val {
+  font-weight: 700;
+  text-align: right;
+  font-size: 12px;
 }
 
 /* === US 13F Superinvestor Visual Cards === */

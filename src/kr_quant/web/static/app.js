@@ -2300,7 +2300,56 @@ function renderSectors(data) {
   }
   const rows = data.rows || [];
 
-  // Top Sector Leaderboard Cards (Top 6 sectors)
+  // 1. Sector 4-Quadrant Phase Matrix
+  const leadingRows = rows.filter((r) => r.state === "LEADING");
+  const improvingRows = rows.filter((r) => r.state === "IMPROVING");
+  const weakeningRows = rows.filter((r) => r.state === "WEAKENING" || r.state === "NEUTRAL" || (!["LEADING", "IMPROVING", "LAGGING"].includes(r.state)));
+  const laggingRows = rows.filter((r) => r.state === "LAGGING");
+
+  const renderPhaseChips = (list) => {
+    if (!list.length) return '<span class="hint" style="font-size:11px;">해당 업종 없음</span>';
+    return list.map((r) => `
+      <span class="sector-phase-chip" onclick="openStock('${escapeHtml((r.names && r.names[0] && r.names[0].ticker) || "")}')">
+        <span>${escapeHtml(r.name)}</span>
+        <b>${fmt(r.score, 0)}점</b>
+      </span>
+    `).join("");
+  };
+
+  const phaseMatrixHtml = `
+    <div class="sector-phase-matrix">
+      <div class="sector-phase-box leading">
+        <div class="sector-phase-header">
+          <span>🌟 선행 (Leading)</span>
+          <span>${leadingRows.length}개</span>
+        </div>
+        <div class="sector-phase-chips">${renderPhaseChips(leadingRows)}</div>
+      </div>
+      <div class="sector-phase-box improving">
+        <div class="sector-phase-header">
+          <span>📈 개선 (Improving)</span>
+          <span>${improvingRows.length}개</span>
+        </div>
+        <div class="sector-phase-chips">${renderPhaseChips(improvingRows)}</div>
+      </div>
+      <div class="sector-phase-box weakening">
+        <div class="sector-phase-header">
+          <span>⚠️ 보통/약화 (Neutral)</span>
+          <span>${weakeningRows.length}개</span>
+        </div>
+        <div class="sector-phase-chips">${renderPhaseChips(weakeningRows)}</div>
+      </div>
+      <div class="sector-phase-box lagging">
+        <div class="sector-phase-header">
+          <span>❄️ 부진 (Lagging)</span>
+          <span>${laggingRows.length}개</span>
+        </div>
+        <div class="sector-phase-chips">${renderPhaseChips(laggingRows)}</div>
+      </div>
+    </div>
+  `;
+
+  // 2. Top Sector Leaderboard Cards (Top 6 sectors)
   const topCards = rows.slice(0, 6).map((r) => {
     const isTop = r.rank <= 3;
     const fillCls = r.state === "LEADING" ? "leading" : r.state === "IMPROVING" ? "improving" : r.state === "LAGGING" ? "lagging" : "neutral";
@@ -2346,6 +2395,39 @@ function renderSectors(data) {
     `;
   }).join("");
 
+  // 3. Full Sector RS Horizontal Comparison Chart
+  const rsRowsHtml = rows.map((r) => {
+    const rs = Number(r.rs ?? 50);
+    const fillGradient = r.state === "LEADING" ? "linear-gradient(90deg, #10b981, #34d399)" :
+      r.state === "IMPROVING" ? "linear-gradient(90deg, #3b82f6, #60a5fa)" :
+      r.state === "LAGGING" ? "linear-gradient(90deg, #ef4444, #f87171)" :
+      "linear-gradient(90deg, #64748b, #94a3b8)";
+    const col = r.state === "LEADING" ? "#34d399" : r.state === "IMPROVING" ? "#60a5fa" : r.state === "LAGGING" ? "#f87171" : "#94a3b8";
+
+    return `
+      <div class="sector-rs-row">
+        <div class="sector-rs-name" title="${escapeHtml(r.name)}">${r.rank}. ${escapeHtml(r.name)}</div>
+        <div class="sector-rs-bar-bg">
+          <div class="sector-rs-bar-fill" style="width:${Math.max(4, Math.min(100, rs))}%; background:${fillGradient};"></div>
+        </div>
+        <div class="sector-rs-val" style="color:${col}">${r.rs ?? "—"}</div>
+      </div>
+    `;
+  }).join("");
+
+  const rsComparisonChartHtml = `
+    <div class="sector-rs-chart-wrap">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h4 style="margin:0; font-size:14px; color:#fff;">📊 전체 19개 업종 상대강도(RS) 비교 차트</h4>
+        <span class="hint">시장 대비 3개월 주가 탄력성 점수 (0~100)</span>
+      </div>
+      <div class="sector-rs-grid">
+        ${rsRowsHtml}
+      </div>
+    </div>
+  `;
+
+  // 4. Detailed Data Table
   const body = rows.map((r) =>
     `<tr class="clickable" data-ticker="${escapeHtml((r.names && r.names[0] && r.names[0].ticker) || "")}">
       <td class="num">${r.rank}</td>
@@ -2369,13 +2451,19 @@ function renderSectors(data) {
   }
   box.innerHTML = `
     ${asofBanner(asof)}
-    <h3 style="margin:8px 0 4px;font-size:15px;color:#fff;">🚀 주도 업종 모멘텀 랭킹 (Sector Momentum Leaderboard)</h3>
+    <h3 style="margin:8px 0 4px;font-size:15px;color:#fff;">🔄 업종 모멘텀 4분면 사이클 맵 (Sector Cycle Quadrant)</h3>
+    <p class="hint" style="margin-bottom:8px;">한국 증시 19개 업종의 현재 모멘텀 국면 분포입니다. 클릭 시 대표 종목이 열립니다.</p>
+    ${phaseMatrixHtml}
+
+    <h3 style="margin:20px 0 4px;font-size:15px;color:#fff;">🚀 주도 업종 모멘텀 TOP 6 (Sector Momentum Leaderboard)</h3>
     <p class="hint" style="margin-bottom:12px;">상대강도(RS), 상승 확산도 및 실적 성장을 종합 평가한 상위 주도 업종입니다.</p>
     <div class="sector-leader-grid">
       ${topCards}
     </div>
 
-    <h3 style="margin:20px 0 6px;font-size:15px;color:#fff;">📊 전체 업종 6축 상세 분석표</h3>
+    ${rsComparisonChartHtml}
+
+    <h3 style="margin:20px 0 6px;font-size:15px;color:#fff;">📋 전체 19개 업종 6축 상세 분석표</h3>
     <div class="table-wrap tall"><table>
       <thead><tr>
         ${thTip("순위", "업종 6축 평가 순위입니다.")}
