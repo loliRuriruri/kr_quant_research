@@ -82,7 +82,7 @@ def screen_value_growth(df: pd.DataFrame) -> pd.DataFrame:
     v = _num(df, "value_score").fillna(0)
     g = _num(df, "growth_score").fillna(0)
     hit = df[(v >= 18) & (g >= 15)]
-    if hit.empty:
+    if len(hit) < 20:
         hit = df[(v >= 12) & (g >= 10)]
     if hit.empty:
         hit = df
@@ -340,33 +340,29 @@ def run_screen(settings: Settings, screen_id: str, *, include_quant: bool = True
     if df.empty:
         df = raw
 
+    # If include_quant is False, exclude ONLY the TOP 20 Quant ranked stocks before screening!
+    if not include_quant and "quant_rank" in df.columns:
+        ranks = pd.to_numeric(df["quant_rank"], errors="coerce").fillna(9999)
+        non_top20 = df[ranks > 20]
+        if not non_top20.empty:
+            df = non_top20
+
     flow_map = {"dual": "dual", "dual_pe": "dual_pe", "dual_pe_retail": "dual_pe_retail"}
     if spec["id"] in flow_map:
         tickers = _flow_tickers(settings, flow_map[spec["id"]])
         hit = df[df["ticker"].isin(tickers)] if tickers else df.iloc[0:0]
         if hit.empty:
             # Fallback to top momentum/flow candidates
-            hit = _top(df, n=20, by="momentum_score")
+            hit = _top(df, n=30, by="momentum_score")
             spec = {
                 **spec,
                 "how": f"{spec['how']} (실시간 수급 스캔 전이므로 모멘텀 상위 후보를 표시합니다. [수급] 탭에서 수급을 스캔하면 실시간으로 동기화됩니다.)",
             }
     else:
         fn = spec.get("fn")
-        hit = fn(df) if fn else _top(df, n=30)
+        hit = fn(df) if fn else _top(df, n=50)
 
     from kr_quant.sunzi.fa import annotate_fa
-
-    if not include_quant:
-        if "top20_eligible" in hit.columns:
-            non_top = hit[hit["top20_eligible"] != True]  # noqa: E712
-            if not non_top.empty:
-                hit = non_top
-        elif "quant_rank" in hit.columns:
-            non_top = hit[pd.to_numeric(hit["quant_rank"], errors="coerce").fillna(9999) > 20]
-            if not non_top.empty:
-                hit = non_top
-
     from kr_quant.web.comments import quant_comment_short
 
     recs = annotate_fa(hit.head(50).to_dict("records"))
