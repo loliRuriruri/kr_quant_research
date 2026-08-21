@@ -1,4 +1,102 @@
 
+async function runCustomBacktest(query) {
+  const q = String(query || $("#custom-strategy-q")?.value || "").trim();
+  if (!q) {
+    alert("분석할 종목명 또는 6자리 코드를 입력하세요.");
+    return;
+  }
+  const resBox = $("#custom-strategy-result");
+  if (!resBox) return;
+
+  resBox.style.display = "block";
+  resBox.innerHTML = `
+    <div style="padding:20px; text-align:center; background:#0e1626; border-radius:10px;">
+      <div class="skeleton-spinner" style="margin:0 auto 10px;"></div>
+      <b style="color:#38bdf8;">'${escapeHtml(q)}' 과거 3년 일봉 4대 전략 백테스트 및 파라미터 최적화 연산 중...</b>
+      <p class="hint" style="margin-top:4px;">RSI 과매도, 볼린저 하단, 골든크로스, 돈치안 돌파 및 Walk-Forward 미래 검증을 수행하고 있습니다.</p>
+    </div>
+  `;
+
+  try {
+    const data = await api("/api/strategy/ticker", {
+      method: "POST",
+      body: JSON.stringify({ ticker: q })
+    });
+
+    if (!data || !data.ok) {
+      resBox.innerHTML = `<div style="padding:14px; background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; color:#f87171;">⚠️ ${escapeHtml(data.error || "백테스트 실행 실패")}</div>`;
+      return;
+    }
+
+    const strats = data.strategies || [];
+    const rowsHtml = strats.map((s, idx) => {
+      const sh = s.sharpe != null ? fmt(s.sharpe, 2) : "—";
+      const oosSh = s.oos_sharpe != null ? fmt(s.oos_sharpe, 2) : "—";
+      const wfHit = s.wf_hit != null ? `${(s.wf_hit * 100).toFixed(0)}%` : "—";
+      const mdd = s.max_drawdown != null ? `${(s.max_drawdown * 100).toFixed(1)}%` : "—";
+      const ret = s.total_return != null ? `${s.total_return > 0 ? "+" : ""}${(s.total_return * 100).toFixed(1)}%` : "—";
+      const retCls = s.total_return != null && s.total_return > 0 ? "up" : s.total_return < 0 ? "down" : "";
+      const isBest = s.strategy_id === data.best_id;
+
+      return `
+        <tr style="${isBest ? 'background:rgba(56,189,248,0.08); font-weight:600;' : ''}">
+          <td>${isBest ? '👑 1위 ' : `${idx + 1}위 `}${escapeHtml(s.name || s.strategy_id)}</td>
+          <td><span class="chip">${escapeHtml(s.family_ko || s.family || "")}</span></td>
+          <td class="${retCls}">${ret}</td>
+          <td><b>${sh}</b></td>
+          <td>${oosSh}</td>
+          <td>${wfHit}</td>
+          <td class="down">-${mdd}</td>
+          <td>${s.trade_count || 0}회</td>
+          <td class="meta">${escapeHtml(s.params_ko || "")}</td>
+        </tr>
+      `;
+    }).join("");
+
+    resBox.innerHTML = `
+      <div class="custom-backtest-hero">
+        <div class="custom-hero-header">
+          <div class="custom-hero-title">
+            <span>🎯 ${escapeHtml(data.company || "")} (${escapeHtml(data.ticker)}) 4대 전략 백테스트 결과</span>
+          </div>
+          <div style="font-size:12px; color:#94a3b8;">
+            분석 기간: ${escapeHtml(data.from || "")} ~ ${escapeHtml(data.to || "")} (${data.bars || 0}거래일)
+          </div>
+        </div>
+
+        <div style="padding:10px 14px; background:rgba(56,189,248,0.12); border:1px solid #38bdf8; border-radius:8px; margin-bottom:12px;">
+          <b style="color:#38bdf8;">👑 최적 추천 전략: ${escapeHtml(data.best_name || "")} (${escapeHtml(data.best_params_ko || "")})</b>
+          <p style="margin:4px 0 0; font-size:12.5px; color:#cbd5e1;">${escapeHtml(data.best_comment || "해당 종목에서 가장 안정적인 샤프 지수와 미래 검증 승률을 기록했습니다.")}</p>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table" style="font-size:12.5px;">
+            <thead>
+              <tr>
+                <th>전략명</th>
+                <th>유형</th>
+                <th>총 수익률</th>
+                <th class="has-tip" data-tip="과거 전체 구간의 위험 대비 보상 비율(Sharpe Ratio)입니다. 1.0 이상 우수.">샤프</th>
+                <th class="has-tip" data-tip="검증 구간(Out-of-Sample)에서 미래 시뮬레이션 샤프 지수입니다.">OOS 샤프</th>
+                <th class="has-tip" data-tip="Walk-Forward 순환 분할 검증 구간에서 플러스 수익률을 달성한 승률입니다.">WF 승률</th>
+                <th class="has-tip" data-tip="전략 운용 중 최고점 대비 겪을 수 있는 최대 낙폭(MDD)입니다.">최대낙폭</th>
+                <th>매매 횟수</th>
+                <th>최적 파라미터</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    resBox.innerHTML = `<div style="padding:14px; background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; color:#f87171;">⚠️ ${escapeHtml(err.message || "오류가 발생했습니다.")}</div>`;
+  }
+}
+
+
 function renderMarginDebtBarometer(md) {
   if (!md || !md.ok) return "";
   const d1 = md.delta_1d_trillion;
@@ -1295,6 +1393,7 @@ async function openStock(ticker) {
           <div class="actions">
             <button id="btn-analyze" data-ticker="${ticker}">간단 검증</button>
             <button class="primary" id="btn-report" data-ticker="${ticker}">AI 분석 리포트</button>
+            <button id="btn-backtest-stock" data-ticker="${ticker}" style="background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4);">🧪 전략 백테스트</button>
             <button id="btn-watch" data-ticker="${ticker}" data-company="${escapeHtml(r.company || "")}">관심종목</button>
           </div>
           <p class="hint">간단 검증은 핵심 요약 점검이며, AI 분석 리포트는 심층 펀더멘털 분석 리포트를 생성합니다.</p>
@@ -1318,6 +1417,15 @@ async function openStock(ticker) {
     `;
 
     $("#btn-analyze").addEventListener("click", () => runAnalyze(code).catch((err) => alert(err.message)));
+    if ($("#btn-backtest-stock")) {
+      $("#btn-backtest-stock").addEventListener("click", () => {
+        closeDrawerUi();
+        switchView("strategy");
+        const inp = $("#custom-strategy-q");
+        if (inp) inp.value = code;
+        runCustomBacktest(code);
+      });
+    }
     $("#btn-report").addEventListener("click", () => runReport(code).catch((err) => alert(err.message)));
     if ($("#btn-watch")) {
       $("#btn-watch").addEventListener("click", () => addWatch(code, r.company || "").catch((err) => alert(err.message)));

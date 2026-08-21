@@ -198,3 +198,79 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(out, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return out
+
+
+def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
+    prices = _prices(settings)
+    if prices.empty:
+        return {"ok": False, "error": "주가 데이터(prices.parquet)가 없습니다."}
+
+    q = str(query or "").strip()
+    code = ""
+    company = ""
+
+    # Check if input is a 6-digit ticker
+    if q.isdigit():
+        code = q.zfill(6)
+        matched = prices[prices["ticker"].astype(str).str.zfill(6) == code]
+        if not matched.empty and "company" in matched.columns:
+            company = str(matched["company"].iloc[0])
+    else:
+        # Search by company name in prices
+        if "company" in prices.columns:
+            matched = prices[prices["company"].astype(str).str.contains(q, case=False, na=False)]
+            if not matched.empty:
+                code = str(matched["ticker"].iloc[0]).zfill(6)
+                company = str(matched["company"].iloc[0])
+
+    if not code:
+        # Fallback check output_dir
+        top20_csv = settings.output_dir / "latest_top20.csv"
+        if top20_csv.exists():
+            df = pd.read_csv(top20_csv, dtype={"ticker": str})
+            for r in df.to_dict("records"):
+                t = str(r.get("ticker") or "").zfill(6)
+                c = str(r.get("company") or "")
+                if q == t or q in c or c in q:
+                    code = t
+                    company = c
+                    break
+
+    if not code:
+        return {"ok": False, "error": f"종목 '{query}'을(를) 찾을 수 없습니다. 6자리 종목코드나 정확한 종목명을 입력하세요."}
+
+    data = ohlc_for(prices, code)
+    if data.empty or len(data) < 20:
+        return {"ok": False, "ticker": code, "company": company, "error": f"종목 '{code}'의 가격 이력이 부족합니다 ({len(data)}일)."}
+
+    cfg = _cfg(settings)
+    costs = cfg.get("costs") or {}
+    slippage = float(costs.get("slippage_bps") or 5)
+    oos_ratio = float((cfg.get("splits") or {}).get("oos_ratio") or 0.2)
+    min_days = int(cfg.get("minimum_history_days") or 40)
+
+    ev = evaluate_ticker(data, slippage_bps=slippage, oos_ratio=oos_ratio, min_days=min_days)
+
+    for st in ev.get("strategies") or []:
+        st["params_ko"] = format_params_ko(st.get("params") if isinstance(st.get("params"), dict) else None)
+        st["family_ko"] = FAMILY_KO.get(str(st.get("family") or ""), "")
+        st["comment"] = strategy_comment(st)
+
+    best = (ev.get("strategies") or [{}])[0]
+
+    return {
+        "ok": True,
+        "ticker": code,
+        "company": company or code,
+        "bars": ev.get("bars"),
+        "from": ev.get("from"),
+        "to": ev.get("to"),
+        "best_id": ev.get("best_id"),
+        "best_name": ev.get("best_name"),
+        "best_params_ko": best.get("params_ko"),
+        "best_comment": best.get("comment"),
+        "best_family_ko": best.get("family_ko"),
+        "stability_label": ev.get("stability_label"),
+        "warning": ev.get("warning"),
+        "strategies": ev.get("strategies") or [],
+    }

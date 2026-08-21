@@ -2700,3 +2700,75 @@ body.modal-open { overflow: hidden; }
 .ecos-metric-box span { display: block; font-size: 11.5px; color: #94a3b8; margin-bottom: 3px; }
 .ecos-metric-box b { display: block; font-size: 16px; color: #f8fafc; font-weight: 700; margin-bottom: 2px; }
 .ecos-metric-box .meta { font-size: 11px; color: #64748b; }
+
+
+/* Custom Stock Strategy Backtest UI */
+.custom-backtest-bar {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.custom-backtest-bar input {
+  flex: 1;
+  background: #0d1527;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #fff;
+  font-size: 14px;
+}
+.custom-backtest-bar input:focus {
+  border-color: #38bdf8;
+  outline: none;
+}
+.custom-backtest-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.tag-btn {
+  background: #111a2e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tag-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.custom-backtest-hero {
+  background: linear-gradient(145deg, #0e172a, #0b1322);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+.custom-hero-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.custom-hero-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+.custom-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 10px 0;
+}
+@media (max-width: 800px) {
+  .custom-hero-grid { grid-template-columns: repeat(2, 1fr); }
+}

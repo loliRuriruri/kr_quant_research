@@ -1157,6 +1157,24 @@ def api_screens(id: str = "value_growth", include_quant: bool = True) -> dict[st
     return out
 
 
+
+class StrategyTickerIn(BaseModel):
+    ticker: str = ""
+
+
+@app.get("/api/strategy/ticker/{ticker}")
+def api_strategy_ticker_get(ticker: str) -> dict[str, Any]:
+    from kr_quant.strategy.run import backtest_single_stock
+
+    return backtest_single_stock(load_settings(), ticker)
+
+
+@app.post("/api/strategy/ticker")
+def api_strategy_ticker_post(body: StrategyTickerIn) -> dict[str, Any]:
+    from kr_quant.strategy.run import backtest_single_stock
+
+    return backtest_single_stock(load_settings(), body.ticker)
+
 @app.post("/api/strategy")
 def api_strategy_post(body: StrategyIn | None = None) -> dict[str, Any]:
     from kr_quant.strategy.run import scan_strategies

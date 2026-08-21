@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.5.8" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.5.9" />
 </head>
 <body>
   <aside class="nav">
@@ -504,6 +504,32 @@
     </section>
 
     <section id="view-strategy" class="view hidden">
+      <!-- Custom Individual Stock Backtest Card -->
+      <article class="card" style="margin-bottom:16px; border: 1px solid rgba(56, 189, 248, 0.35);">
+        <div class="card-h">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h2 style="color:#38bdf8; margin:0;">🔍 개별 종목 4대 전략 백테스트 검색기</h2>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">전 종목 지원</span>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:2px;">TOP20 종목 외에도 분석하고 싶은 <b>모든 개별 종목</b>의 과거 3개년 일봉 데이터로 4대 타이밍 전략(RSI, 볼린저밴드, 골든크로스, 돈치안)을 즉시 백테스트합니다.</p>
+        <div class="custom-backtest-bar">
+          <input id="custom-strategy-q" type="text" placeholder="종목명 또는 6자리 코드 입력 (예: 삼성전자, SK하이닉스, 현대차, 삼양식품, 005930 등)" />
+          <button id="btn-custom-strategy" class="primary" style="white-space:nowrap; padding:0 20px;">⚡ 백테스트 실행</button>
+        </div>
+        <div class="custom-backtest-tags">
+          <span class="hint" style="font-size:12px; margin-right:4px;">빠른 선택:</span>
+          <button type="button" class="tag-btn" data-backtest-ticker="005930">삼성전자</button>
+          <button type="button" class="tag-btn" data-backtest-ticker="000660">SK하이닉스</button>
+          <button type="button" class="tag-btn" data-backtest-ticker="005380">현대차</button>
+          <button type="button" class="tag-btn" data-backtest-ticker="003230">삼양식품</button>
+          <button type="button" class="tag-btn" data-backtest-ticker="035420">NAVER</button>
+          <button type="button" class="tag-btn" data-backtest-ticker="035720">카카오</button>
+          <button type="button" class="tag-btn" data-backtest-ticker="196170">알테오젠</button>
+        </div>
+        <div id="custom-strategy-result" style="display:none; margin-top:14px;"></div>
+      </article>
+
       <article class="card">
         <div class="card-h">
           <h2>🧪 전략·백테스트 랩 (TOP20 매매 타이밍 검증)</h2>
@@ -795,6 +821,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=1.5.8"></script>
+  <script src="/static/app.js?v=1.5.9"></script>
 </body>
 </html>
