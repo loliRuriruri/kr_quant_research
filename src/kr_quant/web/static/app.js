@@ -841,6 +841,7 @@ async function openStock(ticker) {
         ${twarn ? `<p>유의: ${escapeHtml(twarn)}</p>` : ""}
         ${toss.page ? `<p><a class="ext" href="${escapeHtml(toss.page)}" target="_blank" rel="noopener">토스증권에서 보기</a></p>` : ""}
       </article>`;
+    }
     const yahoo = data.yahoo || {};
     let yahooBlock = "";
     if (yahoo && (yahoo.forward_pe != null || yahoo.trailing_pe != null || yahoo.peg_ratio != null || yahoo.target_mean_price != null || yahoo.recommendation_key)) {
