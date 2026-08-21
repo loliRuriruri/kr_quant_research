@@ -5391,6 +5391,23 @@ if ($("#status-modal")) {
   });
 }
 document.addEventListener("click", (e) => {
+  const aiBtn = e.target.closest("[data-ai-trigger]");
+  if (aiBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    const code = aiBtn.dataset.aiTrigger;
+    const company = aiBtn.dataset.aiCompany || code;
+    const ok = confirm(`🤖 [${company} (${code})] AI 심층 분석 리포트를 발간하시겠습니까?\n\n※ DeepSeek / OpenRouter LLM API를 호출하여 최신 공시, 재무, 해자, 밸류에이션 및 4대 전략 백테스트 리포트를 생성합니다. (토큰 비용 소모)`);
+    if (!ok) return;
+
+    runReport(code).catch((err) => alert(err.message));
+    return;
+  }
+  if (e.target.closest(".btn-ai-mini")) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
   if (e.target.closest("[data-open-status]")) openStatusModal();
 });
 if ($("#btn-krx-now")) {
@@ -5570,7 +5587,7 @@ document.addEventListener("click", (e) => {
     }
     return;
   }
-  if (e.target.closest("a.ext")) return;
+  if (e.target.closest("a.ext") || e.target.closest(".btn-ai-mini") || e.target.closest("[data-ai-trigger]")) return;
   const tr = e.target.closest("tr.clickable");
   if (!tr?.dataset.ticker) return;
   const archive = tr.closest("#reports-body, #dash-reports-body");
