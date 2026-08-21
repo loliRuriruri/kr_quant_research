@@ -1515,10 +1515,16 @@ def serve(host: str = "127.0.0.1", port: int = 8790, open_browser: bool = True) 
     import uvicorn
 
     _console_setup()
+    print("")
+    print("  ============================================================")
+    print("    🚀 KR Quant Research 통합 퀀트 시스템 시작 중...")
+    print("  ============================================================")
+    print("  [1/3] 퀀트 분석 모듈 및 환경 설정 로딩 중...")
+
     url = f"http://{host}:{port}"
     if dashboard_is_running(host, port):
         _banner([
-            "💡 KR Quant Research 서비스가 이미 실행 중입니다.",
+            "💡 KR Quant Research 서비스가 이미 백그라운드에서 실행 중입니다.",
             f"🌐 브라우저를 엽니다: {url}",
             "💡 서비스를 종료하려면 기존 콘솔 창을 닫거나 Ctrl+C를 누르세요.",
         ])
@@ -1531,6 +1537,16 @@ def serve(host: str = "127.0.0.1", port: int = 8790, open_browser: bool = True) 
     except RuntimeError as exc:
         _banner([str(exc)])
         raise SystemExit(1) from exc
+
+    print("  [2/3] 포트 점검 및 로컬 웹 서버 준비 완료")
+
+    try:
+        from kr_quant.web.scheduler import start_price_scheduler
+
+        start_price_scheduler()
+        print("  [3/3] 백그라운드 자동 스케줄러 활성화 완료")
+    except Exception:  # noqa: BLE001
+        pass
 
     if chosen != port:
         url = f"http://{host}:{chosen}"
@@ -1551,13 +1567,6 @@ def serve(host: str = "127.0.0.1", port: int = 8790, open_browser: bool = True) 
             "",
             "💡 [종료 안내] 서비스를 종료하려면 이 창을 닫거나 Ctrl+C를 누르세요.",
         ])
-
-    try:
-        from kr_quant.web.scheduler import start_price_scheduler
-
-        start_price_scheduler()
-    except Exception:  # noqa: BLE001
-        pass
 
     if open_browser:
         def _open() -> None:
