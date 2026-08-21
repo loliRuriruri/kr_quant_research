@@ -3396,6 +3396,9 @@ if ($("#sector-refresh")) {
 if ($("#screens-refresh")) {
   $("#screens-refresh").addEventListener("click", () => loadScreens().catch((err) => alert(err.message)));
 }
+if ($("#screens-include-quant")) {
+  $("#screens-include-quant").addEventListener("change", () => loadScreens().catch((err) => alert(err.message)));
+}
 if ($("#rank-refresh")) {
   $("#rank-refresh").addEventListener("click", () => loadDash().catch((err) => alert(err.message)));
 }
