@@ -1565,3 +1565,51 @@ body.modal-open { overflow: hidden; }
 .us13f-action-title { font-size: 13px; font-weight: 700; color: #fff; }
 .us13f-action-meta { font-size: 11px; color: var(--muted); }
 
+/* Consensus Cards */
+.us13f-consensus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 12px 0 18px;
+}
+@media (max-width: 900px) {
+  .us13f-consensus-grid { grid-template-columns: 1fr; }
+}
+.us13f-consensus-card {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 14px;
+  border-top: 3px solid #f59e0b;
+  transition: all 0.2s ease;
+}
+.us13f-consensus-card:hover {
+  border-color: #f59e0b;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.15);
+}
+.us13f-consensus-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.us13f-consensus-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+}
+.us13f-consensus-funds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.us13f-fund-chip {
+  font-size: 11px;
+  background: #1e293b;
+  color: #cbd5e1;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+

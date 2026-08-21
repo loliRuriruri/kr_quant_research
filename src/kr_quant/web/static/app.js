@@ -15,7 +15,7 @@ const titles = {
   flow: ["쌍끌이 수급", "외국인·기관 동반 매수 및 사모펀드 순매수 추적"],
   empty: ["빈집 발굴", "기관·외인 이탈 후 수급 복귀 조짐 종목"],
   trade: ["트레이딩 랩", "수급 셋업 및 스토캐스틱·일목 기술적 신호"],
-  us13f: ["미국 13F 공시", "워런 버핏, 마이클 버리 등 글로벌 대가들의 분기별 보유 포트폴리오 시각화"],
+  us13f: ["월가 대가 포트폴리오 (13F)", "워런 버핏·마이클 버리 등 글로벌 대가들의 SEC 13F 보유 비중 & 신규 편입 종목"],
   strategy: ["전략·백테스트", "일봉 기반 퀀트 전략 백테스트 및 검증"],
   investor: ["메이저 수급 & 지분", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
   sunzi: ["손자 五事", "道·天·地·將·法 다각도 심층 기업 분석"],
@@ -2869,18 +2869,109 @@ function renderUs13f(data) {
     `;
   }).join("");
 
+  const MODES = [
+    ["new", "🔥 신규 편입"],
+    ["common", "🎯 대가 공통 보유"],
+    ["increases", "📈 비중 확대"],
+    ["exits", "🚪 전량 청산"],
+    ["filers", "🏛️ 펀드별 공시"],
+    ["weights", "📊 보유 비중 순위"],
+    ["trend", "⚡ 매매 트렌드"],
+  ];
+  const modeTabsHtml = `
+    <div class="h-tabs" style="margin:12px 0 16px;">
+      ${MODES.map(([k, label]) => `
+        <button type="button" class="${mode === k ? "on" : ""}" data-13f-mode="${k}">
+          ${label} ${k === "new" ? `(${(data.new || []).length})` : k === "common" ? `(${(data.common || []).length})` : k === "exits" ? `(${(data.exits || []).length})` : ""}
+        </button>
+      `).join("")}
+    </div>
+  `;
+
+  // Consensus Highlights
+  const commonRows = data.common || [];
+  const consensusCardsHtml = commonRows.slice(0, 6).map((c) => {
+    const funds = (c.filers_ko || c.filers || []).slice(0, 3).map((f) => `<span class="us13f-fund-chip">${escapeHtml(f)}</span>`).join("");
+    return `
+      <div class="us13f-consensus-card">
+        <div class="us13f-consensus-top">
+          <div>
+            <div class="us13f-consensus-name">${escapeHtml(c.issuer_ko || c.issuer)}</div>
+            <div class="meta">${escapeHtml(c.ticker || c.cusip || "")}</div>
+          </div>
+          <span class="tag tone-우호">🌟 ${c.n_filers}개 펀드 동시 보유</span>
+        </div>
+        <div style="font-size:12px; color:#cbd5e1; margin-top:6px;">
+          합산 투자액: <b style="color:#fff; font-size:13px;">${usd(c.value)}</b>
+        </div>
+        <div class="us13f-consensus-funds">
+          ${funds}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // Action Highlights
+  const actionList = (mode === "new" ? (data.new || []) : mode === "exits" ? (data.exits || []) : mode === "increases" ? (data.increases || []) : []).slice(0, 6);
+  const actionCardsHtml = actionList.map((r) => {
+    const isNew = mode === "new";
+    const isExit = mode === "exits";
+    const tagCls = isNew ? "tone-우호" : isExit ? "tone-부담" : "tone-중립";
+    const tagTxt = isNew ? "신규 매수" : isExit ? "전량 청산" : "비중 확대";
+    const amt = isExit ? r.prev_value : r.value;
+
+    return `
+      <div class="us13f-action-card ${isNew ? "new" : isExit ? "exit" : "increase"}">
+        <div class="us13f-action-top">
+          <span class="us13f-action-title">${escapeHtml(r.issuer_ko || r.issuer)}</span>
+          <span class="tag ${tagCls}">${tagTxt}</span>
+        </div>
+        <div class="us13f-action-meta">
+          ${escapeHtml(r.filer_ko || r.filer)} · 티커: <b>${escapeHtml(r.ticker || "—")}</b>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:12px;">
+          <span style="color:var(--muted);">거래 규모</span>
+          <b style="color:#fff; font-size:13px;">${usd(amt)}</b>
+        </div>
+      </div>
+    `;
+  }).join("");
+
   box.innerHTML = `
     ${kpis}
     <h3 style="margin:16px 0 6px;font-size:15px;color:#fff;">🏛️ 글로벌 대가별 포트폴리오 비중 (Top Holdings Weight)</h3>
-    <p class="hint" style="margin-bottom:12px;">워런 버핏(버크셔), 마이클 버리, 레이 달리오 등 슈퍼인베스터들의 상위 보유 종목 스택 바 차트입니다.</p>
+    <p class="hint" style="margin-bottom:12px;">워런 버핏(버크셔 해서웨이), 마이클 버리, 레이 달리오 등 슈퍼인베스터들의 상위 보유 종목 스택 바 차트입니다.</p>
     <div class="us13f-filer-grid">
       ${filerCardsHtml}
     </div>
-    <h3 style="margin:22px 0 6px;font-size:15px;color:#fff;">📋 13F 상세 내역 분석표</h3>
+
+    ${mode === "common" && consensusCardsHtml ? `
+      <h3 style="margin:20px 0 6px;font-size:15px;color:#fff;">🎯 월가 대가들의 공통 합의 보유 종목 (Consensus Top Picks)</h3>
+      <p class="hint" style="margin-bottom:12px;">2개 이상의 글로벌 헤지펀드가 동시에 비중을 싣고 있는 공통 핵심 종목입니다.</p>
+      <div class="us13f-consensus-grid">${consensusCardsHtml}</div>
+    ` : ""}
+
+    ${(mode === "new" || mode === "exits" || mode === "increases") && actionCardsHtml ? `
+      <h3 style="margin:20px 0 6px;font-size:15px;color:#fff;">${mode === "new" ? "🔥 이번 분기 주요 신규 편입 종목 (New Buys)" : mode === "exits" ? "🚪 이번 분기 주요 전량 청산 종목 (Exits)" : "📈 이번 분기 주요 비중 확대 종목 (Increases)"}</h3>
+      <div class="us13f-action-grid">${actionCardsHtml}</div>
+    ` : ""}
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:22px 0 8px; flex-wrap:wrap; gap:8px;">
+      <h3 style="margin:0;font-size:15px;color:#fff;">📋 13F 상세 분석 데이터</h3>
+    </div>
+    ${modeTabsHtml}
     <div class="table-wrap tall">${table}</div>
     ${err ? `<p class="hint">일부 실패: ${escapeHtml(err)}</p>` : ""}
     <p class="hint">${escapeHtml(data.disclaimer || "")}</p>
   `;
+
+  box.querySelectorAll("[data-13f-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const select = $("#us13f-mode");
+      if (select) select.value = btn.dataset["13fMode"];
+      renderUs13f(data);
+    });
+  });
 }
 
 async function loadUs13f(force) {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.3.1" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.3.2" />
 </head>
 <body>
   <aside class="nav">
@@ -30,7 +30,7 @@
     <button class="nav-btn" data-view="toss" data-tip="토스 급상승·급하락·거래대금 시세 랭킹입니다.">토스 랭킹</button>
     <button class="nav-btn" data-view="watch" data-tip="직접 저장한 메모 목록입니다.">관심종목</button>
     <div class="nav-group">글로벌 리서치</div>
-    <button class="nav-btn" data-view="us13f" data-tip="워런 버핏, 마이클 버리 등 미국 대가들의 SEC 13F 분기 말 보유 지분 시각화입니다.">미국 13F</button>
+    <button class="nav-btn" data-view="us13f" data-tip="워런 버핏, 마이클 버리 등 글로벌 대가들의 분기별 SEC 13F 보유 지분 및 신규 매수 시각화입니다.">월가 대가 포트폴리오 (13F)</button>
     <button class="nav-btn" data-view="sunzi" data-tip="손자 전장 조건과 양 웬리식 반대심문입니다.">손자 五事</button>
     <button class="nav-btn" data-view="reports" data-tip="저장된 AI 심층 기업 분석 및 투자 검증 리포트입니다.">AI 리포트</button>
     <button class="nav-btn hidden" data-view="nps">국민연금 5%</button>
@@ -454,24 +454,24 @@
     <section id="view-us13f" class="view hidden">
       <article class="card">
         <div class="card-h">
-          <h2>미국 13F 기관 보유</h2>
+          <h2>월가 대가 포트폴리오 (SEC 13F-HR 공시)</h2>
           <div class="actions">
             <input id="us13f-q" type="search" placeholder="종목명, CUSIP, 펀드" />
             <label>분류
               <select id="us13f-mode">
-                <option value="new" selected>신규 매수</option>
-                <option value="increases">규모 확대</option>
-                <option value="exits">매도·청산</option>
-                <option value="common">공통 매수</option>
-                <option value="trend">트렌드</option>
-                <option value="weights">종목 비중</option>
-                <option value="filers">펀드별 공시</option>
+                <option value="new" selected>🔥 신규 편입</option>
+                <option value="common">🎯 대가 공통 보유</option>
+                <option value="increases">📈 비중 확대</option>
+                <option value="exits">🚪 전량 청산</option>
+                <option value="filers">🏛️ 펀드별 공시</option>
+                <option value="weights">📊 보유 비중 순위</option>
+                <option value="trend">⚡ 매매 트렌드</option>
               </select>
             </label>
             <button class="ghost" id="us13f-refresh">최신본 업데이트</button>
           </div>
         </div>
-        <p class="hint">SEC EDGAR 13F-HR 공시 기반 글로벌 주요 헤지펀드 및 기관들의 포트폴리오 내역입니다.</p>
+        <p class="hint">워런 버핏, 마이클 버리, 레이 달리오 등 글로벌 슈퍼인베스터들의 분기별 SEC 13F-HR 공식 보고서 기반 포트폴리오 비중 및 매매 추적입니다.</p>
         <div id="us13f-box" class="quality"></div>
       </article>
     </section>
@@ -720,6 +720,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=1.3.1"></script>
+  <script src="/static/app.js?v=1.3.2"></script>
 </body>
 </html>
