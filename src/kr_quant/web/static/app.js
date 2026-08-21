@@ -1588,29 +1588,50 @@ async function loadInvestor() {
   const cov = data.coverage || {};
   const blockers = (data.blockers || []).map((t) => `<li class="warn">${escapeHtml(t)}</li>`).join("");
   const next = (data.next_steps || []).map((t) => `<li>${escapeHtml(t)}</li>`).join("");
-  const types = (data.types || [])
-    .map((t) => `<li><b>${escapeHtml(t.ko)}</b> <span class="meta">${escapeHtml(t.code)}</span>${t.note ? `<div class="hint">${escapeHtml(t.note)}</div>` : ""}</li>`)
-    .join("");
   const uni = (data.universe_preview || [])
-    .map((t) => `<li>${escapeHtml(t.company || "")} ${escapeHtml(t.ticker)} · ${escapeHtml(t.why || "")}</li>`)
-    .join("");
-  const asof = cov.last_date ? `공식 수급 최신일 ${cov.last_date} · ${cov.tickers || 0}종목 · ${cov.rows || 0}행` : "공식 수급 데이터 없음";
-  if (currentView === "investor") setPageAsOf(asof, "KIS 관심종목·고유동성만 저장합니다. 전 종목 기금 순위가 아닙니다.");
+    .map((t) => `<span class="sector-stock-pill" onclick="openStock('${escapeHtml(t.ticker)}')"><b>${escapeHtml(t.company || t.ticker)}</b> <span class="meta">${escapeHtml(t.why || "")}</span></span>`)
+    .join(" ");
+  const asof = cov.last_date ? `공식 수급 최신일 ${cov.last_date} · ${cov.tickers || 0}종목 · ${cov.rows || 0}행` : "공식 수급 데이터 없음 (토스 캐시 대체 가동 중)";
+  if (currentView === "investor") setPageAsOf(asof, "KIS 관심종목·고유동성 수급 추적. API 미설정 시 토스 데이터로 자동 대체됩니다.");
+
   box.innerHTML = `
     ${asofBanner(asof)}
     <div class="kpis" style="grid-template-columns:repeat(4,1fr);margin:8px 0 16px">
-      <div class="kpi"><span>KIS 연결</span><b class="${data.configured ? "ok" : "warn"}">${data.configured ? "설정됨" : "키 없음"}</b></div>
-      <div class="kpi"><span>저장 종목</span><b>${cov.tickers ?? 0}</b></div>
-      <div class="kpi"><span>저장 행</span><b>${cov.rows ?? 0}</b></div>
-      <div class="kpi"><span>수집 후보</span><b>${data.universe_n ?? 0}</b></div>
+      <div class="kpi"><span>KIS Open API</span><b class="${data.configured ? "ok" : "warn"}">${data.configured ? "연결 완료" : "미설정 (토스 대체)"}</b></div>
+      <div class="kpi"><span>저장된 종목</span><b>${cov.tickers ?? 0}개</b></div>
+      <div class="kpi"><span>수집된 수급 데이터</span><b>${cov.rows ?? 0}행</b></div>
+      <div class="kpi"><span>수집 예정 후보</span><b>${data.universe_n ?? 0}종목</b></div>
     </div>
-    ${blockers ? `<h3>왜 데이터가 없는가</h3><ul>${blockers}</ul>` : ""}
-    ${next ? `<h3>다음에 할 일</h3><ul>${next}</ul>` : ""}
-    <h3>투자자 유형 (원천 라벨)</h3>
-    <ul>${types}</ul>
-    <h3>이번 수집 대상 (미리보기)</h3>
-    <ul>${uni || "<li>관심종목이나 KRX 시세 거래대금 상위가 필요합니다.</li>"}</ul>
-    <p class="hint">${escapeHtml(data.disclaimer || "")}</p>
+
+    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px 14px; margin-bottom:14px;">
+      <h4 style="margin:0 0 6px; font-size:14px; color:#60a5fa;">📌 공식 수급 수집 기준 및 동작 원리</h4>
+      <p style="margin:0 0 8px; font-size:13px; color:#cbd5e1; line-height:1.5;">
+        한국투자증권(KIS) Open API를 통해 증권사 HTS와 동일한 일별 기관·외국인·개인·기금의 <b>공식 순매수 주수 및 외인 지분율</b>을 직접 수집·적재합니다.
+      </p>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; font-size:12px; color:#94a3b8;">
+        <div style="background:rgba(0,0,0,0.2); padding:8px 10px; border-radius:6px;">
+          <b style="color:#e2e8f0;">🎯 수집 대상 선정 기준 (Universe)</b><br/>
+          • <b>1순위: 관심종목</b> (직접 등록한 모든 종목)<br/>
+          • <b>2순위: 거래대금 TOP 30</b> (시장 주도 고유동성 대형주)<br/>
+          <i>※ API 쿼터 보호 및 속도 유지를 위해 핵심 종목만 집중 수집</i>
+        </div>
+        <div style="background:rgba(0,0,0,0.2); padding:8px 10px; border-radius:6px;">
+          <b style="color:#e2e8f0;">💡 데이터 백업 엔진 (Fallback)</b><br/>
+          KIS API 키가 없거나 수집 전이어도, 아래 <b>[연속·동반·방향전환]</b> 분석표는 <b>토스증권 수급 캐시(기관+외인)</b>로 자동 연동되어 빈 화면 없이 즉시 분석할 수 있습니다.
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:12px;">
+      <h4 style="margin:0 0 6px; font-size:13px; color:#e2e8f0;">📋 이번 수집 대상 종목 (클릭 시 상세 분석)</h4>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;">
+        ${uni || '<span class="hint">관심종목을 등록하거나 KRX 시세를 실행하면 대상이 생성됩니다.</span>'}
+      </div>
+    </div>
+
+    ${blockers ? `<div style="margin-top:10px;"><h4 style="margin:0 0 4px; font-size:13px; color:#f59e0b;">⚠️ KIS 공식 수급 안내</h4><ul style="margin:0; padding-left:20px; font-size:12px; color:#fbbf24;">${blockers}</ul></div>` : ""}
+    ${next ? `<div style="margin-top:10px;"><h4 style="margin:0 0 4px; font-size:13px; color:#93c5fd;">🚀 다음 진행 팁</h4><ul style="margin:0; padding-left:20px; font-size:12px; color:#cbd5e1;">${next}</ul></div>` : ""}
+    <p class="hint" style="margin-top:12px;">${escapeHtml(data.disclaimer || "")}</p>
   `;
 }
 
@@ -1692,21 +1713,28 @@ function renderInvestorEvents(data) {
         <td>${escapeHtml(r.source || "")}</td></tr>`;
     })
     .join("");
+  const srcBadge = pick === "official"
+    ? '<span class="tag tone-우호">🏛️ 한국투자증권(KIS) 공식 수급 기준</span>'
+    : '<span class="tag tone-중립">⚡ 토스증권 수급 캐시 기준 (자동 백업 엔진)</span>';
+
   box.innerHTML = `
-    <div class="h-tabs">
-      <button class="${pick === "official" ? "on" : ""}" data-inv-src="official">공식 KIS ${official.tickers || 0}종목</button>
-      <button class="${pick === "toss" ? "on" : ""}" data-inv-src="toss">토스 캐시 ${toss.tickers || 0}종목</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+      <div class="h-tabs" style="margin:0;">
+        <button class="${pick === "official" ? "on" : ""}" data-inv-src="official">공식 KIS (${official.tickers || 0}종목)</button>
+        <button class="${pick === "toss" ? "on" : ""}" data-inv-src="toss">토스 캐시 (${toss.tickers || 0}종목)</button>
+      </div>
+      <div>${srcBadge}</div>
     </div>
-    <p class="hint">${escapeHtml(src.pair_note || data.disclaimer || "")}</p>
+    <p class="hint" style="margin:4px 0 10px;">${escapeHtml(src.pair_note || "외국인·기관의 연속 매수 일수(Streak), 동반 매수(Double Buy), 방향 전환(Reversal) 감지 목록입니다.")}</p>
     ${src.empty_reason ? `<p class="hint warn">${escapeHtml(src.empty_reason)}</p>` : ""}
-    ${reb.note ? `<p class="hint">${escapeHtml(reb.note)}</p><p>표본 ${reb.n || 0}종목 · 매수 ${reb.buy_n || 0} · 매도 ${reb.sell_n || 0} · 합계 ${fmtAmt(reb.net_sum)}</p>` : ""}
-    <div class="h-tabs">
+    ${reb.note ? `<p class="hint">${escapeHtml(reb.note)} · 표본 ${reb.n || 0}종목 · 매수 ${reb.buy_n || 0} · 매도 ${reb.sell_n || 0} · 합계 ${fmtAmt(reb.net_sum)}</p>` : ""}
+    <div class="h-tabs" style="margin-bottom:8px;">
       ${tabs.map(([id, label]) => `<button class="${investorEventTab === id ? "on" : ""}" data-inv-tab="${id}">${label}</button>`).join("")}
     </div>
     <div class="table-wrap">
       <table>
         <thead><tr>${head}</tr></thead>
-        <tbody>${body || `<tr><td colspan="6">해당 표가 비었습니다.</td></tr>`}</tbody>
+        <tbody>${body || `<tr><td colspan="6">해당 조건의 수급 포착 종목이 없습니다.</td></tr>`}</tbody>
       </table>
     </div>
   `;
