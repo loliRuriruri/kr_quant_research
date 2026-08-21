@@ -38,17 +38,19 @@
     <button class="nav-btn" data-view="run" data-tip="데모, 재계산, KRX 시세, 실데이터 수집을 실행합니다. 시세 이력 확장은 Quant를 돌리지 않습니다.">실행</button>
     <button class="nav-btn" data-view="settings" data-tip="API 키는 이 PC의 .env에만 저장됩니다. Quant 계산은 LLM을 쓰지 않습니다.">API 설정</button>
     <div class="nav-foot">
-      <p>점수는 재무 Quant만.<br />시장·전략은 합산하지 않습니다.</p>
+      <p>KR Quant Research<br />v1.3 Engine</p>
     </div>
   </aside>
 
   <main>
     <header class="top">
       <div>
-        <h1 id="page-title">대시보드</h1>
-        <p id="page-sub">최근 스크리닝 결과</p>
-        <p id="page-asof" class="data-asof has-tip" data-tip="이 메뉴가 쓰는 데이터의 최신 시점입니다. 오래됐으면 각 메뉴의 갱신 버튼을 누르세요.">데이터 시점 확인 중…</p>
-        <p id="overlay-banner" class="overlay-banner">수급 · 국면 · 五事 · 전략은 조사 오버레이입니다. <strong>Quant 점수와 합산하지 않으며 매수 지시가 아닙니다.</strong></p>
+        <div class="top-title-row">
+          <h1 id="page-title">대시보드</h1>
+          <span id="top-mode-badge" class="top-mode-badge quant-active">⭐ <b>재무 Quant 엔진 적용</b></span>
+        </div>
+        <p id="page-sub">재무 팩터 기반 상위 20종목 요약</p>
+        <p id="page-asof" class="data-asof has-tip" data-tip="이 메뉴가 사용하는 데이터의 최신 기준일입니다.">데이터 시점 확인 중…</p>
       </div>
       <div class="top-right">
         <div class="chips">
@@ -98,9 +100,8 @@
       <article class="card" style="margin-top:14px">
         <div class="card-h">
           <h2>TOP20 집중도</h2>
-          <span class="chip">Quant 점수 미포함</span>
         </div>
-        <p class="hint">동일 비중으로 본 연구용 집중도입니다. 업종·상관만 보고 점수나 주문을 바꾸지 않습니다.</p>
+        <p class="hint">동일 가중치 기준 포트폴리오 업종 분산 및 상관관계 분석입니다.</p>
         <div id="portfolio-box" class="quality"></div>
       </article>
       <article class="card" style="margin-top:14px">
@@ -126,20 +127,18 @@
         <div class="card-h">
           <h2>시장 국면</h2>
           <div class="actions">
-            <span class="chip">점수 미합산</span>
             <span class="chip" id="market-live">동기화 대기</span>
             <button class="ghost" id="market-refresh">지금 새로고침</button>
           </div>
         </div>
-        <p class="hint">공포·탐욕과 비교지수는 장중에도 다시 받습니다. 내부 국면(추세·폭)은 KRX 일봉이라 장 마감 후 시세 받기가 필요합니다.</p>
+        <p class="hint">공포·탐욕 지표 및 KRX 전종목 추세·확산 기반 시장 국면 모니터입니다.</p>
         <div id="market-box" class="quality"></div>
       </article>
       <article class="card" style="margin-top:14px">
         <div class="card-h">
           <h2>국내 · 국제 매크로</h2>
-          <span class="chip">점수 미포함</span>
         </div>
-        <p class="hint">한국은행 ECOS·FRED·비교지수로 위험자산에 우호인지 부담인지 코멘트합니다. 아래 그래프는 발표 일정표가 아니라 FRED 관측 추이입니다.</p>
+        <p class="hint">한국은행 ECOS, FRED 및 글로벌 자산군(금·원유·구리·비트코인·환율) 실시간 지표 분석입니다.</p>
         <div id="brief-box" class="quality"></div>
       </article>
       <article class="card" style="margin-top:14px">
@@ -150,15 +149,14 @@
             <button class="ghost" id="news-refresh">뉴스 새로고침</button>
           </div>
         </div>
-        <p class="hint">네이버 검색 API로 금리·환율·증시 최근 기사를 모읍니다. 헤드라인일 뿐 매수 지시가 아닙니다.</p>
+        <p class="hint">네이버 검색 API 기반 금리·환율·증시 주요 헤드라인입니다.</p>
         <div id="news-box" class="quality"></div>
       </article>
       <article class="card" style="margin-top:14px">
         <div class="card-h">
           <h2>금리 · 비교지수</h2>
-          <span class="chip">점수 미포함</span>
         </div>
-        <p class="hint">FRED 금리·물가와 Yahoo/yfinance 지수입니다. 한국 공식 시세는 KRX입니다. 막대는 최근 변화 크기입니다.</p>
+        <p class="hint">FRED 금리·물가 지표 및 Yahoo/yfinance 글로벌 벤치마크 지표입니다.</p>
         <div id="macro-box" class="quality"></div>
       </article>
     </section>
@@ -183,19 +181,17 @@
         <div class="card-h">
           <h2>공식 투자자 수급 (KIS)</h2>
           <div class="actions">
-            <span class="chip">점수 미포함</span>
             <button class="ghost" id="investor-refresh">상태 새로고침</button>
             <button class="primary" id="investor-collect" data-tip="관심종목과 거래대금 상위만 받습니다. 전 종목 순위가 아닙니다.">관심·고유동성 수집</button>
           </div>
         </div>
-        <p class="hint">한국투자증권 투자자 동향입니다. Fastjusik API를 쓰지 않습니다. 기금은 원천 라벨 그대로이며 국민연금이라고 부르지 않습니다. 공식 전종목 API가 확인되기 전 전 종목 순위를 보여 주지 않습니다.</p>
+        <p class="hint">한국투자증권 Open API 기반 일별 투자자(외국인·기관·기금 등) 순매수 동향입니다.</p>
         <div id="investor-box" class="quality"></div>
       </article>
       <article class="card" style="margin-top:14px">
         <div class="card-h">
           <h2>연속 · 동반 · 방향전환</h2>
           <div class="actions">
-            <span class="chip">점수 미포함</span>
             <label>전환 기준
               <select id="investor-turn">
                 <option value="3">3일</option>
@@ -206,7 +202,7 @@
             <button class="ghost" id="investor-events-refresh">표 새로고침</button>
           </div>
         </div>
-        <p class="hint">공식 KIS 행이 있으면 그걸로, 없으면 토스 캐시(기관+외인)로 채웁니다. 토스를 연기금 전종목 순위처럼 쓰지 않습니다.</p>
+        <p class="hint">외국인·기관의 연속 순매수 일수(Streak), 동반 매수(Double Buy), 방향 전환(Reversal) 감지 목록입니다.</p>
         <div id="investor-events-box" class="quality"></div>
       </article>
     </section>
@@ -216,11 +212,10 @@
         <div class="card-h">
           <h2>손자 道天地將法</h2>
           <div class="actions">
-            <span class="chip">점수 미포함</span>
             <button class="ghost" id="sunzi-refresh">새로고침</button>
           </div>
         </div>
-        <p class="hint">전장 조건(道天地將法)과, 굳이 지금 싸울지 묻는 전략 검토입니다. 착수는 매수가 아니고 대사를 복제하지 않습니다.</p>
+        <p class="hint">전장 조건(道·天·地·將·法)과 전략적 유불리를 다각도로 검토하는 정성/정량 복합 분석입니다.</p>
         <div id="sunzi-box" class="quality"></div>
       </article>
     </section>
@@ -393,13 +388,12 @@
     <section id="view-sector" class="view hidden">
       <article class="card">
         <div class="card-h">
-          <h2>업종 흐름</h2>
+          <h2>업종 분석</h2>
           <div class="actions">
-            <span class="chip">점수 미합산</span>
             <button class="ghost" id="sector-refresh">다시 계산</button>
           </div>
         </div>
-        <p class="hint">조건 통과 종목을 업종으로 묶어 상대강도·확산·실적 증가 비율을 봅니다. 한 종목만 급등한 업종과 전체가 강한 업종을 가르기 위한 연구 점수입니다.</p>
+        <p class="hint">KSIC 업종별 상대강도(RS), 시장 내 확산도 및 실적 증가율 기반 6축 종합 랭킹입니다.</p>
         <div id="sector-box" class="quality"></div>
       </article>
     </section>
@@ -413,7 +407,7 @@
             <button class="ghost" id="rank-refresh">화면 새로고침</button>
           </div>
         </div>
-        <p class="hint">시총·거래대금·보통주 조건을 통과한 종목만 점수순입니다. 종목 옆은 선정 코멘트입니다. LLM은 점수를 고치지 않습니다.</p>
+        <p class="hint">시총·거래대금 조건을 통과한 유니버스 종목의 5대 팩터 종합 퀀트 순위입니다. 종목 옆은 선정 코멘트입니다.</p>
         <div class="table-wrap tall">
           <table data-scope="rank">
             <thead>
@@ -424,11 +418,11 @@
                 <th class="sortable" data-sort="market">시장</th>
                 <th class="sortable" data-sort="industry">업종</th>
                 <th class="sortable has-tip" data-sort="last_close" data-tip="KRX 최근 종가입니다.">최근가</th>
-                <th class="sortable has-tip" data-sort="quant_score" data-tip="재무 Quant 점수입니다. 수급·기술과 합치지 않습니다.">점수</th>
+                <th class="sortable has-tip" data-sort="quant_score" data-tip="재무 Quant 점수입니다.">점수</th>
                 <th class="has-tip" data-tip="가=가치, 품=품질, 성=성장, 모=모멘텀, 안=안정. 만점 대비 막대입니다.">구성</th>
                 <th class="sortable has-tip" data-sort="risk_penalty" data-tip="리스크 감점입니다. 클수록 점수가 깎입니다.">페널티</th>
                 <th class="sortable has-tip" data-sort="weighted_metric_coverage" data-tip="필수 지표가 채워진 비율입니다. TOP20은 보통 90% 이상이어야 합니다.">커버</th>
-                <th class="sortable has-tip" data-sort="data_confidence" data-tip="데이터 신뢰도 게이트입니다. 점수에 곱하지 않습니다.">신뢰</th>
+                <th class="sortable has-tip" data-sort="data_confidence" data-tip="데이터 신뢰도 게이트입니다.">신뢰</th>
                 <th>리포트</th>
               </tr>
             </thead>
@@ -458,7 +452,7 @@
             <button class="ghost" id="us13f-refresh">최신본 업데이트</button>
           </div>
         </div>
-        <p class="hint">공식 원천은 <a class="ext inline" href="https://www.sec.gov/edgar/search/" target="_blank" rel="noopener">SEC EDGAR 13F-HR</a>입니다. WhaleWisdom은 같은 공시를 보기 좋게 모은 사이트라 참고 링크로만 둡니다. 긁어오지 않습니다. 13F는 분기 말 보유 + 최대 45일 시차이며 Quant 점수에 넣지 않습니다.</p>
+        <p class="hint">SEC EDGAR 13F-HR 공시 기반 글로벌 주요 헤지펀드 및 기관들의 포트폴리오 내역입니다.</p>
         <div id="us13f-box" class="quality"></div>
       </article>
     </section>
@@ -471,13 +465,12 @@
             <button class="ghost" id="strategy-refresh">TOP20 백테스트</button>
           </div>
         </div>
-        <p class="hint">Codex Strategy Lab의 일부를 이식했습니다. KRX 일봉, 신호 다음날 시가 체결, 슬리피지 5bp. Quant 점수에 넣지 않으며 주문이 아닙니다. 시세 이력이 짧으면 결과 신뢰도가 낮습니다. 영문 JSON이 아니라 한글 설정·선정 코멘트를 보여 줍니다.</p>
+        <p class="hint">KRX 일봉 기반 기술적/모멘텀 진입 규칙의 샤프비율, OOS 및 Walk-Forward 백테스트 검증입니다.</p>
         <div id="strategy-box" class="quality"></div>
       </article>
       <article class="card" style="margin-top:14px">
         <div class="card-h">
           <h2>TOP20 집중도</h2>
-          <span class="chip">Quant 점수 미포함</span>
         </div>
         <div id="strategy-port-box" class="quality"></div>
       </article>

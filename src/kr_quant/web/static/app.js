@@ -2,24 +2,24 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
 
 const titles = {
-  dash: ["대시보드", "재무 점수 후보 · 시장·전략은 합산하지 않습니다"],
-  market: ["시장 국면", "조사 맥락입니다. Quant 점수를 바꾸지 않습니다"],
-  rank: ["점수 랭킹", "시총·거래대금 조건을 통과한 종목을 점수순으로 봅니다"],
-  screens: ["골라보기", "토스 목록 이름이 아니라 우리 규칙입니다"],
-  sector: ["업종", "업종 상대강도 · Quant 미합산"],
-  toss: ["토스 랭킹", "급상승·급하락·거래대금 · Quant와 무관"],
-  watch: ["관심종목", "메모 저장 · 점수와 무관"],
-  reports: ["리포트 보관", "발간한 AI 분석 리포트와 간단 검증"],
-  run: ["실행", "데모·재계산·실데이터 수집"],
-  settings: ["API 설정", "키는 이 PC의 .env에만 저장됩니다"],
-  flow: ["수급", "기관·외인 쌍끌이 · 사모 순매수 · Quant 미합산"],
-  empty: ["빈집", "기관·외인 이탈 · 낮은 외인 지분 · 복귀 조짐"],
-  trade: ["트레이딩", "퀀트 밖 쌍끌이 · 사모 매집 · 빈집 수급"],
-  us13f: ["미국 13F", "SEC 기관 보유 · 신규·공통·매도 · Quant 미합산"],
-  strategy: ["전략", "Quant TOP20 일봉 백테스트 · next-bar · Quant 미합산"],
-  investor: ["공식 수급", "KIS 관심종목·고유동성만 · 전 종목 순위 아님"],
-  sunzi: ["손자 五事", "전장 조건 + 전략 검토 · 착수≠매수"],
-  nps: ["국민연금 5%", "OpenDART 대량보유 · 기금·토스와 별개"],
+  dash: ["대시보드", "재무 팩터 기반 상위 20종목 요약"],
+  rank: ["점수 랭킹", "시총·유동성 통과 종목 전체 퀀트 랭킹"],
+  screens: ["골라보기", "가치·성장·모멘텀 테마별 스크리닝"],
+  market: ["시장 국면", "글로벌 매크로·원자재·암호화폐 & 한국형 공포탐욕"],
+  sector: ["업종 분석", "KSIC 업종별 상대강도(RS) 및 모멘텀 국면"],
+  toss: ["토스 랭킹", "급상승·급하락·거래대금 실시간 시세"],
+  watch: ["관심종목", "나만의 관심종목 메모 및 빠른 분석"],
+  reports: ["리포트 보관함", "발간된 AI 심층 분석 리포트 및 검증 아카이브"],
+  run: ["실행 센터", "실데이터 수집, 시세 갱신 및 퀀트 재계산"],
+  settings: ["API 설정", "API 키 및 LLM 모델 환경설정"],
+  flow: ["수급 분석", "외국인·기관 쌍끌이 및 사모펀드 순매수 추적"],
+  empty: ["빈집 수급", "기관·외인 이탈 후 수급 복귀 조짐 종목"],
+  trade: ["트레이딩 랩", "수급 셋업 및 스토캐스틱·일목 기술적 신호"],
+  us13f: ["미국 13F", "SEC 글로벌 주요 헤지펀드 분기별 보유 포트폴리오"],
+  strategy: ["전략 랩", "일봉 기반 퀀트 전략 백테스트 및 검증"],
+  investor: ["공식 수급", "한국투자증권(KIS) 일별 투자자 순매수 데이터"],
+  sunzi: ["손자 五事", "道·天·地·將·法 다각도 심층 기업 분석"],
+  nps: ["국민연금 5%", "OpenDART 국민연금 5% 이상 대량보유 공시 추적"],
 };
 
 let rankRows = [];
@@ -135,6 +135,19 @@ function switchView(name) {
   $$(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   $("#page-title").textContent = titles[name][0];
   $("#page-sub").textContent = titles[name][1];
+  const modeBadge = $("#top-mode-badge");
+  if (modeBadge) {
+    if (name === "dash" || name === "rank" || name === "screens") {
+      modeBadge.className = "top-mode-badge quant-active";
+      modeBadge.innerHTML = "⭐ <b>재무 Quant 엔진 적용</b>";
+    } else if (name === "run" || name === "settings") {
+      modeBadge.className = "top-mode-badge system-active";
+      modeBadge.innerHTML = "⚙️ <b>시스템 관리</b>";
+    } else {
+      modeBadge.className = "top-mode-badge research-active";
+      modeBadge.innerHTML = "📊 <b>시장 리서치 & 오버레이</b>";
+    }
+  }
   applyPriceChrome(name);
   startLiveSync(name);
   if (name === "dash" || name === "rank") stampFromStatus();
@@ -691,7 +704,6 @@ async function openStock(ticker) {
       <div class="conf-meter"><i style="width:${Math.max(0, Math.min(100, conf))}%"></i></div>
       <div class="tf-grid">${cards}</div>
       <p>${escapeHtml(timing.comment || "")}</p>
-      <p class="hint">${escapeHtml(timing.disclaimer || "Quant 점수에 넣지 않습니다.")}</p>
     </article>`;
   } else {
     timingBlock = `<article class="intro"><h3>타이밍 신뢰도</h3><p class="hint">${escapeHtml(timing.error || "가격 이력이 짧거나 없어 단기·중기·장기를 못 그렸습니다.")}</p></article>`;
@@ -705,7 +717,6 @@ async function openStock(ticker) {
       <p>${escapeHtml(yahoo.symbol || "")} 종가 <b>${fmt(yahoo.last)}</b> · 1일 ${fmtPct(yahoo.ret_1d)} · 6개월 ${fmtPct(yahoo.ret_6m)} · 1년 ${fmtPct(yahoo.ret_1y)}</p>
       <p>52주 고점 대비 ${fmtPct(yahoo.high_52w_distance)} · MA50 ${fmt(yahoo.ma50)} · MA200 ${fmt(yahoo.ma200)}</p>
       ${rel != null ? `<p>KOSPI 대비 6개월 ${fmtPct(rel)}</p>` : ""}
-      <p class="hint">${escapeHtml(yahoo.disclaimer || "Quant 점수와 KRX 공식 시세를 대체하지 않습니다.")}</p>
       ${yahoo.page ? `<p><a class="ext" href="${escapeHtml(yahoo.page)}" target="_blank" rel="noopener">Yahoo Finance</a></p>` : ""}
     </article>`;
   }
@@ -906,14 +917,13 @@ function flow90Block(flow) {
     <h3>공식 수급 90일</h3>
     <p>5일 ${fmtAmt(w.w5)} · 20일 ${fmtAmt(w.w20)} · 60일 ${fmtAmt(w.w60)} · 90일 ${fmtAmt(w.w90)}</p>
     ${flowSpark(chart, "INSTITUTION_TOTAL") || flowSpark(chart, "FUND")}
-    <p class="hint">${escapeHtml(flow.disclaimer || "저장된 공식 행만입니다. Quant에 넣지 않습니다.")}</p>
   </article>`;
 }
 
 function eventsBlock(ev) {
   const rows = (ev && ev.rows) || [];
   if (!rows.length) {
-    return `<article class="intro"><h3>공시 이벤트</h3><p class="hint">${escapeHtml((ev && (ev.error || ev.disclaimer)) || "최근 분류 공시가 없습니다.")}</p></article>`;
+    return `<article class="intro"><h3>공시 이벤트</h3><p class="hint">${escapeHtml((ev && ev.error) || "최근 분류 공시가 없습니다.")}</p></article>`;
   }
   const lis = rows
     .slice(0, 8)
@@ -926,7 +936,6 @@ function eventsBlock(ev) {
   return `<article class="intro">
     <h3>공시 이벤트</h3>
     <ul>${lis}</ul>
-    <p class="hint">${escapeHtml(ev.disclaimer || "제목 분류입니다. Quant에 넣지 않습니다.")}</p>
   </article>`;
 }
 
@@ -2213,7 +2222,7 @@ function renderTrade(data) {
       <div class="kpi"><span>기술 강세</span><b>${taBull}</b></div>
       <div class="kpi"><span>수급+기술</span><b>${confluence}</b></div>
     </div>
-    <p class="hint">${escapeHtml(data.selection_trade || "수급 셋업에 일봉 스토캐스틱·일목을 붙입니다. 기본은 퀀트 TOP100 밖입니다. 매수 지시가 아닙니다.")}</p>
+    <p class="hint">${escapeHtml(data.selection_trade || "수급 셋업에 일봉 스토캐스틱·일목 기술 지표를 결합한 스캔입니다.")}</p>
     <p>거래대금·토스 랭킹 위주 ${data.scanned || 0}종목 · ${data.days || 5}거래일 · 빈집 ${emptyN} · ${hitLine("선택 집합", hit)}</p>
     <div class="table-wrap tall">
       <table data-scope="trade">
@@ -2222,8 +2231,8 @@ function renderTrade(data) {
             <th>#</th>
             <th class="sortable" data-sort="company">종목 · 셋업</th>
             <th class="sortable" data-sort="last">최근가</th>
-            <th class="sortable has-tip" data-sort="stoch_k" data-tip="${escapeHtml("스토캐스틱 %K입니다. 최근 5일 고저 대비 종가 위치(0~100)를 3일 평활합니다. 20 아래는 과매도, 80 위는 과매수. %D는 그 선의 3일 평균입니다. 일봉이며 Quant와 무관합니다.")}" tabindex="0">스토 %K</th>
-            <th class="has-tip" data-tip="${escapeHtml("KRX 일봉 스토캐스틱 5,3,3과 일목 9-26-52 태그입니다. 태그에 마우스를 올리면 뜻을 볼 수 있습니다. 매수·매도 지시가 아닙니다.")}" tabindex="0">기술</th>
+            <th class="sortable has-tip" data-sort="stoch_k" data-tip="${escapeHtml("스토캐스틱 %K입니다. 최근 5일 고저 대비 종가 위치(0~100)를 3일 평활합니다. 20 아래는 과매도, 80 위는 과매수.")}" tabindex="0">스토 %K</th>
+            <th class="has-tip" data-tip="${escapeHtml("KRX 일봉 스토캐스틱 5,3,3과 일목 9-26-52 기술적 분석 태그입니다.")}" tabindex="0">기술</th>
             <th class="sortable" data-sort="foreign_net">외인(주)</th>
             <th class="sortable" data-sort="institution_net">기관(주)</th>
             <th class="sortable" data-sort="pe_net">사모(주)</th>
@@ -2234,7 +2243,7 @@ function renderTrade(data) {
         <tbody>${body || `<tr><td colspan="10" class="hint">조건에 맞는 종목이 없습니다. 퀀트 제외를 끄거나 셋업·기술을 바꿔 보세요.</td></tr>`}</tbody>
       </table>
     </div>
-    <p class="hint">${escapeHtml(data.disclaimer || "")} ${escapeHtml(data.quote_note || "최근가는 토스, 수급·기술은 일봉입니다.")} 스토캐스틱 5,3,3 · 일목 9-26-52. 열 이름을 누르면 최근가·수급 금액으로 정렬할 수 있습니다. 매수 지시가 아닙니다.</p>
+    <p class="hint">${escapeHtml(data.quote_note || "최근가는 토스, 수급·기술은 일봉입니다.")} 스토캐스틱 5,3,3 · 일목 9-26-52. 열 이름을 누르면 최근가·수급 금액으로 정렬할 수 있습니다.</p>
   `;
   tradeCache = data;
   paintSortHeaders("trade");
@@ -2276,9 +2285,9 @@ function renderSectors(data) {
     <p class="hint">${escapeHtml(data.selection || "")}</p>
     <div class="table-wrap tall"><table>
       <thead><tr>
-        ${thTip("순위", "업종 연구 점수 순위입니다. 재무 Quant 순위가 아닙니다.")}
+        ${thTip("순위", "업종 6축 평가 순위입니다.")}
         ${thTip("업종", "조건 통과 종목의 산업 분류입니다.")}
-        ${thTip("점수", "상대강도 25 · 확산 20 · 실적 20 · 구성 15 · 가치 10 · 가속 10. Quant에 넣지 않습니다.")}
+        ${thTip("점수", "상대강도 25 · 확산 20 · 실적 20 · 구성 15 · 가치 10 · 가속 10 종합 100점.")}
         ${thTip("상태", "선행·개선·보통·약화·부진. 점수와 직전 대비 변화로 붙입니다.")}
         ${thTip("상대", "3개월 수익률이 시장 대비 어디쯤인지 0~100으로 본 값입니다.")}
         ${thTip("확산", "업종 안에서 3개월 수익률이 플러스인 종목 비율입니다.")}

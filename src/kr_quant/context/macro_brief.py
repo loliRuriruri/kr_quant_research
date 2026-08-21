@@ -203,7 +203,7 @@ def _stance(items: list[dict[str, Any]], title: str) -> dict[str, Any]:
         "title": title,
         "tone": tone,
         "label": label,
-        "comment": f"{title} 우호 {good} · 부담 {bad} · 중립 {mid}. {extra} Quant 점수에는 넣지 않습니다.",
+        "comment": f"{title} 우호 {good} · 부담 {bad} · 중립 {mid}. {extra}",
         "good": good,
         "bad": bad,
         "neutral": mid,
@@ -318,7 +318,7 @@ def build_macro_brief(
         overall["comment"] = "국내와 국제 매크로가 같이 우호적입니다. 그래도 개별 종목 점수와 합산하지 않습니다."
     return {
         "used_in_quant": False,
-        "disclaimer": "우호·부담은 금리·환율·물가·비교지수를 읽은 조사 코멘트입니다. Quant 순위와 합산하지 않으며 매수·매도 지시가 아닙니다.",
+        "disclaimer": "우호·부담은 금리·환율·물가·비교지수를 종합 분석한 거시경제 지표이며, Quant 모델과 독립적인 시장 모니터링 데이터입니다.",
         "overall": overall,
         "domestic": {"stance": kr, "items": domestic},
         "international": {"stance": us, "items": international},
@@ -392,7 +392,7 @@ def compute_yencarry_monitor(yahoo_indexes: list[dict[str, Any]]) -> dict[str, A
         "nikkei": {"last": _num(nikkei.get("last")), "ret_1m": nikkei_1m, "spark": nikkei.get("spark")},
         "us_10y_yield": us_yield,
         "reasons": reasons,
-        "disclaimer": "엔 캐리 모니터는 거시 위험 조사 지표이며 매매 지시가 아닙니다.",
+        "disclaimer": "엔/달러 환율 속도와 닛케이 225, 금리차를 모니터링하는 위험 관리 지표입니다.",
     }
 
 
