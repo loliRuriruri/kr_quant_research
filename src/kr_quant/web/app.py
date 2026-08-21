@@ -1500,10 +1500,10 @@ def _console_setup() -> None:
 
 def _banner(lines: list[str]) -> None:
     print("")
-    print("=" * 44)
+    print("=" * 60)
     for line in lines:
         print(f"  {line}")
-    print("=" * 44)
+    print("=" * 60)
     print("")
 
 
@@ -1517,7 +1517,11 @@ def serve(host: str = "127.0.0.1", port: int = 8790, open_browser: bool = True) 
     _console_setup()
     url = f"http://{host}:{port}"
     if dashboard_is_running(host, port):
-        _banner(["이미 실행 중입니다.", f"브라우저에서 엽니다: {url}"])
+        _banner([
+            "💡 KR Quant Research 서비스가 이미 실행 중입니다.",
+            f"🌐 브라우저를 엽니다: {url}",
+            "💡 서비스를 종료하려면 기존 콘솔 창을 닫거나 Ctrl+C를 누르세요.",
+        ])
         if open_browser:
             webbrowser.open(url)
         return
@@ -1530,9 +1534,23 @@ def serve(host: str = "127.0.0.1", port: int = 8790, open_browser: bool = True) 
 
     if chosen != port:
         url = f"http://{host}:{chosen}"
-        _banner([f"{port} 포트가 사용 중이라 {chosen} 으로 엽니다.", url, "종료: 이 창을 닫거나 Ctrl+C"])
+        _banner([
+            f"⚠️ {port} 포트가 사용 중이라 {chosen} 포트로 실행합니다.",
+            f"🌐 웹 서비스 접속 주소 : {url}",
+            "⏰ 자동 스케줄러       : 백그라운드 활성화 완료",
+            "🌐 기본 브라우저를 자동으로 실행합니다...",
+            "",
+            "💡 [종료 안내] 서비스를 종료하려면 이 창을 닫거나 Ctrl+C를 누르세요.",
+        ])
     else:
-        _banner(["KR Quant Research", url, "종료: 이 창을 닫거나 Ctrl+C"])
+        _banner([
+            "🚀 KR Quant Research 서버가 성공적으로 실행되었습니다!",
+            f"🌐 웹 서비스 접속 주소 : {url}",
+            "⏰ 자동 스케줄러       : 백그라운드 활성화 완료",
+            "🌐 기본 브라우저를 자동으로 실행합니다...",
+            "",
+            "💡 [종료 안내] 서비스를 종료하려면 이 창을 닫거나 Ctrl+C를 누르세요.",
+        ])
 
     try:
         from kr_quant.web.scheduler import start_price_scheduler
