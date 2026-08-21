@@ -1,4 +1,173 @@
 
+function renderHexagonRadarSvg(factors, timingScore) {
+  // 6 Axes: 가치(30), 품질(25), 성장(25), 모멘텀(10), 안정(10), 기술타이밍(100)
+  const axes = [
+    { label: "💎 가치", val: factors[0]?.[1] || 0, max: 30, tip: "저평가 밸류에이션 안전마진" },
+    { label: "👑 품질", val: factors[1]?.[1] || 0, max: 25, tip: "ROE·영업이익률 우량 펀더멘털" },
+    { label: "🚀 성장", val: factors[2]?.[1] || 0, max: 25, tip: "매출·영업이익 3개년 성장률" },
+    { label: "⚡ 모멘텀", val: factors[3]?.[1] || 0, max: 10, tip: "3/6/12개월 주가 상승 추세" },
+    { label: "🛡️ 안정", val: factors[4]?.[1] || 0, max: 10, tip: "부채비율·유동성 재무 건전성" },
+    { label: "🎯 타이밍", val: timingScore || 50, max: 100, tip: "KRX 일봉 스토캐스틱·일목 기술적 위치" },
+  ];
+
+  const cx = 150;
+  const cy = 125;
+  const R = 85;
+  const n = axes.length;
+
+  // Concentric Hexagon Grid levels (20%, 40%, 60%, 80%, 100%)
+  const gridLevels = [0.2, 0.4, 0.6, 0.8, 1.0];
+  const gridPolygons = gridLevels.map((lvl) => {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const angle = -Math.PI / 2 + i * (2 * Math.PI / n);
+      const x = cx + R * lvl * Math.cos(angle);
+      const y = cy + R * lvl * Math.sin(angle);
+      pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    }
+    return `<polygon points="${pts.join(" ")}" fill="none" stroke="rgba(255,255,255,${lvl === 1.0 ? "0.15" : "0.06"})" stroke-width="1" />`;
+  }).join("");
+
+  // Radial spoke lines
+  const spokeLines = axes.map((_, i) => {
+    const angle = -Math.PI / 2 + i * (2 * Math.PI / n);
+    const x = cx + R * Math.cos(angle);
+    const y = cy + R * Math.sin(angle);
+    return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />`;
+  }).join("");
+
+  // Market Benchmark polygon (50% uniform)
+  const benchPts = [];
+  for (let i = 0; i < n; i++) {
+    const angle = -Math.PI / 2 + i * (2 * Math.PI / n);
+    const x = cx + R * 0.5 * Math.cos(angle);
+    const y = cy + R * 0.5 * Math.sin(angle);
+    benchPts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+  }
+  const benchPolygon = `<polygon points="${benchPts.join(" ")}" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.7" />`;
+
+  // Company Score Polygon
+  const scorePts = [];
+  const vertexDots = [];
+  axes.forEach((ax, i) => {
+    const pct = Math.max(0.12, Math.min(1.0, (ax.val || 0) / ax.max));
+    const angle = -Math.PI / 2 + i * (2 * Math.PI / n);
+    const x = cx + R * pct * Math.cos(angle);
+    const y = cy + R * pct * Math.sin(angle);
+    scorePts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    vertexDots.push(`
+      <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="#38bdf8" stroke="#0f172a" stroke-width="2" class="has-tip" data-tip-title="${escapeHtml(ax.label)}" data-tip="${escapeHtml(ax.tip)}: ${fmt(ax.val, 1)} / ${ax.max} (${(pct * 100).toFixed(0)}%)" />
+    `);
+  });
+
+  // Axis Labels around radar
+  const labelTexts = axes.map((ax, i) => {
+    const angle = -Math.PI / 2 + i * (2 * Math.PI / n);
+    const labelR = R + 22;
+    const x = cx + labelR * Math.cos(angle);
+    const y = cy + labelR * Math.sin(angle);
+    let anchor = "middle";
+    if (Math.cos(angle) > 0.3) anchor = "start";
+    else if (Math.cos(angle) < -0.3) anchor = "end";
+
+    const scorePct = Math.round(Math.max(0, Math.min(100, ((ax.val || 0) / ax.max) * 100)));
+    return `
+      <text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="${anchor}" fill="#cbd5e1" font-size="11" font-weight="600">
+        ${escapeHtml(ax.label)} <tspan fill="#38bdf8" font-size="10">${scorePct}%</tspan>
+      </text>
+    `;
+  }).join("");
+
+  return `
+    <svg viewBox="0 0 300 250" class="radar-svg-wrap">
+      <defs>
+        <radialGradient id="radarGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.45" />
+          <stop offset="100%" stop-color="#0284c7" stop-opacity="0.15" />
+        </radialGradient>
+      </defs>
+      ${gridPolygons}
+      ${spokeLines}
+      ${benchPolygon}
+      <polygon points="${scorePts.join(" ")}" fill="url(#radarGlow)" stroke="#38bdf8" stroke-width="2.5" stroke-linejoin="round" />
+      ${vertexDots.join("")}
+      ${labelTexts}
+    </svg>
+  `;
+}
+
+function renderPriceAndBandGauge(brief, ta, toss) {
+  const tq = toss?.quote || {};
+  const currentPrice = Number(tq.lastPrice ?? tq.price ?? tq.close ?? brief?.price ?? 0);
+  const facts = brief?.facts || [];
+  
+  // Look for 52w high/low in facts or ta
+  let low52 = null;
+  let high52 = null;
+  facts.forEach(f => {
+    if (f.label && f.label.includes("52주") && f.label.includes("최고")) high52 = parseFloat(String(f.value).replace(/,/g, ""));
+    if (f.label && f.label.includes("52주") && f.label.includes("최저")) low52 = parseFloat(String(f.value).replace(/,/g, ""));
+  });
+
+  const support = ta?.support;
+  const resistance = ta?.resistance;
+
+  let rangeHtml = "";
+  if (low52 && high52 && high52 > low52 && currentPrice) {
+    const pct = Math.max(0, Math.min(100, ((currentPrice - low52) / (high52 - low52)) * 100));
+    rangeHtml = `
+      <div class="visual-meter-box">
+        <div class="visual-meter-head">
+          <span>📏 52주 주가 위치 (Range)</span>
+          <span style="color:#38bdf8; font-weight:700;">상위 ${pct.toFixed(0)}% 구간</span>
+        </div>
+        <div class="range-bar-track has-tip"
+             data-tip-title="52주 최고/최저가 대비 주가 위치"
+             data-tip="52주 최저가(${fmt(low52, 0)}원)와 최고가(${fmt(high52, 0)}원) 사이에서 현재가(${fmt(currentPrice, 0)}원)의 상대적 위치입니다."
+             data-tip-hint="80% 이상은 신고가 돌파권, 20% 이하는 바닥권 반등 대기 영역입니다.">
+          <div class="range-bar-fill" style="width:${pct}%;"></div>
+          <div class="range-bar-pin" style="left:${pct}%;"></div>
+        </div>
+        <div class="range-labels">
+          <span>52주 최저 ${fmt(low52, 0)}원</span>
+          <span>현재가 ${fmt(currentPrice, 0)}원</span>
+          <span>52주 최고 ${fmt(high52, 0)}원</span>
+        </div>
+      </div>
+    `;
+  }
+
+  let bandHtml = "";
+  if (support != null && resistance != null && resistance > support && currentPrice) {
+    const bbPct = Math.max(0, Math.min(100, ((currentPrice - support) / (resistance - support)) * 100));
+    bandHtml = `
+      <div class="visual-meter-box">
+        <div class="visual-meter-head">
+          <span>🎯 지지선 vs 저항선 밴드 (Support & Resistance)</span>
+          <span class="${bbPct > 70 ? 'up' : bbPct < 30 ? 'down' : ''}">${bbPct > 70 ? '저항선 근접' : bbPct < 30 ? '지지선 지지' : '중심선 유지'}</span>
+        </div>
+        <div class="bb-gauge-track has-tip"
+             data-tip-title="지지·저항 가격대 분석"
+             data-tip="KRX 일봉 기준 주요 지지 가격대(${fmt(support, 0)}원)와 저항 가격대(${fmt(resistance, 0)}원) 구간입니다."
+             data-tip-hint="지지선 근처에서는 분할 매수, 저항선 근처에서는 분할 매도가 유리합니다.">
+          <div class="bb-zone oversold" title="지지선"></div>
+          <div class="bb-zone neutral" title="중심선"></div>
+          <div class="bb-zone overbought" title="저항선"></div>
+          <div class="bb-pin" style="left:${bbPct}%;"></div>
+        </div>
+        <div class="range-labels">
+          <span>지지선 ${fmt(support, 0)}원</span>
+          <span>중심 ${fmt((support + resistance) / 2, 0)}원</span>
+          <span>저항선 ${fmt(resistance, 0)}원</span>
+        </div>
+      </div>
+    `;
+  }
+
+  return `${rangeHtml}${bandHtml}`;
+}
+
+
 function classifyNewsSentiment(title, description) {
   const text = `${title || ""} ${description || ""}`.toLowerCase();
   
@@ -997,6 +1166,9 @@ async function openStock(ticker) {
       `;
     }
 
+    const radarSvg = renderHexagonRadarSvg(factors, timing.confidence || 60);
+    const visualGauges = renderPriceAndBandGauge(brief, ta, toss);
+
     $("#drawer-title").textContent = `${r.company || ticker} (${padTicker(r.ticker || ticker)})`;
     $("#drawer-body").innerHTML = `
       <div class="stock-grid">
@@ -1006,6 +1178,21 @@ async function openStock(ticker) {
             <b>${fmt(r.quant_score)}</b>
             <span class="meta">${r.market || ""} · ${r.sector || ""} · ${r.industry || ""}</span>
           </div>
+
+          <!-- 6-Axis Hexagon Radar Chart -->
+          <div class="stock-radar-card">
+            <div class="stock-radar-header">
+              <div class="stock-radar-title">
+                <span>🔷 6축 퀀트 & 펀더멘털 레이더 (Hexagon DNA)</span>
+              </div>
+              <div class="stock-radar-legend">
+                <span><i class="dot-firm"></i>이 종목</span>
+                <span><i class="dot-market"></i>시장 평균(50%)</span>
+              </div>
+            </div>
+            ${radarSvg}
+          </div>
+
           <div class="factor-bars">
             ${factors.map(([name, v, max]) => `<span>${name} ${fmt(v, 1)} / ${max}</span><i class="has-tip" data-tip="${name} 점수"><em style="width:${Math.max(0, Math.min(100, ((v || 0) / max) * 100))}%"></em></i>`).join("")}
           </div>
@@ -1033,6 +1220,7 @@ async function openStock(ticker) {
           <div id="report-box"><p>저장된 AI 분석 리포트를 불러오는 중…</p></div>
         </div>
         <div>
+          ${visualGauges}
           ${timingBlock}
           ${flow90Block(data.flow90)}
           ${eventsBlock(data.events)}
