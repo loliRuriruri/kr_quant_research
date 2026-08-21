@@ -295,7 +295,8 @@ async function runCustomBacktest(query) {
       const sh = s.sharpe != null ? fmt(s.sharpe, 2) : "—";
       const oosSh = s.oos_sharpe != null ? fmt(s.oos_sharpe, 2) : "—";
       const wfHit = s.wf_hit != null ? `${(s.wf_hit * 100).toFixed(0)}%` : "—";
-      const mdd = s.max_drawdown != null ? `${(s.max_drawdown * 100).toFixed(1)}%` : "—";
+      const mddVal = s.max_drawdown != null ? -Math.abs(s.max_drawdown * 100) : null;
+      const mdd = mddVal != null ? `${mddVal.toFixed(1)}%` : "—";
       const ret = s.total_return != null ? `${s.total_return > 0 ? "+" : ""}${(s.total_return * 100).toFixed(1)}%` : "—";
       const retCls = s.total_return != null && s.total_return > 0 ? "up" : s.total_return < 0 ? "down" : "";
       const isBest = s.strategy_id === data.best_id;
@@ -308,7 +309,7 @@ async function runCustomBacktest(query) {
           <td><b>${sh}</b></td>
           <td>${oosSh}</td>
           <td>${wfHit}</td>
-          <td class="down">-${mdd}</td>
+          <td class="down">${mdd}</td>
           <td>${s.trade_count || 0}회</td>
           <td class="meta">${escapeHtml(s.params_ko || "")}</td>
         </tr>
