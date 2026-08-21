@@ -97,8 +97,108 @@ def build_market_snapshot(settings: Settings, *, refresh: bool = False) -> dict[
     }
 
 
-def watchlist_state(settings: Settings) -> list[dict[str, Any]]:
-    return load_watchlist(settings.root)
+def watchlist_state(settings: Settings) -> dict[str, Any]:
+    raw_rows = load_watchlist(settings.root)
+    if not raw_rows:
+        return {"rows": [], "summary": {}, "sector_distribution": {}}
+
+    # Load all_stocks for Quant scores
+    scored_map: dict[str, dict[str, Any]] = {}
+    for p in (settings.output_dir / "latest_all_stocks.parquet", settings.output_dir / "all_stocks.parquet"):
+        if p.exists():
+            try:
+                df = pd.read_parquet(p)
+                for rec in df.to_dict("records"):
+                    t = str(rec.get("ticker") or "").zfill(6)
+                    scored_map[t] = rec
+                break
+            except Exception:
+                pass
+
+    # Load prices for latest close
+    from kr_quant.strategy.run import _prices
+    prices = _prices(settings)
+    prices_map: dict[str, dict[str, Any]] = {}
+    if not prices.empty:
+        for t, g in prices.groupby("ticker"):
+            code = str(t).zfill(6)
+            last_row = g.sort_values("trade_date").iloc[-1]
+            prices_map[code] = {
+                "close_price": float(last_row.get("close") or 0),
+                "company": str(last_row.get("company") or ""),
+                "market": str(last_row.get("market") or ""),
+                "sector": str(last_row.get("sector") or ""),
+            }
+
+    enriched_rows: list[dict[str, Any]] = []
+    total_quant = 0.0
+    total_val = 0.0
+    total_qual = 0.0
+    total_growth = 0.0
+    total_mom = 0.0
+    total_fin = 0.0
+    valid_count = 0
+    sector_dist: dict[str, int] = {}
+
+    for r in raw_rows:
+        code = str(r.get("ticker") or "").zfill(6)
+        item = dict(r)
+        item["ticker"] = code
+
+        # Attach prices
+        p_info = prices_map.get(code) or {}
+        if p_info:
+            item["close_price"] = p_info.get("close_price")
+            item["company"] = item.get("company") or p_info.get("company") or code
+            item["market"] = item.get("market") or p_info.get("market") or "KOSPI"
+            if p_info.get("sector"):
+                item["sector"] = p_info.get("sector")
+
+        # Attach Quant scores
+        s_info = scored_map.get(code) or {}
+        if s_info:
+            item["quant_score"] = round(float(s_info.get("quant_score") or 0), 1)
+            item["quant_rank"] = int(s_info.get("quant_rank") or 0) if s_info.get("quant_rank") else None
+            item["value_score"] = round(float(s_info.get("value_score") or 0), 1)
+            item["quality_score"] = round(float(s_info.get("quality_score") or 0), 1)
+            item["growth_score"] = round(float(s_info.get("growth_score") or 0), 1)
+            item["momentum_score"] = round(float(s_info.get("momentum_score") or 0), 1)
+            item["financial_score"] = round(float(s_info.get("financial_score") or 0), 1)
+            if s_info.get("sector"):
+                item["sector"] = str(s_info.get("sector"))
+            if s_info.get("company"):
+                item["company"] = str(s_info.get("company"))
+
+            total_quant += item["quant_score"]
+            total_val += item["value_score"]
+            total_qual += item["quality_score"]
+            total_growth += item["growth_score"]
+            total_mom += item["momentum_score"]
+            total_fin += item["financial_score"]
+            valid_count += 1
+
+        sec = str(item.get("sector") or item.get("market") or "기타").strip()
+        sector_dist[sec] = sector_dist.get(sec, 0) + 1
+        enriched_rows.append(item)
+
+    n = max(1, valid_count)
+    summary = {
+        "total_count": len(enriched_rows),
+        "scored_count": valid_count,
+        "avg_quant_score": round(total_quant / n, 1) if valid_count else None,
+        "avg_value_score": round(total_val / n, 1) if valid_count else None,
+        "avg_quality_score": round(total_qual / n, 1) if valid_count else None,
+        "avg_growth_score": round(total_growth / n, 1) if valid_count else None,
+        "avg_momentum_score": round(total_mom / n, 1) if valid_count else None,
+        "avg_financial_score": round(total_fin / n, 1) if valid_count else None,
+    }
+
+    return {
+        "rows": enriched_rows,
+        "summary": summary,
+        "sector_distribution": sector_dist,
+    }
+
 
 
 def watchlist_add(settings: Settings, ticker: str, company: str | None = None, note: str = "") -> list[dict[str, Any]]:

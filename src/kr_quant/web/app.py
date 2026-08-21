@@ -1200,7 +1200,8 @@ def api_us13f_post(body: Us13fIn | None = None) -> dict[str, Any]:
 def api_watchlist_get() -> dict[str, Any]:
     from kr_quant.layers.context import watchlist_state
 
-    return {"rows": watchlist_state(load_settings())}
+    res = watchlist_state(load_settings())
+    return res if isinstance(res, dict) else {"rows": res}
 
 
 @app.post("/api/watchlist")

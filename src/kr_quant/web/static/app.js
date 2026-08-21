@@ -3872,27 +3872,178 @@ async function loadUs13f(force) {
   setPageAsOf(asof || "13F 시점 없음", "SEC EDGAR 분기 말 보유입니다. 최대 45일 시차가 있습니다. 최신본 업데이트로 다시 받으세요.");
 }
 
+
+const SECTOR_COLORS = [
+  "#38bdf8", "#34d399", "#f59e0b", "#ec4899", "#a855f7",
+  "#60a5fa", "#f87171", "#fbbf24", "#4ade80", "#2dd4bf"
+];
+
 async function loadWatch() {
   const box = $("#watch-box");
   if (!box) return;
+
   const data = await api("/api/watchlist");
   const rows = data.rows || [];
+  const summary = data.summary || {};
+  const sectorDist = data.sector_distribution || {};
+
   if (!rows.length) {
-    box.innerHTML = "<p class='hint'>관심종목이 없습니다. 종목 상세에서 추가하세요.</p>";
-    setPageAsOf("관심종목은 로컬 메모입니다. 시세 시점이 없습니다.", "직접 저장한 목록입니다.");
+    box.innerHTML = `
+      <div style="text-align:center; padding:40px 20px; background:#0e1626; border-radius:12px; border:1px dashed rgba(255,255,255,0.15);">
+        <p style="font-size:16px; color:#cbd5e1; margin-bottom:8px;">💼 저장된 관심종목이 없습니다.</p>
+        <p class="hint">상단 입력창에 종목명을 검색하거나, 퀀트 랭킹·대시보드 종목 상세에서 <b>[관심종목]</b> 버튼을 눌러 나만의 포트폴리오를 구성해 보세요!</p>
+      </div>
+    `;
+    if (currentView === "watch") setPageAsOf("포트폴리오 비어있음", "종목을 추가하여 포트폴리오를 분석하세요.");
     return;
   }
+
   if (currentView === "watch") {
-    setPageAsOf(`관심종목 ${rows.length}개 · 로컬 메모`, "시세·수급을 받지 않습니다. 종목 상세에서 추가·삭제합니다.");
+    setPageAsOf(`포트폴리오 ${rows.length}개 종목 · 평균 퀀트 ${summary.avg_quant_score || "—"}점`, "실시간 팩터 및 가격 분석이 적용되었습니다.");
   }
-  box.innerHTML = `<ul>${rows
-    .map(
-      (r) =>
-        `<li><a class="ext inline" href="#" data-open="${padTicker(r.ticker)}">${escapeHtml(r.company || "")} ${padTicker(r.ticker)}</a>
-         ${r.note ? `<div class="meta">${escapeHtml(r.note)}</div>` : ""}
-         <button class="ghost" data-unwatch="${padTicker(r.ticker)}">삭제</button></li>`
-    )
-    .join("")}</ul>`;
+
+  // Calculate Sector Stack Segments
+  const totalSectors = Object.values(sectorDist).reduce((a, b) => a + b, 0) || 1;
+  const sectorEntries = Object.entries(sectorDist);
+  const stackSegs = sectorEntries.map(([sec, cnt], idx) => {
+    const pct = ((cnt / totalSectors) * 100).toFixed(1);
+    const color = SECTOR_COLORS[idx % SECTOR_COLORS.length];
+    return `<div class="sector-stack-seg" style="width:${pct}%; background:${color};" title="${escapeHtml(sec)}: ${cnt}개 (${pct}%)"></div>`;
+  }).join("");
+
+  const sectorChips = sectorEntries.map(([sec, cnt], idx) => {
+    const pct = ((cnt / totalSectors) * 100).toFixed(0);
+    const color = SECTOR_COLORS[idx % SECTOR_COLORS.length];
+    return `
+      <span class="sector-chip-tag">
+        <i class="sector-chip-dot" style="background:${color};"></i>
+        ${escapeHtml(sec)} <b>${cnt}개 (${pct}%)</b>
+      </span>
+    `;
+  }).join("");
+
+  // Portfolio Hero Summary
+  const avgScore = summary.avg_quant_score != null ? `${summary.avg_quant_score}점` : "—";
+  const heroHtml = `
+    <div class="portfolio-overview-hero">
+      <div class="portfolio-overview-head">
+        <div>
+          <h3 style="margin:0; font-size:15px; color:#fff;">📊 포트폴리오 종합 건강도 (Portfolio DNA)</h3>
+          <span class="hint">내 관심종목 ${rows.length}개 통합 5대 팩터 평균 스코어 및 업종 분산율</span>
+        </div>
+        <div class="stock-score-badge" style="font-size:13px; padding:6px 12px; background:rgba(56,189,248,0.2);">
+          평균 퀀트: <b>${avgScore}</b>
+        </div>
+      </div>
+
+      <div class="portfolio-kpis-grid">
+        <div class="portfolio-kpi-item has-tip" data-tip="포트폴리오에 편입된 전체 종목 수입니다.">
+          <span>💼 편입 종목</span>
+          <b>${rows.length} <small style="font-size:12px;font-weight:normal;color:#94a3b8;">개</small></b>
+        </div>
+        <div class="portfolio-kpi-item has-tip" data-tip="가치 30점 만점 기준 포트폴리오 평균 저평가 수준입니다.">
+          <span>💎 평균 가치 (Value)</span>
+          <b style="color:#38bdf8;">${summary.avg_value_score != null ? `${summary.avg_value_score} / 30` : "—"}</b>
+        </div>
+        <div class="portfolio-kpi-item has-tip" data-tip="품질 25점 만점 기준 포트폴리오 평균 ROE·수익성입니다.">
+          <span>👑 평균 품질 (Quality)</span>
+          <b style="color:#34d399;">${summary.avg_quality_score != null ? `${summary.avg_quality_score} / 25` : "—"}</b>
+        </div>
+        <div class="portfolio-kpi-item has-tip" data-tip="성장 25점 만점 기준 포트폴리오 평균 실적 성장세입니다.">
+          <span>🚀 평균 성장 (Growth)</span>
+          <b style="color:#f59e0b;">${summary.avg_growth_score != null ? `${summary.avg_growth_score} / 25` : "—"}</b>
+        </div>
+      </div>
+
+      <div class="portfolio-sector-stack">
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:#94a3b8;">
+          <span>🍩 업종·섹터 분산 포트폴리오 구성비</span>
+          <span>${sectorEntries.length}개 섹터 분산</span>
+        </div>
+        <div class="sector-stack-bar">${stackSegs}</div>
+        <div class="sector-legend-chips">${sectorChips}</div>
+      </div>
+    </div>
+  `;
+
+  // Render individual stock cards
+  const stockCardsHtml = rows.map((r) => {
+    const code = padTicker(r.ticker);
+    const score = r.quant_score != null ? fmt(r.quant_score, 1) : "—";
+    const rankTxt = r.quant_rank ? `퀀트 ${r.quant_rank}위` : "유니버스";
+    const priceTxt = r.close_price ? `${fmt(r.close_price, 0)}원` : "—";
+
+    const vBar = Math.max(4, Math.min(100, ((r.value_score || 0) / 30) * 100));
+    const qBar = Math.max(4, Math.min(100, ((r.quality_score || 0) / 25) * 100));
+    const gBar = Math.max(4, Math.min(100, ((r.growth_score || 0) / 25) * 100));
+    const mBar = Math.max(4, Math.min(100, ((r.momentum_score || 0) / 10) * 100));
+    const sBar = Math.max(4, Math.min(100, ((r.financial_score || 0) / 10) * 100));
+
+    return `
+      <div class="portfolio-stock-card">
+        <div>
+          <div class="stock-card-head">
+            <div>
+              <div class="stock-card-company" data-open="${code}">
+                <span>${escapeHtml(r.company || code)}</span>
+              </div>
+              <div class="stock-card-meta">
+                ${code} · <span class="chip" style="font-size:10px; padding:1px 5px;">${escapeHtml(r.market || "KOSPI")}</span> ${r.sector ? `· ${escapeHtml(r.sector)}` : ""}
+              </div>
+            </div>
+            <div class="stock-score-badge has-tip" data-tip="종합 퀀트 스코어 (${rankTxt})">
+              ${score}
+            </div>
+          </div>
+
+          <div class="card-factor-mini-bars">
+            <div class="card-factor-row">
+              <span>💎 가치 ${r.value_score != null ? fmt(r.value_score, 1) : "—"}</span>
+              <div class="card-factor-bar"><em style="width:${vBar}%; background:#38bdf8;"></em></div>
+            </div>
+            <div class="card-factor-row">
+              <span>👑 품질 ${r.quality_score != null ? fmt(r.quality_score, 1) : "—"}</span>
+              <div class="card-factor-bar"><em style="width:${qBar}%; background:#34d399;"></em></div>
+            </div>
+            <div class="card-factor-row">
+              <span>🚀 성장 ${r.growth_score != null ? fmt(r.growth_score, 1) : "—"}</span>
+              <div class="card-factor-bar"><em style="width:${gBar}%; background:#f59e0b;"></em></div>
+            </div>
+            <div class="card-factor-row">
+              <span>⚡ 모멘텀 ${r.momentum_score != null ? fmt(r.momentum_score, 1) : "—"}</span>
+              <div class="card-factor-bar"><em style="width:${mBar}%; background:#ec4899;"></em></div>
+            </div>
+            <div class="card-factor-row">
+              <span>🛡️ 안정 ${r.financial_score != null ? fmt(r.financial_score, 1) : "—"}</span>
+              <div class="card-factor-bar"><em style="width:${sBar}%; background:#a855f7;"></em></div>
+            </div>
+          </div>
+
+          ${r.note ? `<div class="meta" style="background:#10182a; padding:6px 8px; border-radius:6px; margin:6px 0; font-size:11.5px; border-left:3px solid #38bdf8;">📝 ${escapeHtml(r.note)}</div>` : ""}
+
+          <div class="stock-card-price-row">
+            <span style="font-size:12px; color:#94a3b8;">최근 종가</span>
+            <span class="stock-card-price">${priceTxt}</span>
+          </div>
+        </div>
+
+        <div class="stock-card-actions">
+          <button class="primary" data-open="${code}" style="font-size:11.5px;">🔍 심층분석</button>
+          <button data-backtest-stock="${code}" style="font-size:11.5px; background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4);">🧪 백테스트</button>
+          <button class="ghost" data-unwatch="${code}" style="font-size:11.5px; color:#f87171;">삭제</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  box.innerHTML = `
+    ${heroHtml}
+    <div class="watch-portfolio-grid">
+      ${stockCardsHtml}
+    </div>
+  `;
+
+  // Attach event handlers
   box.querySelectorAll("[data-open]").forEach((el) => {
     el.addEventListener("click", (e) => {
       e.preventDefault();
@@ -3902,7 +4053,17 @@ async function loadWatch() {
   box.querySelectorAll("[data-unwatch]").forEach((el) => {
     el.addEventListener("click", () => removeWatch(el.dataset.unwatch).catch((err) => alert(err.message)));
   });
+  box.querySelectorAll("[data-backtest-stock]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const code = el.dataset.backtestStock;
+      switchView("strategy");
+      const inp = $("#custom-strategy-q");
+      if (inp) inp.value = code;
+      runCustomBacktest(code);
+    });
+  });
 }
+
 
 async function addWatch(ticker, company) {
   await api("/api/watchlist", { method: "POST", body: JSON.stringify({ ticker, company }) });
