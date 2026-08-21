@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.3.6" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.3.7" />
 </head>
 <body>
   <aside class="nav">
@@ -72,13 +72,17 @@
 
     <section id="view-dash" class="view">
       <div class="kpis" id="kpis"></div>
+
+      <!-- TOP 3 Champions Showcase Podium -->
+      <div id="dash-champions" class="dash-champions-grid"></div>
+
       <div class="grid-2">
         <article class="card">
           <div class="card-h">
-            <h2>TOP20</h2>
+            <h2>🏆 Quant TOP20 리더보드</h2>
             <button class="ghost" id="refresh-dash">새로고침</button>
           </div>
-          <p class="hint">시총·거래대금·보통주 조건을 통과한 종목을 가치·품질·성장·모멘텀·안정으로 점수한 조사 후보입니다. 매수 신호가 아닙니다. 영문·막대에 마우스를 올리면 설명이 뜹니다.</p>
+          <p class="hint">시총·거래대금·보통주 조건을 통과한 종목을 가치·품질·성장·모멘텀·안정으로 점수한 조사 후보입니다. 종목을 클릭하면 상세 리서치 창이 열립니다.</p>
           <div class="table-wrap">
             <table data-scope="dash">
               <thead>
@@ -87,7 +91,7 @@
                   <th class="sortable" data-sort="company">종목</th>
                   <th class="sortable has-tip" data-sort="last_close" data-tip="KRX 최근 종가입니다. 클릭하면 오름/내림으로 바꿉니다.">최근가</th>
                   <th class="sortable has-tip" data-sort="quant_score" data-tip="Value 30 · Quality 25 · Growth 25 · Momentum 10 · Stability 10에서 리스크 페널티를 뺀 점수입니다. LLM이 고치지 않습니다.">점수</th>
-                  <th class="has-tip" data-tip="가=가치, 품=품질, 성=성장, 모=모멘텀, 안=안정. 막대는 각 항목 만점 대비 비율입니다.">구성</th>
+                  <th class="has-tip" data-tip="가=가치, 품=품질, 성=성장, 모=모멘텀, 안=안정. 막대는 각 항목 만점 대비 비율입니다.">5대 팩터 DNA</th>
                   <th class="sortable has-tip" data-sort="risk_penalty" data-tip="매출·이익 감소, 레버리지, 희석 같은 리스크를 점수에서 뺀 값입니다. 클수록 감점이 큽니다.">페널티</th>
                   <th class="sortable has-tip" data-sort="data_confidence" data-tip="커버리지·공시시점·신선도 등으로 만든 게이트입니다. 점수에 곱하지 않고 TOP 통과 기준으로만 씁니다.">신뢰도</th>
                 </tr>
@@ -96,21 +100,28 @@
             </table>
           </div>
         </article>
-        <article class="card">
-          <div class="card-h"><h2>데이터 품질 · 선정 기준</h2></div>
-          <div id="quality-box" class="quality"></div>
-        </article>
+
+        <div>
+          <article class="card" style="margin-bottom:14px;">
+            <div class="card-h"><h2>🧬 TOP20 팩터 DNA 분석</h2></div>
+            <div id="dash-dna-box" class="dash-dna-box"></div>
+          </article>
+          <article class="card">
+            <div class="card-h"><h2>데이터 품질 · 선정 기준</h2></div>
+            <div id="quality-box" class="quality"></div>
+          </article>
+        </div>
       </div>
       <article class="card" style="margin-top:14px">
         <div class="card-h">
-          <h2>TOP20 집중도</h2>
+          <h2>📊 TOP20 포트폴리오 집중도 & 분산 분석</h2>
         </div>
         <p class="hint">동일 가중치 기준 포트폴리오 업종 분산 및 상관관계 분석입니다.</p>
         <div id="portfolio-box" class="quality"></div>
       </article>
       <article class="card" style="margin-top:14px">
         <div class="card-h">
-          <h2>보관 리포트</h2>
+          <h2>📑 보관 리포트 (AI 심층 분석)</h2>
           <button class="ghost" id="goto-reports">전체 보기</button>
         </div>
         <div class="table-wrap">
@@ -760,6 +771,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=1.3.6"></script>
+  <script src="/static/app.js?v=1.3.7"></script>
 </body>
 </html>

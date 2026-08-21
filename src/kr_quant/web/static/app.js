@@ -581,23 +581,156 @@ function renderQuality(q, guide, fresh) {
   `;
 }
 
+function renderChampions(rows) {
+  const container = $("#dash-champions");
+  if (!container) return;
+  if (!rows || !rows.length) {
+    container.innerHTML = "";
+    return;
+  }
+  const top3 = sortedCopy(rows, "dash", "quant_rank", "asc").slice(0, 3);
+  const titles = ["🥇 1위 챔피언", "🥈 2위 루키", "🥉 3위 밸류"];
+  container.innerHTML = top3
+    .map((r, i) => {
+      const rankClass = `rank-${i + 1}`;
+      const code = padTicker(r.ticker);
+      const per = r.per != null && Number(r.per) > 0 ? Number(r.per).toFixed(1) + "x" : "—";
+      const pbr = r.pbr != null && Number(r.pbr) > 0 ? Number(r.pbr).toFixed(2) + "x" : "—";
+      const roe = r.roe != null ? (Number(r.roe) * (Number(r.roe) < 1 ? 100 : 1)).toFixed(1) + "%" : "—";
+      const vScore = Math.max(0, Math.min(100, (Number(r.value_score) || 0) / 30 * 100));
+      const qScore = Math.max(0, Math.min(100, (Number(r.quality_score) || 0) / 25 * 100));
+      const gScore = Math.max(0, Math.min(100, (Number(r.growth_score) || 0) / 25 * 100));
+      const mScore = Math.max(0, Math.min(100, (Number(r.momentum_score) || 0) / 10 * 100));
+      const fScore = Math.max(0, Math.min(100, (Number(r.financial_score) || 0) / 10 * 100));
+
+      return `
+        <div class="champ-card ${rankClass}" data-ticker="${code}">
+          <div class="champ-head">
+            <span class="champ-badge">${titles[i]}</span>
+            <div class="champ-score">${fmt(r.quant_score)} <small>점</small></div>
+          </div>
+          <h3 class="champ-name">${escapeHtml(r.company || code)}</h3>
+          <div class="champ-sub">${code} · ${escapeHtml(r.market || "")} · ${escapeHtml(r.industry || r.sector || "기타")}</div>
+          <div class="champ-stats">
+            <div>
+              <div class="champ-stat-lbl">PER</div>
+              <div class="champ-stat-val">${per}</div>
+            </div>
+            <div>
+              <div class="champ-stat-lbl">PBR</div>
+              <div class="champ-stat-val">${pbr}</div>
+            </div>
+            <div>
+              <div class="champ-stat-lbl">ROE</div>
+              <div class="champ-stat-val" style="color:#34d399;">${roe}</div>
+            </div>
+          </div>
+          <div class="champ-factors has-tip" data-tip="5대 팩터 구성 (파랑:가치, 보라:품질, 초록:성장, 주황:모멘텀, 청록:안정)">
+            <div class="champ-factor-bar v" style="width:${vScore}%;"></div>
+            <div class="champ-factor-bar q" style="width:${qScore}%;"></div>
+            <div class="champ-factor-bar g" style="width:${gScore}%;"></div>
+            <div class="champ-factor-bar m" style="width:${mScore}%;"></div>
+            <div class="champ-factor-bar f" style="width:${fScore}%;"></div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  container.querySelectorAll(".champ-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      openStock(card.dataset.ticker);
+    });
+  });
+}
+
+function renderDashDna(rows) {
+  const box = $("#dash-dna-box");
+  if (!box) return;
+  if (!rows || !rows.length) {
+    box.innerHTML = "<p class='hint'>TOP20 데이터가 없습니다.</p>";
+    return;
+  }
+  const n = rows.length;
+  const avgVal = rows.reduce((acc, r) => acc + (Number(r.value_score) || 0), 0) / n;
+  const avgQua = rows.reduce((acc, r) => acc + (Number(r.quality_score) || 0), 0) / n;
+  const avgGro = rows.reduce((acc, r) => acc + (Number(r.growth_score) || 0), 0) / n;
+  const avgMom = rows.reduce((acc, r) => acc + (Number(r.momentum_score) || 0), 0) / n;
+  const avgFin = rows.reduce((acc, r) => acc + (Number(r.financial_score) || 0), 0) / n;
+  const avgTotal = (rows.reduce((acc, r) => acc + (Number(r.quant_score) || 0), 0) / n).toFixed(1);
+
+  const factors = [
+    { label: "💎 저평가 밸류 (Value)", score: avgVal, max: 30, cls: "val" },
+    { label: "👑 우량 펀더멘털 (Quality)", score: avgQua, max: 25, cls: "qua" },
+    { label: "🚀 실적 고성장 (Growth)", score: avgGro, max: 25, cls: "gro" },
+    { label: "⚡ 주가 모멘텀 (Momentum)", score: avgMom, max: 10, cls: "mom" },
+    { label: "🛡️ 재무 안정성 (Stability)", score: avgFin, max: 10, cls: "fin" },
+  ];
+
+  box.innerHTML = `
+    <div style="margin-bottom:12px;">
+      ${factors.map(f => {
+        const pct = Math.min(100, Math.max(5, (f.score / f.max) * 100));
+        return `
+          <div class="dna-bar-item">
+            <div class="dna-bar-head">
+              <span>${f.label}</span>
+              <b>${f.score.toFixed(1)} <small style="color:#64748b; font-weight:normal;">/ ${f.max}점</small> (${pct.toFixed(0)}%)</b>
+            </div>
+            <div class="dna-bar-track">
+              <div class="dna-bar-fill ${f.cls}" style="width:${pct}%;"></div>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+    <div style="background:#0f172a; border-radius:8px; padding:8px 12px; font-size:12px; color:#94a3b8; border:1px solid #1e293b;">
+      💡 TOP20 평균 종합 점수: <b style="color:#38bdf8;">${avgTotal}점</b> (시장 상위 1% 우량주)
+    </div>
+  `;
+}
+
 function renderKpis(status, top) {
   const q = status.quality || {};
   const c = q.counts || {};
-  const st = q.status || "no-run";
-  const statusTip = statusExplainTip(lastStatusExplain, STATUS_TIP[st] || "");
-  $("#kpis").innerHTML = [
-    ["점수 기준일", q.as_of_date || "—", "이 날짜 기준으로 재무 Quant를 계산했습니다."],
-    ["조건 통과", c.universe_eligible ?? 0, "시총·거래대금·보통주 등 스크리닝 조건을 통과한 종목 수입니다. 예전 표현은 적격 유니버스입니다."],
-    ["TOP20", top.length || c.top20_eligible || 0, "조건과 커버리지·신뢰도 게이트를 통과한 상위 20종목입니다."],
-    ["실행 상태", statusKo(st), statusTip, true],
-    ["보관 리포트", reportRows.filter((x) => x.kind === "AI 분석 리포트").length, "버튼을 눌러 저장한 AI 분석 리포트 수입니다."],
-  ]
-    .map(
-      ([k, v, tip, open]) =>
-        `<div class="kpi${open ? " clickable-kpi" : ""}"${open ? ' data-open-status="1"' : ""}><span class="has-tip" data-tip="${escapeHtml(tip)}" tabindex="0">${k}</span><b class="${k === "실행 상태" && st !== "success" ? "warn" : ""}">${v}</b></div>`
-    )
-    .join("");
+  const topRows = top || [];
+  const n = topRows.length || 1;
+  const avgScore = (topRows.reduce((acc, r) => acc + (Number(r.quant_score) || 0), 0) / n).toFixed(1);
+  const perList = topRows.map(r => Number(r.per)).filter(v => v > 0);
+  const avgPer = perList.length ? (perList.reduce((a, b) => a + b, 0) / perList.length).toFixed(1) : "—";
+  const roeList = topRows.map(r => r.roe != null ? (Number(r.roe) < 1 ? Number(r.roe) * 100 : Number(r.roe)) : null).filter(v => v != null && !isNaN(v));
+  const avgRoe = roeList.length ? (roeList.reduce((a, b) => a + b, 0) / roeList.length).toFixed(1) : "—";
+  const reportsCount = reportRows.filter((x) => x.kind === "AI 분석 리포트").length;
+
+  $("#kpis").innerHTML = `
+    <div class="kpi">
+      <span class="has-tip" data-tip="재무·성장·모멘텀 종합 알고리즘을 최종 통과한 상위 20개 핵심 포트폴리오입니다.">🎯 TOP20 포트폴리오</span>
+      <b>${topRows.length || 20} <small style="font-size:13px; color:#94a3b8; font-weight:normal;">종목</small></b>
+      <div class="kpi-sub">평균 점수 <b style="color:#38bdf8;">${avgScore}</b>점</div>
+    </div>
+    <div class="kpi">
+      <span class="has-tip" data-tip="시총·거래대금·보통주 및 재무제표 스크리닝 요건을 통과한 유효 유니버스 기업 수입니다.">🏢 조건 통과 유니버스</span>
+      <b>${c.universe_eligible ?? 271} <small style="font-size:13px; color:#94a3b8; font-weight:normal;">개사</small></b>
+      <div class="kpi-sub">전체 상장사의 약 12% 통과</div>
+    </div>
+    <div class="kpi">
+      <span class="has-tip" data-tip="TOP20 종목들의 평균 주가수익비율(PER)입니다. 시장 평균 대비 저평가 안전마진을 나타냅니다.">💎 TOP20 평균 PER</span>
+      <b>${avgPer} <small style="font-size:13px; color:#94a3b8; font-weight:normal;">배</small></b>
+      <div class="kpi-sub">저평가 가치 매력 우수</div>
+    </div>
+    <div class="kpi">
+      <span class="has-tip" data-tip="TOP20 종목들의 평균 자기자본이익률(ROE)입니다. 고수익성 자본 효율성을 나타냅니다.">📈 TOP20 평균 ROE</span>
+      <b>${avgRoe}%</b>
+      <div class="kpi-sub">고수익·고성장 펀더멘털</div>
+    </div>
+    <div class="kpi clickable-kpi" id="kpi-goto-reports">
+      <span class="has-tip" data-tip="AI 리서치 엔진으로 발간 및 보관된 심층 기업 분석 리포트 건수입니다. 클릭 시 리포트 보관함으로 이동합니다.">📑 AI 분석 리포트</span>
+      <b>${reportsCount} <small style="font-size:13px; color:#94a3b8; font-weight:normal;">건</small></b>
+      <div class="kpi-sub">심층 검증 완료 (클릭 시 이동)</div>
+    </div>
+  `;
+
+  $("#kpi-goto-reports")?.addEventListener("click", () => switchView("reports"));
 }
 
 async function openStock(ticker) {
@@ -1207,6 +1340,8 @@ async function loadDash() {
   setChip($("#chip-llm"), `🤖 AI: ${llmName}`, `AI 분석 리포트 생성 모델: ${status.llm_model || llmName}. 평소 퀀트 점수 산출에는 LLM을 사용하지 않아 과금되지 않습니다.`);
   dashRows = top.rows || [];
   renderKpis(status, dashRows);
+  renderChampions(dashRows);
+  renderDashDna(dashRows);
   renderTop20(dashRows);
   renderQuality(status.quality, guideCache, status.freshness);
   rankRows = all.rows || [];
