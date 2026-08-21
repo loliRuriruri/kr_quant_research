@@ -967,7 +967,10 @@ function renderRank(q = "") {
   const needle = q.trim().toLowerCase();
   const rows = rankRows.filter((r) => {
     if (!needle) return true;
-    return String(r.ticker).toLowerCase().includes(needle) || String(r.company || "").toLowerCase().includes(needle);
+    const tickerMatch = String(r.ticker).toLowerCase().includes(needle);
+    const nameMatch = String(r.company || "").toLowerCase().includes(needle);
+    const chosungMatch = getChosung(r.company || "").includes(needle);
+    return tickerMatch || nameMatch || chosungMatch;
   });
   const ordered = sortedCopy(rows, "rank", "quant_rank", "asc");
   $("#rank-body").innerHTML = ordered
@@ -2887,7 +2890,8 @@ function filterEmptyRows(rows) {
   const rateCap = mode === "low_foreign" && maxRate == null ? 0.05 : maxRate;
   return rows.filter((r) => {
     const hay = `${r.ticker || ""} ${r.company || ""}`.toLowerCase();
-    if (q && !hay.includes(q)) return false;
+    const chosung = getChosung(r.company || "");
+    if (q && !hay.includes(q) && !chosung.includes(q)) return false;
     if (mode === "empty" && !r.empty) return false;
     if (mode === "comeback" && !r.comeback) return false;
     if (mode === "retail" && !r.retail_absorb) return false;
@@ -3039,7 +3043,8 @@ function filterTradeRows(rows) {
   return rows.filter((r) => {
     if (excludeQuant && r.in_quant) return false;
     const hay = `${r.ticker || ""} ${r.company || ""}`.toLowerCase();
-    if (q && !hay.includes(q)) return false;
+    const chosung = getChosung(r.company || "");
+    if (q && !hay.includes(q) && !chosung.includes(q)) return false;
     const dual = Boolean(r.dual);
     const pe = Boolean(r.pe_buy || r.pe_accum);
     const empty = Boolean(r.empty);

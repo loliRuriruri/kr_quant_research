@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.6.2" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.6.3" />
 </head>
 <body>
   <aside class="nav">
@@ -315,7 +315,7 @@
         <div class="card-h">
           <h2>기관·외인 빈집</h2>
           <div class="actions">
-            <input id="empty-q" type="search" placeholder="종목코드 또는 이름" />
+            <div class="autocomplete-wrap" style="min-width: 170px;"><input id="empty-q" type="text" autocomplete="off" placeholder="종목코드 또는 이름 (자동완성)" /><ul id="empty-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul></div>
             <label>유형
               <select id="empty-mode">
                 <option value="empty" selected>쌍매도 빈집</option>
@@ -354,7 +354,7 @@
         <div class="card-h">
           <h2>수급 트레이딩 서치</h2>
           <div class="actions">
-            <input id="trade-q" type="search" placeholder="종목코드 또는 이름" />
+            <div class="autocomplete-wrap" style="min-width: 170px;"><input id="trade-q" type="text" autocomplete="off" placeholder="종목코드 또는 이름 (자동완성)" /><ul id="trade-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul></div>
             <label>셋업
               <select id="trade-mode">
                 <option value="setup" selected>셋업 전체</option>
@@ -449,7 +449,7 @@
         <div class="card-h">
           <h2>점수 랭킹</h2>
           <div class="actions">
-            <input id="rank-q" type="search" placeholder="종목코드 또는 이름" />
+            <div class="autocomplete-wrap" style="min-width: 170px;"><input id="rank-q" type="text" autocomplete="off" placeholder="종목코드 또는 이름 (자동완성)" /><ul id="rank-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul></div>
             <button class="ghost" id="rank-refresh">화면 새로고침</button>
           </div>
         </div>
@@ -552,7 +552,7 @@
       <article class="card">
         <div class="card-h">
           <h2>발간 리포트 보관</h2>
-          <input id="report-q" type="search" placeholder="종목코드, 이름, 모델" />
+          <div class="autocomplete-wrap" style="min-width: 170px;"><input id="report-q" type="text" autocomplete="off" placeholder="종목코드 또는 이름 (자동완성)" /><ul id="report-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul></div>
         </div>
         <p class="hint">AI 분석 리포트와 간단 검증을 기준일별로 보관합니다. 행을 누르면 내용을 엽니다. 삭제는 이 PC에 저장된 파일만 지웁니다.</p>
         <div class="table-wrap tall">
@@ -821,6 +821,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=1.6.2"></script>
+  <script src="/static/app.js?v=1.6.3"></script>
 </body>
 </html>
