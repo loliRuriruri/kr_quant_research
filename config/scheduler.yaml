@@ -1,12 +1,12 @@
 enabled: true
-job_kind: krx-prices
+job_kind: live
 hour: 18
 minute: 30
-lookback_days: 10
+lookback_days: 80
 official_flow: true
 timezone: Asia/Seoul
 krx_prices:
   hour: 18
   minute: 30
-  lookback_days: 10
+  lookback_days: 80
   official_flow: true

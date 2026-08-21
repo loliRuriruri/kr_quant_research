@@ -267,3 +267,12 @@ def test_macro_endpoint_is_research_only(monkeypatch):
     assert "news" in data
     assert data["brief"]["used_in_quant"] is False
     assert data["fred"]["used_in_quant"] is False
+
+
+def test_settings_raw_endpoint():
+    resp = client.get("/api/settings/raw")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "opendart_api_key" in data
+    assert "xai_api_key" in data
+    assert "kis_app_key" in data

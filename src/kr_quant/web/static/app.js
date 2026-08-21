@@ -3767,6 +3767,63 @@ function metaLine(el, info) {
   el.className = "meta " + (info.configured ? "ok" : "warn");
 }
 
+let rawKeysCache = null;
+
+function setupKeyShowHideToggles() {
+  $$(".btn-toggle-pw").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const targetId = btn.dataset.target;
+      const input = targetId ? $(`#${targetId}`) : btn.previousElementSibling;
+      if (!input) return;
+
+      const isPw = input.type === "password";
+      if (isPw) {
+        input.type = "text";
+        btn.textContent = "🙈";
+        btn.title = "키 숨기기";
+        btn.classList.add("active");
+
+        if (!input.value.trim()) {
+          try {
+            if (!rawKeysCache) {
+              rawKeysCache = await api("/api/settings/raw");
+            }
+            const fieldMap = {
+              "key-xai": "xai_api_key",
+              "key-deepseek": "deepseek_api_key",
+              "key-openrouter": "openrouter_api_key",
+              "key-naver-id": "naver_client_id",
+              "key-naver-secret": "naver_client_secret",
+              "key-naver-map-id": "naver_map_client_id",
+              "key-naver-map-secret": "naver_map_client_secret",
+              "key-toss-id": "toss_client_id",
+              "key-toss-secret": "toss_client_secret",
+              "key-fred": "fred_api_key",
+              "key-ecos": "bok_ecos_api_key",
+              "key-telegram": "telegram_bot_token",
+              "key-opendart": "opendart_api_key",
+              "key-krx": "krx_api_key",
+              "key-kis": "kis_app_key",
+              "key-kis-secret": "kis_app_secret",
+            };
+            const apiKeyName = fieldMap[input.id];
+            if (apiKeyName && rawKeysCache[apiKeyName]) {
+              input.value = rawKeysCache[apiKeyName];
+            }
+          } catch (err) {
+            console.error("Failed to load saved key:", err);
+          }
+        }
+      } else {
+        input.type = "password";
+        btn.textContent = "👁️";
+        btn.title = "키 보이기";
+        btn.classList.remove("active");
+      }
+    });
+  });
+}
+
 async function loadSettings() {
   const s = await api("/api/settings");
   $("#llm-provider").value = s.llm_provider || "xai";
@@ -4645,6 +4702,7 @@ async function saveSchedulerSettings() {
 
 applyPriceChrome("dash");
 setupInvestorSubtabs();
+setupKeyShowHideToggles();
 loadDash().catch((err) => {
   $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
 });

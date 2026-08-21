@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.4.2" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.4.3" />
 </head>
 <body>
   <aside class="nav">
@@ -668,52 +668,52 @@
             </div>
             <label>또는 API 키 (선택)
               <span class="meta" id="meta-xai">미설정</span>
-              <input id="key-xai" type="password" autocomplete="off" placeholder="console.x.ai 키를 쓸 때만" />
+              <div class="key-field-wrap"><input id="key-xai" type="password" autocomplete="off" placeholder="console.x.ai 키를 쓸 때만" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-xai">👁️</button></div>
             </label>
           </div>
           <label>DeepSeek API 키
             <span class="meta" id="meta-deepseek">미설정</span>
-            <input id="key-deepseek" type="password" autocomplete="off" placeholder="DeepSeek를 쓸 때만" />
+            <div class="key-field-wrap"><input id="key-deepseek" type="password" autocomplete="off" placeholder="DeepSeek를 쓸 때만" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-deepseek">👁️</button></div>
           </label>
           <label>OpenRouter API 키
             <span class="meta" id="meta-openrouter">미설정</span>
-            <input id="key-openrouter" type="password" autocomplete="off" placeholder="openrouter.ai/keys 에서 발급" />
+            <div class="key-field-wrap"><input id="key-openrouter" type="password" autocomplete="off" placeholder="openrouter.ai/keys 에서 발급" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-openrouter">👁️</button></div>
           </label>
           <label>네이버 Client ID
             <span class="meta" id="meta-naver-id">미설정</span>
-            <input id="key-naver-id" type="password" autocomplete="off" placeholder="developers.naver.com 검색 API" />
+            <div class="key-field-wrap"><input id="key-naver-id" type="password" autocomplete="off" placeholder="developers.naver.com 검색 API" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-naver-id">👁️</button></div>
           </label>
           <label>네이버 Client Secret
             <span class="meta" id="meta-naver-secret">미설정</span>
-            <input id="key-naver-secret" type="password" autocomplete="off" placeholder="검색 API 사용 설정 필요" />
+            <div class="key-field-wrap"><input id="key-naver-secret" type="password" autocomplete="off" placeholder="검색 API 사용 설정 필요" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-naver-secret">👁️</button></div>
           </label>
           <label>네이버 지도 Client ID
             <span class="meta" id="meta-naver-map-id">미설정</span>
-            <input id="key-naver-map-id" type="password" autocomplete="off" placeholder="Maps Geocoding용 별도 키" />
+            <div class="key-field-wrap"><input id="key-naver-map-id" type="password" autocomplete="off" placeholder="Maps Geocoding용 별도 키" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-naver-map-id">👁️</button></div>
           </label>
           <label>네이버 지도 Client Secret
             <span class="meta" id="meta-naver-map-secret">미설정</span>
-            <input id="key-naver-map-secret" type="password" autocomplete="off" placeholder="Geocoding/Static Map 사용설정" />
+            <div class="key-field-wrap"><input id="key-naver-map-secret" type="password" autocomplete="off" placeholder="Geocoding/Static Map 사용설정" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-naver-map-secret">👁️</button></div>
           </label>
           <label>토스증권 Client ID
             <span class="meta" id="meta-toss-id">미설정</span>
-            <input id="key-toss-id" type="password" autocomplete="off" placeholder="WTS Open API Client ID" />
+            <div class="key-field-wrap"><input id="key-toss-id" type="password" autocomplete="off" placeholder="WTS Open API Client ID" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-toss-id">👁️</button></div>
           </label>
           <label>토스증권 Client Secret
             <span class="meta" id="meta-toss-secret">미설정</span>
-            <input id="key-toss-secret" type="password" autocomplete="off" placeholder="허용 IP 등록 필요 · 주문 미사용" />
+            <div class="key-field-wrap"><input id="key-toss-secret" type="password" autocomplete="off" placeholder="허용 IP 등록 필요 · 주문 미사용" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-toss-secret">👁️</button></div>
           </label>
           <label>FRED API 키
             <span class="meta" id="meta-fred">미설정</span>
-            <input id="key-fred" type="password" autocomplete="off" placeholder="fred.stlouisfed.org 무료 키 · 점수 미포함" />
+            <div class="key-field-wrap"><input id="key-fred" type="password" autocomplete="off" placeholder="fred.stlouisfed.org 무료 키 · 점수 미포함" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-fred">👁️</button></div>
           </label>
           <label>한국은행 ECOS 키
             <span class="meta" id="meta-ecos">미설정(sample)</span>
-            <input id="key-ecos" type="password" autocomplete="off" placeholder="비우면 sample · ecos.bok.or.kr 무료" />
+            <div class="key-field-wrap"><input id="key-ecos" type="password" autocomplete="off" placeholder="비우면 sample · ecos.bok.or.kr 무료" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-ecos">👁️</button></div>
           </label>
           <label>텔레그램 봇 토큰
             <span class="meta" id="meta-telegram">미설정</span>
-            <input id="key-telegram" type="password" autocomplete="off" placeholder="BotFather 토큰 · 알림만, 주문 없음" />
+            <div class="key-field-wrap"><input id="key-telegram" type="password" autocomplete="off" placeholder="BotFather 토큰 · 알림만, 주문 없음" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-telegram">👁️</button></div>
           </label>
           <label>텔레그램 채팅 ID
             <span class="meta" id="meta-telegram-chat">미설정</span>
@@ -725,19 +725,19 @@
           </div>
           <label>OpenDART
             <span class="meta" id="meta-opendart">미설정</span>
-            <input id="key-opendart" type="password" autocomplete="off" placeholder="새 키 입력 또는 비워두기" />
+            <div class="key-field-wrap"><input id="key-opendart" type="password" autocomplete="off" placeholder="새 키 입력 또는 비워두기" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-opendart">👁️</button></div>
           </label>
           <label>KRX Open API
             <span class="meta" id="meta-krx">미설정</span>
-            <input id="key-krx" type="password" autocomplete="off" placeholder="새 키 입력 또는 비워두기" />
+            <div class="key-field-wrap"><input id="key-krx" type="password" autocomplete="off" placeholder="새 키 입력 또는 비워두기" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-krx">👁️</button></div>
           </label>
           <label>한국투자증권 App Key
             <span class="meta" id="meta-kis">미설정</span>
-            <input id="key-kis" type="password" autocomplete="off" placeholder="새 키 입력 또는 비워두기" />
+            <div class="key-field-wrap"><input id="key-kis" type="password" autocomplete="off" placeholder="새 키 입력 또는 비워두기" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-kis">👁️</button></div>
           </label>
           <label>한국투자증권 App Secret
             <span class="meta" id="meta-kis-secret">미설정</span>
-            <input id="key-kis-secret" type="password" autocomplete="off" placeholder="새 시크릿 입력 또는 비워두기" />
+            <div class="key-field-wrap"><input id="key-kis-secret" type="password" autocomplete="off" placeholder="새 시크릿 입력 또는 비워두기" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-kis-secret">👁️</button></div>
           </label>
           <label>한투 Base URL
             <input id="key-kis-url" value="https://openapi.koreainvestment.com:9443" />
@@ -783,6 +783,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=1.4.2"></script>
+  <script src="/static/app.js?v=1.4.3"></script>
 </body>
 </html>

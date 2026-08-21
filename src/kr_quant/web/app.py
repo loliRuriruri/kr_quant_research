@@ -325,6 +325,30 @@ def api_settings_get() -> dict[str, Any]:
     }
 
 
+@app.get("/api/settings/raw")
+def api_settings_raw() -> dict[str, Any]:
+    s = load_settings()
+    return {
+        "opendart_api_key": s.opendart_api_key or "",
+        "krx_api_key": s.krx_api_key or "",
+        "xai_api_key": s.xai_api_key or "",
+        "deepseek_api_key": s.deepseek_api_key or "",
+        "openrouter_api_key": s.openrouter_api_key or "",
+        "kis_app_key": s.kis_app_key or "",
+        "kis_app_secret": s.kis_app_secret or "",
+        "naver_client_id": s.naver_client_id or "",
+        "naver_client_secret": s.naver_client_secret or "",
+        "naver_map_client_id": s.naver_map_client_id or "",
+        "naver_map_client_secret": s.naver_map_client_secret or "",
+        "toss_client_id": s.toss_client_id or "",
+        "toss_client_secret": s.toss_client_secret or "",
+        "fred_api_key": s.fred_api_key or "",
+        "bok_ecos_api_key": s.bok_ecos_api_key or "",
+        "telegram_bot_token": s.telegram_bot_token or "",
+        "telegram_chat_id": s.telegram_chat_id or "",
+    }
+
+
 @app.put("/api/settings")
 def api_settings_put(body: SettingsIn) -> dict[str, Any]:
     from kr_quant.research.providers import coerce_model, normalize_provider
