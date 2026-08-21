@@ -54,6 +54,9 @@ class Settings:
     bok_ecos_api_key: str | None
     telegram_bot_token: str | None
     telegram_chat_id: str | None
+    tavily_api_key: str | None
+    kiwoom_app_key: str | None
+    kiwoom_secret_key: str | None
     opendart_sleep_sec: float
     sec_user_agent: str
 
@@ -164,6 +167,9 @@ def load_settings(root: Path | None = None) -> Settings:
         bok_ecos_api_key=os.environ.get("BOK_ECOS_API_KEY") or os.environ.get("KSKILL_BOK_ECOS_API_KEY") or None,
         telegram_bot_token=os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_TOKEN") or None,
         telegram_chat_id=os.environ.get("TELEGRAM_CHAT_ID") or None,
+        tavily_api_key=os.environ.get("TAVILY_API_KEY") or None,
+        kiwoom_app_key=os.environ.get("KIWOOM_APP_KEY") or None,
+        kiwoom_secret_key=os.environ.get("KIWOOM_SECRET_KEY") or None,
         opendart_sleep_sec=float(os.environ.get("OPENDART_SLEEP_SEC", "0.15")),
         sec_user_agent=(os.environ.get("SEC_USER_AGENT") or "KR Quant Research a4jud@gmail.com").strip(),
     )

@@ -3805,6 +3805,9 @@ function setupKeyShowHideToggles() {
               "key-krx": "krx_api_key",
               "key-kis": "kis_app_key",
               "key-kis-secret": "kis_app_secret",
+              "key-kiwoom-app": "kiwoom_app_key",
+              "key-kiwoom-secret": "kiwoom_secret_key",
+              "key-tavily": "tavily_api_key",
             };
             const apiKeyName = fieldMap[input.id];
             if (apiKeyName && rawKeysCache[apiKeyName]) {
@@ -3856,6 +3859,9 @@ async function loadSettings() {
   metaLine($("#meta-xai"), s.xai_api_key);
   metaLine($("#meta-deepseek"), s.deepseek_api_key);
   if ($("#meta-openrouter") && s.openrouter_api_key) metaLine($("#meta-openrouter"), s.openrouter_api_key);
+  if ($("#meta-kiwoom-app")) metaLine($("#meta-kiwoom-app"), s.kiwoom_app_key);
+  if ($("#meta-kiwoom-secret")) metaLine($("#meta-kiwoom-secret"), s.kiwoom_secret_key);
+  if ($("#meta-tavily")) metaLine($("#meta-tavily"), s.tavily_api_key);
   $("#key-kis-url").value = s.kis_base_url || "";
   $("#key-sleep").value = s.opendart_sleep_sec ?? 0.2;
 }
@@ -3890,6 +3896,9 @@ async function saveSettings() {
       bok_ecos_api_key: keyOrNull("#key-ecos"),
       telegram_bot_token: keyOrNull("#key-telegram"),
       telegram_chat_id: keyOrNull("#key-telegram-chat"),
+      kiwoom_app_key: keyOrNull("#key-kiwoom-app"),
+      kiwoom_secret_key: keyOrNull("#key-kiwoom-secret"),
+      tavily_api_key: keyOrNull("#key-tavily"),
       kis_base_url: $("#key-kis-url").value.trim() || null,
       opendart_sleep_sec: Number($("#key-sleep").value),
     }),

@@ -52,6 +52,9 @@ class SettingsIn(BaseModel):
     bok_ecos_api_key: str | None = None
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+    tavily_api_key: str | None = None
+    kiwoom_app_key: str | None = None
+    kiwoom_secret_key: str | None = None
     opendart_sleep_sec: float | None = None
 
 
@@ -308,6 +311,9 @@ def api_settings_get() -> dict[str, Any]:
         "bok_ecos_api_key": mask_secret(s.bok_ecos_api_key),
         "telegram_bot_token": mask_secret(s.telegram_bot_token),
         "telegram_chat_id": s.telegram_chat_id or "",
+        "tavily_api_key": mask_secret(s.tavily_api_key),
+        "kiwoom_app_key": mask_secret(s.kiwoom_app_key),
+        "kiwoom_secret_key": mask_secret(s.kiwoom_secret_key),
         "opendart_sleep_sec": s.opendart_sleep_sec,
         "grok_auth": _grok_auth_public(),
         "help": {
@@ -320,6 +326,7 @@ def api_settings_get() -> dict[str, Any]:
             "openrouter": "https://openrouter.ai/keys",
             "fred": "https://fred.stlouisfed.org/docs/api/api_key.html",
             "telegram": "https://core.telegram.org/bots",
+            "tavily": "https://tavily.com/",
             "yahoo": "https://finance.yahoo.com",
         },
     }
@@ -346,6 +353,9 @@ def api_settings_raw() -> dict[str, Any]:
         "bok_ecos_api_key": s.bok_ecos_api_key or "",
         "telegram_bot_token": s.telegram_bot_token or "",
         "telegram_chat_id": s.telegram_chat_id or "",
+        "tavily_api_key": s.tavily_api_key or "",
+        "kiwoom_app_key": s.kiwoom_app_key or "",
+        "kiwoom_secret_key": s.kiwoom_secret_key or "",
     }
 
 
@@ -382,6 +392,9 @@ def api_settings_put(body: SettingsIn) -> dict[str, Any]:
         "BOK_ECOS_API_KEY": body.bok_ecos_api_key,
         "TELEGRAM_BOT_TOKEN": body.telegram_bot_token,
         "TELEGRAM_CHAT_ID": body.telegram_chat_id,
+        "TAVILY_API_KEY": body.tavily_api_key,
+        "KIWOOM_APP_KEY": body.kiwoom_app_key,
+        "KIWOOM_SECRET_KEY": body.kiwoom_secret_key,
         "OPENDART_SLEEP_SEC": None if body.opendart_sleep_sec is None else str(body.opendart_sleep_sec),
     }
     upsert_env_file(env_path, mapping)

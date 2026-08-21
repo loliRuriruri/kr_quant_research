@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.4.3" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.4.5" />
 </head>
 <body>
   <aside class="nav">
@@ -739,6 +739,18 @@
             <span class="meta" id="meta-kis-secret">미설정</span>
             <div class="key-field-wrap"><input id="key-kis-secret" type="password" autocomplete="off" placeholder="새 시크릿 입력 또는 비워두기" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-kis-secret">👁️</button></div>
           </label>
+          <label>키움증권 App Key
+            <span class="meta" id="meta-kiwoom-app">미설정</span>
+            <div class="key-field-wrap"><input id="key-kiwoom-app" type="password" autocomplete="off" placeholder="키움 Open API App Key" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-kiwoom-app">👁️</button></div>
+          </label>
+          <label>키움증권 Secret Key
+            <span class="meta" id="meta-kiwoom-secret">미설정</span>
+            <div class="key-field-wrap"><input id="key-kiwoom-secret" type="password" autocomplete="off" placeholder="키움 Open API Secret Key" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-kiwoom-secret">👁️</button></div>
+          </label>
+          <label>Tavily Search API 키
+            <span class="meta" id="meta-tavily">미설정</span>
+            <div class="key-field-wrap"><input id="key-tavily" type="password" autocomplete="off" placeholder="tavily.com AI 웹 검색 API 키" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-tavily">👁️</button></div>
+          </label>
           <label>한투 Base URL
             <input id="key-kis-url" value="https://openapi.koreainvestment.com:9443" />
           </label>
@@ -783,6 +795,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=1.4.3"></script>
+  <script src="/static/app.js?v=1.4.5"></script>
 </body>
 </html>
