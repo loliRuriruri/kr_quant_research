@@ -262,6 +262,21 @@ def build_macro_brief(
     tone, comment = _comment_policy_rate("한국 기준금리", _num(kr_rate.get("value")), _num(kr_rate.get("delta")), _fmt_ecos_time(kr_rate.get("time")))
     domestic.append(_item("domestic", "bok_rate", "한국 기준금리", _num(kr_rate.get("value")), "%", _fmt_ecos_time(kr_rate.get("time")), tone, comment, delta=_num(kr_rate.get("delta")), spark=kr_rate.get("spark")))
 
+    fed = fred_rows.get("FEDFUNDS") or {}
+    bok_val = _num(kr_rate.get("value"))
+    fed_val = _num(fed.get("value"))
+    if bok_val is not None and fed_val is not None:
+        diff_val = round(bok_val - fed_val, 2)
+        diff_tone = "부담" if diff_val < 0 else "우호" if diff_val > 0 else "중립"
+        diff_comment = (
+            f"한-미 기준금리차 {diff_val:+.2f}%p 역전 상태입니다 (한은 {bok_val:.2f}% vs 미 연준 {fed_val:.2f}%). 외국인 자본 유출 및 환율 방어 부담 요인입니다."
+            if diff_val < 0
+            else f"한-미 기준금리차 {diff_val:+.2f}%p로 한국이 높거나 균형입니다."
+        )
+        domestic.append(
+            _item("domestic", "kr_us_diff", "한-미 기준금리차", diff_val, "%p", _fmt_ecos_time(kr_rate.get("time")), diff_tone, diff_comment, delta=None, spark=[bok_val, fed_val])
+        )
+
     ktb = ecos_rows.get("국고채3년") or {}
     tone, comment = _comment_yield("국고채 3년", _num(ktb.get("value")), _num(ktb.get("delta")), _fmt_ecos_time(ktb.get("time")))
     domestic.append(_item("domestic", "ktb3y", "국고채 3년", _num(ktb.get("value")), "%", _fmt_ecos_time(ktb.get("time")), tone, comment, delta=_num(ktb.get("delta")), spark=ktb.get("spark")))
@@ -513,7 +528,10 @@ def build_macro_dashboard(settings: Any, *, refresh: bool = False) -> dict[str, 
     from kr_quant.ingest.fred import macro_snapshot
     from kr_quant.ingest.yahoo import index_snapshot
 
-    fred = macro_snapshot(getattr(settings, "fred_api_key", None))
+    try:
+        fred = macro_snapshot(getattr(settings, "fred_api_key", None), refresh=refresh)
+    except TypeError:
+        fred = macro_snapshot(getattr(settings, "fred_api_key", None))
     try:
         ecos = ecos_snapshot(getattr(settings, "bok_ecos_api_key", None))
     except Exception as exc:  # noqa: BLE001

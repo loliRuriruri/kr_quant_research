@@ -2663,7 +2663,7 @@ async function loadUs13f(force) {
     data = await api("/api/us13f", { method: "POST", body: JSON.stringify({ force: true }) });
   }
   us13fCache = data;
-  renderUs13f(data);
+  renderUs13f(us13fCache);
   const asof = [`13F 보고 ${(data.periods || []).join(" · ") || "—"}`, data.fetched_at ? `받은 시각 ${fmtWhen(data.fetched_at)}` : ""]
     .filter(Boolean)
     .join(" · ");
@@ -2977,8 +2977,8 @@ function renderStanceCard(block) {
 }
 
 async function loadMacro(refresh) {
-  const box = $("#macro-box");
-  if (!box) return;
+  const briefBox = $("#brief-box");
+  if (!briefBox && !$("#news-box")) return;
   const data = await api(`/api/macro${refresh ? "?refresh=true" : ""}`);
   const brief = data.brief || {};
   const news = data.news || {};
@@ -2988,7 +2988,6 @@ async function loadMacro(refresh) {
   const grouped = data.grouped_assets || {};
   const cc = data.commodities_crypto || {};
 
-  const briefBox = $("#brief-box");
   if (briefBox) {
     const overall = brief.overall || {};
     const kr = (brief.domestic || {}).stance || {};
@@ -3000,12 +2999,11 @@ async function loadMacro(refresh) {
         ${renderStanceCard({ ...kr, title: "국내" })}
         ${renderStanceCard({ ...us, title: "국제" })}
       </div>
-      ${renderYieldComparisonCard(brief.yield_comparison)}
       ${renderTradingEconomicsMacroCards(grouped, cc)}
       <div class="macro-bi-grid">
         <div>
           <h3 style="margin:0 0 8px;font-size:15px;color:#e8eef8;">🇰🇷 국내 매크로 지표 (한국은행 ECOS & 국내 증시)</h3>
-          <p class="hint" style="margin-bottom:8px;">기준금리, 국고채, 원/달러 환율, CPI 및 국내 통화량 추이 차트</p>
+          <p class="hint" style="margin-bottom:8px;">기준금리, 한-미 금리차, 국고채, 원/달러 환율, CPI 및 국내 통화량 추이 차트</p>
           <div class="macro-item-grid">
             ${(brief.domestic?.items || []).map((it, idx) => renderMacroItemCard(it, idx, "kr")).join("")}
           </div>
@@ -3021,6 +3019,8 @@ async function loadMacro(refresh) {
       <p class="hint">${escapeHtml(brief.disclaimer || data.disclaimer || "")}</p>
     `;
   }
+  stampLive("#macro-live");
+
   const newsBox = $("#news-box");
   if (newsBox) {
     if (!news.configured) {
@@ -3050,33 +3050,6 @@ async function loadMacro(refresh) {
       `;
     }
   }
-  const idxViz = (yahoo.indexes || [])
-    .filter((s) => !s.error && s.last != null)
-    .map((s) => {
-      const chg = Number(s.ret_1d);
-      const pct = Number.isNaN(chg) ? 0 : chg * (Math.abs(chg) <= 1 ? 100 : 1);
-      const cls = pct > 0 ? "up" : pct < 0 ? "down" : "";
-      const width = Math.max(4, Math.min(100, Math.abs(pct) * 12));
-      return `<div class="macro-row"><span>${escapeHtml(s.label)}</span><i><em class="${cls}" style="width:${width}%"></em></i><b class="${cls}">${fmt(s.last, 2)} · ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%</b></div>`;
-    })
-    .join("");
-  const fredViz = (fred.series || [])
-    .filter((s) => !s.error && s.value != null)
-    .map((s) => {
-      const d = Number(s.delta);
-      const cls = Number.isNaN(d) ? "" : d > 0 ? "up" : d < 0 ? "down" : "";
-      const width = Number.isNaN(d) ? 8 : Math.max(6, Math.min(100, Math.abs(d) * 40));
-      const delta = Number.isNaN(d) ? "" : ` · ${d >= 0 ? "+" : ""}${fmt(d, 2)}`;
-      return `<div class="macro-row"><span>${escapeHtml(s.label)}</span><i><em class="${cls}" style="width:${width}%"></em></i><b>${fmt(s.value, 2)} ${escapeHtml(s.unit || "")}${escapeHtml(delta)}</b></div>`;
-    })
-    .join("");
-  box.innerHTML = `
-    <h3>비교지수 (1일)</h3>
-    ${idxViz || (yahoo.error ? `<p class="hint">${escapeHtml(yahoo.error)}</p>` : "<p class='hint'>지수 없음</p>")}
-    <h3>금리 · 물가</h3>
-    ${fred.configured ? fredViz || "<p class='hint'>관측치 없음</p>" : `<p class="hint">${escapeHtml(fred.error || "설정에서 FRED 키를 넣으세요.")}</p>`}
-    <p class="hint">막대는 최근 변화 크기입니다. Quant 점수에 들어가지 않습니다. 한국 공식 시세는 KRX입니다.</p>
-  `;
   const asofBits = [];
   const dates = brief.as_of || {};
   if (lastStatus?.freshness?.price_max_date) asofBits.push(`국면 시세 ${lastStatus.freshness.price_max_date}`);
@@ -3459,8 +3432,59 @@ if ($("#nps-refresh")) {
 if ($("#nps-collect")) {
   $("#nps-collect").addEventListener("click", () => startJob("dart-nps").catch((err) => alert(err.message)));
 }
+if ($("#macro-refresh-btn")) {
+  $("#macro-refresh-btn").addEventListener("click", async () => {
+    const btn = $("#macro-refresh-btn");
+    const orig = btn.textContent;
+    btn.textContent = "⏳ 갱신 중...";
+    btn.disabled = true;
+    try {
+      await loadMacro(true);
+      showToast("✅ 글로벌 매크로·환율·원자재 실시간 지표 갱신 완료", "success");
+    } catch (err) {
+      showToast(`❌ 매크로 갱신 실패: ${escapeHtml(err.message)}`, "error");
+    } finally {
+      btn.textContent = orig;
+      btn.disabled = false;
+      stampLive("#macro-live");
+    }
+  });
+}
+if ($("#market-refresh")) {
+  $("#market-refresh").addEventListener("click", async () => {
+    const btn = $("#market-refresh");
+    const orig = btn.textContent;
+    btn.textContent = "⏳ 갱신 중...";
+    btn.disabled = true;
+    try {
+      await Promise.all([loadMarket(true), loadMacro(true)]);
+      showToast("✅ 시장 국면 & 글로벌 매크로 실시간 갱신 완료", "success");
+    } catch (err) {
+      showToast(`❌ 갱신 실패: ${escapeHtml(err.message)}`, "error");
+    } finally {
+      btn.textContent = orig;
+      btn.disabled = false;
+      stampLive("#market-live");
+      stampLive("#macro-live");
+    }
+  });
+}
 if ($("#news-refresh")) {
-  $("#news-refresh").addEventListener("click", () => loadMacro(true).catch((err) => alert(err.message)));
+  $("#news-refresh").addEventListener("click", async () => {
+    const btn = $("#news-refresh");
+    const orig = btn.textContent;
+    btn.textContent = "⏳ 갱신 중...";
+    btn.disabled = true;
+    try {
+      await loadMacro(true);
+      showToast("✅ 뉴스 및 매크로 지표 갱신 완료", "success");
+    } catch (err) {
+      showToast(`❌ 갱신 실패: ${escapeHtml(err.message)}`, "error");
+    } finally {
+      btn.textContent = orig;
+      btn.disabled = false;
+    }
+  });
 }
 if ($("#sector-refresh")) {
   $("#sector-refresh").addEventListener("click", () => loadSectors().catch((err) => alert(err.message)));

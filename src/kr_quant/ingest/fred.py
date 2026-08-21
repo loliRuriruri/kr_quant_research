@@ -65,7 +65,7 @@ def normalize_api_key(api_key: str | None) -> str:
     return (api_key or "").strip().lower()
 
 
-def fetch_series(api_key: str, series_id: str, timeout: int = 20) -> list[dict[str, Any]]:
+def fetch_series(api_key: str, series_id: str, timeout: int = 20, *, refresh: bool = False) -> list[dict[str, Any]]:
     import requests
 
     api_key = normalize_api_key(api_key)
@@ -76,7 +76,7 @@ def fetch_series(api_key: str, series_id: str, timeout: int = 20) -> list[dict[s
     cache_key = f"fred:{series_id}:60"
     hit = _cache.get(cache_key)
     now = time.time()
-    if hit and now - hit[0] < _TTL:
+    if not refresh and hit and now - hit[0] < _TTL:
         return hit[1]
     last_exc: Exception | None = None
     for attempt in range(2):
@@ -103,7 +103,7 @@ def fetch_series(api_key: str, series_id: str, timeout: int = 20) -> list[dict[s
     raise last_exc or RuntimeError(f"FRED {series_id} 실패")
 
 
-def macro_snapshot(api_key: str | None) -> dict[str, Any]:
+def macro_snapshot(api_key: str | None, *, refresh: bool = False) -> dict[str, Any]:
     if not api_key:
         return {
             "configured": False,
@@ -116,7 +116,7 @@ def macro_snapshot(api_key: str | None) -> dict[str, Any]:
     error = None
     for spec in SERIES:
         try:
-            obs = fetch_series(api_key, spec["id"])
+            obs = fetch_series(api_key, spec["id"], refresh=refresh)
             series.append(summarize_series(obs, spec))
         except Exception as exc:  # noqa: BLE001
             error = str(exc)[:180]

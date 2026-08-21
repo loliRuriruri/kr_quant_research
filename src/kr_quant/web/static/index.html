@@ -136,9 +136,13 @@
       </article>
       <article class="card" style="margin-top:14px">
         <div class="card-h">
-          <h2>국내 · 국제 매크로</h2>
+          <h2>국내 · 국제 매크로 & 글로벌 원자재</h2>
+          <div class="actions">
+            <span class="chip ok" id="macro-live">🟢 실시간 30초 동기화</span>
+            <button class="ghost" id="macro-refresh-btn">매크로 새로고침</button>
+          </div>
         </div>
-        <p class="hint">한국은행 ECOS, FRED 및 글로벌 자산군(금·원유·구리·비트코인·환율) 실시간 지표 분석입니다.</p>
+        <p class="hint">한국은행 ECOS, 연준 FRED 및 Yahoo/yfinance 글로벌 자산군(금·원유·구리·비트코인·환율·금리차) 실시간 통합 지표입니다.</p>
         <div id="brief-box" class="quality"></div>
       </article>
       <article class="card" style="margin-top:14px">
@@ -152,13 +156,7 @@
         <p class="hint">네이버 검색 API 기반 금리·환율·증시 주요 헤드라인입니다.</p>
         <div id="news-box" class="quality"></div>
       </article>
-      <article class="card" style="margin-top:14px">
-        <div class="card-h">
-          <h2>금리 · 비교지수</h2>
-        </div>
-        <p class="hint">FRED 금리·물가 지표 및 Yahoo/yfinance 글로벌 벤치마크 지표입니다.</p>
-        <div id="macro-box" class="quality"></div>
-      </article>
+      <div id="macro-box" class="hidden"></div>
     </section>
 
     <section id="view-toss" class="view hidden">
