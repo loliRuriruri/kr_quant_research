@@ -4,20 +4,20 @@ const $$ = (sel) => [...document.querySelectorAll(sel)];
 const titles = {
   dash: ["대시보드", "재무 팩터 기반 상위 20종목 요약"],
   rank: ["점수 랭킹", "시총·유동성 통과 종목 전체 퀀트 랭킹"],
-  screens: ["골라보기", "가치·성장·모멘텀 테마별 스크리닝"],
-  market: ["시장 국면", "글로벌 매크로·원자재·암호화폐 & 한국형 공포탐욕"],
-  sector: ["업종 분석", "KSIC 업종별 상대강도(RS) 및 모멘텀 국면"],
+  screens: ["테마 스크리너", "가치·성장·배당·모멘텀 테마별 정밀 스크리닝"],
+  market: ["글로벌 매크로 & 국면", "거시경제·환율·원자재·공포탐욕 & 역사적 계절성 분석"],
+  sector: ["업종·섹터 분석", "KSIC 업종별 상대강도(RS), 확산도 및 모멘텀 랭킹"],
   toss: ["토스 랭킹", "급상승·급하락·거래대금 실시간 시세"],
   watch: ["관심종목", "나만의 관심종목 메모 및 빠른 분석"],
   reports: ["리포트 보관함", "발간된 AI 심층 분석 리포트 및 검증 아카이브"],
-  run: ["실행 센터", "실데이터 수집, 시세 갱신 및 퀀트 재계산"],
+  run: ["실행 파이프라인", "실데이터 수집, 시세 갱신 및 퀀트 재계산"],
   settings: ["API 설정", "API 키 및 LLM 모델 환경설정"],
-  flow: ["수급 분석", "외국인·기관 쌍끌이 및 사모펀드 순매수 추적"],
-  empty: ["빈집 수급", "기관·외인 이탈 후 수급 복귀 조짐 종목"],
+  flow: ["쌍끌이 수급", "외국인·기관 동반 매수 및 사모펀드 순매수 추적"],
+  empty: ["빈집 발굴", "기관·외인 이탈 후 수급 복귀 조짐 종목"],
   trade: ["트레이딩 랩", "수급 셋업 및 스토캐스틱·일목 기술적 신호"],
-  us13f: ["미국 13F", "SEC 글로벌 주요 헤지펀드 분기별 보유 포트폴리오"],
-  strategy: ["전략 랩", "일봉 기반 퀀트 전략 백테스트 및 검증"],
-  investor: ["공식 수급", "한국투자증권(KIS) 일별 투자자 순매수 데이터"],
+  us13f: ["미국 13F 공시", "워런 버핏, 마이클 버리 등 글로벌 대가들의 분기별 보유 포트폴리오 시각화"],
+  strategy: ["전략·백테스트", "일봉 기반 퀀트 전략 백테스트 및 검증"],
+  investor: ["메이저 수급 & 지분", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
   sunzi: ["손자 五事", "道·天·地·將·法 다각도 심층 기업 분석"],
   nps: ["국민연금 5%", "OpenDART 국민연금 5% 이상 대량보유 공시 추적"],
 };
@@ -1815,12 +1815,13 @@ async function loadSunzi() {
 
 async function loadNps() {
   const box = $("#nps-box");
-  if (!box) return;
+  const subBox = $("#nps-sub-box");
+  if (!box && !subBox) return;
   const data = await api("/api/nps");
   const cov = data.coverage || {};
   const rows = data.rows || [];
   const asof = cov.last_date ? `공시 최신 ${cov.last_date} · ${cov.tickers || 0}종목` : "저장된 보유 공시 없음";
-  if (currentView === "nps") setPageAsOf(asof, "OpenDART 대량보유. 일별 기금 수급이 아닙니다.");
+  if (currentView === "nps" || currentView === "investor") setPageAsOf(asof, "OpenDART 대량보유. 일별 기금 수급이 아닙니다.");
   const body = rows
     .map((r) => {
       const chg =
@@ -1841,7 +1842,7 @@ async function loadNps() {
       </tr>`;
     })
     .join("");
-  box.innerHTML = `
+  const html = `
     ${asofBanner(asof)}
     <div class="kpis" style="grid-template-columns:repeat(3,1fr);margin:8px 0 16px">
       <div class="kpi"><span>OpenDART</span><b class="${data.configured ? "ok" : "warn"}">${data.configured ? "설정됨" : "키 없음"}</b></div>
@@ -1866,11 +1867,22 @@ async function loadNps() {
       </table>
     </div>
   `;
-  box.querySelectorAll("tr.clickable[data-ticker]").forEach((tr) => {
-    if (tr.dataset.ticker && tr.dataset.ticker !== "000000") {
-      tr.addEventListener("click", () => openStock(tr.dataset.ticker).catch((err) => alert(err.message)));
-    }
-  });
+  if (box) {
+    box.innerHTML = html;
+    box.querySelectorAll("tr.clickable[data-ticker]").forEach((tr) => {
+      if (tr.dataset.ticker && tr.dataset.ticker !== "000000") {
+        tr.addEventListener("click", () => openStock(tr.dataset.ticker).catch((err) => alert(err.message)));
+      }
+    });
+  }
+  if (subBox) {
+    subBox.innerHTML = html;
+    subBox.querySelectorAll("tr.clickable[data-ticker]").forEach((tr) => {
+      if (tr.dataset.ticker && tr.dataset.ticker !== "000000") {
+        tr.addEventListener("click", () => openStock(tr.dataset.ticker).catch((err) => alert(err.message)));
+      }
+    });
+  }
 }
 
 async function loadFlow(force) {
@@ -2258,21 +2270,68 @@ function renderSectors(data) {
     box.innerHTML = `<p class="hint">${escapeHtml(data.error)}</p>`;
     return;
   }
-  const body = (data.rows || [])
-    .map(
-      (r) => `<tr class="clickable" data-ticker="${escapeHtml((r.names && r.names[0] && r.names[0].ticker) || "")}">
-        <td class="num">${r.rank}</td>
-        <td><b>${escapeHtml(r.name)}</b><div class="meta">${r.n}종목</div>${rowNote(r.comment)}</td>
-        <td><span class="sector-score">${fmt(r.score, 1)}</span>
-          <div class="meta">${r.delta == null ? "" : (r.delta >= 0 ? "+" : "") + fmt(r.delta, 1)}</div></td>
-        <td><span class="tag has-tip" data-tip="${escapeHtml(r.comment || "")}">${escapeHtml(r.state_ko || r.state)}</span></td>
-        <td class="num">${r.rs ?? "—"}</td>
-        <td class="num">${r.breadth ?? "—"}</td>
-        <td class="num">${r.earnings ?? "—"}</td>
-        <td>${(r.names || []).map((n) => escapeHtml(n.company || n.ticker)).join(" · ")}</td>
-      </tr>`
-    )
-    .join("");
+  const rows = data.rows || [];
+
+  // Top Sector Leaderboard Cards (Top 6 sectors)
+  const topCards = rows.slice(0, 6).map((r) => {
+    const isTop = r.rank <= 3;
+    const fillCls = r.state === "LEADING" ? "leading" : r.state === "IMPROVING" ? "improving" : r.state === "LAGGING" ? "lagging" : "neutral";
+    const deltaTxt = r.delta == null ? "" : (r.delta >= 0 ? `+${r.delta.toFixed(1)}` : r.delta.toFixed(1));
+    const stockPills = (r.names || []).slice(0, 4).map((n) =>
+      `<span class="sector-stock-pill" onclick="openStock('${escapeHtml(n.ticker)}')"><b>${escapeHtml(n.company || n.ticker)}</b></span>`
+    ).join("");
+
+    return `
+      <div class="sector-leader-card">
+        <div class="sector-leader-top">
+          <div class="sector-leader-title">
+            <span class="sector-rank-badge ${isTop ? "top" : ""}">${r.rank}</span>
+            <span>${escapeHtml(r.name)}</span>
+            <span class="tag tone-${r.state === "LEADING" ? "우호" : r.state === "LAGGING" ? "부담" : "중립"}">${escapeHtml(r.state_ko || r.state)}</span>
+          </div>
+          <div>
+            <b style="font-size:16px;color:#fff;">${fmt(r.score, 1)}</b>점
+            ${deltaTxt ? `<span class="meta" style="margin-left:4px;color:${r.delta >= 0 ? "#3dcf8e" : "#ef4b6a"}; font-weight:600;">(${deltaTxt})</span>` : ""}
+          </div>
+        </div>
+        <div class="sector-bar-track">
+          <div class="sector-bar-fill ${fillCls}" style="width:${Math.min(100, Math.max(10, r.score))}%"></div>
+        </div>
+        <div class="sector-gauges">
+          <div class="sector-gauge-item">
+            <span>상대강도(RS)</span>
+            <b>${r.rs ?? "—"}점</b>
+          </div>
+          <div class="sector-gauge-item">
+            <span>상승 확산</span>
+            <b>${r.breadth ?? "—"}%</b>
+          </div>
+          <div class="sector-gauge-item">
+            <span>실적 성장</span>
+            <b>${r.earnings ?? "—"}%</b>
+          </div>
+        </div>
+        <div class="sector-stock-pills">
+          ${stockPills || '<span class="meta">종목 정보 없음</span>'}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  const body = rows.map((r) =>
+    `<tr class="clickable" data-ticker="${escapeHtml((r.names && r.names[0] && r.names[0].ticker) || "")}">
+      <td class="num">${r.rank}</td>
+      <td><b>${escapeHtml(r.name)}</b><div class="meta">${r.n}종목</div>${rowNote(r.comment)}</td>
+      <td><span class="sector-score">${fmt(r.score, 1)}</span>
+        <div class="meta">${r.delta == null ? "" : (r.delta >= 0 ? "+" : "") + fmt(r.delta, 1)}</div></td>
+      <td><span class="tag has-tip" data-tip="${escapeHtml(r.comment || "")}">${escapeHtml(r.state_ko || r.state)}</span></td>
+      <td class="num">${r.rs ?? "—"}</td>
+      <td class="num">${r.breadth ?? "—"}</td>
+      <td class="num">${r.earnings ?? "—"}</td>
+      <td>${(r.names || []).map((n) => `<span class="sector-stock-pill" onclick="event.stopPropagation(); openStock('${escapeHtml(n.ticker)}')">${escapeHtml(n.company || n.ticker)}</span>`).join(" ")}</td>
+    </tr>`
+  ).join("");
+
   const when = fmtWhen(data.fetched_at);
   const asof = [data.as_of_date ? `점수 기준일 ${data.as_of_date}` : "", when ? `업종 계산 ${when}` : ""]
     .filter(Boolean)
@@ -2282,7 +2341,13 @@ function renderSectors(data) {
   }
   box.innerHTML = `
     ${asofBanner(asof)}
-    <p class="hint">${escapeHtml(data.selection || "")}</p>
+    <h3 style="margin:8px 0 4px;font-size:15px;color:#fff;">🚀 주도 업종 모멘텀 랭킹 (Sector Momentum Leaderboard)</h3>
+    <p class="hint" style="margin-bottom:12px;">상대강도(RS), 상승 확산도 및 실적 성장을 종합 평가한 상위 주도 업종입니다.</p>
+    <div class="sector-leader-grid">
+      ${topCards}
+    </div>
+
+    <h3 style="margin:20px 0 6px;font-size:15px;color:#fff;">📊 전체 업종 6축 상세 분석표</h3>
     <div class="table-wrap tall"><table>
       <thead><tr>
         ${thTip("순위", "업종 6축 평가 순위입니다.")}
@@ -2643,10 +2708,63 @@ function renderUs13f(data) {
         <td class="num">${r.weight ? fmtPct(r.weight, 1) : "—"}</td>
       </tr>`).join("")}</tbody></table>`;
   }
-  box.innerHTML = `${kpis}
+  const SLICE_COLORS = ["#4c8dff", "#3dcf8e", "#f59e0b", "#a855f7", "#ec4899", "#64748b"];
+
+  const filerCardsHtml = (data.filers || []).slice(0, 6).map((f) => {
+    const topHoldings = f.top || [];
+    const totalVal = f.total_value;
+    const slices = topHoldings.slice(0, 5).map((t, idx) => {
+      const w = (t.weight || 0) * 100;
+      const col = SLICE_COLORS[idx % SLICE_COLORS.length];
+      return `<div class="us13f-stack-slice" style="width:${Math.max(4, w)}%;background:${col};" title="${escapeHtml(t.issuer_ko || t.issuer)}: ${w.toFixed(1)}%"></div>`;
+    }).join("");
+
+    const chips = topHoldings.slice(0, 4).map((t, idx) => {
+      const w = (t.weight || 0) * 100;
+      const col = SLICE_COLORS[idx % SLICE_COLORS.length];
+      return `
+        <div class="us13f-top-chip">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};"></span>
+          <b>${escapeHtml(t.issuer_ko || t.ticker || t.issuer)}</b>
+          <span>${w.toFixed(1)}%</span>
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="us13f-filer-card">
+        <div class="us13f-filer-header">
+          <div>
+            <div class="us13f-filer-name">${escapeHtml(f.filer_ko || f.name)}</div>
+            <div class="us13f-filer-meta">운용 총액 ${usd(totalVal)} · 보유 ${f.n ?? "—"}개 종목</div>
+          </div>
+          <div style="display:flex;gap:4px;">
+            ${f.new ? `<span class="tag tone-우호">신규 ${f.new}</span>` : ""}
+            ${f.exits ? `<span class="tag tone-부담">청산 ${f.exits}</span>` : ""}
+          </div>
+        </div>
+        <div class="us13f-stack-bar">
+          ${slices || '<div class="us13f-stack-slice" style="width:100%;background:#334155;"></div>'}
+        </div>
+        <div class="us13f-top-chips">
+          ${chips}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  box.innerHTML = `
+    ${kpis}
+    <h3 style="margin:16px 0 6px;font-size:15px;color:#fff;">🏛️ 글로벌 대가별 포트폴리오 비중 (Top Holdings Weight)</h3>
+    <p class="hint" style="margin-bottom:12px;">워런 버핏(버크셔), 마이클 버리, 레이 달리오 등 슈퍼인베스터들의 상위 보유 종목 스택 바 차트입니다.</p>
+    <div class="us13f-filer-grid">
+      ${filerCardsHtml}
+    </div>
+    <h3 style="margin:22px 0 6px;font-size:15px;color:#fff;">📋 13F 상세 내역 분석표</h3>
     <div class="table-wrap tall">${table}</div>
     ${err ? `<p class="hint">일부 실패: ${escapeHtml(err)}</p>` : ""}
-    <p class="hint">${escapeHtml(data.disclaimer || "")}</p>`;
+    <p class="hint">${escapeHtml(data.disclaimer || "")}</p>
+  `;
 }
 
 async function loadUs13f(force) {
@@ -2967,6 +3085,64 @@ function renderBriefItems(items) {
   return (items || []).map((it, idx) => renderMacroItemCard(it, idx, "brief")).join("");
 }
 
+function renderSeasonalitySection(season) {
+  if (!season || !season.months) return "";
+  const cur = season.current_stat || {};
+  const strat = season.strategy || {};
+  const toneCls = cur.tone === "우호" ? "good" : cur.tone === "부담" ? "bad" : "neutral";
+
+  const monthCards = (season.months || []).map((m) => {
+    const isCur = m.is_current;
+    const isUp = (m.avg_ret || 0) >= 0;
+    const retCls = isUp ? "up" : "down";
+    const winRate = m.win_rate || 50;
+    const winCls = winRate >= 60 ? "" : winRate <= 45 ? "low" : "mid";
+
+    return `
+      <div class="season-card ${isCur ? "current-month" : ""}">
+        <div class="season-month-header">
+          <span>${escapeHtml(m.name)}</span>
+          ${isCur ? '<span class="season-cur-tag">현재</span>' : ""}
+        </div>
+        <div class="season-ret ${retCls}">${isUp ? "+" : ""}${fmt(m.avg_ret, 1)}%</div>
+        <div class="season-win-bar">
+          <div class="season-win-fill ${winCls}" style="width:${winRate}%"></div>
+        </div>
+        <div class="season-win-txt">승률 ${winRate.toFixed(0)}%</div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="seasonality-wrapper">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div>
+          <h3 style="margin:0;font-size:15px;color:#fff;">📅 주식시장 역사적 계절성 분석 (Market Seasonality & Win-Rate)</h3>
+          <span class="hint">코스피 30개년 1~12월 역사적 월별 수익률 및 상승 승률 히트맵</span>
+        </div>
+      </div>
+
+      <div class="season-diag-box">
+        <div class="season-diag-badge ${toneCls}">
+          ${season.current_month_name} 계절성: ${escapeHtml(cur.theme || cur.tone || "")}
+        </div>
+        <div class="season-diag-desc">
+          <b>${escapeHtml(strat.tone || "")}</b> — ${escapeHtml(strat.desc || "")}
+        </div>
+        <div class="season-diag-cycle">
+          <span style="color:#60a5fa;font-weight:700;">${escapeHtml(strat.cycle_name || "")}</span>
+          <div style="font-size:11px;margin-top:2px;">${escapeHtml(strat.cycle_comment || "")}</div>
+        </div>
+      </div>
+
+      <div class="seasonality-grid">
+        ${monthCards}
+      </div>
+      <p class="hint" style="margin:10px 0 0;">${escapeHtml(season.disclaimer || "")}</p>
+    </div>
+  `;
+}
+
 function renderStanceCard(block) {
   const s = block || {};
   return `<div class="tone-card ${escapeHtml(s.tone || "")}">
@@ -2987,6 +3163,7 @@ async function loadMacro(refresh) {
   const yencarry = data.yencarry || {};
   const grouped = data.grouped_assets || {};
   const cc = data.commodities_crypto || {};
+  const seasonality = data.seasonality;
 
   if (briefBox) {
     const overall = brief.overall || {};
@@ -3000,6 +3177,7 @@ async function loadMacro(refresh) {
         ${renderStanceCard({ ...us, title: "국제" })}
       </div>
       ${renderTradingEconomicsMacroCards(grouped, cc)}
+      ${renderSeasonalitySection(seasonality)}
       <div class="macro-bi-grid">
         <div>
           <h3 style="margin:0 0 8px;font-size:15px;color:#e8eef8;">🇰🇷 국내 매크로 지표 (한국은행 ECOS & 국내 증시)</h3>
@@ -3858,7 +4036,39 @@ $$("[data-job]").forEach((btn) =>
 decorateSelect($("#llm-provider"));
 decorateSelect($("#llm-model-select"));
 
+function setupInvestorSubtabs() {
+  const btnFlow = $("#subtab-investor-flow");
+  const btnNps = $("#subtab-investor-nps");
+  const paneFlow = $("#investor-subtab-flow-pane");
+  const paneNps = $("#investor-subtab-nps-pane");
+
+  if (btnFlow && btnNps) {
+    btnFlow.addEventListener("click", () => {
+      btnFlow.classList.add("active");
+      btnNps.classList.remove("active");
+      paneFlow?.classList.remove("hidden");
+      paneNps?.classList.add("hidden");
+      loadInvestor().catch(() => {});
+      loadInvestorEvents().catch(() => {});
+    });
+    btnNps.addEventListener("click", () => {
+      btnNps.classList.add("active");
+      btnFlow.classList.remove("active");
+      paneNps?.classList.remove("hidden");
+      paneFlow?.classList.add("hidden");
+      loadNps().catch(() => {});
+    });
+  }
+  if ($("#nps-sub-refresh")) {
+    $("#nps-sub-refresh").addEventListener("click", () => loadNps().catch((err) => alert(err.message)));
+  }
+  if ($("#nps-sub-collect")) {
+    $("#nps-sub-collect").addEventListener("click", () => startJob("dart-nps").catch((err) => alert(err.message)));
+  }
+}
+
 applyPriceChrome("dash");
+setupInvestorSubtabs();
 loadDash().catch((err) => {
   $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
 });

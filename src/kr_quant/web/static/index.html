@@ -17,26 +17,26 @@
     </div>
     <div class="nav-group">Quant</div>
     <button class="nav-btn active" data-view="dash" data-tip="재무 Quant 후보 요약입니다. 가치·품질·성장·모멘텀·안정으로 점수를 냅니다. 수급·전략은 합산하지 않습니다.">대시보드</button>
-    <button class="nav-btn" data-view="rank" data-tip="시총·거래대금·보통주 조건을 통과한 종목을 점수순으로 봅니다. LLM은 점수를 고치지 않습니다.">랭킹</button>
-    <button class="nav-btn" data-view="strategy" data-tip="Quant TOP20 일봉 백테스트입니다. 랭킹 후보의 진입 규칙을 연구합니다. 주문이 아닙니다.">전략</button>
-    <button class="nav-btn" data-view="screens" data-tip="토스 골라보기와 비슷한 이름의 연구 목록입니다. 토스를 긁지 않고 우리 재무·수급 규칙으로 걸러 봅니다.">골라보기</button>
-    <div class="nav-group">시장·수급</div>
-    <button class="nav-btn" data-view="market" data-tip="공포·탐욕, 국내·국제 매크로 우호/부담 코멘트, 네이버 뉴스입니다. Quant 점수에 넣지 않습니다.">시장 국면</button>
-    <button class="nav-btn" data-view="sector" data-tip="조건 통과 종목을 업종으로 묶어 상대강도·확산·실적을 봅니다. Quant 점수에 넣지 않습니다.">업종</button>
-    <button class="nav-btn" data-view="flow" data-tip="토스 투자자 매매에서 외인·기관이 같이 산 쌍끌이와 사모펀드 순매수입니다. 주수 합산이며 Quant와 무관합니다.">수급</button>
-    <button class="nav-btn" data-view="investor" data-tip="KIS 공식 투자자 동향입니다. 관심종목·고유동성만 받습니다. 기금은 국민연금이라고 부르지 않습니다.">공식 수급</button>
-    <button class="nav-btn" data-view="empty" data-tip="외인·기관이 같이 판 자리, 낮은 외인 지분, 최근 다시 산 복귀 조짐입니다. 매수 지시가 아닙니다.">빈집</button>
-    <button class="nav-btn" data-view="trade" data-tip="퀀트 TOP100 밖 수급 후보에 일봉 스토캐스틱·일목을 붙인 연구 화면입니다. 태그에 마우스를 올리면 뜻을 볼 수 있습니다.">트레이딩</button>
-    <button class="nav-btn" data-view="toss" data-tip="토스 급상승·급하락·거래대금 시세 랭킹입니다. 재무 점수와 무관하며 약 2분 캐시입니다.">토스 랭킹</button>
-    <button class="nav-btn" data-view="watch" data-tip="직접 저장한 메모 목록입니다. 점수나 수급 순위가 아닙니다.">관심종목</button>
-    <div class="nav-group">리서치</div>
-    <button class="nav-btn" data-view="sunzi" data-tip="손자 전장 조건과 양 웬리식 반대심문입니다. 재미·연구 코너이며 매수가 아닙니다.">손자 五事</button>
-    <button class="nav-btn" data-view="nps" data-tip="OpenDART 대량보유 공시에서 국민연금 5% 이상 보유만 모읍니다. KIS 기금·토스 연기금과 섞지 않으며 Quant에 넣지 않습니다.">국민연금 5%</button>
-    <button class="nav-btn" data-view="us13f" data-tip="미국 기관이 SEC에 낸 13F 분기 말 보유입니다. 최대 45일 시차가 있고 Quant에 넣지 않습니다.">미국 13F</button>
-    <button class="nav-btn" data-view="reports" data-tip="버튼을 눌러 저장한 AI 분석과 간단 검증입니다. Quant 점수는 바꾸지 않습니다.">AI 리포트</button>
+    <button class="nav-btn" data-view="rank" data-tip="시총·거래대금·보통주 조건을 통과한 종목을 점수순으로 봅니다. LLM은 점수를 고치지 않습니다.">점수 랭킹</button>
+    <button class="nav-btn" data-view="strategy" data-tip="Quant TOP20 일봉 백테스트입니다. 랭킹 후보의 진입 규칙을 연구합니다.">전략·백테스트</button>
+    <button class="nav-btn" data-view="screens" data-tip="밸류·성장·배당·모멘텀 테마별 정밀 스크리닝(골라보기) 목록입니다.">테마 스크리너</button>
+    <div class="nav-group">시장 · 매크로 · 섹터</div>
+    <button class="nav-btn" data-view="market" data-tip="글로벌 거시경제, 한·미 금리차, 환율, 원자재, 공포탐욕 및 계절성 분석입니다.">글로벌 매크로</button>
+    <button class="nav-btn" data-view="sector" data-tip="KSIC 업종별 상대강도(RS), 확산도, 실적성장 6축 종합 랭킹 및 모멘텀 차트입니다.">업종·섹터</button>
+    <button class="nav-btn" data-view="investor" data-tip="공식 수급 추적 및 DART 국민연금 5% 대량보유 공시 통합 분석입니다.">메이저 수급</button>
+    <button class="nav-btn" data-view="flow" data-tip="토스 투자자 매매에서 외인·기관이 같이 산 쌍끌이와 사모펀드 순매수입니다.">쌍끌이 수급</button>
+    <button class="nav-btn" data-view="empty" data-tip="외인·기관 빈집 털이 및 수급 복귀 조짐 종목 발굴입니다.">빈집 발굴</button>
+    <button class="nav-btn" data-view="trade" data-tip="퀀트 TOP100 밖 수급 후보에 일봉 스토캐스틱·일목을 붙인 연구 화면입니다.">트레이딩</button>
+    <button class="nav-btn" data-view="toss" data-tip="토스 급상승·급하락·거래대금 시세 랭킹입니다.">토스 랭킹</button>
+    <button class="nav-btn" data-view="watch" data-tip="직접 저장한 메모 목록입니다.">관심종목</button>
+    <div class="nav-group">글로벌 리서치</div>
+    <button class="nav-btn" data-view="us13f" data-tip="워런 버핏, 마이클 버리 등 미국 대가들의 SEC 13F 분기 말 보유 지분 시각화입니다.">미국 13F</button>
+    <button class="nav-btn" data-view="sunzi" data-tip="손자 전장 조건과 양 웬리식 반대심문입니다.">손자 五事</button>
+    <button class="nav-btn" data-view="reports" data-tip="저장된 AI 심층 기업 분석 및 투자 검증 리포트입니다.">AI 리포트</button>
+    <button class="nav-btn hidden" data-view="nps">국민연금 5%</button>
     <div class="nav-group">시스템</div>
-    <button class="nav-btn" data-view="run" data-tip="데모, 재계산, KRX 시세, 실데이터 수집을 실행합니다. 시세 이력 확장은 Quant를 돌리지 않습니다.">실행</button>
-    <button class="nav-btn" data-view="settings" data-tip="API 키는 이 PC의 .env에만 저장됩니다. Quant 계산은 LLM을 쓰지 않습니다.">API 설정</button>
+    <button class="nav-btn" data-view="run" data-tip="데모, 재계산, KRX 시세, 실데이터 수집을 실행합니다.">실행 파이프라인</button>
+    <button class="nav-btn" data-view="settings" data-tip="API 키는 이 PC의 .env에만 저장됩니다.">API 설정</button>
     <div class="nav-foot">
       <p>KR Quant Research<br />v1.3 Engine</p>
     </div>
@@ -175,34 +175,56 @@
     </section>
 
     <section id="view-investor" class="view hidden">
-      <article class="card">
-        <div class="card-h">
-          <h2>공식 투자자 수급 (KIS)</h2>
-          <div class="actions">
-            <button class="ghost" id="investor-refresh">상태 새로고침</button>
-            <button class="primary" id="investor-collect" data-tip="관심종목과 거래대금 상위만 받습니다. 전 종목 순위가 아닙니다.">관심·고유동성 수집</button>
+      <div class="subtabs-bar">
+        <button type="button" class="subtab-btn active" id="subtab-investor-flow" data-subtab="flow">📊 기관·외국인 수급 추적 (KIS)</button>
+        <button type="button" class="subtab-btn" id="subtab-investor-nps" data-subtab="nps">🏢 국민연금 5% 대량보유 (DART)</button>
+      </div>
+
+      <div id="investor-subtab-flow-pane">
+        <article class="card">
+          <div class="card-h">
+            <h2>공식 투자자 수급 (KIS)</h2>
+            <div class="actions">
+              <button class="ghost" id="investor-refresh">상태 새로고침</button>
+              <button class="primary" id="investor-collect" data-tip="관심종목과 거래대금 상위만 받습니다. 전 종목 순위가 아닙니다.">관심·고유동성 수집</button>
+            </div>
           </div>
-        </div>
-        <p class="hint">한국투자증권 Open API 기반 일별 투자자(외국인·기관·기금 등) 순매수 동향입니다.</p>
-        <div id="investor-box" class="quality"></div>
-      </article>
-      <article class="card" style="margin-top:14px">
-        <div class="card-h">
-          <h2>연속 · 동반 · 방향전환</h2>
-          <div class="actions">
-            <label>전환 기준
-              <select id="investor-turn">
-                <option value="3">3일</option>
-                <option value="5" selected>5일</option>
-                <option value="10">10일</option>
-              </select>
-            </label>
-            <button class="ghost" id="investor-events-refresh">표 새로고침</button>
+          <p class="hint">한국투자증권 Open API 기반 일별 투자자(외국인·기관·기금 등) 순매수 동향입니다.</p>
+          <div id="investor-box" class="quality"></div>
+        </article>
+        <article class="card" style="margin-top:14px">
+          <div class="card-h">
+            <h2>연속 · 동반 · 방향전환</h2>
+            <div class="actions">
+              <label>전환 기준
+                <select id="investor-turn">
+                  <option value="3">3일</option>
+                  <option value="5" selected>5일</option>
+                  <option value="10">10일</option>
+                </select>
+              </label>
+              <button class="ghost" id="investor-events-refresh">표 새로고침</button>
+            </div>
           </div>
-        </div>
-        <p class="hint">외국인·기관의 연속 순매수 일수(Streak), 동반 매수(Double Buy), 방향 전환(Reversal) 감지 목록입니다.</p>
-        <div id="investor-events-box" class="quality"></div>
-      </article>
+          <p class="hint">외국인·기관의 연속 순매수 일수(Streak), 동반 매수(Double Buy), 방향 전환(Reversal) 감지 목록입니다.</p>
+          <div id="investor-events-box" class="quality"></div>
+        </article>
+      </div>
+
+      <div id="investor-subtab-nps-pane" class="hidden">
+        <article class="card">
+          <div class="card-h">
+            <h2>국민연금 5% 이상 대량보유</h2>
+            <div class="actions">
+              <span class="chip">OpenDART</span>
+              <button class="ghost" id="nps-sub-refresh">목록 새로고침</button>
+              <button class="primary" id="nps-sub-collect" data-tip="최근 대량보유 공시에서 제출인이 국민연금인 건만 받습니다.">공시 수집</button>
+            </div>
+          </div>
+          <p class="hint">OpenDART 대량보유상황보고(5% 이상 지분 보유/변동) 공식 공시 내역입니다.</p>
+          <div id="nps-sub-box" class="quality"></div>
+        </article>
+      </div>
     </section>
 
     <section id="view-sunzi" class="view hidden">
