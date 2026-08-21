@@ -3376,6 +3376,13 @@ async function loadMacro(refresh) {
     const overall = brief.overall || {};
     const kr = (brief.domestic || {}).stance || {};
     const us = (brief.international || {}).stance || {};
+    const DUP_IDS = new Set([
+      "usdkrw_bok", "DEXKOUS", "DGS10", "^KS11", "^KQ11", "^GSPC", "^IXIC", "^N225",
+      "GC=F", "CL=F", "HG=F", "BTC-USD", "ETH-USD", "^TNX", "DX-Y.NYB", "KRW=X", "JPY=X"
+    ]);
+    const domesticFiltered = (brief.domestic?.items || []).filter((it) => !DUP_IDS.has(it.id));
+    const internationalFiltered = (brief.international?.items || []).filter((it) => !DUP_IDS.has(it.id));
+
     briefBox.innerHTML = `
       ${renderYenCarryCard(yencarry)}
       <div class="brief-head">
@@ -3387,17 +3394,17 @@ async function loadMacro(refresh) {
       ${renderSeasonalitySection(seasonality)}
       <div class="macro-bi-grid">
         <div>
-          <h3 style="margin:0 0 8px;font-size:15px;color:#e8eef8;">🇰🇷 국내 매크로 지표 (한국은행 ECOS & 국내 증시)</h3>
-          <p class="hint" style="margin-bottom:8px;">기준금리, 한-미 금리차, 국고채, 원/달러 환율, CPI 및 국내 통화량 추이 차트</p>
+          <h3 style="margin:0 0 8px;font-size:15px;color:#e8eef8;">🇰🇷 한국은행 ECOS 거시 펀더멘털</h3>
+          <p class="hint" style="margin-bottom:8px;">기준금리, 한-미 금리차, 국고채 3년, 한국 CPI 물가지수, M2 통화량 (환율·지수는 상단 바로미터 참조)</p>
           <div class="macro-item-grid">
-            ${(brief.domestic?.items || []).map((it, idx) => renderMacroItemCard(it, idx, "kr")).join("")}
+            ${domesticFiltered.map((it, idx) => renderMacroItemCard(it, idx, "kr")).join("")}
           </div>
         </div>
         <div>
-          <h3 style="margin:0 0 8px;font-size:15px;color:#e8eef8;">🌐 국제 매크로 지표 (미국 연준 FRED & 글로벌 지표)</h3>
-          <p class="hint" style="margin-bottom:8px;">연준 기준금리, 미 국채 10년/2년, 장단기 스프레드, 미국 물가·실업률 추이 차트</p>
+          <h3 style="margin:0 0 8px;font-size:15px;color:#e8eef8;">🌐 미국 연준 FRED 거시 펀더멘털</h3>
+          <p class="hint" style="margin-bottom:8px;">연준 기준금리, 미 국채 2년, 10Y-2Y 장단기 스프레드, 미국 CPI 물가, 미국 실업률 (10년금리·환율은 상단 바로미터 참조)</p>
           <div class="macro-item-grid">
-            ${(brief.international?.items || []).map((it, idx) => renderMacroItemCard(it, idx, "us")).join("")}
+            ${internationalFiltered.map((it, idx) => renderMacroItemCard(it, idx, "us")).join("")}
           </div>
         </div>
       </div>
