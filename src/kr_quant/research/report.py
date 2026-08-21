@@ -135,6 +135,7 @@ def build_report_messages(
     web: list[dict[str, Any]] | None = None,
     macro: dict[str, Any] | None = None,
     yahoo: dict[str, Any] | None = None,
+    strategy_backtest: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     snap = quant_snapshot(row, as_of)
     payload = {
@@ -144,13 +145,15 @@ def build_report_messages(
         "naver_web": web or [],
         "macro_context": macro or {},
         "yahoo_research_quote": yahoo or {},
+        "strategy_backtest": strategy_backtest or {},
         "required_headings": list(REQUIRED_HEADINGS),
     }
     user = (
-        "아래 읽기 전용 스냅샷으로 VER4.0.0 지침 분석리포트를 작성하라.\n"
-        "네이버 뉴스·웹검색이 있으면 최신 뉴스·공시·이벤트 섹션에 근거로 쓰고, 제목·날짜·링크를 인용하라.\n"
-        "FRED 거시·Yahoo/yfinance 비교시세는 정책·테마·거시와 기술적 위치 섹션의 맥락으로만 쓰고, Quant 점수를 바꾸거나 재계산하지 마라.\n"
-        "검색 결과가 없으면 확인불가로 쓰고 꾸며내지 마라.\n"
+        "아래 읽기 전용 스냅샷으로 EquityResearch 3.7.2 Cloud-First Deep 지침 심층 분석리포트를 작성하라.\n"
+        "1) 4대 전략 백테스트(RSI 과매도, 볼린저 하단 반등, 골든크로스, 돈치안 채널 돌파) 결과가 포함되어 있습니다. 기술적 위치 및 목표가/타이밍 플레이북 섹션에 해당 종목의 1위 최적 추천 전략, 샤프 지수, 미래검증(OOS) 승률, MDD 및 실전 매매 타이밍 가이드를 명확한 표와 함께 요약·정리하라.\n"
+        "2) 네이버 뉴스·공시·웹검색이 있으면 최신 뉴스·공시·이벤트 섹션에 제목·날짜·링크를 인용하라.\n"
+        "3) FRED 거시·Yahoo 비교시세는 거시 및 기술적 맥락으로만 쓰고, Quant 점수를 바꾸거나 재계산하지 마라.\n"
+        "4) 데이터가 없으면 확인불가로 쓰고 꾸며내지 마라.\n"
         f"{json.dumps(payload, ensure_ascii=False, default=str)}\n"
     )
     return [
@@ -170,12 +173,13 @@ def write_report(
     web: list[dict[str, Any]] | None = None,
     macro: dict[str, Any] | None = None,
     yahoo: dict[str, Any] | None = None,
+    strategy_backtest: dict[str, Any] | None = None,
     run_id: str | None = None,
     root: Path | None = None,
 ) -> dict[str, Any]:
     ticker = str(row.get("ticker") or "").zfill(6)
     messages = build_report_messages(
-        row, as_of, links=links, root=root, news=news, web=web, macro=macro, yahoo=yahoo
+        row, as_of, links=links, root=root, news=news, web=web, macro=macro, yahoo=yahoo, strategy_backtest=strategy_backtest
     )
     raw_text, raw_body = call_chat(endpoint, messages, timeout=240, json_mode=False)
     markdown = strip_fence(raw_text)
@@ -195,6 +199,7 @@ def write_report(
         "usage": (raw_body.get("usage") or {}),
         "missing_headings": missing_headings(markdown),
         "report_markdown": markdown,
+        "strategy_backtest": strategy_backtest or {},
         "disclaimer": "리서치 의견이며 매수·매도 지시가 아닙니다.",
     }
     path = report_path(output_dir, as_of, ticker)

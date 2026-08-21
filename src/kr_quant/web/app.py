@@ -1530,6 +1530,13 @@ def api_research_report_post(body: ResearchIn) -> dict[str, Any]:
         yahoo = stock_research_quote(code, row.get("market"))
     except Exception:  # noqa: BLE001
         yahoo = {}
+    strategy_backtest: dict[str, Any] = {}
+    try:
+        from kr_quant.strategy.run import backtest_single_stock
+
+        strategy_backtest = backtest_single_stock(s, code)
+    except Exception:  # noqa: BLE001
+        strategy_backtest = {}
     try:
         record = write_report(
             endpoint,
@@ -1541,6 +1548,7 @@ def api_research_report_post(body: ResearchIn) -> dict[str, Any]:
             web=web,
             macro=macro,
             yahoo=yahoo,
+            strategy_backtest=strategy_backtest,
             run_id=str(row.get("run_id") or ""),
             root=s.root,
         )
