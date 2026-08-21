@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Callable
 
 import pandas as pd
@@ -38,21 +39,20 @@ def _top(df: pd.DataFrame, n: int = 50, by: str | None = None) -> pd.DataFrame:
 
 
 def _load_stocks_df(settings: Settings) -> pd.DataFrame:
-    candidates = [
-        settings.output_dir / "latest_all_stocks.parquet",
-        settings.root / "data" / "output" / "latest_all_stocks.parquet",
-    ]
-    runs_dir = settings.data_dir / "runs"
-    if runs_dir.exists():
-        runs = sorted(runs_dir.glob("run_*"), reverse=True)
-        for r in runs:
-            candidates.append(r / "all_stocks.parquet")
+    candidates: list[Path] = []
+    if settings.output_dir.exists():
+        run_folders = sorted(settings.output_dir.glob("as_of_date=*"), key=lambda p: p.name, reverse=True)
+        for rf in run_folders:
+            candidates.append(rf / "all_stocks.parquet")
+
+    candidates.append(settings.output_dir / "latest_all_stocks.parquet")
+    candidates.append(settings.root / "data" / "output" / "latest_all_stocks.parquet")
 
     for path in candidates:
         if path.exists():
             try:
                 df = pd.read_parquet(path)
-                if not df.empty:
+                if not df.empty and len(df) > 0:
                     return df
             except Exception:
                 continue
