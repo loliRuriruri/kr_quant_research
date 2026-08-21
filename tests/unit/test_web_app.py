@@ -124,7 +124,7 @@ def test_research_reports_list_endpoint():
     assert "factorBars" in js
     assert "가치 ${v.toFixed(1)}" in js or "name} ${v.toFixed(1)}" in js
     assert "faChip" in js
-    assert "법 통과" in js or "法 통과" in js
+    assert "재무적격" in js or "법 통과" in js or "法 통과" in js
     assert "dual_pe_retail" in js
     assert "data-flow-more" in js
     assert "h-tabs" in js

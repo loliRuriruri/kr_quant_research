@@ -1505,11 +1505,11 @@ function fiveStrip(data) {
 
 function faChip(r) {
   if (r.fa_gate_pass === true) {
-    return `<span class="tag up has-tip" data-tip="${escapeHtml(r.fa_comment || "")}">法 통과</span>`;
+    return `<span class="tag up has-tip" data-tip-title="🛡️ 재무·리스크 적격 (손자병법 法 통과)" data-tip="${escapeHtml(r.fa_comment || "데이터 신뢰도, 재무 건전성 및 공시 리스크 요건을 모두 통과한 안전 적격 종목입니다.")}">🛡️ 재무적격</span>`;
   }
   if (r.fa_gate_pass === false) {
-    const why = (r.fa_reasons_ko || []).join(" ") || r.fa_comment || "법 미달";
-    return `<span class="tag down has-tip" data-tip="${escapeHtml(why)}">法 미달</span>`;
+    const why = (r.fa_reasons_ko || []).join(" ") || r.fa_comment || "재무 건전성 규율 미달";
+    return `<span class="tag down has-tip" data-tip-title="⚠️ 재무·리스크 주의 (손자병법 法 미달)" data-tip="${escapeHtml(why)}">⚠️ 재무주의</span>`;
   }
   return "";
 }
@@ -2459,14 +2459,14 @@ async function loadSunzi() {
   const rows = data.rows || [];
   if (currentView === "sunzi") {
     setPageAsOf(
-      `天 ${tian.regime_ko || "—"} · 法통과 ${data.fa_pass_n || 0}/${data.n || 0}종목`,
+      `天 ${tian.regime_ko || "—"} · 🛡️ 재무적격 ${data.fa_pass_n || 0}/${data.n || 0}종목`,
       "五事는 조사 오버레이입니다. Quant 순위를 바꾸지 않습니다."
     );
   }
   box.innerHTML = `
     <div class="five-grid">
       <div class="five-card"><span>天 시장</span><b>${fmt(tian.score, 0)}</b><p>${escapeHtml(tian.regime_ko || "")}</p></div>
-      <div class="five-card"><span>법 통과</span><b>${data.fa_pass_n || 0}</b><p>A-후보 / ${data.n || 0}종목</p></div>
+      <div class="five-card"><span>🛡️ 재무적격</span><b>${data.fa_pass_n || 0}</b><p>A-후보 / ${data.n || 0}종목</p></div>
       <div class="five-card"><span>조사 종목</span><b>${data.n || 0}</b><p>Quant 순위 상위</p></div>
     </div>
     <p class="hint">${escapeHtml(data.disclaimer || "")}</p>
@@ -2482,7 +2482,7 @@ async function loadSunzi() {
             <th class="sortable" data-sort="tian">天</th>
             <th class="sortable" data-sort="di">地</th>
             <th class="sortable" data-sort="jiang">將</th>
-            <th class="sortable" data-sort="fa">法</th>
+            <th class="sortable has-tip" data-sort="fa" data-tip="손자병법 法 (재무건전성·리스크 규율 게이트 통과 여부)">🛡️ 재무규율</th>
             <th>법</th>
           </tr>
         </thead>

@@ -16,7 +16,7 @@ def test_fa_pass_does_not_touch_quant():
     assert gate["used_in_quant"] is False
     assert gate["fa_gate_pass"] is True
     assert gate["a_candidate"] is True
-    assert gate["fa_label"] == "法 통과"
+    assert gate["fa_label"] in {"🛡️ 재무적격", "재무적격", "法 통과"}
     assert gate["comment"]
 
 

@@ -295,7 +295,7 @@ def build_sunzi_board(settings: Settings, n: int = 40) -> dict[str, Any]:
             {"id": "tian", "han": "天", "ko": "시장", "where": "시장 국면 페이지와 동일. 종목 공통"},
             {"id": "di", "han": "地", "ko": "업종", "where": "업종 페이지 상대강도. 종목 업종에 붙임"},
             {"id": "jiang", "han": "將", "ko": "자본배분", "where": "ROIC·FCF·희석 규율"},
-            {"id": "fa", "han": "法", "ko": "규율", "where": "A-후보 게이트. 랭킹 칩과 동일"},
+            {"id": "fa", "han": "法", "ko": "재무규율", "where": "재무건전성·리스크 안전 게이트"},
         ],
         "disclaimer": (
             "손자 五事는 전장 조건이고, 전략 검토는 굳이 지금 싸울지 묻는 반대심문입니다. "
