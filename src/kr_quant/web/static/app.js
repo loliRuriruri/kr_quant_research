@@ -4638,8 +4638,6 @@ loadDash().catch((err) => {
   $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
 });
 loadSettings().catch(() => {});
-loadMacro().catch(() => {});
-loadMarket().catch(() => {});
 
 function reloadCurrentView() {
   const name = currentView || "dash";
