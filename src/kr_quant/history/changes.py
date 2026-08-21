@@ -17,6 +17,9 @@ def connect(db_path) -> duckdb.DuckDBPyConnection:
 
 
 def init_db(con: duckdb.DuckDBPyConnection) -> None:
+    from kr_quant.flow.store import init_investor_db
+
+    init_investor_db(con)
     con.execute(
         f"""
         CREATE TABLE IF NOT EXISTS {HISTORY_TABLE} (

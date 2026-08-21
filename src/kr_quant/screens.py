@@ -19,6 +19,7 @@ def _num(df: pd.DataFrame, col: str) -> pd.Series:
 
 
 def _eligible(df: pd.DataFrame) -> pd.DataFrame:
+    """Liquidity/common-stock universe, not TOP20."""
     out = df.copy()
     out["ticker"] = out["ticker"].astype(str).str.zfill(6)
     if "universe_eligible" in out.columns:
@@ -26,9 +27,12 @@ def _eligible(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _top(df: pd.DataFrame, n: int = 30) -> pd.DataFrame:
-    if "quant_score" in df.columns:
-        df = df.sort_values("quant_score", ascending=False)
+def _top(df: pd.DataFrame, n: int = 50, by: str | None = None) -> pd.DataFrame:
+    col = by or ""
+    if col and col in df.columns:
+        df = df.sort_values(col, ascending=False, na_position="last")
+    elif "quant_score" in df.columns:
+        df = df.sort_values("quant_score", ascending=False, na_position="last")
     return df.head(n)
 
 
@@ -36,48 +40,52 @@ def screen_uptrend(df: pd.DataFrame) -> pd.DataFrame:
     r3, r6 = _num(df, "return_3m"), _num(df, "return_6m")
     mom = _num(df, "momentum_score")
     hit = df[(r3 > 0) & (r6 > 0) & (mom >= 5)]
-    return _top(hit)
+    return _top(hit, by="momentum_score")
 
 
 def screen_value_growth(df: pd.DataFrame) -> pd.DataFrame:
     hit = df[(_num(df, "value_score") >= 18) & (_num(df, "growth_score") >= 15)]
-    return _top(hit)
+    work = hit.copy()
+    work["_s"] = _num(work, "value_score").fillna(0) + _num(work, "growth_score").fillna(0)
+    return _top(work, by="_s")
 
 
 def screen_cheap_value(df: pd.DataFrame) -> pd.DataFrame:
     hit = df[(_num(df, "value_score") >= 20) & (_num(df, "growth_score") < 18)]
-    return _top(hit)
+    return _top(hit, by="value_score")
 
 
 def screen_cash_return(df: pd.DataFrame) -> pd.DataFrame:
     hit = df[(_num(df, "fcf_yield") > 0.04) & (_num(df, "financial_score") >= 5)]
-    return _top(hit)
+    return _top(hit, by="fcf_yield")
 
 
 def screen_earners(df: pd.DataFrame) -> pd.DataFrame:
     hit = df[(_num(df, "roic") > 0.08) & (_num(df, "quality_score") >= 15) & (_num(df, "roe") > 0.08)]
-    return _top(hit)
+    return _top(hit, by="roic")
 
 
 def screen_value_turn(df: pd.DataFrame) -> pd.DataFrame:
     hit = df[(_num(df, "value_score") >= 18) & (_num(df, "return_3m") > 0) & (_num(df, "momentum_score") >= 4)]
-    return _top(hit)
+    return _top(hit, by="value_score")
 
 
 def screen_future_cash(df: pd.DataFrame) -> pd.DataFrame:
     nda = _num(df, "net_debt_assets")
     hit = df[(_num(df, "fcf_yield") > 0.03) & (_num(df, "quality_score") >= 14) & (nda.fillna(1) < 0.35)]
-    return _top(hit)
+    return _top(hit, by="fcf_yield")
 
 
 def screen_growth(df: pd.DataFrame) -> pd.DataFrame:
     hit = df[(_num(df, "growth_score") >= 18) & (_num(df, "revenue_yoy") > 0)]
-    return _top(hit)
+    return _top(hit, by="growth_score")
 
 
 def screen_quality_value(df: pd.DataFrame) -> pd.DataFrame:
     hit = df[(_num(df, "value_score") >= 16) & (_num(df, "quality_score") >= 16)]
-    return _top(hit)
+    work = hit.copy()
+    work["_s"] = _num(work, "value_score").fillna(0) + _num(work, "quality_score").fillna(0)
+    return _top(work, by="_s")
 
 
 def screen_stable_growth(df: pd.DataFrame) -> pd.DataFrame:
@@ -87,7 +95,7 @@ def screen_stable_growth(df: pd.DataFrame) -> pd.DataFrame:
         & (_num(df, "quality_score") >= 14)
         & (_num(df, "risk_penalty").fillna(0) < 4)
     ]
-    return _top(hit)
+    return _top(hit, by="growth_score")
 
 
 SCREENS: list[dict[str, Any]] = [
@@ -95,21 +103,21 @@ SCREENS: list[dict[str, Any]] = [
         "id": "uptrend",
         "name": "연속 상승세",
         "popular": True,
-        "how": "3개월·6개월 수익률이 모두 플러스이고 모멘텀 점수가 있는 종목",
+        "how": "조건 통과 종목에서 3개월·6개월 수익률이 플러스인 종목. TOP20 전용이 아니고 모멘텀 순입니다",
         "fn": screen_uptrend,
     },
     {
         "id": "value_growth",
         "name": "저평가 성장주",
         "popular": True,
-        "how": "가치 점수 18 이상, 성장 점수 15 이상",
+        "how": "가치 18 · 성장 15 이상, 가치+성장 합산 순",
         "fn": screen_value_growth,
     },
     {
         "id": "cheap_value",
         "name": "아직 저렴한 가치주",
         "popular": False,
-        "how": "가치는 높은데 성장 점수는 아직 낮은 종목",
+        "how": "가치 20 이상·성장 18 미만. 종합 점수 대신 가치 순으로 보여 줍니다",
         "fn": screen_cheap_value,
     },
     {
@@ -151,7 +159,21 @@ SCREENS: list[dict[str, Any]] = [
         "id": "dual",
         "name": "쌍끌이 매수",
         "popular": True,
-        "how": "토스 수급에서 외인·기관이 같이 산 종목. 재무 게이트와 겹치면 위에 둡니다",
+        "how": "토스 외인·기관합계 동시 순매수. 기관합계는 연기금이 아닙니다",
+        "fn": None,
+    },
+    {
+        "id": "dual_pe",
+        "name": "쌍끌이+사모",
+        "popular": True,
+        "how": "외인·기관 쌍끌이와 사모 순매수가 겹친 종목. 수급 스캔이 필요합니다",
+        "fn": None,
+    },
+    {
+        "id": "dual_pe_retail",
+        "name": "쌍끌이+사모+개인이탈",
+        "popular": False,
+        "how": "쌍끌이·사모 매수에 개인 순매도가 겹친 극단 수급. 수급 스캔이 필요합니다",
         "fn": None,
     },
     {
@@ -171,7 +193,7 @@ SCREENS: list[dict[str, Any]] = [
 ]
 
 
-def _flow_dual_tickers(settings: Settings) -> set[str]:
+def _flow_tickers(settings: Settings, key: str) -> set[str]:
     path = settings.root / "data" / "cache" / "investor_flow.json"
     if not path.exists():
         return set()
@@ -180,9 +202,9 @@ def _flow_dual_tickers(settings: Settings) -> set[str]:
     except json.JSONDecodeError:
         return set()
     tickers: set[str] = set()
-    for row in data.get("dual") or []:
+    for row in data.get(key) or []:
         code = str(row.get("ticker") or "").zfill(6)
-        if code and row.get("dual"):
+        if code:
             tickers.add(code)
     return tickers
 
@@ -197,6 +219,10 @@ def _row_public(rec: dict[str, Any], extra: str = "") -> dict[str, Any]:
         "value_score": rec.get("value_score"),
         "quality_score": rec.get("quality_score"),
         "growth_score": rec.get("growth_score"),
+        "momentum_score": rec.get("momentum_score"),
+        "financial_score": rec.get("financial_score"),
+        "top20_eligible": rec.get("top20_eligible"),
+        "fa_label": rec.get("fa_label"),
         "comment_short": extra,
     }
 
@@ -205,22 +231,34 @@ def list_screens() -> list[dict[str, Any]]:
     return [{"id": s["id"], "name": s["name"], "popular": s["popular"], "how": s["how"]} for s in SCREENS]
 
 
-def run_screen(settings: Settings, screen_id: str) -> dict[str, Any]:
+def run_screen(settings: Settings, screen_id: str, *, include_quant: bool = True) -> dict[str, Any]:
     spec = next((s for s in SCREENS if s["id"] == screen_id), None)
     if spec is None:
         return {"configured": False, "used_in_quant": False, "error": "없는 목록입니다.", "rows": []}
     path = settings.output_dir / "latest_all_stocks.parquet"
     if not path.exists():
         return {"configured": False, "used_in_quant": False, "error": "점수 결과가 없습니다.", "rows": []}
-    df = _eligible(pd.read_parquet(path))
-    if spec["id"] == "dual":
-        dual = _flow_dual_tickers(settings)
-        hit = df[df["ticker"].isin(dual)] if dual else df.iloc[0:0]
-        note = "수급 쌍끌이"
+    raw = pd.read_parquet(path)
+    df = _eligible(raw)
+    flow_map = {"dual": "dual", "dual_pe": "dual_pe", "dual_pe_retail": "dual_pe_retail"}
+    if spec["id"] in flow_map:
+        tickers = _flow_tickers(settings, flow_map[spec["id"]])
+        hit = df[df["ticker"].isin(tickers)] if tickers else df.iloc[0:0]
+        if hit.empty and tickers:
+            spec = {**spec, "how": "수급은 있는데 조건 통과 종목과 안 겹칩니다. 수급 탭에서 전체로 보세요."}
     else:
         hit = spec["fn"](df)
-        note = spec["how"]
-    rows = [_row_public(r, note) for r in hit.head(40).to_dict("records")]
+    from kr_quant.sunzi.fa import annotate_fa
+
+    if not include_quant:
+        if "top100_eligible" in hit.columns:
+            hit = hit[hit["top100_eligible"] != True]  # noqa: E712
+        elif "quant_rank" in hit.columns:
+            hit = hit[pd.to_numeric(hit["quant_rank"], errors="coerce").fillna(9999) > 100]
+    from kr_quant.web.comments import quant_comment_short
+
+    recs = annotate_fa(hit.head(50).to_dict("records"))
+    rows = [_row_public(r, quant_comment_short(r)) for r in recs]
     return {
         "configured": True,
         "used_in_quant": False,
@@ -228,18 +266,19 @@ def run_screen(settings: Settings, screen_id: str) -> dict[str, Any]:
         "name": spec["name"],
         "how": spec["how"],
         "n": len(rows),
-        "disclaimer": "토스 골라보기 이름을 참고한 우리 공식입니다. 토스 목록을 긁어오지 않으며 Quant 점수에 합산하지 않습니다.",
+        "disclaimer": "토스 골라보기 이름을 참고한 우리 공식입니다. 토스 목록을 긁지 않습니다.",
+        "include_quant": include_quant,
         "rows": rows,
     }
 
 
-def screens_payload(settings: Settings, screen_id: str | None = None) -> dict[str, Any]:
+def screens_payload(settings: Settings, screen_id: str | None = None, *, include_quant: bool = True) -> dict[str, Any]:
     catalog = list_screens()
     chosen = screen_id or "value_growth"
-    body = run_screen(settings, chosen)
+    body = run_screen(settings, chosen, include_quant=include_quant)
     return {
         "used_in_quant": False,
-        "selection": "토스 주식 골라보기와 비슷한 이름으로 우리 재무·수급 규칙을 걸러 봅니다. 공식 API가 없어 긁지 않습니다.",
+        "selection": "시총·거래대금 조건을 통과한 종목에서 목록 규칙으로 거릅니다.",
         "catalog": catalog,
         **body,
     }

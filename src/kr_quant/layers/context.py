@@ -27,7 +27,7 @@ def load_price_frame(settings: Settings) -> pd.DataFrame:
     return pd.DataFrame()
 
 
-def build_market_snapshot(settings: Settings) -> dict[str, Any]:
+def build_market_snapshot(settings: Settings, *, refresh: bool = False) -> dict[str, Any]:
     cfg = _market_config(settings)
     prices = load_price_frame(settings)
     ecos: dict[str, Any] = {"configured": False, "used_in_quant": False, "series": []}
@@ -40,7 +40,7 @@ def build_market_snapshot(settings: Settings) -> dict[str, Any]:
     try:
         from kr_quant.ingest.fear_greed import fear_greed_snapshot
 
-        fear = fear_greed_snapshot()
+        fear = fear_greed_snapshot(refresh=refresh)
     except Exception as exc:  # noqa: BLE001
         fear = {"configured": False, "used_in_quant": False, "error": str(exc)[:180]}
     if prices.empty:

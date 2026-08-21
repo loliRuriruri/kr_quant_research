@@ -7,4 +7,5 @@ krx_prices:
   lookback_days: 10
   history_days: 750
   skip_non_trading_days: true
+  official_flow: true
 used_in_quant: false

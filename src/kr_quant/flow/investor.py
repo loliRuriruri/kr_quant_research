@@ -42,14 +42,29 @@ def _breakdown_net(row: dict[str, Any], key: str) -> int:
     return net_of(br.get(key))
 
 
+def _party_net(row: dict[str, Any], *keys: str) -> int:
+    for key in keys:
+        if key in row and isinstance(row.get(key), dict):
+            return net_of(row.get(key))
+    inst = row.get("institution") if isinstance(row.get("institution"), dict) else {}
+    br = inst.get("breakdown") if isinstance(inst.get("breakdown"), dict) else {}
+    for key in keys:
+        if key in br:
+            return net_of(br.get(key))
+    return 0
+
+
 def summarize_records(records: list[dict[str, Any]], days: int = 5) -> dict[str, Any]:
     rows = [r for r in records if isinstance(r, dict)][: max(1, days)]
     foreign = _sum_net(rows, "foreigner")
     institution = _sum_net(rows, "institution")
     individual = _sum_net(rows, "individual")
     pe = sum(_breakdown_net(row, "privateEquityFund") for row in rows)
-    trust = sum(_breakdown_net(row, "trust") for row in rows)
-    pension = sum(_breakdown_net(row, "pensionFund") for row in rows)
+    trust = sum(_breakdown_net(row, "trust") + _breakdown_net(row, "investmentTrust") for row in rows)
+    pension = sum(_breakdown_net(row, "pensionFund") + _breakdown_net(row, "pension") for row in rows)
+    other_corp = sum(
+        _party_net(row, "otherCorporation", "other_corporation", "otherCorp", "corporation") for row in rows
+    )
     pe_streak = 0
     for row in rows:
         if _breakdown_net(row, "privateEquityFund") > 0:
@@ -80,9 +95,35 @@ def summarize_records(records: list[dict[str, Any]], days: int = 5) -> dict[str,
     rates = [rate for rate in (_holding_rate(r) for r in rows) if rate is not None]
     foreign_rate_chg = (rates[0] - rates[-1]) if len(rates) >= 2 else None
 
-    empty = foreign < 0 and institution < 0
+    empty_raw = foreign < 0 and institution < 0
+    smart_sell = abs(min(foreign, 0)) + abs(min(institution, 0))
+    total_abs = abs(foreign) + abs(institution) + abs(individual) + abs(other_corp)
+    empty_share = (smart_sell / total_abs) if total_abs else 0.0
+    holding_exit = None
+    if foreign_qty and foreign_qty > 0 and foreign < 0:
+        holding_exit = abs(foreign) / float(foreign_qty)
+    empty = bool(
+        empty_raw
+        and (
+            sell_streak >= 2
+            or smart_sell >= 20_000
+            or (holding_exit is not None and holding_exit >= 0.005 and smart_sell >= 100)
+        )
+    )
+    dual = foreign > 0 and institution > 0
+    pe_buy = pe > 0
+    dual_pe = dual and pe_buy
+    dual_pe_retail = dual_pe and individual < 0
     first = rows[-1]["date"] if rows else None
     last = rows[0]["date"] if rows else None
+    from kr_quant.flow.events import daily_from_toss_records, direction_turn, signed_streak
+
+    daily = daily_from_toss_records(rows, days=len(rows))
+    foreign_streak = signed_streak([d["foreign"] for d in daily])
+    inst_streak = signed_streak([d["institution"] for d in daily])
+    dual_day = [d["foreign"] if d["foreign"] > 0 and d["institution"] > 0 else (d["foreign"] if d["foreign"] < 0 and d["institution"] < 0 else 0.0) for d in daily]
+    dual_streak = signed_streak(dual_day)
+    turn_dual = direction_turn(dual_day, min_days=5)
     return {
         "days": len(rows),
         "from": first,
@@ -93,14 +134,30 @@ def summarize_records(records: list[dict[str, Any]], days: int = 5) -> dict[str,
         "pe_net": pe,
         "trust_net": trust,
         "pension_net": pension,
-        "dual": foreign > 0 and institution > 0,
-        "pe_buy": pe > 0,
+        "other_corp_net": other_corp,
+        "dual": dual,
+        "pe_buy": pe_buy,
         "pe_streak": pe_streak,
         "pe_accum": pe > 0 and pe_streak >= 2,
+        "dual_pe": dual_pe,
+        "dual_pe_retail": dual_pe_retail,
+        "other_corp_buy": other_corp > 0,
+        "pension_buy": pension > 0,
+        "empty_raw": empty_raw,
+        "empty_share": round(empty_share, 4),
+        "holding_exit": None if holding_exit is None else round(holding_exit, 4),
         "empty": empty,
-        "retail_absorb": empty and individual > 0,
+        "retail_absorb": empty_raw and individual > 0,
         "comeback": comeback,
         "sell_streak": sell_streak,
+        "foreign_streak": foreign_streak["days"] if foreign_streak["direction"] != "FLAT" else 0,
+        "foreign_direction": foreign_streak["direction"],
+        "institution_streak": inst_streak["days"] if inst_streak["direction"] != "FLAT" else 0,
+        "institution_direction": inst_streak["direction"],
+        "dual_streak": dual_streak["days"] if dual_streak["direction"] != "FLAT" else 0,
+        "dual_direction": dual_streak["direction"],
+        "turn_dual": turn_dual,
+        "daily": daily,
         "recent_foreign_net": recent_foreign,
         "recent_institution_net": recent_institution,
         "foreign_holding_rate": foreign_rate,
@@ -124,6 +181,12 @@ def classify_setups(row: dict[str, Any]) -> list[str]:
         tags.append("복귀")
     if row.get("dual") and row.get("pe_buy"):
         tags.append("쌍끌이+사모")
+    if row.get("dual_pe_retail"):
+        tags.append("쌍끌이+사모+개인이탈")
+    if row.get("other_corp_buy"):
+        tags.append("기타법인")
+    if row.get("pension_buy") and (row.get("dual") or row.get("pe_buy")):
+        tags.append("연기금")
     return tags
 
 
@@ -202,6 +265,12 @@ def filter_trading(
         if mode == "comeback" and not comeback:
             continue
         if mode == "dual_pe" and not (dual and pe):
+            continue
+        if mode == "dual_pe_retail" and not row.get("dual_pe_retail"):
+            continue
+        if mode == "other_corp" and not row.get("other_corp_buy"):
+            continue
+        if mode == "pension" and not row.get("pension_buy"):
             continue
         if min_krw and setup_notional(row) < float(min_krw):
             continue

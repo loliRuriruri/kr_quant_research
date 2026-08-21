@@ -71,6 +71,39 @@ def list_saved_reports(output_dir: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def delete_saved_report(
+    output_dir: Path,
+    ticker: str,
+    as_of: str,
+    *,
+    kind: str | None = None,
+    filename: str | None = None,
+) -> dict[str, Any]:
+    code = str(ticker).zfill(6)
+    folder = output_dir / "research" / f"as_of={as_of}"
+    targets: list[Path] = []
+    if filename:
+        safe = Path(str(filename)).name
+        targets.append(folder / safe)
+    elif kind == "AI 분석 리포트":
+        targets.append(report_path(output_dir, as_of, code))
+    elif kind == "간단 검증":
+        targets.append(output_dir / "research" / f"as_of={as_of}" / f"{code}.json")
+    else:
+        targets.extend(
+            [
+                report_path(output_dir, as_of, code),
+                output_dir / "research" / f"as_of={as_of}" / f"{code}.json",
+            ]
+        )
+    deleted: list[str] = []
+    for path in targets:
+        if path.exists() and path.is_file() and "research" in path.parts:
+            path.unlink()
+            deleted.append(path.name)
+    return {"ok": bool(deleted), "deleted": deleted, "ticker": code, "as_of_date": as_of}
+
+
 def find_report_file(output_dir: Path, ticker: str, as_of: str | None = None) -> Path | None:
     code = str(ticker).zfill(6)
     if as_of:

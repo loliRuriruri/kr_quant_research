@@ -27,6 +27,8 @@ def test_dual_and_pe_from_toss_shape():
     out = summarize_records(recs, days=5)
     assert out["dual"] is True
     assert out["pe_buy"] is True
+    assert out["dual_pe"] is True
+    assert out["dual_pe_retail"] is True
     assert out["foreign_net"] == 110
     assert out["pe_net"] == 35
     assert out["used_in_quant"] is False
@@ -92,8 +94,14 @@ def test_empty_house_and_comeback():
     ]
     gone = summarize_records(sold, days=5)
     assert gone["empty"] is True
+    assert gone["empty_raw"] is True
     assert gone["comeback"] is False
     assert gone["sell_streak"] == 2
+
+    tiny = [_day("2026-08-20", -1, -1, 2, 0.1)]
+    weak = summarize_records(tiny, days=5)
+    assert weak["empty_raw"] is True
+    assert weak["empty"] is False
 
     rows = [
         {"ticker": "000001", "company": "알파", "empty": True, "comeback": False, "retail_absorb": True, "foreign_holding_rate": 0.02, "empty_krw": 8_000_000_000},

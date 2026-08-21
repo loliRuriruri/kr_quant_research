@@ -100,7 +100,17 @@ def latest_point(api_key: str | None, alias: str) -> dict[str, Any] | None:
         start = (today.replace(day=1) - timedelta(days=400)).strftime("%Y%m")
         end = today.strftime("%Y%m")
     rows = search_series(api_key, alias, start, end, limit=8)
-    return rows[-1] if rows else None
+    if not rows:
+        return None
+    last = dict(rows[-1])
+    prev = rows[-2] if len(rows) >= 2 else None
+    last["prev_value"] = None if not prev else prev.get("value")
+    last["prev_time"] = None if not prev else prev.get("time")
+    if last.get("value") is not None and prev and prev.get("value") is not None:
+        last["delta"] = float(last["value"]) - float(prev["value"])
+    else:
+        last["delta"] = None
+    return last
 
 
 def ecos_snapshot(api_key: str | None) -> dict[str, Any]:

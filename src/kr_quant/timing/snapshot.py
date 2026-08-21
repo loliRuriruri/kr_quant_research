@@ -36,6 +36,46 @@ def technical_snapshot(hist: pd.DataFrame | None) -> dict[str, Any]:
     return last_signals(high, low, close)
 
 
+_last_close_cache: tuple[float, dict[str, float]] | None = None
+
+
+def last_closes(settings: Settings) -> dict[str, float]:
+    """Latest KRX close by ticker. Overlay helper, not a Quant input."""
+    global _last_close_cache
+    frame = load_prices(settings)
+    if frame is None or frame.empty:
+        return {}
+    path_mtime = 0.0
+    for folder in (settings.staged_dir / "live", settings.staged_dir / "demo"):
+        path = folder / "prices.parquet"
+        if path.exists():
+            path_mtime = max(path_mtime, path.stat().st_mtime)
+    if _last_close_cache and _last_close_cache[0] == path_mtime:
+        return _last_close_cache[1]
+    work = frame.copy()
+    work["ticker"] = work["ticker"].astype(str).str.zfill(6)
+    work["trade_date"] = pd.to_datetime(work["trade_date"], errors="coerce")
+    work["close"] = pd.to_numeric(work["close"], errors="coerce")
+    work = work.dropna(subset=["ticker", "trade_date", "close"]).sort_values("trade_date")
+    series = work.groupby("ticker", sort=False)["close"].last()
+    out = {str(k): float(v) for k, v in series.items()}
+    _last_close_cache = (path_mtime, out)
+    return out
+
+
+def attach_last_close(rows: list[dict[str, Any]], settings: Settings) -> list[dict[str, Any]]:
+    closes = last_closes(settings)
+    if not closes:
+        return rows
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        code = str(row.get("ticker") or "").zfill(6)
+        if code in closes and row.get("last_close") is None:
+            row["last_close"] = closes[code]
+    return rows
+
+
 def load_prices(settings: Settings) -> pd.DataFrame:
     for folder in (settings.staged_dir / "live", settings.staged_dir / "demo"):
         path = folder / "prices.parquet"

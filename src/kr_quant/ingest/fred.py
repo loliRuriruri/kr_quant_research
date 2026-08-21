@@ -12,15 +12,17 @@ SERIES: list[dict[str, str]] = [
     {"id": "DGS2", "label": "미국 2년 금리", "unit": "%"},
     {"id": "T10Y2Y", "label": "장단기 스프레드(10Y-2Y)", "unit": "%p"},
     {"id": "CPIAUCSL", "label": "미국 CPI", "unit": "index"},
+    {"id": "PCEPI", "label": "미국 PCE", "unit": "index"},
     {"id": "UNRATE", "label": "미국 실업률", "unit": "%"},
     {"id": "DEXKOUS", "label": "원/달러", "unit": "USD/KRW"},
+    {"id": "VIXCLS", "label": "VIX", "unit": ""},
 ]
 
 _cache: dict[str, tuple[float, Any]] = {}
 _TTL = 6 * 3600
 
 
-def parse_observations(payload: dict[str, Any], limit: int = 8) -> list[dict[str, Any]]:
+def parse_observations(payload: dict[str, Any], limit: int = 60) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for raw in payload.get("observations") or []:
         if not isinstance(raw, dict):
@@ -44,6 +46,7 @@ def summarize_series(obs: list[dict[str, Any]], spec: dict[str, str]) -> dict[st
     delta = None
     if latest and prev and prev.get("value") is not None:
         delta = float(latest["value"]) - float(prev["value"])
+    history = list(reversed(obs[:60]))
     return {
         "id": spec["id"],
         "label": spec["label"],
@@ -53,6 +56,7 @@ def summarize_series(obs: list[dict[str, Any]], spec: dict[str, str]) -> dict[st
         "prev_date": None if not prev else prev.get("date"),
         "prev_value": None if not prev else prev.get("value"),
         "delta": delta,
+        "history": history,
         "used_in_quant": False,
     }
 
@@ -69,7 +73,7 @@ def fetch_series(api_key: str, series_id: str, timeout: int = 20) -> list[dict[s
         raise RuntimeError("FRED API 키가 없습니다.")
     if len(api_key) != 32 or not api_key.isalnum():
         raise RuntimeError("FRED API 키는 32자 영숫자여야 합니다.")
-    cache_key = f"fred:{series_id}"
+    cache_key = f"fred:{series_id}:60"
     hit = _cache.get(cache_key)
     now = time.time()
     if hit and now - hit[0] < _TTL:
@@ -83,7 +87,7 @@ def fetch_series(api_key: str, series_id: str, timeout: int = 20) -> list[dict[s
                 "api_key": api_key,
                 "file_type": "json",
                 "sort_order": "desc",
-                "limit": 12,
+                "limit": 60,
             },
             timeout=timeout,
         )

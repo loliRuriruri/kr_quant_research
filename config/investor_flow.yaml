@@ -1,0 +1,11 @@
+used_in_quant: false
+max_tickers_per_run: 40
+lookback_trading_days: 20
+sleep_sec: 0.2
+priority:
+  watchlist: true
+  top_trading_value: 30
+label_policy:
+  FUND: 기금
+  never_alias_fund_to_nps: true
+disclaimer: "공식 수급은 KIS 투자자 동향입니다. 전 종목 기금 순위가 아니며 Quant 점수에 넣지 않습니다."

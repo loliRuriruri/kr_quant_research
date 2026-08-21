@@ -69,15 +69,34 @@ def _next_slot(cfg: dict[str, Any], now: datetime | None = None) -> datetime:
     return candidate
 
 
+def _scheduled_evening() -> dict[str, Any]:
+    from kr_quant.web.jobs import job_krx_prices
+
+    cfg = load_scheduler_config()
+    lookback = int((cfg.get("krx_prices") or {}).get("lookback_days") or 10)
+    out = job_krx_prices("auto", lookback_days=lookback)
+    want_flow = bool((cfg.get("krx_prices") or {}).get("official_flow") or cfg.get("official_flow"))
+    if want_flow:
+        try:
+            from kr_quant.flow.official import collect_official
+            from kr_quant.settings import load_settings as _ls
+
+            out["official_flow"] = collect_official(_ls())
+        except Exception as exc:  # noqa: BLE001
+            out["official_flow_error"] = str(exc)[:180]
+            logger.warning("scheduled official flow skipped: %s", exc)
+    return out
+
+
 def _fire() -> None:
-    from kr_quant.web.jobs import RUNNER, job_krx_prices
+    from kr_quant.web.jobs import RUNNER
 
     _STATE["last_fire"] = datetime.now(KST).isoformat()
     try:
         if RUNNER.snapshot().get("status") == "running":
             _STATE["last_error"] = "다른 작업이 실행 중이라 건너뜀"
             return
-        snap = RUNNER.start("krx-prices", lambda: job_krx_prices("auto", lookback_days=int(scheduler_status()["lookback_days"])))
+        snap = RUNNER.start("krx-prices", _scheduled_evening)
         _STATE["last_error"] = None
         _STATE["last_result"] = {"started": True, "kind": snap.get("kind")}
         logger.info("scheduled krx-prices job started")

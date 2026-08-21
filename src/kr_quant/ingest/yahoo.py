@@ -24,7 +24,7 @@ INDEXES: list[dict[str, str]] = [
 ]
 
 _cache: dict[str, tuple[float, Any]] = {}
-_TTL = 3 * 3600
+_TTL = 90
 
 
 def kr_yahoo_symbol(ticker: str | None, market: str | None = None) -> str:
@@ -150,11 +150,11 @@ def _chart_yfinance(symbol: str, period: str = "1y") -> dict[str, Any]:
     return {"symbol": symbol, "currency": None, "exchange": None, "last": float(closes.iloc[-1]), "bars": bars}
 
 
-def fetch_chart(symbol: str, range_: str = "1y") -> dict[str, Any]:
+def fetch_chart(symbol: str, range_: str = "1y", *, refresh: bool = False) -> dict[str, Any]:
     cache_key = f"yf:{symbol}:{range_}"
     now = time.time()
     hit = _cache.get(cache_key)
-    if hit and now - hit[0] < _TTL:
+    if not refresh and hit and now - hit[0] < _TTL:
         return hit[1]
     data: dict[str, Any] | None = None
     source = "yahoo-http"
@@ -173,8 +173,8 @@ def fetch_chart(symbol: str, range_: str = "1y") -> dict[str, Any]:
     return data
 
 
-def snapshot_from_chart(symbol: str, label: str | None = None) -> dict[str, Any]:
-    raw = fetch_chart(symbol)
+def snapshot_from_chart(symbol: str, label: str | None = None, *, refresh: bool = False) -> dict[str, Any]:
+    raw = fetch_chart(symbol, refresh=refresh)
     stats = summarize_bars(raw.get("bars") or [], last_override=_as_float(raw.get("last")))
     stats.update(
         {
@@ -184,6 +184,7 @@ def snapshot_from_chart(symbol: str, label: str | None = None) -> dict[str, Any]
             "exchange": raw.get("exchange"),
             "source": raw.get("source"),
             "page": yahoo_quote_url(symbol),
+            "spark": [float(b["close"]) for b in (raw.get("bars") or [])[-60:] if b.get("close") is not None],
             "used_in_quant": False,
         }
     )
@@ -198,12 +199,12 @@ def _as_float(value: Any) -> float | None:
     return num if math.isfinite(num) else None
 
 
-def index_snapshot() -> dict[str, Any]:
+def index_snapshot(*, refresh: bool = False) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     error = None
     for spec in INDEXES:
         try:
-            rows.append(snapshot_from_chart(spec["symbol"], spec["label"]))
+            rows.append(snapshot_from_chart(spec["symbol"], spec["label"], refresh=refresh))
         except Exception as exc:  # noqa: BLE001
             error = str(exc)[:180]
             rows.append(

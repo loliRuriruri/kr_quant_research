@@ -15,11 +15,14 @@ SELECTION = {
     ),
     "flow": (
         "토스 투자자 매매의 최근 거래일 순매수(주수)를 합산합니다. "
-        "쌍끌이는 외인·기관이 둘 다 순매수, 사모는 토스 사모펀드 항목입니다. Quant 점수와 무관합니다."
+        "쌍끌이는 외인·기관이 둘 다 순매수, 사모는 토스 사모펀드, "
+        "쌍끌이+사모는 둘 다, 개인이탈은 그 위에 개인 순매도입니다. "
+        "기타법인·연기금이 있으면 같이 보여 줍니다. Quant 점수와 무관합니다."
     ),
     "empty": (
-        "쌍매도는 같은 기간 외인·기관이 둘 다 순매도, 외인 지분은 토스 holdingRate, "
-        "복귀는 앞선 날은 팔고 최근 1~2일은 다시 산 종목입니다. Quant에 넣지 않습니다."
+        "빈집은 외인·기관이 같이 판 뒤, 연속 매도 2일 이상이거나 "
+        "외인 보유수량 대비 0.5% 이상, 또는 합산 2만주 이상 이탈일 때만 잡습니다. "
+        "하루 소액 쌍매도는 빈집이 아닙니다. Quant에 넣지 않습니다."
     ),
     "trade": (
         "수급 셋업에 KRX 일봉 스토캐스틱 5,3,3과 일목 9-26-52를 붙입니다. "
@@ -190,8 +193,12 @@ def flow_comment_short(row: dict[str, Any]) -> str:
     amt = format_krw(row.get("dual_krw"))
     if amt:
         bits.append(amt)
-    if row.get("pe_buy"):
+    if row.get("dual_pe_retail"):
+        bits.append("사모·개인이탈")
+    elif row.get("pe_buy"):
         bits.append("사모 동반")
+    if row.get("other_corp_buy"):
+        bits.append("기타법인")
     return " · ".join(bits)
 
 
@@ -225,7 +232,9 @@ def empty_comment(row: dict[str, Any]) -> str:
     if row.get("comeback"):
         bits.append("앞선 날은 팔고 최근 1~2일은 다시 산 복귀 조짐입니다.")
     elif row.get("empty"):
-        bits.append("같은 기간 외인과 기관이 같이 순매도했습니다.")
+        bits.append("외인·기관이 같이 순매도했고, 연속 매도·보유대비 이탈 비율로 빈집으로 봤습니다.")
+    elif row.get("empty_raw"):
+        bits.append("외인·기관 쌍매도는 있으나 규모가 작아 빈집으로 보지 않았습니다.")
     elif row.get("retail_absorb"):
         bits.append("기관·외인 매도 물량을 개인이 받았습니다.")
     else:
@@ -384,10 +393,15 @@ def watch_comment(row: dict[str, Any]) -> str:
 
 
 def annotate_quant_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from kr_quant.sunzi.fa import annotate_fa
+
+    annotate_fa(rows)
     for row in rows:
         if isinstance(row, dict):
             row["comment"] = quant_comment(row)
             row["comment_short"] = quant_comment_short(row)
+            if row.get("fa_label"):
+                row["comment_short"] = f"{row['comment_short']} · {row['fa_label']}"
     return rows
 
 
@@ -395,7 +409,20 @@ def annotate_flow(payload: dict[str, Any]) -> dict[str, Any]:
     payload["selection"] = payload.get("selection") or SELECTION["flow"]
     payload["selection_empty"] = payload.get("selection_empty") or SELECTION["empty"]
     payload["selection_trade"] = payload.get("selection_trade") or SELECTION["trade"]
-    for key in ("rows", "dual", "private_equity", "empty", "comeback", "low_foreign", "trading", "trading_ex_quant"):
+    for key in (
+        "rows",
+        "dual",
+        "private_equity",
+        "dual_pe",
+        "dual_pe_retail",
+        "other_corp",
+        "pension",
+        "empty",
+        "comeback",
+        "low_foreign",
+        "trading",
+        "trading_ex_quant",
+    ):
         for row in payload.get(key) or []:
             if not isinstance(row, dict):
                 continue

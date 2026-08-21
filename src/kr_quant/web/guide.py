@@ -29,6 +29,65 @@ WARNING_KO = {
     "SOURCE_NOT_READY": "당일 KRX 시세가 준비되지 않아 점수를 내지 않음",
 }
 
+WARNING_FIX = {
+    "STATUS_FEED_MISSING": (
+        "config의 status_feed.path(기본 data/raw/status/manual_status.csv)에 "
+        "ticker, as_of_date, status 열을 채워 거래정지·관리종목을 넣으세요. "
+        "파일이 없으면 정지 종목이 랭킹에 섞일 수 있어 일부 완료로 둡니다."
+    ),
+    "MODEL_BREAK": "모델 버전이 바뀐 실행입니다. 전일과 점수 비교는 하지 말고 이번 결과만 보세요. 별도 수정은 필요 없습니다.",
+    "SOURCE_NOT_READY": "장 마감 후 오른쪽 위 '시세 받기'로 KRX 일봉을 받은 뒤 실행 탭에서 재계산하세요.",
+}
+
+STATUS_LABEL = {
+    "success": "완료",
+    "partial": "일부 완료",
+    "failed": "실패",
+    "error": "오류",
+    "no-run": "아직 실행 안 함",
+    "running": "실행 중",
+    "idle": "대기",
+}
+
+
+def explain_run_status(quality: dict[str, Any] | None, *, status_csv_exists: bool = False) -> dict[str, Any]:
+    """Why a run is partial/failed, and what to improve. Overlay copy only."""
+    quality = quality or {}
+    status = str(quality.get("status") or "no-run")
+    warnings = [str(w) for w in (quality.get("warnings") or []) if w]
+    why: list[str] = []
+    improve: list[str] = []
+    if status == "partial":
+        if not warnings:
+            why.append("점수는 나왔지만 운영 경고가 있어 일부 완료입니다.")
+            improve.append("실행 탭 로그와 대시보드 데이터 품질 칸을 확인하세요.")
+        for code in warnings:
+            why.append(WARNING_KO.get(code, code))
+            improve.append(WARNING_FIX.get(code, "해당 경고 원인을 해소한 뒤 재계산하세요."))
+        if "STATUS_FEED_MISSING" in warnings and not status_csv_exists:
+            improve.append("지금 status CSV 파일이 없습니다. 경로를 만들고 일별 거래정지 목록을 넣으면 완료로 올라갑니다.")
+    elif status == "failed":
+        why.append("스크리닝이 실패했습니다.")
+        improve.append("실행 탭 로그에서 원인(시세 없음, 키 오류 등)을 보고 다시 실행하세요.")
+        for code in warnings:
+            why.append(WARNING_KO.get(code, code))
+            improve.append(WARNING_FIX.get(code, "해당 경고를 해소한 뒤 재실행하세요."))
+    elif status == "success":
+        why.append("이번 스크리닝이 끝까지 갔습니다.")
+        if warnings:
+            why.extend(WARNING_KO.get(code, code) for code in warnings)
+    elif status == "no-run":
+        why.append("아직 스크리닝을 돌리지 않았습니다.")
+        improve.append("실행 탭에서 데모 또는 실데이터 수집을 먼저 하세요.")
+    return {
+        "status": status,
+        "label": STATUS_LABEL.get(status, status),
+        "why": why,
+        "improve": improve,
+        "warnings": warnings,
+        "used_in_quant": False,
+    }
+
 
 def pad_ticker(ticker: str | int | None) -> str:
     text = str(ticker or "").replace(".0", "")

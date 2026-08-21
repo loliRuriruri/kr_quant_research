@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import re
+import time
 from typing import Any
 
 HUB_BASE = "https://naverapihub.apigw.ntruss.com"
@@ -137,6 +138,68 @@ def search_encyc(
         return _request("encyc", client_id, client_secret, query, display=display, start=1, sort=None, timeout=timeout).get("items") or []
     except RuntimeError:
         return []
+
+
+NEWS_QUERIES = [
+    {"id": "kr_market", "query": "코스피 증시", "label": "국내 증시"},
+    {"id": "kr_rate", "query": "한국은행 기준금리", "label": "국내 금리"},
+    {"id": "fx", "query": "원달러 환율", "label": "환율"},
+    {"id": "fed", "query": "연준 금리", "label": "연준"},
+    {"id": "us_market", "query": "미국 증시 나스닥", "label": "미국 증시"},
+]
+ENCYC_QUERIES = ("기준금리", "장단기 금리차", "원달러")
+
+_news_cache: tuple[float, dict[str, Any]] | None = None
+_NEWS_TTL = 10 * 60
+
+
+def market_news_bundle(
+    client_id: str,
+    client_secret: str,
+    *,
+    refresh: bool = False,
+    display: int = 5,
+) -> dict[str, Any]:
+    """Macro headlines via Naver Search. Overlay only."""
+    global _news_cache
+    now = time.time()
+    if not refresh and _news_cache and now - _news_cache[0] < _NEWS_TTL:
+        return _news_cache[1]
+    groups: list[dict[str, Any]] = []
+    error = None
+    for spec in NEWS_QUERIES:
+        try:
+            payload = search_news(client_id, client_secret, spec["query"], display=display, sort="date")
+            groups.append(
+                {
+                    "id": spec["id"],
+                    "label": spec["label"],
+                    "query": spec["query"],
+                    "total": payload.get("total"),
+                    "items": (payload.get("items") or [])[:display],
+                    "source": payload.get("source"),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            error = str(exc)[:180]
+            groups.append({"id": spec["id"], "label": spec["label"], "query": spec["query"], "items": [], "error": error})
+    encyc: list[dict[str, str]] = []
+    for query in ENCYC_QUERIES:
+        try:
+            encyc.extend(search_encyc(client_id, client_secret, query, display=1))
+        except Exception:  # noqa: BLE001
+            continue
+    out = {
+        "configured": True,
+        "used_in_quant": False,
+        "fetched_at": now,
+        "error": error,
+        "groups": groups,
+        "encyc": encyc[:6],
+        "disclaimer": "네이버 검색 API 헤드라인입니다. 점수에 넣지 않으며 매수 지시가 아닙니다.",
+    }
+    _news_cache = (now, out)
+    return out
 
 
 def company_bundle(client_id: str, client_secret: str, company: str | None, ticker: str | None) -> dict[str, Any]:

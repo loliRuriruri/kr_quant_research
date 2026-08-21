@@ -1,5 +1,5 @@
 from kr_quant.ingest.naver_maps import naver_map_search_url
-from kr_quant.ingest.naver_search import ENDPOINTS, company_query, strip_html
+from kr_quant.ingest.naver_search import ENDPOINTS, NEWS_QUERIES, company_query, strip_html
 
 
 def test_strip_html_and_query():
@@ -22,6 +22,8 @@ def test_hub_endpoints_cover_web_and_news():
     assert "news" in ENDPOINTS
     assert "webkr" in ENDPOINTS
     assert ENDPOINTS["news"][0].endswith("/news")
+    assert any(q["query"] == "코스피 증시" for q in NEWS_QUERIES)
+    assert any("연준" in q["query"] for q in NEWS_QUERIES)
 
 
 def test_map_search_url():

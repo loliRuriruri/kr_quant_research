@@ -18,18 +18,21 @@
     <div class="nav-group">Quant</div>
     <button class="nav-btn active" data-view="dash" data-tip="재무 Quant 후보 요약입니다. 가치·품질·성장·모멘텀·안정으로 점수를 냅니다. 수급·전략은 합산하지 않습니다.">대시보드</button>
     <button class="nav-btn" data-view="rank" data-tip="시총·거래대금·보통주 조건을 통과한 종목을 점수순으로 봅니다. LLM은 점수를 고치지 않습니다.">랭킹</button>
+    <button class="nav-btn" data-view="strategy" data-tip="Quant TOP20 일봉 백테스트입니다. 랭킹 후보의 진입 규칙을 연구합니다. 주문이 아닙니다.">전략</button>
     <button class="nav-btn" data-view="screens" data-tip="토스 골라보기와 비슷한 이름의 연구 목록입니다. 토스를 긁지 않고 우리 재무·수급 규칙으로 걸러 봅니다.">골라보기</button>
     <div class="nav-group">시장·수급</div>
-    <button class="nav-btn" data-view="market" data-tip="공포·탐욕과 KRX 가격으로 본 시장 분위기입니다. Quant 점수에 넣지 않습니다.">시장 국면</button>
+    <button class="nav-btn" data-view="market" data-tip="공포·탐욕, 국내·국제 매크로 우호/부담 코멘트, 네이버 뉴스입니다. Quant 점수에 넣지 않습니다.">시장 국면</button>
     <button class="nav-btn" data-view="sector" data-tip="조건 통과 종목을 업종으로 묶어 상대강도·확산·실적을 봅니다. Quant 점수에 넣지 않습니다.">업종</button>
     <button class="nav-btn" data-view="flow" data-tip="토스 투자자 매매에서 외인·기관이 같이 산 쌍끌이와 사모펀드 순매수입니다. 주수 합산이며 Quant와 무관합니다.">수급</button>
+    <button class="nav-btn" data-view="investor" data-tip="KIS 공식 투자자 동향입니다. 관심종목·고유동성만 받습니다. 기금은 국민연금이라고 부르지 않습니다.">공식 수급</button>
     <button class="nav-btn" data-view="empty" data-tip="외인·기관이 같이 판 자리, 낮은 외인 지분, 최근 다시 산 복귀 조짐입니다. 매수 지시가 아닙니다.">빈집</button>
     <button class="nav-btn" data-view="trade" data-tip="퀀트 TOP100 밖 수급 후보에 일봉 스토캐스틱·일목을 붙인 연구 화면입니다. 태그에 마우스를 올리면 뜻을 볼 수 있습니다.">트레이딩</button>
     <button class="nav-btn" data-view="toss" data-tip="토스 급상승·급하락·거래대금 시세 랭킹입니다. 재무 점수와 무관하며 약 2분 캐시입니다.">토스 랭킹</button>
     <button class="nav-btn" data-view="watch" data-tip="직접 저장한 메모 목록입니다. 점수나 수급 순위가 아닙니다.">관심종목</button>
     <div class="nav-group">리서치</div>
+    <button class="nav-btn" data-view="sunzi" data-tip="손자 전장 조건과 양 웬리식 반대심문입니다. 재미·연구 코너이며 매수가 아닙니다.">손자 五事</button>
+    <button class="nav-btn" data-view="nps" data-tip="OpenDART 대량보유 공시에서 국민연금 5% 이상 보유만 모읍니다. KIS 기금·토스 연기금과 섞지 않으며 Quant에 넣지 않습니다.">국민연금 5%</button>
     <button class="nav-btn" data-view="us13f" data-tip="미국 기관이 SEC에 낸 13F 분기 말 보유입니다. 최대 45일 시차가 있고 Quant에 넣지 않습니다.">미국 13F</button>
-    <button class="nav-btn" data-view="strategy" data-tip="KRX 일봉으로 단순 규칙을 돌려 본 연구 랩입니다. OOS·WF는 검증용이며 주문이 아닙니다. 열 이름에 마우스를 올리면 용어 설명이 뜹니다.">전략</button>
     <button class="nav-btn" data-view="reports" data-tip="버튼을 눌러 저장한 AI 분석과 간단 검증입니다. Quant 점수는 바꾸지 않습니다.">AI 리포트</button>
     <div class="nav-group">시스템</div>
     <button class="nav-btn" data-view="run" data-tip="데모, 재계산, KRX 시세, 실데이터 수집을 실행합니다. 시세 이력 확장은 Quant를 돌리지 않습니다.">실행</button>
@@ -44,6 +47,8 @@
       <div>
         <h1 id="page-title">대시보드</h1>
         <p id="page-sub">최근 스크리닝 결과</p>
+        <p id="page-asof" class="data-asof has-tip" data-tip="이 메뉴가 쓰는 데이터의 최신 시점입니다. 오래됐으면 각 메뉴의 갱신 버튼을 누르세요.">데이터 시점 확인 중…</p>
+        <p id="overlay-banner" class="overlay-banner">수급 · 국면 · 五事 · 전략은 조사 오버레이입니다. <strong>Quant 점수와 합산하지 않으며 매수 지시가 아닙니다.</strong></p>
       </div>
       <div class="top-right">
         <div class="chips">
@@ -69,15 +74,16 @@
           </div>
           <p class="hint">시총·거래대금·보통주 조건을 통과한 종목을 가치·품질·성장·모멘텀·안정으로 점수한 조사 후보입니다. 매수 신호가 아닙니다. 영문·막대에 마우스를 올리면 설명이 뜹니다.</p>
           <div class="table-wrap">
-            <table>
+            <table data-scope="dash">
               <thead>
                 <tr>
-                  <th class="has-tip" data-tip="조건 통과 종목 안에서의 점수 순위입니다.">#</th>
-                  <th>종목</th>
-                  <th class="has-tip" data-tip="Value 30 · Quality 25 · Growth 25 · Momentum 10 · Stability 10에서 리스크 페널티를 뺀 점수입니다. LLM이 고치지 않습니다.">점수</th>
+                  <th class="sortable has-tip" data-sort="quant_rank" data-tip="조건 통과 종목 안에서의 점수 순위입니다.">#</th>
+                  <th class="sortable" data-sort="company">종목</th>
+                  <th class="sortable has-tip" data-sort="last_close" data-tip="KRX 최근 종가입니다. 클릭하면 오름/내림으로 바꿉니다.">최근가</th>
+                  <th class="sortable has-tip" data-sort="quant_score" data-tip="Value 30 · Quality 25 · Growth 25 · Momentum 10 · Stability 10에서 리스크 페널티를 뺀 점수입니다. LLM이 고치지 않습니다.">점수</th>
                   <th class="has-tip" data-tip="가=가치, 품=품질, 성=성장, 모=모멘텀, 안=안정. 막대는 각 항목 만점 대비 비율입니다.">구성</th>
-                  <th class="has-tip" data-tip="매출·이익 감소, 레버리지, 희석 같은 리스크를 점수에서 뺀 값입니다. 클수록 감점이 큽니다.">페널티</th>
-                  <th class="has-tip" data-tip="커버리지·공시시점·신선도 등으로 만든 게이트입니다. 점수에 곱하지 않고 TOP 통과 기준으로만 씁니다.">신뢰도</th>
+                  <th class="sortable has-tip" data-sort="risk_penalty" data-tip="매출·이익 감소, 레버리지, 희석 같은 리스크를 점수에서 뺀 값입니다. 클수록 감점이 큽니다.">페널티</th>
+                  <th class="sortable has-tip" data-sort="data_confidence" data-tip="커버리지·공시시점·신선도 등으로 만든 게이트입니다. 점수에 곱하지 않고 TOP 통과 기준으로만 씁니다.">신뢰도</th>
                 </tr>
               </thead>
               <tbody id="top20-body"></tbody>
@@ -125,8 +131,27 @@
             <button class="ghost" id="market-refresh">지금 새로고침</button>
           </div>
         </div>
-        <p class="hint">공포·탐욕, 내부 국면, 금리·비교지수입니다. Quant 점수와 합산하지 않으며 매수·매도 지시가 아닙니다. 이 화면에 머무르면 약 1분마다 다시 받습니다.</p>
+        <p class="hint">공포·탐욕과 비교지수는 장중에도 다시 받습니다. 내부 국면(추세·폭)은 KRX 일봉이라 장 마감 후 시세 받기가 필요합니다.</p>
         <div id="market-box" class="quality"></div>
+      </article>
+      <article class="card" style="margin-top:14px">
+        <div class="card-h">
+          <h2>국내 · 국제 매크로</h2>
+          <span class="chip">점수 미포함</span>
+        </div>
+        <p class="hint">한국은행 ECOS·FRED·비교지수로 위험자산에 우호인지 부담인지 코멘트합니다. 아래 그래프는 발표 일정표가 아니라 FRED 관측 추이입니다.</p>
+        <div id="brief-box" class="quality"></div>
+      </article>
+      <article class="card" style="margin-top:14px">
+        <div class="card-h">
+          <h2>매크로 뉴스</h2>
+          <div class="actions">
+            <span class="chip">네이버 검색</span>
+            <button class="ghost" id="news-refresh">뉴스 새로고침</button>
+          </div>
+        </div>
+        <p class="hint">네이버 검색 API로 금리·환율·증시 최근 기사를 모읍니다. 헤드라인일 뿐 매수 지시가 아닙니다.</p>
+        <div id="news-box" class="quality"></div>
       </article>
       <article class="card" style="margin-top:14px">
         <div class="card-h">
@@ -153,6 +178,68 @@
       </article>
     </section>
 
+    <section id="view-investor" class="view hidden">
+      <article class="card">
+        <div class="card-h">
+          <h2>공식 투자자 수급 (KIS)</h2>
+          <div class="actions">
+            <span class="chip">점수 미포함</span>
+            <button class="ghost" id="investor-refresh">상태 새로고침</button>
+            <button class="primary" id="investor-collect" data-tip="관심종목과 거래대금 상위만 받습니다. 전 종목 순위가 아닙니다.">관심·고유동성 수집</button>
+          </div>
+        </div>
+        <p class="hint">한국투자증권 투자자 동향입니다. Fastjusik API를 쓰지 않습니다. 기금은 원천 라벨 그대로이며 국민연금이라고 부르지 않습니다. 공식 전종목 API가 확인되기 전 전 종목 순위를 보여 주지 않습니다.</p>
+        <div id="investor-box" class="quality"></div>
+      </article>
+      <article class="card" style="margin-top:14px">
+        <div class="card-h">
+          <h2>연속 · 동반 · 방향전환</h2>
+          <div class="actions">
+            <span class="chip">점수 미포함</span>
+            <label>전환 기준
+              <select id="investor-turn">
+                <option value="3">3일</option>
+                <option value="5" selected>5일</option>
+                <option value="10">10일</option>
+              </select>
+            </label>
+            <button class="ghost" id="investor-events-refresh">표 새로고침</button>
+          </div>
+        </div>
+        <p class="hint">공식 KIS 행이 있으면 그걸로, 없으면 토스 캐시(기관+외인)로 채웁니다. 토스를 연기금 전종목 순위처럼 쓰지 않습니다.</p>
+        <div id="investor-events-box" class="quality"></div>
+      </article>
+    </section>
+
+    <section id="view-sunzi" class="view hidden">
+      <article class="card">
+        <div class="card-h">
+          <h2>손자 道天地將法</h2>
+          <div class="actions">
+            <span class="chip">점수 미포함</span>
+            <button class="ghost" id="sunzi-refresh">새로고침</button>
+          </div>
+        </div>
+        <p class="hint">전장 조건(道天地將法)과, 굳이 지금 싸울지 묻는 전략 검토입니다. 착수는 매수가 아니고 대사를 복제하지 않습니다.</p>
+        <div id="sunzi-box" class="quality"></div>
+      </article>
+    </section>
+
+    <section id="view-nps" class="view hidden">
+      <article class="card">
+        <div class="card-h">
+          <h2>국민연금 5% 이상 보유</h2>
+          <div class="actions">
+            <span class="chip">OpenDART</span>
+            <button class="ghost" id="nps-refresh">목록 새로고침</button>
+            <button class="primary" id="nps-collect" data-tip="최근 대량보유 공시에서 제출인이 국민연금인 건만 받습니다. 전 종목 수급 순위가 아닙니다.">공시 수집</button>
+          </div>
+        </div>
+        <p class="hint">OpenDART 대량보유상황보고입니다. KIS 기금·토스 연기금 일별 수급과 다른 데이터입니다.</p>
+        <div id="nps-box" class="quality"></div>
+      </article>
+    </section>
+
     <section id="view-flow" class="view hidden">
       <article class="card">
         <div class="card-h">
@@ -176,7 +263,7 @@
             <button class="ghost" id="flow-refresh">다시 스캔</button>
           </div>
         </div>
-        <p class="hint">토스 투자자 매매로 최근 순매수를 모읍니다. 외국인+기관이 같이 산 종목(쌍끌이)과 사모펀드 순매수를 보고, 그 이후 KRX 가격 수익률을 붙입니다. 기간을 바꾸면 다시 스캔하고, 금액은 캐시된 결과에서 바로 걸러 히트율을 다시 계산합니다. Quant 점수에는 넣지 않습니다.</p>
+        <p class="hint">쌍끌이의 기관은 토스 <b>기관합계</b>입니다. 연기금·국민연금이 아닙니다. 기관 안 연기금은 별도 탭입니다.</p>
         <div id="flow-box" class="quality"></div>
       </article>
     </section>
@@ -206,8 +293,8 @@
             </label>
             <label>최소 이탈금액
               <select id="empty-min-krw">
-                <option value="0" selected>전체</option>
-                <option value="1000000000">10억 이상</option>
+                <option value="0">전체</option>
+                <option value="1000000000" selected>10억 이상</option>
                 <option value="5000000000">50억 이상</option>
                 <option value="10000000000">100억 이상</option>
               </select>
@@ -215,7 +302,7 @@
             <button class="ghost" id="empty-refresh">다시 스캔</button>
           </div>
         </div>
-        <p class="hint">기관·외인이 빠져나간 자리를 찾습니다. 쌍매도는 둘 다 순매도, 지분 낮음은 토스 외국인 보유비율, 복귀 조짐은 앞선 날은 팔고 최근 1~2일은 다시 산 종목입니다. 수급 스캔과 같은 데이터이며 Quant 점수에는 넣지 않습니다.</p>
+        <p class="hint">빈집은 외인·기관이 같이 판 것만으로 잡지 않습니다. 연속 매도 2일, 외인 보유 대비 0.5% 이상, 또는 합산 2만주 이상일 때만 빈집입니다. 기본 이탈금액 10억. Quant에 넣지 않습니다.</p>
         <div id="empty-box" class="quality"></div>
       </article>
     </section>
@@ -234,6 +321,9 @@
                 <option value="empty">빈집</option>
                 <option value="comeback">빈집 복귀</option>
                 <option value="dual_pe">쌍끌이+사모</option>
+                <option value="dual_pe_retail">쌍끌이+사모+개인이탈</option>
+                <option value="other_corp">기타법인 순매수</option>
+                <option value="pension">연기금 가세</option>
               </select>
             </label>
             <label>최소 추정금액
@@ -283,9 +373,16 @@
       <article class="card">
         <div class="card-h">
           <h2>골라보기</h2>
-          <span class="chip has-tip" data-tip="토스 주식 골라보기 메뉴와 이름이 비슷해도, 공식은 우리 Quant·수급입니다. 긁어오지 않습니다.">토스 목록 아님</span>
+          <div class="actions">
+            <span class="chip has-tip" data-tip="토스 주식 골라보기 메뉴와 이름이 비슷해도, 공식은 우리 Quant·수급입니다. 긁어오지 않습니다.">토스 목록 아님</span>
+            <label class="chk">
+              <input type="checkbox" id="screens-include-quant" checked />
+              퀀트 종목 포함
+            </label>
+            <button class="ghost" id="screens-refresh">다시 걸러보기</button>
+          </div>
         </div>
-        <p class="hint">왼쪽에서 목록을 고르면 조건 통과 종목만 걸러 보여 줍니다. 직접 만들기는 관심종목을 쓰세요. 매수 지시가 아닙니다.</p>
+        <p class="hint">시총·거래대금 조건을 통과한 종목에서 거릅니다. 목록 규칙은 왼쪽에 마우스를 올리면 보입니다. 퀀트 종목 포함을 끄면 TOP100을 뺍니다.</p>
         <div class="screen-layout">
           <aside id="screen-list" class="screen-list"></aside>
           <div id="screen-box" class="quality"></div>
@@ -297,7 +394,10 @@
       <article class="card">
         <div class="card-h">
           <h2>업종 흐름</h2>
-          <span class="chip">점수 미합산</span>
+          <div class="actions">
+            <span class="chip">점수 미합산</span>
+            <button class="ghost" id="sector-refresh">다시 계산</button>
+          </div>
         </div>
         <p class="hint">조건 통과 종목을 업종으로 묶어 상대강도·확산·실적 증가 비율을 봅니다. 한 종목만 급등한 업종과 전체가 강한 업종을 가르기 위한 연구 점수입니다.</p>
         <div id="sector-box" class="quality"></div>
@@ -308,20 +408,27 @@
       <article class="card">
         <div class="card-h">
           <h2>점수 랭킹</h2>
-          <input id="rank-q" type="search" placeholder="종목코드 또는 이름" />
+          <div class="actions">
+            <input id="rank-q" type="search" placeholder="종목코드 또는 이름" />
+            <button class="ghost" id="rank-refresh">화면 새로고침</button>
+          </div>
         </div>
         <p class="hint">시총·거래대금·보통주 조건을 통과한 종목만 점수순입니다. 종목 옆은 선정 코멘트입니다. LLM은 점수를 고치지 않습니다.</p>
         <div class="table-wrap tall">
-          <table>
+          <table data-scope="rank">
             <thead>
               <tr>
-                <th>#</th><th>코드</th><th>종목</th>
-                <th>시장</th><th>업종</th>
-                <th class="has-tip" data-tip="재무 Quant 점수입니다. 수급·기술과 합치지 않습니다.">점수</th>
+                <th class="sortable" data-sort="quant_rank">#</th>
+                <th class="sortable" data-sort="ticker">코드</th>
+                <th class="sortable" data-sort="company">종목</th>
+                <th class="sortable" data-sort="market">시장</th>
+                <th class="sortable" data-sort="industry">업종</th>
+                <th class="sortable has-tip" data-sort="last_close" data-tip="KRX 최근 종가입니다.">최근가</th>
+                <th class="sortable has-tip" data-sort="quant_score" data-tip="재무 Quant 점수입니다. 수급·기술과 합치지 않습니다.">점수</th>
                 <th class="has-tip" data-tip="가=가치, 품=품질, 성=성장, 모=모멘텀, 안=안정. 만점 대비 막대입니다.">구성</th>
-                <th class="has-tip" data-tip="리스크 감점입니다. 클수록 점수가 깎입니다.">페널티</th>
-                <th class="has-tip" data-tip="필수 지표가 채워진 비율입니다. TOP20은 보통 90% 이상이어야 합니다.">커버</th>
-                <th class="has-tip" data-tip="데이터 신뢰도 게이트입니다. 점수에 곱하지 않습니다.">신뢰</th>
+                <th class="sortable has-tip" data-sort="risk_penalty" data-tip="리스크 감점입니다. 클수록 점수가 깎입니다.">페널티</th>
+                <th class="sortable has-tip" data-sort="weighted_metric_coverage" data-tip="필수 지표가 채워진 비율입니다. TOP20은 보통 90% 이상이어야 합니다.">커버</th>
+                <th class="sortable has-tip" data-sort="data_confidence" data-tip="데이터 신뢰도 게이트입니다. 점수에 곱하지 않습니다.">신뢰</th>
                 <th>리포트</th>
               </tr>
             </thead>
@@ -382,12 +489,20 @@
           <h2>발간 리포트 보관</h2>
           <input id="report-q" type="search" placeholder="종목코드, 이름, 모델" />
         </div>
-        <p class="hint">AI 분석 리포트와 간단 검증을 기준일별로 보관합니다. 행을 누르면 종목 상세에서 내용을 엽니다.</p>
+        <p class="hint">AI 분석 리포트와 간단 검증을 기준일별로 보관합니다. 행을 누르면 내용을 엽니다. 삭제는 이 PC에 저장된 파일만 지웁니다.</p>
         <div class="table-wrap tall">
-          <table>
+          <table data-scope="reports">
             <thead>
               <tr>
-                <th>종목</th><th>코드</th><th>종류</th><th>기준일</th><th>작성</th><th>제공자</th><th>모델</th><th>요약</th>
+                <th class="sortable" data-sort="company">종목</th>
+                <th class="sortable" data-sort="ticker">코드</th>
+                <th class="sortable" data-sort="kind">종류</th>
+                <th class="sortable" data-sort="as_of_date">기준일</th>
+                <th class="sortable" data-sort="researched_at">작성</th>
+                <th class="sortable" data-sort="provider">제공자</th>
+                <th class="sortable" data-sort="model">모델</th>
+                <th>요약</th>
+                <th>삭제</th>
               </tr>
             </thead>
             <tbody id="reports-body"></tbody>
@@ -562,13 +677,23 @@
   </main>
 
   <div id="drawer-back" class="drawer-back hidden"></div>
-  <aside id="drawer" class="drawer hidden">
+  <aside id="drawer" class="drawer hidden" role="dialog" aria-modal="true">
     <div class="card-h">
       <h2 id="drawer-title">종목</h2>
       <button class="ghost" id="drawer-close">닫기 · Esc</button>
     </div>
     <div id="drawer-body"></div>
   </aside>
+
+  <div id="status-modal" class="modal hidden">
+    <div class="modal-panel">
+      <div class="card-h">
+        <h2 id="status-modal-title">실행 상태</h2>
+        <button class="ghost" id="status-modal-close">닫기</button>
+      </div>
+      <div id="status-modal-body" class="modal-body"></div>
+    </div>
+  </div>
 
   <div id="report-modal" class="modal hidden">
     <div class="modal-panel">

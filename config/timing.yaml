@@ -1,0 +1,36 @@
+# Overlay only. Never mixed into Quant scores.
+used_in_quant: false
+timeframes:
+  short:
+    label: 단기
+    lookback: 20
+    ma_fast: 5
+    ma_slow: 20
+  mid:
+    label: 중기
+    lookback: 60
+    ma_fast: 20
+    ma_slow: 60
+  long:
+    label: 장기
+    lookback: 252
+    ma_fast: 60
+    ma_slow: 120
+volume:
+  quiet_max: 0.7
+  active_min: 1.3
+  high_min: 2.0
+  extreme_min: 4.0
+confidence_weights:
+  sample: 25
+  alignment: 30
+  volume_clarity: 15
+  trend_clarity: 15
+  distance_52w: 15
+min_bars:
+  short: 20
+  mid: 60
+  long: 180
+  full_sample: 250
+strategy_blend: true
+disclaimer: "타이밍 상태·신뢰도는 조사 오버레이입니다. Quant 점수에 넣지 않으며 매수 지시가 아닙니다."

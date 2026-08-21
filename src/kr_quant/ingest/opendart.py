@@ -59,7 +59,29 @@ class OpenDartAdapter(FilingAdapter):
         )
 
     def fetch_list(self, corp_code: str, bgn_de: str, end_de: str) -> dict[str, Any]:
-        return self._get(
-            "list.json",
-            {"corp_code": corp_code, "bgn_de": bgn_de, "end_de": end_de, "page_count": "100"},
-        )
+        params = {"bgn_de": bgn_de, "end_de": end_de, "page_count": "100"}
+        if corp_code:
+            params["corp_code"] = corp_code
+        return self._get("list.json", params)
+
+    def fetch_list_range(
+        self,
+        bgn_de: str,
+        end_de: str,
+        *,
+        page_no: int = 1,
+        page_count: int = 100,
+        pblntf_detail_ty: str | None = None,
+    ) -> dict[str, Any]:
+        params = {
+            "bgn_de": bgn_de,
+            "end_de": end_de,
+            "page_no": str(page_no),
+            "page_count": str(page_count),
+        }
+        if pblntf_detail_ty:
+            params["pblntf_detail_ty"] = pblntf_detail_ty
+        return self._get("list.json", params)
+
+    def fetch_majorstock(self, corp_code: str) -> dict[str, Any]:
+        return self._get("majorstock.json", {"corp_code": corp_code})

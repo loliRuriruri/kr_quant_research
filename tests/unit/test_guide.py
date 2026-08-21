@@ -1,4 +1,4 @@
-from kr_quant.web.guide import external_links, format_krw, pad_ticker, selection_guide, stock_brief
+from kr_quant.web.guide import WARNING_FIX, explain_run_status, external_links, format_krw, pad_ticker, selection_guide, stock_brief
 
 
 def test_pad_and_naver_link():
@@ -41,6 +41,13 @@ def test_stock_brief_intro_without_llm():
     assert any("1위" in p for p in brief["paragraphs"])
     assert any(f["label"] == "시가총액" and "조원" in f["value"] for f in brief["facts"])
     assert format_krw(3.0e11) == "3,000억원" or format_krw(3.0e11).endswith("억원")
+
+
+def test_warning_fix_tells_how_to_leave_partial():
+    assert "STATUS_FEED_MISSING" in WARNING_FIX
+    expl = explain_run_status({"status": "partial", "warnings": ["STATUS_FEED_MISSING"]})
+    assert expl["label"] == "일부 완료"
+    assert expl["improve"]
 
 
 def test_selection_guide_has_thresholds(settings):

@@ -8,7 +8,7 @@ SOURCE_API = "https://feargree-api.vercel.app/api"
 CNN_API = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
 
 _cache: dict[str, tuple[float, Any]] = {}
-_TTL = 10 * 60
+_TTL = 60
 
 BANDS = (
     (25, "EXTREME_FEAR", "극단적 공포"),
@@ -119,10 +119,10 @@ def _cnn_us() -> dict[str, Any]:
     )
 
 
-def fear_greed_snapshot() -> dict[str, Any]:
+def fear_greed_snapshot(*, refresh: bool = False) -> dict[str, Any]:
     now = time.time()
     hit = _cache.get("fg")
-    if hit and now - hit[0] < _TTL:
+    if not refresh and hit and now - hit[0] < _TTL:
         return hit[1]
     error = None
     try:

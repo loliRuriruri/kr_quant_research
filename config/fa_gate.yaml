@@ -1,0 +1,25 @@
+# Overlay only. Never mixed into Quant scores.
+used_in_quant: false
+min_data_confidence: 70
+min_coverage: 0.80
+critical_exclusions:
+  - AUDIT_OPINION_FAIL
+  - DISTRESS_STATUS
+  - TRADING_STATUS_EXCLUDED
+  - NEGATIVE_EQUITY
+  - STALE_FINANCIALS
+  - CORE_DATA_INCOMPLETE
+  - FILING_LINEAGE_CONFLICT
+critical_risk_any:
+  - CB_BW_OVERHANG
+  - REPEATED_CB_BW
+critical_risk_pair:
+  - LEVERAGE_STRESS
+  - THIN_EQUITY
+weights:
+  confidence: 25
+  risk: 20
+  coverage: 20
+  pit: 15
+  eligibility: 20
+disclaimer: "法은 데이터·리스크·공시 규율 게이트입니다. Quant 점수를 바꾸지 않으며 매수 지시가 아닙니다."

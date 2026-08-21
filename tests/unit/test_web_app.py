@@ -72,11 +72,40 @@ def test_research_reports_list_endpoint():
     assert "골라보기" in html
     assert "시세 받기" in html
     assert "drawer-back" in html
+    css = client.get("/static/styles.css").text
+    assert ".drawer.hidden" in css
+    assert "class=\"drawer hidden\"" in html or 'class="drawer hidden"' in html
+    assert "stock-grid" in client.get("/static/app.js").text
+    assert "타이밍 신뢰도" in client.get("/static/app.js").text
+    assert "sortable" in html
+    assert "reports/delete" in client.get("/static/app.js").text
+    assert 'data-sort="last_close"' in html
+    assert 'data-sort="foreign_net"' in client.get("/static/app.js").text
+    assert 'data-del-report' in client.get("/static/app.js").text
     assert "점수 랭킹" in html
     assert "토스증권" in html
     assert "report-modal" in html
     assert "macro-box" in html
+    assert "brief-box" in html
+    assert "news-box" in html
+    assert "page-asof" in html
+    assert "status-modal" in html
     assert "market-box" in html
+    assert 'data-view="investor"' in html
+    assert "공식 수급" in html
+    assert 'data-view="sunzi"' in html
+    assert "손자 五事" in html
+    assert 'data-view="nps"' in html
+    assert "국민연금 5%" in html
+    assert "investor-events-box" in html
+    js = client.get("/static/app.js").text
+    assert "loadSunzi" in js
+    assert "fiveStrip" in js
+    assert "loadInvestorEvents" in js
+    assert "loadNps" in js
+    assert "flow90Block" in js
+    assert "eventsBlock" in js
+    assert "cum20" in js
     assert 'data-view="flow"' in html
     assert 'data-view="empty"' in html
     assert 'data-view="trade"' in html
@@ -93,6 +122,15 @@ def test_research_reports_list_endpoint():
     assert "rowNote" in js
     assert "comment_flow" in js
     assert "factorBars" in js
+    assert "가치 ${v.toFixed(1)}" in js or "name} ${v.toFixed(1)}" in js
+    assert "faChip" in js
+    assert "법 통과" in js or "法 통과" in js
+    assert "dual_pe_retail" in js
+    assert "data-flow-more" in js
+    assert "h-tabs" in js
+    assert "FLOW_FIRST" in js
+    assert "FLOW_STEP" in js
+    assert "기타법인" in js
     assert "comment_short" in js
     assert "스토 데드" in js
     assert "구름 아래" in js
@@ -106,6 +144,10 @@ def test_research_reports_list_endpoint():
     assert "thTip" in js
     assert "STATUS_KO" in js
     assert "일부 완료" in js
+    assert "applyPriceChrome" in js
+    assert "PRICE_VIEWS" in js
+    assert "openStatusModal" in js
+    assert "setPageAsOf" in js
     assert "closeDrawer" in js
     assert "startLiveSync" in js
     html = client.get("/").text
@@ -127,6 +169,17 @@ def test_research_reports_list_endpoint():
     assert spec["overlays"]["strategy"] is False
     assert spec["overlays"]["portfolio"] is False
     assert spec["overlays"]["sector"] is False
+    assert spec["overlays"]["macro"] is False
+    assert spec["overlays"]["news"] is False
+    assert spec["overlays"]["fa_gate"] is False
+    assert spec["overlays"]["dao"] is False
+    assert spec["overlays"]["jiang"] is False
+    assert spec["overlays"]["official_flow"] is False
+    assert spec["overlays"]["sunzi"] is False
+    assert spec["overlays"]["tian"] is False
+    assert spec["overlays"]["di"] is False
+    assert spec["overlays"]["nps_holdings"] is False
+    assert spec["overlays"]["dart_events"] is False
     sec = client.get("/api/sectors").json()
     assert sec.get("used_in_quant") is False
     scr = client.get("/api/screens").json()
@@ -151,6 +204,9 @@ def test_research_reports_list_endpoint():
     assert "freshness" in status
     assert "scheduler" in status
     assert "price_days" in status["freshness"]
+    assert "status_explain" in status
+    assert "why" in status["status_explain"]
+    assert "improve" in status["status_explain"]
 
 
 def test_index_has_report_hooks():
@@ -199,8 +255,15 @@ def test_macro_endpoint_is_research_only(monkeypatch):
         "kr_quant.ingest.yahoo.index_snapshot",
         lambda: {"configured": True, "used_in_quant": False, "indexes": [], "error": None},
     )
+    monkeypatch.setattr(
+        "kr_quant.ingest.ecos.ecos_snapshot",
+        lambda _key: {"configured": False, "used_in_quant": False, "series": [], "error": "no ecos"},
+    )
     data = client.get("/api/macro").json()
     assert data["used_in_quant"] is False
     assert "fred" in data
     assert "yahoo" in data
+    assert "brief" in data
+    assert "news" in data
+    assert data["brief"]["used_in_quant"] is False
     assert data["fred"]["used_in_quant"] is False

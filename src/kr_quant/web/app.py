@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -60,8 +61,15 @@ class ResearchIn(BaseModel):
     provider: str | None = None
 
 
+class ReportDeleteIn(BaseModel):
+    ticker: str
+    as_of: str
+    kind: str | None = None
+    filename: str | None = None
+
+
 class JobIn(BaseModel):
-    kind: str = Field(pattern="^(demo|screen|live|krx-prices|krx-history)$")
+    kind: str = Field(pattern="^(demo|screen|live|krx-prices|krx-history|investor-kis|dart-nps|strategy)$")
     as_of: str = "auto"
     source: str = "live"
     lookback_days: int = 80
@@ -174,13 +182,14 @@ def api_system_spec() -> dict[str, Any]:
 
 @app.get("/api/guide")
 def api_guide() -> dict[str, Any]:
-    from kr_quant.web.guide import EXCLUSION_KO, WARNING_KO, selection_guide
+    from kr_quant.web.guide import EXCLUSION_KO, WARNING_FIX, WARNING_KO, selection_guide
 
     s = load_settings()
     return {
         "criteria": selection_guide(s.config),
         "exclusion_labels": EXCLUSION_KO,
         "warning_labels": WARNING_KO,
+        "warning_fix": WARNING_FIX,
     }
 
 
@@ -207,10 +216,13 @@ def api_status() -> dict[str, Any]:
     from kr_quant.freshness import freshness_snapshot
     from kr_quant.web.scheduler import scheduler_status
 
+    from kr_quant.web.guide import explain_run_status
+
     s = load_settings()
     quality = _quality(s)
     live_prices = s.staged_dir / "live" / "prices.parquet"
     fresh = freshness_snapshot(s, screen_as_of=(quality or {}).get("as_of_date"))
+    status_explain = explain_run_status(quality, status_csv_exists=s.status_csv.exists())
     return {
         "project_root": str(s.root),
         "model_id": s.model_id,
@@ -225,6 +237,7 @@ def api_status() -> dict[str, Any]:
         "has_results": bool(_run_dirs(s) or (s.output_dir / "latest_top20.csv").exists()),
         "available_runs": [d for d, _ in _run_dirs(s)],
         "quality": quality,
+        "status_explain": status_explain,
         "freshness": fresh,
         "scheduler": scheduler_status(),
         "llm_provider": s.llm_provider,
@@ -630,7 +643,9 @@ def api_top(n: int = 20, as_of: str | None = None) -> dict[str, Any]:
         path = s.output_dir / ("latest_top20.csv" if n <= 20 else "latest_top100.csv")
     from kr_quant.web.comments import SELECTION, annotate_quant_rows
 
-    rows = annotate_quant_rows(_read_table(path)[: max(n, 1)])
+    from kr_quant.timing.snapshot import attach_last_close
+
+    rows = attach_last_close(annotate_quant_rows(_read_table(path)[: max(n, 1)]), s)
     return {"rows": rows, "path": str(path) if path.exists() else None, "selection": SELECTION["quant"]}
 
 
@@ -650,7 +665,9 @@ def api_all(limit: int = 300, eligible_only: bool = True, as_of: str | None = No
         df = df.sort_values("quant_rank", na_position="last")
     from kr_quant.web.comments import SELECTION, annotate_quant_rows
 
-    rows = annotate_quant_rows(_clean(df.head(limit).to_dict("records")))
+    from kr_quant.timing.snapshot import attach_last_close
+
+    rows = attach_last_close(annotate_quant_rows(_clean(df.head(limit).to_dict("records"))), s)
     return {"rows": rows, "total": int(len(df)), "selection": SELECTION["quant"]}
 
 
@@ -719,6 +736,8 @@ def _load_profile(ticker: str) -> dict[str, Any]:
 def api_stock(ticker: str, as_of: str | None = None) -> dict[str, Any]:
     from kr_quant.context.explain import clean_reason_list
     from kr_quant.layers.context import explain_stock
+    from kr_quant.sunzi.fa import fa_gate
+    from kr_quant.sunzi.five import di_panel, five_aspects, tian_panel
     from kr_quant.web.comments import quant_comment
     from kr_quant.web.guide import (
         DATA_FLAG_KO,
@@ -789,15 +808,60 @@ def api_stock(ticker: str, as_of: str | None = None) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         yahoo = {"configured": True, "used_in_quant": False, "error": str(exc)[:200]}
     ta: dict[str, Any] = {"ok": False, "used_in_quant": False, "labels": []}
+    timing: dict[str, Any] = {"ok": False, "used_in_quant": False}
     try:
+        from kr_quant.timing.research import apply_strategy_confidence, load_timing_config, timing_from_history
         from kr_quant.timing.snapshot import load_prices, technical_snapshot
 
         px = load_prices(s)
         if not px.empty:
             hist = px[px["ticker"].astype(str).str.zfill(6) == code]
             ta = technical_snapshot(hist)
+            timing = timing_from_history(hist, load_timing_config(s.root))
+            try:
+                from kr_quant.strategy.run import load_strategy
+
+                cached = load_strategy(s)
+                hit = next(
+                    (r for r in (cached.get("rows") or []) if str(r.get("ticker") or "").zfill(6) == code),
+                    None,
+                )
+                if hit:
+                    timing = apply_strategy_confidence(timing, hit)
+            except Exception:  # noqa: BLE001
+                pass
     except Exception as exc:  # noqa: BLE001
         ta = {"ok": False, "used_in_quant": False, "labels": [], "error": str(exc)[:160]}
+        timing = {"ok": False, "used_in_quant": False, "error": str(exc)[:160]}
+    tian = tian_panel(s)
+    sector_hit = None
+    try:
+        from kr_quant.sector.ranking import rank_sectors
+
+        industry = str(row.get("industry") or row.get("sector") or "")
+        for item in (rank_sectors(s).get("rows") or []):
+            if str(item.get("name") or "") == industry:
+                sector_hit = item
+                break
+    except Exception:  # noqa: BLE001
+        sector_hit = None
+    di = di_panel(row, sector_hit)
+    dart_events: dict[str, Any] = {"used_in_quant": False, "rows": []}
+    try:
+        from kr_quant.events.filings import load_ticker_events
+
+        dart_events = load_ticker_events(s, code, _corp_code(code, profile))
+    except Exception as exc:  # noqa: BLE001
+        dart_events = {"used_in_quant": False, "rows": [], "error": str(exc)[:160]}
+    filings = list(dart_events.get("rows") or [])
+    sunzi = five_aspects(row, tian=tian, sector=sector_hit, filings=filings)
+    flow90: dict[str, Any] = {"used_in_quant": False, "chart": []}
+    try:
+        from kr_quant.flow.official import ticker_payload
+
+        flow90 = ticker_payload(s, code)
+    except Exception as exc:  # noqa: BLE001
+        flow90 = {"used_in_quant": False, "chart": [], "error": str(exc)[:160]}
     return {
         "row": row,
         "as_of": day,
@@ -808,6 +872,15 @@ def api_stock(ticker: str, as_of: str | None = None) -> dict[str, Any]:
         "toss": toss,
         "yahoo": yahoo,
         "ta": ta,
+        "timing": timing,
+        "fa": fa_gate(row),
+        "dao": sunzi["parts"]["dao"],
+        "jiang": sunzi["parts"]["jiang"],
+        "tian": tian,
+        "di": di,
+        "sunzi": sunzi,
+        "events": dart_events,
+        "flow90": flow90,
         "naver": naver,
         "explain": explain_stock(row),
         "comment": quant_comment(row),
@@ -852,17 +925,10 @@ def _load_stock_row(ticker: str, as_of: str | None = None) -> tuple[dict[str, An
 
 
 @app.get("/api/macro")
-def api_macro() -> dict[str, Any]:
-    from kr_quant.ingest.fred import macro_snapshot
-    from kr_quant.ingest.yahoo import index_snapshot
+def api_macro(refresh: bool = False) -> dict[str, Any]:
+    from kr_quant.context.macro_brief import build_macro_dashboard
 
-    s = load_settings()
-    fred = macro_snapshot(s.fred_api_key)
-    try:
-        yahoo = index_snapshot()
-    except Exception as exc:  # noqa: BLE001
-        yahoo = {"configured": True, "used_in_quant": False, "error": str(exc)[:180], "indexes": []}
-    return {"used_in_quant": False, "fred": fred, "yahoo": yahoo}
+    return build_macro_dashboard(load_settings(), refresh=refresh)
 
 
 @app.get("/api/telegram/chats")
@@ -902,10 +968,54 @@ def api_telegram_test() -> dict[str, Any]:
 
 
 @app.get("/api/market")
-def api_market() -> dict[str, Any]:
+def api_market(refresh: bool = False) -> dict[str, Any]:
     from kr_quant.layers.context import build_market_snapshot
 
-    return build_market_snapshot(load_settings())
+    return build_market_snapshot(load_settings(), refresh=refresh)
+
+
+@app.get("/api/investor")
+def api_investor_status() -> dict[str, Any]:
+    from kr_quant.flow.official import status_payload
+
+    return status_payload(load_settings())
+
+
+@app.get("/api/investor/events")
+def api_investor_events(min_turn: int = 5) -> dict[str, Any]:
+    from kr_quant.flow.official import events_payload
+
+    return events_payload(load_settings(), min_turn=max(3, min(int(min_turn), 10)))
+
+
+@app.get("/api/investor/{ticker}")
+def api_investor_ticker(ticker: str) -> dict[str, Any]:
+    from kr_quant.flow.official import ticker_payload
+
+    return ticker_payload(load_settings(), ticker)
+
+
+@app.get("/api/sunzi")
+def api_sunzi(n: int = 40) -> dict[str, Any]:
+    from kr_quant.sunzi.five import build_sunzi_board
+
+    return build_sunzi_board(load_settings(), n=max(10, min(int(n), 80)))
+
+
+@app.get("/api/nps")
+def api_nps() -> dict[str, Any]:
+    from kr_quant.ownership.nps import holdings_payload
+
+    return holdings_payload(load_settings())
+
+
+@app.get("/api/events/{ticker}")
+def api_events_ticker(ticker: str) -> dict[str, Any]:
+    from kr_quant.events.filings import load_ticker_events
+
+    s = load_settings()
+    profile = _load_profile(ticker)
+    return load_ticker_events(s, ticker, _corp_code(str(ticker).zfill(6), profile))
 
 
 @app.get("/api/flow")
@@ -942,14 +1052,26 @@ def api_portfolio() -> dict[str, Any]:
 def api_sectors() -> dict[str, Any]:
     from kr_quant.sector.ranking import rank_sectors
 
-    return rank_sectors(load_settings())
+    s = load_settings()
+    out = rank_sectors(s)
+    quality = _quality(s)
+    out["as_of_date"] = (quality or {}).get("as_of_date")
+    return out
 
 
 @app.get("/api/screens")
-def api_screens(id: str = "value_growth") -> dict[str, Any]:
+def api_screens(id: str = "value_growth", include_quant: bool = True) -> dict[str, Any]:
     from kr_quant.screens import screens_payload
 
-    return screens_payload(load_settings(), id)
+    from kr_quant.timing.snapshot import attach_last_close
+
+    s = load_settings()
+    out = screens_payload(s, id, include_quant=include_quant)
+    quality = _quality(s)
+    out["as_of_date"] = (quality or {}).get("as_of_date")
+    if isinstance(out.get("rows"), list):
+        out["rows"] = attach_last_close(out["rows"], s)
+    return out
 
 
 @app.post("/api/strategy")
@@ -1054,6 +1176,7 @@ def api_toss_rankings() -> dict[str, Any]:
         "groups": annotate_toss_groups(groups),
         "selection": SELECTION["toss"],
         "used_in_quant": False,
+        "fetched_at": time.time(),
     }
 
 
@@ -1096,6 +1219,14 @@ def api_research_list() -> dict[str, Any]:
     s = load_settings()
     rows = list_saved_reports(s.output_dir)
     return {"rows": rows, "total": len(rows)}
+
+
+@app.post("/api/research/reports/delete")
+def api_research_delete(body: ReportDeleteIn) -> dict[str, Any]:
+    from kr_quant.research.report import delete_saved_report
+
+    s = load_settings()
+    return delete_saved_report(s.output_dir, body.ticker, body.as_of, kind=body.kind, filename=body.filename)
 
 
 @app.get("/api/research/{ticker}")
@@ -1236,6 +1367,18 @@ def api_job_start(body: JobIn) -> dict[str, Any]:
                 "krx-history",
                 lambda: job_krx_history(body.as_of, body.lookback_days or 750),
             )
+        if body.kind == "investor-kis":
+            from kr_quant.flow.official import collect_official
+
+            return RUNNER.start("investor-kis", lambda: collect_official(load_settings()))
+        if body.kind == "dart-nps":
+            from kr_quant.ownership.nps import scan_nps_holdings
+
+            return RUNNER.start("dart-nps", lambda: scan_nps_holdings(load_settings()))
+        if body.kind == "strategy":
+            from kr_quant.strategy.run import scan_strategies
+
+            return RUNNER.start("strategy", lambda: scan_strategies(load_settings()))
         return RUNNER.start(
             "live",
             lambda: job_live(body.as_of, body.lookback_days, body.max_corps, body.skip_ingest),

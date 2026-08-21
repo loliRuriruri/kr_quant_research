@@ -15,7 +15,7 @@ from kr_quant.ingest.tossinvest import get_investor_trading
 from kr_quant.settings import Settings
 from kr_quant.timing.snapshot import attach_technicals
 
-FLOW_SCHEMA = 3
+FLOW_SCHEMA = 4
 
 
 def cache_path(root: Path) -> Path:
@@ -117,7 +117,20 @@ def _flow_ready(cached: dict[str, Any] | None, days: int) -> bool:
 
 def _flow_lists(payload: dict[str, Any]) -> list[list[dict[str, Any]]]:
     out: list[list[dict[str, Any]]] = []
-    for key in ("rows", "dual", "private_equity", "empty", "comeback", "low_foreign", "trading", "trading_ex_quant"):
+    for key in (
+        "rows",
+        "dual",
+        "private_equity",
+        "dual_pe",
+        "dual_pe_retail",
+        "other_corp",
+        "pension",
+        "empty",
+        "comeback",
+        "low_foreign",
+        "trading",
+        "trading_ex_quant",
+    ):
         rows = payload.get(key)
         if isinstance(rows, list):
             out.append(rows)
@@ -229,6 +242,10 @@ def load_flow(settings: Settings, days: int = 5) -> dict[str, Any]:
         "days": days,
         "dual": [],
         "private_equity": [],
+        "dual_pe": [],
+        "dual_pe_retail": [],
+        "other_corp": [],
+        "pension": [],
         "empty": [],
         "comeback": [],
         "low_foreign": [],
@@ -310,6 +327,8 @@ def scan_flow(
             "pe_krw": pe_krw,
             "dual_krw": dual_krw,
             "empty_krw": empty_krw,
+            "other_corp_krw": None if last is None else summary["other_corp_net"] * last,
+            "pension_krw": None if last is None else summary["pension_net"] * last,
             "in_quant": code in quant_top,
             "quant_rank": ranks.get(code),
             "sources": universe_meta.get(code, []),
@@ -320,11 +339,19 @@ def scan_flow(
 
     dual = [r for r in rows if r.get("dual")]
     pe = [r for r in rows if r.get("pe_buy")]
+    dual_pe = [r for r in rows if r.get("dual_pe")]
+    dual_pe_retail = [r for r in rows if r.get("dual_pe_retail")]
+    other_corp = [r for r in rows if r.get("other_corp_buy")]
+    pension = [r for r in rows if r.get("pension_buy") and (r.get("dual") or r.get("pe_buy"))]
     empty = search_empty_houses(rows, mode="empty")
     comeback = search_empty_houses(rows, mode="comeback")
     low_foreign = search_empty_houses(rows, mode="low_foreign", max_foreign_rate=0.05)
     dual.sort(key=lambda r: float(r.get("dual_krw") or 0), reverse=True)
     pe.sort(key=lambda r: float(r.get("pe_krw") or 0), reverse=True)
+    dual_pe.sort(key=lambda r: float(r.get("dual_krw") or 0) + float(r.get("pe_krw") or 0), reverse=True)
+    dual_pe_retail.sort(key=lambda r: float(r.get("dual_krw") or 0) + float(r.get("pe_krw") or 0), reverse=True)
+    other_corp.sort(key=lambda r: float(r.get("other_corp_net") or 0), reverse=True)
+    pension.sort(key=lambda r: float(r.get("pension_net") or 0), reverse=True)
     out = {
         "configured": True,
         "used_in_quant": False,
@@ -336,6 +363,10 @@ def scan_flow(
         "disclaimer": "수급 연구는 Quant 점수에 넣지 않습니다. 순매수는 주수 기준이며 이후 수익률은 참고용입니다.",
         "dual": dual,
         "private_equity": pe,
+        "dual_pe": dual_pe,
+        "dual_pe_retail": dual_pe_retail,
+        "other_corp": other_corp,
+        "pension": pension,
         "empty": empty,
         "comeback": comeback,
         "low_foreign": low_foreign,
@@ -349,6 +380,8 @@ def scan_flow(
             "pe_20d": analyze_hit_rate(pe, "ret_20d"),
             "empty_5d": analyze_hit_rate(empty, "ret_5d"),
             "comeback_5d": analyze_hit_rate(comeback, "ret_5d"),
+            "dual_pe_5d": analyze_hit_rate(dual_pe, "ret_5d"),
+            "dual_pe_retail_5d": analyze_hit_rate(dual_pe_retail, "ret_5d"),
             "dual_buckets": amount_bucket_stats(dual, "dual_krw"),
             "pe_buckets": amount_bucket_stats(pe, "pe_krw"),
         },
