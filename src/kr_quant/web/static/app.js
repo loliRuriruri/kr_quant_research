@@ -354,18 +354,26 @@ function setChip(el, text, tip) {
   }
 }
 
+function rankMedal(rank) {
+  const r = Number(rank);
+  if (r === 1) return '<span class="rank-badge top-1">1</span>';
+  if (r === 2) return '<span class="rank-badge top-2">2</span>';
+  if (r === 3) return '<span class="rank-badge top-3">3</span>';
+  return `<span class="rank-badge">${rank || "—"}</span>`;
+}
+
 function renderTop20(rows) {
   const body = $("#top20-body");
   const show = sortedCopy(rows, "dash", "quant_rank", "asc").slice(0, 20);
   body.innerHTML = show
     .map(
       (r) => `<tr class="clickable" data-ticker="${padTicker(r.ticker)}">
-      <td class="num">${r.quant_rank ?? ""}</td>
+      <td class="num">${rankMedal(r.quant_rank)}</td>
       <td class="name-cell"><b>${r.company || r.ticker}</b><div class="meta">${padTicker(r.ticker)} · ${r.market || ""}
         <a class="ext inline" href="${naverUrl(r.ticker)}" target="_blank" rel="noopener">네이버</a>
         ${reportBadge(r.ticker)} ${faChip(r)}</div>${rowNote(r.comment_short || r.comment)}</td>
       <td class="num">${lastCell(r)}</td>
-      <td class="num"><span class="score">${fmt(r.quant_score)}</span></td>
+      <td class="num"><span class="score-pill ${Number(r.quant_score) >= 70 ? 'high' : ''}">${fmt(r.quant_score)}</span></td>
       <td>${factorBars(r)}</td>
       <td class="num">${penCell(r.risk_penalty)}</td>
       <td class="num">${confCell(r.data_confidence)}</td>
@@ -385,13 +393,13 @@ function renderRank(q = "") {
   $("#rank-body").innerHTML = ordered
     .map(
       (r) => `<tr class="clickable" data-ticker="${padTicker(r.ticker)}">
-      <td class="num">${r.quant_rank ?? ""}</td>
+      <td class="num">${rankMedal(r.quant_rank)}</td>
       <td>${padTicker(r.ticker)} <a class="ext inline" href="${naverUrl(r.ticker)}" target="_blank" rel="noopener">네이버</a></td>
-      <td class="name-cell">${r.company || ""} ${faChip(r)}${rowNote(r.comment_short || r.comment)}</td>
+      <td class="name-cell"><b>${r.company || ""}</b> ${faChip(r)}${rowNote(r.comment_short || r.comment)}</td>
       <td>${r.market || ""}</td>
       <td>${r.industry || r.sector || ""}</td>
       <td class="num">${lastCell(r)}</td>
-      <td class="num"><span class="score">${fmt(r.quant_score)}</span></td>
+      <td class="num"><span class="score-pill ${Number(r.quant_score) >= 70 ? 'high' : ''}">${fmt(r.quant_score)}</span></td>
       <td>${factorBars(r)}</td>
       <td class="num">${penCell(r.risk_penalty)}</td>
       <td class="num">${fmt((r.weighted_metric_coverage || 0) * 100, 0)}%</td>
@@ -1301,14 +1309,45 @@ function renderFearGreed(fg) {
     <p class="hint">${escapeHtml(fg.disclaimer || "")} 출처: <a class="ext inline" href="${escapeHtml(fg.page || "https://feargreed.co.kr/")}" target="_blank" rel="noopener">feargreed.co.kr</a></p>`;
 }
 
+function renderKrSentiment(sent) {
+  if (!sent || !sent.components) return "";
+  const st = sent.state || "NEUTRAL";
+  const stKo = sent.state_ko || "중립";
+  const score = fmt(sent.score, 1);
+  const comps = Object.entries(sent.components || {}).map(([, c]) => {
+    return `<div class="sentiment-item">
+      <span>${escapeHtml(c.label)} (비중 ${c.weight}%)</span>
+      <b>${fmt(c.score, 1)}점</b>
+    </div>`;
+  }).join("");
+
+  return `
+    <div class="sentiment-box">
+      <div class="sentiment-head">
+        <div>
+          <h3>자체 한국 시장 공포·탐욕 지수 (KR Market Sentiment)</h3>
+          <span class="hint">KRX 일봉 + 외인 5일 수급 기반 100점 만점 자체 감성 지수 · Quant 점수 미포함</span>
+        </div>
+        <div class="sentiment-score-badge ${st}">
+          ${score}점 · ${stKo}
+        </div>
+      </div>
+      <div class="sentiment-grid">
+        ${comps}
+      </div>
+    </div>
+  `;
+}
+
 async function loadMarket(refresh) {
   const box = $("#market-box");
   if (!box) return;
   const data = await api(`/api/market${refresh ? "?refresh=true" : ""}`);
   const fgHtml = renderFearGreed(data.fear_greed);
+  const krSentHtml = renderKrSentiment(data.kr_sentiment);
   if (!data.configured) {
     stampLive("#market-live");
-    box.innerHTML = `${fgHtml}<p class="hint">${escapeHtml(data.error || "시세 없음")}</p>`;
+    box.innerHTML = `${fgHtml}${krSentHtml}<p class="hint">${escapeHtml(data.error || "시세 없음")}</p>`;
     return;
   }
   const rows = (data.components || [])
@@ -1322,6 +1361,7 @@ async function loadMarket(refresh) {
     })
     .join("");
   box.innerHTML = `
+    ${krSentHtml}
     ${fgHtml}
     <p>내부 국면 <b>${escapeHtml(data.label || data.regime || "")}</b> · 점수 ${fmt(data.regime_score, 1)} <span class="hint">(KRX 일봉 · 장 마감 후 시세 받기 · 점수 미합산)</span></p>
     ${data.freshness ? `<p class="hint">시세 ${escapeHtml(data.freshness.price_max_date || "—")} · ${escapeHtml(data.freshness.label || "")}${data.freshness.stale_price ? " · 위쪽 시세 받기로 최근 일봉을 받으면 됩니다." : ""}</p>` : ""}

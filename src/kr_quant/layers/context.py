@@ -64,8 +64,10 @@ def build_market_snapshot(settings: Settings, *, refresh: bool = False) -> dict[
             components = attach_macro(components, fred.get("series") or [])
         except Exception:  # noqa: BLE001
             pass
+    from kr_quant.context.market_sentiment import compute_kr_market_sentiment
     from kr_quant.freshness import freshness_snapshot
 
+    kr_sent = compute_kr_market_sentiment(prices)
     regime = market_regime(components, cfg)
     fresh = freshness_snapshot(settings)
     rows = []
@@ -86,6 +88,7 @@ def build_market_snapshot(settings: Settings, *, refresh: bool = False) -> dict[
         "regime": regime.get("regime"),
         "label": regime.get("label"),
         "regime_score": regime.get("regime_score"),
+        "kr_sentiment": kr_sent,
         "disclaimer": "시장 국면은 조사 맥락입니다. Quant 순위와 합산하지 않습니다.",
         "components": rows,
         "ecos": ecos,

@@ -614,10 +614,148 @@ body.modal-open { overflow: hidden; }
   color: var(--accent);
 }
 .sector-score { font-size: 18px; font-weight: 700; }
+
+/* --- Modern High-Visibility Visual Polish --- */
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+.rank-badge.top-1 {
+  background: linear-gradient(135deg, #ffd700, #ff9800);
+  color: #1a1000;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.4);
+}
+.rank-badge.top-2 {
+  background: linear-gradient(135deg, #e0e0e0, #9e9e9e);
+  color: #111;
+  box-shadow: 0 0 8px rgba(224, 224, 224, 0.3);
+}
+.rank-badge.top-3 {
+  background: linear-gradient(135deg, #cd7f32, #8d5524);
+  color: #fff;
+  box-shadow: 0 0 8px rgba(205, 127, 50, 0.3);
+}
+
+.score-pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  background: rgba(76, 141, 255, 0.14);
+  color: #70aaff;
+  border: 1px solid rgba(76, 141, 255, 0.28);
+}
+.score-pill.high {
+  background: rgba(61, 207, 142, 0.14);
+  color: #3dcf8e;
+  border-color: rgba(61, 207, 142, 0.3);
+}
+
+.factor-mini-bars {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+  align-items: center;
+}
+.factor-bar-item {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+}
+.factor-bar-v { background: #0284c7; } /* 가치 Cyan/Blue */
+.factor-bar-q { background: #059669; } /* 품질 Emerald */
+.factor-bar-g { background: #7c3aed; } /* 성장 Violet */
+.factor-bar-m { background: #d97706; } /* 모멘텀 Amber */
+.factor-bar-s { background: #2563eb; } /* 안정 Royal */
+
+.sentiment-box {
+  background: linear-gradient(145deg, #131c30, #0d1424);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin: 12px 0;
+}
+.sentiment-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.sentiment-score-badge {
+  font-size: 28px;
+  font-weight: 800;
+  padding: 4px 14px;
+  border-radius: 10px;
+}
+.sentiment-score-badge.EXTREME_GREED { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981; }
+.sentiment-score-badge.GREED { background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid #34d399; }
+.sentiment-score-badge.NEUTRAL { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid #fbbf24; }
+.sentiment-score-badge.FEAR { background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid #f87171; }
+.sentiment-score-badge.EXTREME_FEAR { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; }
+
+.sentiment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.sentiment-item {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 10px;
+}
+.sentiment-item span { font-size: 11px; color: var(--muted); display: block; }
+.sentiment-item b { font-size: 16px; margin-top: 4px; display: block; }
+
+.sector-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  background: #111a2d;
+  margin-bottom: 10px;
+}
+.sector-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sector-badge.LEADING { background: rgba(16, 185, 129, 0.18); color: #10b981; border: 1px solid #10b981; }
+.sector-badge.IMPROVING { background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid #38bdf8; }
+.sector-badge.NEUTRAL { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid #94a3b8; }
+.sector-badge.WEAKENING { background: rgba(251, 146, 60, 0.18); color: #fb923c; border: 1px solid #fb923c; }
+.sector-badge.LAGGING { background: rgba(244, 63, 94, 0.18); color: #f43f5e; border: 1px solid #f43f5e; }
+
+.win-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.win-badge.high { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.win-badge.mid { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+.win-badge.low { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+
 @media (max-width: 1100px) {
   .screen-layout { grid-template-columns: 1fr; }
-}
-@media (max-width: 1100px) {
   body { grid-template-columns: 1fr; }
   .nav { display: flex; gap: 8px; overflow: auto; align-items: center; }
   .nav-foot, .brand span { display: none; }

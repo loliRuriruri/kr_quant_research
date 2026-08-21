@@ -1009,6 +1009,38 @@ def api_nps() -> dict[str, Any]:
     return holdings_payload(load_settings())
 
 
+@app.get("/api/events/backtest")
+def api_events_backtest() -> dict[str, Any]:
+    from kr_quant.events.backtest import backtest_events
+    from kr_quant.events.filings import load_ticker_events
+    from kr_quant.layers.context import load_price_frame
+
+    s = load_settings()
+    prices = load_price_frame(s)
+    if prices is None or getattr(prices, "empty", True):
+        return {
+            "used_in_quant": False,
+            "total_events": 0,
+            "by_type": {},
+            "summary_table": [],
+            "error": "시세 데이터가 없습니다. 먼저 KRX 시세를 받으세요.",
+        }
+
+    # Sample top universe tickers to aggregate events
+    sample_tickers = ["005930", "000660", "035420", "005380", "051910", "006400", "035720", "105560", "055550", "012330"]
+    all_events: list[dict[str, Any]] = []
+    for t in sample_tickers:
+        try:
+            prof = _load_profile(t)
+            evs = load_ticker_events(s, t, _corp_code(t, prof))
+            for r in (evs.get("rows") or []):
+                all_events.append(r)
+        except Exception:  # noqa: BLE001
+            pass
+
+    return backtest_events(all_events, prices)
+
+
 @app.get("/api/events/{ticker}")
 def api_events_ticker(ticker: str) -> dict[str, Any]:
     from kr_quant.events.filings import load_ticker_events
