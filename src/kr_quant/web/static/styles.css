@@ -607,13 +607,115 @@ body.modal-open { overflow: hidden; }
 .tone-card.우호 { border-color: rgba(61, 207, 142, 0.4); }
 .tone-card.부담 { border-color: rgba(239, 75, 106, 0.4); }
 .tone-card.혼합 { border-color: rgba(240, 180, 41, 0.4); }
-.brief-grid {
+.macro-bi-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  margin: 16px 0;
 }
-.brief-item { margin: 8px 0 12px; }
-.brief-item p { margin: 4px 0 0; }
+.macro-item-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+.macro-item-card {
+  background: #10182a;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+.macro-item-card:hover {
+  border-color: rgba(76, 141, 255, 0.4);
+  background: #141e34;
+}
+.macro-item-card.tone-우호 {
+  border-left: 4px solid var(--good);
+}
+.macro-item-card.tone-부담 {
+  border-left: 4px solid var(--bad);
+}
+.macro-item-card.tone-중립, .macro-item-card.tone-미연결 {
+  border-left: 4px solid var(--muted);
+}
+.macro-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.macro-item-label {
+  font-weight: 700;
+  font-size: 14px;
+  color: #e8eef8;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.macro-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.macro-item-val {
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+.macro-item-val small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 2px;
+}
+.macro-item-delta {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.macro-item-delta.up { color: #ef4b6a; background: rgba(239, 75, 106, 0.12); }
+.macro-item-delta.down { color: #4c8dff; background: rgba(76, 141, 255, 0.12); }
+.macro-item-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #b0c0d8;
+  margin: 0;
+}
+.yield-compare-card {
+  background: linear-gradient(145deg, #131c30, #0c1220);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 14px 0;
+}
+.yield-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 10px;
+}
+.yield-compare-box {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.yield-compare-box span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.yield-compare-box b {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+}
 .news-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .news-group h3 { margin: 0 0 6px; font-size: 13px; }
 .news-list { margin: 0; padding-left: 18px; }
@@ -621,7 +723,7 @@ body.modal-open { overflow: hidden; }
 .clickable-chip, .clickable-kpi { cursor: pointer; }
 .chip.clickable-chip { border-color: rgba(240, 180, 41, 0.55); }
 @media (max-width: 1100px) {
-  .brief-head, .brief-grid, .news-groups { grid-template-columns: 1fr; }
+  .brief-head, .macro-bi-grid, .yield-compare-grid, .news-groups { grid-template-columns: 1fr; }
 }
 .kpi span.has-tip { cursor: help; }
 .screen-layout { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }

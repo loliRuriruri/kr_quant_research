@@ -110,6 +110,8 @@ def latest_point(api_key: str | None, alias: str) -> dict[str, Any] | None:
         last["delta"] = float(last["value"]) - float(prev["value"])
     else:
         last["delta"] = None
+    last["history"] = rows
+    last["spark"] = [r.get("value") for r in rows if r.get("value") is not None]
     return last
 
 

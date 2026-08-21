@@ -2883,14 +2883,86 @@ function toneTag(tone) {
   return `<span class="tag tone-${escapeHtml(t)}">${escapeHtml(t)}</span>`;
 }
 
+function renderYieldComparisonCard(yc) {
+  if (!yc) return "";
+  const bok = yc.bok_rate != null ? fmt(yc.bok_rate, 2) + "%" : "—";
+  const fed = yc.fed_rate != null ? fmt(yc.fed_rate, 2) + "%" : "—";
+  const diff = yc.kr_us_diff != null ? `${yc.kr_us_diff > 0 ? "+" : ""}${fmt(yc.kr_us_diff, 2)}%p` : "—";
+  const diffCls = yc.kr_us_diff != null && yc.kr_us_diff < 0 ? "down" : "up";
+  const spread = yc.us_spread != null ? `${yc.us_spread > 0 ? "+" : ""}${fmt(yc.us_spread, 2)}%p` : "—";
+  const spreadCls = yc.us_spread != null && yc.us_spread < 0 ? "down" : "up";
+  const us10 = yc.us_10y != null ? fmt(yc.us_10y, 2) + "%" : "—";
+  const us2 = yc.us_2y != null ? fmt(yc.us_2y, 2) + "%" : "—";
+  const ktb = yc.ktb_3y != null ? fmt(yc.ktb_3y, 2) + "%" : "—";
+
+  return `
+    <div class="yield-compare-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h3 style="margin:0;font-size:15px;color:#fff;">한·미 금리차 및 수익률 곡선 (Yield Curve & Spread)</h3>
+          <span class="hint">한국은행 vs 미국 연준 정책금리 및 미 국채 10년-2년 장단기 스프레드</span>
+        </div>
+      </div>
+      <div class="yield-compare-grid">
+        <div class="yield-compare-box">
+          <span>한·미 기준금리차 (KR - US)</span>
+          <b class="${diffCls}">${diff}</b>
+          <div class="meta" style="margin-top:2px;">한국 ${bok} vs 미국 ${fed}</div>
+        </div>
+        <div class="yield-compare-box">
+          <span>미 장단기 스프레드 (10Y-2Y)</span>
+          <b class="${spreadCls}">${spread}</b>
+          <div class="meta" style="margin-top:2px;">${yc.us_spread != null && yc.us_spread < 0 ? "역전 (침체 경계)" : "정상 기울기"}</div>
+        </div>
+        <div class="yield-compare-box">
+          <span>미국 10년 / 2년 금리</span>
+          <b>${us10}</b>
+          <div class="meta" style="margin-top:2px;">2년물 ${us2}</div>
+        </div>
+        <div class="yield-compare-box">
+          <span>한국 국고채 3년</span>
+          <b>${ktb}</b>
+          <div class="meta" style="margin-top:2px;">국내 시중금리 벤치마크</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMacroItemCard(it, idx, prefix) {
+  if (!it) return "";
+  const tone = it.tone || "중립";
+  const isUp = it.delta != null ? it.delta >= 0 : true;
+  const deltaTxt = it.delta != null && !Number.isNaN(Number(it.delta))
+    ? `${it.delta > 0 ? "+" : ""}${fmt(it.delta, 2)}${it.unit === "%" ? "%p" : it.unit ? " " + it.unit : ""}`
+    : "";
+  const deltaCls = it.delta != null ? (isUp ? "up" : "down") : "";
+  const sparkSvg = renderSvgSparkline(it.spark, isUp, `${prefix || "m"}-${idx}`);
+
+  return `
+    <div class="macro-item-card tone-${escapeHtml(tone)}">
+      <div class="macro-item-top">
+        <div class="macro-item-label">
+          <b>${escapeHtml(it.label)}</b>
+          ${toneTag(tone)}
+        </div>
+        <span class="meta">${escapeHtml(it.as_of || "")}</span>
+      </div>
+      <div class="macro-item-main">
+        <div class="macro-item-val">
+          ${it.value == null ? "미연결" : fmt(it.value, 2)}
+          <small>${escapeHtml(it.unit || "")}</small>
+        </div>
+        ${deltaTxt ? `<span class="macro-item-delta ${deltaCls}">${escapeHtml(deltaTxt)}</span>` : ""}
+      </div>
+      ${sparkSvg}
+      <p class="macro-item-desc">${escapeHtml(it.comment || "")}</p>
+    </div>
+  `;
+}
+
 function renderBriefItems(items) {
-  return (items || [])
-    .map(
-      (it) => `<div class="brief-item">${toneTag(it.tone)} <b>${escapeHtml(it.label)}</b>
-        <span class="meta">${it.value == null ? "—" : fmt(it.value, 2)} ${escapeHtml(it.unit || "")}${it.as_of ? " · " + escapeHtml(it.as_of) : ""}</span>
-        <p>${escapeHtml(it.comment || "")}</p></div>`
-    )
-    .join("");
+  return (items || []).map((it, idx) => renderMacroItemCard(it, idx, "brief")).join("");
 }
 
 function renderStanceCard(block) {
@@ -2926,10 +2998,23 @@ async function loadMacro(refresh) {
         ${renderStanceCard({ ...kr, title: "국내" })}
         ${renderStanceCard({ ...us, title: "국제" })}
       </div>
+      ${renderYieldComparisonCard(brief.yield_comparison)}
       ${renderTradingEconomicsMacroCards(grouped, cc)}
-      <div class="brief-grid">
-        <div><h3>국내</h3>${renderBriefItems((brief.domestic || {}).items)}</div>
-        <div><h3>국제</h3>${renderBriefItems((brief.international || {}).items)}</div>
+      <div class="macro-bi-grid">
+        <div>
+          <h3 style="margin:0 0 8px;font-size:15px;color:#e8eef8;">🇰🇷 국내 매크로 지표 (한국은행 ECOS & 국내 증시)</h3>
+          <p class="hint" style="margin-bottom:8px;">기준금리, 국고채, 원/달러 환율, CPI 및 국내 통화량 추이 차트</p>
+          <div class="macro-item-grid">
+            ${(brief.domestic?.items || []).map((it, idx) => renderMacroItemCard(it, idx, "kr")).join("")}
+          </div>
+        </div>
+        <div>
+          <h3 style="margin:0 0 8px;font-size:15px;color:#e8eef8;">🌐 국제 매크로 지표 (미국 연준 FRED & 글로벌 지표)</h3>
+          <p class="hint" style="margin-bottom:8px;">연준 기준금리, 미 국채 10년/2년, 장단기 스프레드, 미국 물가·실업률 추이 차트</p>
+          <div class="macro-item-grid">
+            ${(brief.international?.items || []).map((it, idx) => renderMacroItemCard(it, idx, "us")).join("")}
+          </div>
+        </div>
       </div>
       <p class="hint">${escapeHtml(brief.disclaimer || data.disclaimer || "")}</p>
     `;

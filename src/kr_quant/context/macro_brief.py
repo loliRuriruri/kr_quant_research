@@ -18,7 +18,18 @@ def _num(value: Any) -> float | None:
     return num
 
 
-def _item(kind: str, key: str, label: str, value: Any, unit: str, as_of: str | None, tone: str, comment: str) -> dict[str, Any]:
+def _item(
+    kind: str,
+    key: str,
+    label: str,
+    value: Any,
+    unit: str,
+    as_of: str | None,
+    tone: str,
+    comment: str,
+    delta: float | None = None,
+    spark: list[float] | None = None,
+) -> dict[str, Any]:
     return {
         "kind": kind,
         "id": key,
@@ -28,6 +39,8 @@ def _item(kind: str, key: str, label: str, value: Any, unit: str, as_of: str | N
         "as_of": as_of,
         "tone": tone,
         "comment": comment,
+        "delta": delta,
+        "spark": spark or [],
         "used_in_quant": False,
     }
 
@@ -247,51 +260,58 @@ def build_macro_brief(
 
     kr_rate = ecos_rows.get("기준금리") or {}
     tone, comment = _comment_policy_rate("한국 기준금리", _num(kr_rate.get("value")), _num(kr_rate.get("delta")), _fmt_ecos_time(kr_rate.get("time")))
-    domestic.append(_item("domestic", "bok_rate", "한국 기준금리", _num(kr_rate.get("value")), "%", _fmt_ecos_time(kr_rate.get("time")), tone, comment))
+    domestic.append(_item("domestic", "bok_rate", "한국 기준금리", _num(kr_rate.get("value")), "%", _fmt_ecos_time(kr_rate.get("time")), tone, comment, delta=_num(kr_rate.get("delta")), spark=kr_rate.get("spark")))
 
     ktb = ecos_rows.get("국고채3년") or {}
     tone, comment = _comment_yield("국고채 3년", _num(ktb.get("value")), _num(ktb.get("delta")), _fmt_ecos_time(ktb.get("time")))
-    domestic.append(_item("domestic", "ktb3y", "국고채 3년", _num(ktb.get("value")), "%", _fmt_ecos_time(ktb.get("time")), tone, comment))
+    domestic.append(_item("domestic", "ktb3y", "국고채 3년", _num(ktb.get("value")), "%", _fmt_ecos_time(ktb.get("time")), tone, comment, delta=_num(ktb.get("delta")), spark=ktb.get("spark")))
 
     fx_kr = ecos_rows.get("원달러환율") or {}
     tone, comment = _comment_fx("원/달러(한은)", _num(fx_kr.get("value")), _num(fx_kr.get("delta")), _fmt_ecos_time(fx_kr.get("time")))
-    domestic.append(_item("domestic", "usdkrw_bok", "원/달러(한은)", _num(fx_kr.get("value")), "원", _fmt_ecos_time(fx_kr.get("time")), tone, comment))
+    domestic.append(_item("domestic", "usdkrw_bok", "원/달러(한은)", _num(fx_kr.get("value")), "원", _fmt_ecos_time(fx_kr.get("time")), tone, comment, delta=_num(fx_kr.get("delta")), spark=fx_kr.get("spark")))
 
     cpi_kr = ecos_rows.get("소비자물가지수") or {}
     tone, comment = _comment_cpi("한국 CPI", _num(cpi_kr.get("value")), _num(cpi_kr.get("delta")), _fmt_ecos_time(cpi_kr.get("time")))
-    domestic.append(_item("domestic", "cpi_kr", "한국 CPI", _num(cpi_kr.get("value")), str(cpi_kr.get("unit") or "지수"), _fmt_ecos_time(cpi_kr.get("time")), tone, comment))
+    domestic.append(_item("domestic", "cpi_kr", "한국 CPI", _num(cpi_kr.get("value")), str(cpi_kr.get("unit") or "지수"), _fmt_ecos_time(cpi_kr.get("time")), tone, comment, delta=_num(cpi_kr.get("delta")), spark=cpi_kr.get("spark")))
 
     m2 = ecos_rows.get("M2") or {}
     tone, comment = _comment_m2(_num(m2.get("value")), _num(m2.get("delta")), _fmt_ecos_time(m2.get("time")))
-    domestic.append(_item("domestic", "m2", "M2", _num(m2.get("value")), str(m2.get("unit") or ""), _fmt_ecos_time(m2.get("time")), tone, comment))
+    domestic.append(_item("domestic", "m2", "M2 통화량", _num(m2.get("value")), str(m2.get("unit") or ""), _fmt_ecos_time(m2.get("time")), tone, comment, delta=_num(m2.get("delta")), spark=m2.get("spark")))
 
     fed = fred_rows.get("FEDFUNDS") or {}
+    fed_spark = [h.get("value") for h in (fed.get("history") or []) if h.get("value") is not None]
     tone, comment = _comment_policy_rate("연준 기준금리", _num(fed.get("value")), _num(fed.get("delta")), fed.get("date"))
-    international.append(_item("international", "FEDFUNDS", "연준 기준금리", _num(fed.get("value")), "%", fed.get("date"), tone, comment))
+    international.append(_item("international", "FEDFUNDS", "연준 기준금리", _num(fed.get("value")), "%", fed.get("date"), tone, comment, delta=_num(fed.get("delta")), spark=fed_spark))
 
     dgs10 = fred_rows.get("DGS10") or {}
-    tone, comment = _comment_yield("미국 10년", _num(dgs10.get("value")), _num(dgs10.get("delta")), dgs10.get("date"))
-    international.append(_item("international", "DGS10", "미국 10년", _num(dgs10.get("value")), "%", dgs10.get("date"), tone, comment))
+    dgs10_spark = [h.get("value") for h in (dgs10.get("history") or []) if h.get("value") is not None]
+    tone, comment = _comment_yield("미국 10년 금리", _num(dgs10.get("value")), _num(dgs10.get("delta")), dgs10.get("date"))
+    international.append(_item("international", "DGS10", "미국 10년 금리", _num(dgs10.get("value")), "%", dgs10.get("date"), tone, comment, delta=_num(dgs10.get("delta")), spark=dgs10_spark))
 
     dgs2 = fred_rows.get("DGS2") or {}
-    tone, comment = _comment_yield("미국 2년", _num(dgs2.get("value")), _num(dgs2.get("delta")), dgs2.get("date"))
-    international.append(_item("international", "DGS2", "미국 2년", _num(dgs2.get("value")), "%", dgs2.get("date"), tone, comment))
+    dgs2_spark = [h.get("value") for h in (dgs2.get("history") or []) if h.get("value") is not None]
+    tone, comment = _comment_yield("미국 2년 금리", _num(dgs2.get("value")), _num(dgs2.get("delta")), dgs2.get("date"))
+    international.append(_item("international", "DGS2", "미국 2년 금리", _num(dgs2.get("value")), "%", dgs2.get("date"), tone, comment, delta=_num(dgs2.get("delta")), spark=dgs2_spark))
 
     spread = fred_rows.get("T10Y2Y") or {}
+    spread_spark = [h.get("value") for h in (spread.get("history") or []) if h.get("value") is not None]
     tone, comment = _comment_spread(_num(spread.get("value")), spread.get("date"))
-    international.append(_item("international", "T10Y2Y", "장단기 스프레드", _num(spread.get("value")), "%p", spread.get("date"), tone, comment))
+    international.append(_item("international", "T10Y2Y", "장단기 스프레드", _num(spread.get("value")), "%p", spread.get("date"), tone, comment, delta=_num(spread.get("delta")), spark=spread_spark))
 
     cpi_us = fred_rows.get("CPIAUCSL") or {}
+    cpi_spark = [h.get("value") for h in (cpi_us.get("history") or []) if h.get("value") is not None]
     tone, comment = _comment_cpi("미국 CPI", _num(cpi_us.get("value")), _num(cpi_us.get("delta")), cpi_us.get("date"))
-    international.append(_item("international", "CPIAUCSL", "미국 CPI", _num(cpi_us.get("value")), "지수", cpi_us.get("date"), tone, comment))
+    international.append(_item("international", "CPIAUCSL", "미국 CPI", _num(cpi_us.get("value")), "지수", cpi_us.get("date"), tone, comment, delta=_num(cpi_us.get("delta")), spark=cpi_spark))
 
     unrate = fred_rows.get("UNRATE") or {}
+    unrate_spark = [h.get("value") for h in (unrate.get("history") or []) if h.get("value") is not None]
     tone, comment = _comment_unrate(_num(unrate.get("value")), _num(unrate.get("delta")), unrate.get("date"))
-    international.append(_item("international", "UNRATE", "미국 실업률", _num(unrate.get("value")), "%", unrate.get("date"), tone, comment))
+    international.append(_item("international", "UNRATE", "미국 실업률", _num(unrate.get("value")), "%", unrate.get("date"), tone, comment, delta=_num(unrate.get("delta")), spark=unrate_spark))
 
     fx_us = fred_rows.get("DEXKOUS") or {}
+    fx_spark = [h.get("value") for h in (fx_us.get("history") or []) if h.get("value") is not None]
     tone, comment = _comment_fx("원/달러(FRED)", _num(fx_us.get("value")), _num(fx_us.get("delta")), fx_us.get("date"))
-    international.append(_item("international", "DEXKOUS", "원/달러(FRED)", _num(fx_us.get("value")), "원", fx_us.get("date"), tone, comment))
+    international.append(_item("international", "DEXKOUS", "원/달러(FRED)", _num(fx_us.get("value")), "원", fx_us.get("date"), tone, comment, delta=_num(fx_us.get("delta")), spark=fx_spark))
 
     for row in (yahoo or {}).get("indexes") or []:
         if not isinstance(row, dict) or row.get("error"):
@@ -299,7 +319,7 @@ def build_macro_brief(
         label = str(row.get("label") or row.get("symbol") or "")
         tone, comment = _comment_index(label, _num(row.get("last")), _num(row.get("ret_1d")), _num(row.get("ret_1y")), row.get("as_of"))
         bucket = "domestic" if label.upper() in {"KOSPI", "KOSDAQ"} or str(row.get("symbol") or "").startswith("^K") else "international"
-        item = _item(bucket, str(row.get("symbol") or label), label, _num(row.get("last")), "", row.get("as_of"), tone, comment)
+        item = _item(bucket, str(row.get("symbol") or label), label, _num(row.get("last")), "", row.get("as_of"), tone, comment, delta=_num(row.get("ret_1d")), spark=row.get("spark") or [])
         if bucket == "domestic":
             domestic.append(item)
         else:
@@ -316,12 +336,28 @@ def build_macro_brief(
         overall["tone"] = "우호"
         overall["label"] = "국내·국제 모두 우호"
         overall["comment"] = "국내와 국제 매크로가 같이 우호적입니다. 그래도 개별 종목 점수와 합산하지 않습니다."
+
+    bok_val = _num(kr_rate.get("value"))
+    fed_val = _num(fed.get("value"))
+    diff_val = round(bok_val - fed_val, 2) if (bok_val is not None and fed_val is not None) else None
+
+    yield_comparison = {
+        "bok_rate": bok_val,
+        "fed_rate": fed_val,
+        "kr_us_diff": diff_val,
+        "us_2y": _num(dgs2.get("value")),
+        "us_10y": _num(dgs10.get("value")),
+        "us_spread": _num(spread.get("value")),
+        "ktb_3y": _num(ktb.get("value")),
+    }
+
     return {
         "used_in_quant": False,
         "disclaimer": "우호·부담은 금리·환율·물가·비교지수를 종합 분석한 거시경제 지표이며, Quant 모델과 독립적인 시장 모니터링 데이터입니다.",
         "overall": overall,
         "domestic": {"stance": kr, "items": domestic},
         "international": {"stance": us, "items": international},
+        "yield_comparison": yield_comparison,
         "as_of": {
             "fred": next((row.get("date") for row in (fred or {}).get("series") or [] if row.get("date")), None),
             "ecos": next((_fmt_ecos_time(row.get("time")) for row in (ecos or {}).get("series") or [] if row.get("time")), None),
