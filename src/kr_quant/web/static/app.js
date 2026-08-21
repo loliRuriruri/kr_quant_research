@@ -2345,8 +2345,10 @@ function renderScreens(data) {
   }
   box.innerHTML = `
     ${asofBanner(asof)}
-    <h3>${escapeHtml(data.name || "")} ${data.n ?? 0}종목</h3>
-    <p class="hint">${escapeHtml(data.how || "")}</p>
+    <div style="margin-bottom:12px;">
+      <h3 style="margin:0 0 6px;font-size:16px;color:#fff;">${escapeHtml(data.name || "")} <span class="chip" style="font-size:12px;vertical-align:middle;">${data.n ?? 0}종목</span></h3>
+      <p class="hint" style="margin:0;">${escapeHtml(data.how || "")}</p>
+    </div>
     <div class="table-wrap tall"><table data-scope="screens">
       <thead><tr>
         <th>#</th>
@@ -2358,7 +2360,7 @@ function renderScreens(data) {
       </tr></thead>
       <tbody>${body || "<tr><td colspan=6>조건에 맞는 종목이 없습니다. 수급 목록이면 수급 탭을 먼저 스캔하세요.</td></tr>"}</tbody>
     </table></div>
-    <p class="hint">${escapeHtml(data.disclaimer || "")} 열 이름을 누르면 최근가·점수로 정렬합니다.</p>
+    <p class="hint">열 이름을 누르면 최근가·점수로 정렬합니다.</p>
   `;
   screenCache = data;
   paintSortHeaders("screens");
