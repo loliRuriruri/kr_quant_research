@@ -108,7 +108,7 @@ def attach_technicals(
             continue
         code = str(row.get("ticker") or "").zfill(6)
         row["ta"] = technical_snapshot(grouped.get(code))
-    note = " 스토캐스틱(5,3,3)·일목(9-26-52)은 KRX OHLC이며 Quant 점수에 넣지 않습니다."
+    note = " 스토캐스틱(5,3,3)·일목(9-26-52)은 KRX OHLC."
     disc = str(payload.get("disclaimer") or "")
     if "스토캐스틱" not in disc:
         payload["disclaimer"] = (disc + note).strip()

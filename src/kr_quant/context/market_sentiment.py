@@ -55,7 +55,7 @@ def compute_kr_market_sentiment(
             "state_ko": "중립 (시세 없음)",
             "components": {},
             "used_in_quant": False,
-            "disclaimer": "자체 한국 시장 감성 지표입니다. Quant 점수에 포함되지 않습니다.",
+            "disclaimer": "자체 한국 시장 감성 지표입니다.",
         }
 
     px = prices.copy()
@@ -185,5 +185,5 @@ def compute_kr_market_sentiment(
         "state_ko": SENTIMENT_STATE_KO[state],
         "components": components,
         "used_in_quant": False,
-        "disclaimer": "자체 한국 시장 공포·탐욕 지표입니다. Quant 점수에 포함되지 않으며 매수/매도 신호가 아닙니다.",
+        "disclaimer": "자체 한국 시장 공포·탐욕 지표입니다. 매수/매도 신호가 아닙니다.",
     }

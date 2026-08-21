@@ -45,7 +45,7 @@ _DEFAULT = {
     },
     "min_bars": {"short": 20, "mid": 60, "long": 180, "full_sample": 250},
     "strategy_blend": True,
-    "disclaimer": "타이밍 상태·신뢰도는 조사 오버레이입니다. Quant 점수에 넣지 않으며 매수 지시가 아닙니다.",
+    "disclaimer": "타이밍 상태·신뢰도는 조사 오버레이입니다. 매수 지시가 아닙니다.",
 }
 
 
@@ -323,7 +323,7 @@ def timing_from_history(hist: pd.DataFrame | None, cfg: dict[str, Any] | None = 
         f"단기/중기/장기: {' · '.join(aligned) or '미산출'}. "
         f"52주 고점 대비 {dist_52w * 100:.1f}%." if dist_52w is not None else f"{STATE_KO[state]}. {note}"
     )
-    comment += " Quant 점수에 넣지 않습니다."
+    comment += ""
     date_col = "trade_date" if "trade_date" in work.columns else "date"
     as_of = work[date_col].iloc[-1]
     as_of_s = as_of.date().isoformat() if hasattr(as_of, "date") else str(as_of)[:10]

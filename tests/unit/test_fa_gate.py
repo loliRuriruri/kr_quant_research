@@ -17,7 +17,7 @@ def test_fa_pass_does_not_touch_quant():
     assert gate["fa_gate_pass"] is True
     assert gate["a_candidate"] is True
     assert gate["fa_label"] == "法 통과"
-    assert "Quant" in gate["comment"]
+    assert gate["comment"]
 
 
 def test_fa_fail_on_stale_and_low_confidence():

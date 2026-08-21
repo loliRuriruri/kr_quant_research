@@ -123,5 +123,5 @@ def analyze_top20(settings: Settings, *, max_sector_weight: float = 0.40, max_na
             for r in names.itertuples(index=False)
         ],
         "comment": " ".join(comment_bits),
-        "disclaimer": "연구용 집중도입니다. Quant 점수를 바꾸지 않고 주문도 없습니다.",
+        "disclaimer": "연구용 집중도입니다. 주문도 없습니다.",
     }

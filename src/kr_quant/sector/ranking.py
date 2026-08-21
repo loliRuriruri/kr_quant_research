@@ -178,7 +178,7 @@ def rank_sectors(settings: Settings) -> dict[str, Any]:
                 "comment": (
                     f"{g['name']} {g['n']}종목. 시장 대비 3개월 상대강도 {rs*100:.0f}점대, "
                     f"상승 종목 {g['breadth']*100:.0f}%, 실적 증가 비율 {g['earnings']*100:.0f}%. "
-                    f"상태 {STATE_KO[state]}. Quant 점수에 넣지 않습니다."
+                    f"상태 {STATE_KO[state]}."
                 ),
             }
         )

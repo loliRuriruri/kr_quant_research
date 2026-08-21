@@ -195,7 +195,7 @@ def write_report(
         "usage": (raw_body.get("usage") or {}),
         "missing_headings": missing_headings(markdown),
         "report_markdown": markdown,
-        "disclaimer": "리서치 의견이며 매수·매도 지시가 아닙니다. Quant 점수는 이 리포트가 바꾸지 않습니다.",
+        "disclaimer": "리서치 의견이며 매수·매도 지시가 아닙니다.",
     }
     path = report_path(output_dir, as_of, ticker)
     path.parent.mkdir(parents=True, exist_ok=True)

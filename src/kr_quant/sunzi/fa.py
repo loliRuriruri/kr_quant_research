@@ -25,7 +25,7 @@ _DEFAULT = {
     "critical_risk_any": ["CB_BW_OVERHANG", "REPEATED_CB_BW"],
     "critical_risk_pair": ["LEVERAGE_STRESS", "THIN_EQUITY"],
     "weights": {"confidence": 25, "risk": 20, "coverage": 20, "pit": 15, "eligibility": 20},
-    "disclaimer": "法은 데이터·리스크·공시 규율 게이트입니다. Quant 점수를 바꾸지 않으며 매수 지시가 아닙니다.",
+    "disclaimer": "法은 데이터·리스크·공시 규율 게이트입니다. 매수 지시가 아닙니다.",
 }
 
 REASON_KO = {
@@ -118,7 +118,7 @@ def fa_gate(row: dict[str, Any], cfg: dict[str, Any] | None = None) -> dict[str,
     passed = not reasons
     reason_ko = [REASON_KO.get(code, code) for code in reasons]
     if passed:
-        comment = "데이터·리스크·공시 규율을 통과해 A-후보로 봅니다. Quant 점수는 그대로입니다."
+        comment = "데이터·리스크·공시 규율을 통과해 A-후보로 봅니다."
     else:
         comment = " ".join(reason_ko) + " Quant 순위는 바꾸지 않고 A-후보만 제한합니다."
     return {

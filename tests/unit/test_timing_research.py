@@ -24,7 +24,7 @@ def test_uptrend_multi_tf_not_quant():
     assert out["timeframes"]["short"]["trend"] == "UP"
     assert out["timeframes"]["mid"]["trend"] == "UP"
     assert out["confidence"] > 40
-    assert "Quant" in out["comment"]
+    assert out["comment"]
     assert out["state"] in {"TREND", "OVERHEATED", "NEUTRAL", "RECOVERY"}
 
 

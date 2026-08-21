@@ -347,7 +347,7 @@ def build_macro_brief(
     if kr["tone"] == "부담" and us["tone"] == "부담":
         overall["tone"] = "부담"
         overall["label"] = "국내·국제 모두 부담"
-        overall["comment"] = "국내와 국제 매크로가 같이 부담입니다. 위험자산 비중을 키우기 어려운 구간으로 읽습니다. Quant 점수에는 넣지 않습니다."
+        overall["comment"] = "국내와 국제 매크로가 같이 부담입니다. 위험자산 비중을 키우기 어려운 구간으로 읽습니다."
     elif kr["tone"] == "우호" and us["tone"] == "우호":
         overall["tone"] = "우호"
         overall["label"] = "국내·국제 모두 우호"

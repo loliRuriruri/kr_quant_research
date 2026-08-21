@@ -253,7 +253,7 @@ def load_flow(settings: Settings, days: int = 5) -> dict[str, Any]:
         "trading_ex_quant": [],
         "rows": [],
         "stats": {},
-        "disclaimer": "수급 연구는 Quant 점수에 넣지 않습니다.",
+        "disclaimer": "",
     }
 
 
@@ -360,7 +360,7 @@ def scan_flow(
         "scanned": len(rows),
         "errors": errors,
         "fetched_at": time.time(),
-        "disclaimer": "수급 연구는 Quant 점수에 넣지 않습니다. 순매수는 주수 기준이며 이후 수익률은 참고용입니다.",
+        "disclaimer": "순매수는 주수 기준이며 이후 수익률은 참고용입니다.",
         "dual": dual,
         "private_equity": pe,
         "dual_pe": dual_pe,

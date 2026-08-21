@@ -166,7 +166,7 @@ def job_krx_prices(as_of: str = "auto", lookback_days: int = 10) -> dict[str, An
         "lookback_days": days,
         "freshness": fresh,
         "used_in_quant": False,
-        "note": "시세만 갱신했습니다. Quant 점수는 재계산 버튼을 눌러야 바뀝니다.",
+        "note": "시세만 갱신했습니다.",
     }
 
 
@@ -195,7 +195,7 @@ def job_krx_history(as_of: str = "auto", lookback_days: int = HISTORY_DAYS) -> d
         "lookback_days": days,
         "freshness": fresh,
         "used_in_quant": False,
-        "note": f"KRX 일봉을 최대 {days}거래일까지 채웠습니다. Quant 점수는 바꾸지 않습니다. 전략 랩은 이력이 늘어난 뒤 다시 돌리세요.",
+        "note": f"KRX 일봉을 최대 {days}거래일까지 채웠습니다. 전략 랩은 이력이 늘어난 뒤 다시 돌리세요.",
     }
 
 

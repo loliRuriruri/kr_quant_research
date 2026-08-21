@@ -196,7 +196,7 @@ def market_news_bundle(
         "error": error,
         "groups": groups,
         "encyc": encyc[:6],
-        "disclaimer": "네이버 검색 API 헤드라인입니다. 점수에 넣지 않으며 매수 지시가 아닙니다.",
+        "disclaimer": "네이버 검색 API 헤드라인입니다. 매수 지시가 아닙니다.",
     }
     _news_cache = (now, out)
     return out

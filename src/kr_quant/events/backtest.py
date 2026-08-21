@@ -209,7 +209,7 @@ def summarize_event_backtest(
         "by_type": by_type,
         "summary_table": summary_table,
         "horizons": list(horizons),
-        "disclaimer": "공시 이벤트 사후 수익률은 연구 오버레이입니다. Quant 점수에 반영되지 않으며 과거 통계가 미래 수익을 보장하지 않습니다.",
+        "disclaimer": "공시 이벤트 사후 수익률은 연구 오버레이입니다. 과거 통계가 미래 수익을 보장하지 않습니다.",
     }
 
 

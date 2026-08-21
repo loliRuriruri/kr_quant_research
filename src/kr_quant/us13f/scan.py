@@ -78,7 +78,7 @@ def load_13f(settings: Settings) -> dict[str, Any]:
         "increases": [],
         "common": [],
         "trend": [],
-        "disclaimer": cfg.get("disclaimer") or "13F는 SEC EDGAR 원문이며 Quant 점수에 넣지 않습니다.",
+        "disclaimer": cfg.get("disclaimer") or "13F는 SEC EDGAR 원문.",
     }
 
 
@@ -163,7 +163,7 @@ def refresh_13f(settings: Settings, *, force: bool = False) -> dict[str, Any]:
         "scanned": len(filer_rows),
         "errors": errors,
         "disclaimer": cfg.get("disclaimer")
-        or "13F는 분기 말 스냅샷이며 45일 시차입니다. SEC EDGAR 원문입니다. Quant 점수에 넣지 않습니다.",
+        or "13F는 분기 말 스냅샷이며 45일 시차입니다. SEC EDGAR 원문입니다.",
         "filers": filer_rows,
         "new": new_rows[:80],
         "exits": exit_rows[:80],

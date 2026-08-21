@@ -141,7 +141,7 @@ def fear_greed_snapshot(*, refresh: bool = False) -> dict[str, Any]:
         "page": SOURCE_PAGE,
         "error": error,
         **data,
-        "disclaimer": "공포·탐욕 지수는 시장 심리 참고용입니다. Quant 점수에 넣지 않으며 매수·매도 지시가 아닙니다.",
+        "disclaimer": "공포·탐욕 지수는 시장 심리 참고용입니다. 매수·매도 지시가 아닙니다.",
     }
     if out["configured"]:
         _cache["fg"] = (now, out)

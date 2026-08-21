@@ -289,7 +289,7 @@ def stock_research_quote(ticker: str, market: str | None = None) -> dict[str, An
             "page": yahoo_quote_url(primary),
             "vs_kospi": bench,
             "used_in_quant": False,
-            "disclaimer": "yfinance/Yahoo는 연구·비교용입니다. Quant 점수와 KRX 공식 시세를 대체하지 않습니다.",
+            "disclaimer": "yfinance/Yahoo는 연구·비교용입니다. KRX 공식 시세를 대체하지 않습니다.",
         }
     )
     return stats

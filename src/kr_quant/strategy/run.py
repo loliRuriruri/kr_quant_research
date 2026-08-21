@@ -187,7 +187,7 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
         "slippage_bps": slippage,
         "execution": "next-bar open",
         "selection": SELECTION_KO,
-        "disclaimer": "일봉 백테스트이며 Quant 점수에 넣지 않습니다. 파라미터는 학습 구간에서만 고르고, 이후 구간·walk-forward로 봅니다. 실시간 호가·주문이 아닙니다.",
+        "disclaimer": "일봉 백테스트. 파라미터는 학습 구간에서만 고르고, 이후 구간·walk-forward로 봅니다. 실시간 호가·주문이 아닙니다.",
         "catalog": [
             {"id": s.strategy_id, "name": s.name, "family": s.family, "params": s.defaults}
             for s in strategy_registry().values()

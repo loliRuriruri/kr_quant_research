@@ -1,3 +1,65 @@
+
+function classifyNewsSentiment(title, description) {
+  const text = `${title || ""} ${description || ""}`.toLowerCase();
+  
+  const BULL_KEYWORDS = [
+    "호실적", "어닝서프라이즈", "서프라이즈", "흑자전환", "영업익 급증", "매출 급증", "최대 실적",
+    "사상 최대", "영업이익 급증", "수주", "대규모 계약", "공급계약", "체결", "신고가", "급등", "상한가",
+    "목표가 상향", "투자의견 상향", "매수 추천", "자사주 매입", "자사주 소각", "배당 확대", "배당금 인상",
+    "지분 확대", "특허 취득", "fda 승인", "임상 성공", "인수합병", "m&a", "호재",
+    "반등", "상승세", "독점", "ai 수혜", "수혜주", "유치", "기술수출", "양산", "공급 개시", "투자 유치",
+    "금리 인하", "물가 안정", "외인 순매수", "기관 순매수", "경기 회복", "무역수지 흑자", "훈풍", "강세", "성장", "호조"
+  ];
+
+  const BEAR_KEYWORDS = [
+    "어닝쇼크", "실적 쇼크", "적자전환", "적자 지속", "적자 확대", "영업익 급감", "매출 급감",
+    "급락", "하한가", "신저가", "목표가 하향", "투자의견 하향", "매도", "손실", "유상증자",
+    "전환사채", "cb 발행", "bw 발행", "감자", "상장폐지", "거래정지", "관리종목", "투자경고",
+    "횡령", "배임", "분식회계", "압수수색", "기소", "피소", "소송", "과징금", "제재", "규제",
+    "리콜", "화재", "사고", "임상 실패", "승인 거절", "계약 해지", "공급 중단", "디폴트",
+    "부도", "파산", "워크아웃", "금리 인상", "인플레 재점화", "경기 침체", "관세 부과", "전쟁", "리스크",
+    "매물 폭탄", "블록딜", "지분 매각", "오버행", "외인 매도", "약세", "악재", "부진", "하락세"
+  ];
+
+  let bullScore = 0;
+  let bearScore = 0;
+
+  for (const kw of BULL_KEYWORDS) {
+    if (text.includes(kw)) {
+      bullScore += kw.length >= 4 ? 2 : 1;
+    }
+  }
+
+  for (const kw of BEAR_KEYWORDS) {
+    if (text.includes(kw)) {
+      bearScore += kw.length >= 4 ? 2 : 1;
+    }
+  }
+
+  if (bullScore > bearScore && bullScore >= 1) {
+    return {
+      type: "bull",
+      label: "호재",
+      icon: "🟢",
+      cls: "news-badge-bull"
+    };
+  } else if (bearScore > bullScore && bearScore >= 1) {
+    return {
+      type: "bear",
+      label: "악재",
+      icon: "🔴",
+      cls: "news-badge-bear"
+    };
+  } else {
+    return {
+      type: "neutral",
+      label: "일반",
+      icon: "⚪",
+      cls: "news-badge-neutral"
+    };
+  }
+}
+
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
 
@@ -838,11 +900,17 @@ async function openStock(ticker) {
       .map((x) => `<p>${escapeHtml(x.description || x.title || "")}</p>`)
       .join("");
     const newsItems = (naver.news || [])
-      .slice(0, 6)
-      .map(
-        (n) => `<li><a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a>
-          <div class="meta">${escapeHtml((n.pubDate || "").slice(0, 16))} · ${escapeHtml((n.description || "").slice(0, 90))}</div></li>`
-      )
+      .slice(0, 8)
+      .map((n) => {
+        const sent = classifyNewsSentiment(n.title, n.description);
+        return `<li>
+          <div style="display:flex; align-items:flex-start; gap:4px;">
+            <span class="news-badge ${sent.cls}">${sent.icon} ${sent.label}</span>
+            <a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener" style="font-weight:500;">${escapeHtml(n.title)}</a>
+          </div>
+          <div class="meta" style="margin-top:3px;">${escapeHtml((n.pubDate || "").slice(0, 16))} · ${escapeHtml((n.description || "").slice(0, 95))}</div>
+        </li>`;
+      })
       .join("");
     let newsBlock = "";
     if (newsItems) {
@@ -1167,7 +1235,7 @@ function fiveStrip(data) {
 
 function faChip(r) {
   if (r.fa_gate_pass === true) {
-    return `<span class="tag up has-tip" data-tip="${escapeHtml(r.fa_comment || "법 통과. Quant 점수는 그대로입니다.")}">法 통과</span>`;
+    return `<span class="tag up has-tip" data-tip="${escapeHtml(r.fa_comment || "")}">法 통과</span>`;
   }
   if (r.fa_gate_pass === false) {
     const why = (r.fa_reasons_ko || []).join(" ") || r.fa_comment || "법 미달";
@@ -1520,7 +1588,7 @@ function renderKrSentiment(sent) {
       <div class="sentiment-head">
         <div>
           <h3>자체 한국 시장 공포·탐욕 지수 (KR Market Sentiment)</h3>
-          <span class="hint">KRX 일봉 + 외인 5일 수급 기반 100점 만점 자체 감성 지수 · Quant 점수 미포함</span>
+          <span class="hint">KRX 일봉 + 외인 5일 수급 기반 100점 만점 자체 감성 지수</span>
         </div>
         <div class="sentiment-score-badge ${st}">
           ${score}점 · ${stKo}
@@ -1557,7 +1625,7 @@ async function loadMarket(refresh) {
   box.innerHTML = `
     ${krSentHtml}
     ${fgHtml}
-    <p>내부 국면 <b>${escapeHtml(data.label || data.regime || "")}</b> · 점수 ${fmt(data.regime_score, 1)} <span class="hint">(KRX 일봉 · 장 마감 후 시세 받기 · 점수 미합산)</span></p>
+    <p>내부 국면 <b>${escapeHtml(data.label || data.regime || "")}</b> · 점수 ${fmt(data.regime_score, 1)} <span class="hint">(KRX 일봉 · 장 마감 후 시세 받기)</span></p>
     ${data.freshness ? `<p class="hint">시세 ${escapeHtml(data.freshness.price_max_date || "—")} · ${escapeHtml(data.freshness.label || "")}${data.freshness.stale_price ? " · 위쪽 시세 받기로 최근 일봉을 받으면 됩니다." : ""}</p>` : ""}
     <ul>${rows}</ul>
     <h3>한국은행 ECOS</h3>
@@ -2310,7 +2378,7 @@ const TA_TIPS = {
   과매수: "스토캐스틱 %K가 80 위입니다. 최근 5일 안에서 종가가 고점에 가깝습니다. 숨 고르기나 되돌림이 나올 수 있고, 강한 상승 추세면 과매수가 오래가기도 합니다. 매도 지시가 아닙니다.",
   "스토 골든": "스토캐스틱 골든 크로스입니다. 빠른 선(%K)이 느린 선(%D)을 아래에서 위로 뚫었습니다. 단기 모멘텀이 살아난 교차일 뿐, 추세 전환 확정이 아닙니다. 일봉 5,3,3 기준입니다.",
   "스토 데드": "스토캐스틱 데드 크로스입니다. ‘죽음’이나 상장폐지가 아니라, 빠른 선(%K)이 느린 선(%D)을 위에서 아래로 뚫은 교차입니다. 단기 오름세가 꺾인 쪽으로 봅니다. 일봉 한 번의 교차이며 매도 지시가 아닙니다.",
-  "구름 위": "일목균형표에서 종가가 선행스팬 A·B가 만든 구름대 위에 있습니다. 중기 지지가 발밑에 있어 추세가 강한 쪽으로 봅니다. 9-26-52 일봉이며 Quant 점수와 무관합니다.",
+  "구름 위": "일목균형표에서 종가가 선행스팬 A·B가 만든 구름대 위에 있습니다. 중기 지지가 발밑에 있어 추세가 강한 쪽으로 봅니다. 9-26-52 일봉이며",
   "구름 아래": "종가가 일목 구름대 아래에 있습니다. 구름이 위에 저항으로 남아서, 단기 반등이 나와도 구름을 뚫기 전에는 중기 추세가 약한 구간으로 봅니다. ‘당장 나쁘다’기보다 중기 약세 배열입니다. 매도 지시가 아닙니다.",
   "구름 안": "종가가 구름 두께 안에 있습니다. 지지·저항이 겹쳐 방향이 정해지지 않은 혼조로 봅니다. 돌파 전까지는 추세 신호로 쓰지 않는 편이 낫습니다.",
   "전환 골든": "일목 전환선(9일)이 기준선(26일)을 아래에서 위로 돌파한 날입니다. 단기 중심이 중기 중심을 앞지른 교차입니다. 구름 위치와 같이 봐야 하고, 단독 매수 신호가 아닙니다.",
@@ -3555,7 +3623,7 @@ function renderTradingEconomicsMacroCards(grouped, cc) {
         <h3 style="margin:0;">글로벌 매크로 바로미터 (지수 · 환율 · 금·원유 · 비트코인 · 금리)</h3>
         <span class="chip has-tip" data-tip-title="💡 글로벌 매크로 바로미터 도움말" data-tip="각 카드를 마우스로 가리키면 해당 지표의 의미와 상승/하락 시 한국 증시 영향(호재/악재) 상세 가이드가 표시됩니다.">💡 카드에 마우스를 올리면 호재/악재 가이드 표시</span>
       </div>
-      <p class="hint" style="margin-top:4px;">TradingEconomics 스타일 30일/60일 시계열 차트 및 실시간 등락률 · Quant 점수 미합산</p>
+      <p class="hint" style="margin-top:4px;">TradingEconomics 스타일 30일/60일 시계열 차트 및 실시간 등락률</p>
       <div class="macro-card-grid">
         ${cards}
       </div>
@@ -3928,11 +3996,17 @@ function renderMacroData(data) {
       const groups = (news.groups || [])
         .map((g) => {
           const items = (g.items || [])
-            .slice(0, 5)
-            .map(
-              (n) => `<li><a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a>
-                <div class="meta">${escapeHtml((n.pubDate || "").slice(0, 22))} · ${escapeHtml((n.description || "").slice(0, 90))}</div></li>`
-            )
+            .slice(0, 6)
+            .map((n) => {
+              const sent = classifyNewsSentiment(n.title, n.description);
+              return `<li>
+                <div style="display:flex; align-items:flex-start; gap:4px;">
+                  <span class="news-badge ${sent.cls}">${sent.icon} ${sent.label}</span>
+                  <a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener" style="font-weight:500;">${escapeHtml(n.title)}</a>
+                </div>
+                <div class="meta" style="margin-top:3px;">${escapeHtml((n.pubDate || "").slice(0, 22))} · ${escapeHtml((n.description || "").slice(0, 100))}</div>
+              </li>`;
+            })
             .join("");
           return `<div class="news-group"><h3>${escapeHtml(g.label)}</h3>${g.error ? `<p class="hint">${escapeHtml(g.error)}</p>` : `<ul class="news-list">${items || "<li>기사 없음</li>"}</ul>`}</div>`;
         })

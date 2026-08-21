@@ -139,5 +139,5 @@ def ecos_snapshot(api_key: str | None) -> dict[str, Any]:
         "error": error,
         "series": series,
         "headlines": headlines,
-        "disclaimer": "한국은행 공식 통계입니다. Quant 점수에 넣지 않습니다.",
+        "disclaimer": "한국은행 공식 거시경제 지표입니다.",
     }
