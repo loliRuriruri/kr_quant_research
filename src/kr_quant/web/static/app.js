@@ -3177,46 +3177,107 @@ async function testSettings() {
     .join("");
 }
 
+let toastContainerEl = null;
+function getToastContainer() {
+  if (!toastContainerEl) {
+    toastContainerEl = document.createElement("div");
+    toastContainerEl.className = "toast-container";
+    document.body.appendChild(toastContainerEl);
+  }
+  return toastContainerEl;
+}
+
+function showToast(msg, type = "info", duration = 3500) {
+  const container = getToastContainer();
+  const el = document.createElement("div");
+  el.className = `toast-msg toast-${type}`;
+  el.innerHTML = msg;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.classList.add("fade-out");
+    setTimeout(() => el.remove(), 350);
+  }, duration);
+}
+
+const JOB_KINDS = {
+  demo: "데모 실행",
+  screen: "재계산",
+  live: "실데이터 수집+계산",
+  "live-skip": "실데이터 재계산",
+  "krx-prices": "KRX 시세 갱신",
+  "krx-history": "시세 이력 확장 (750일)",
+  "investor-kis": "공식 수급 수집",
+  "dart-nps": "국민연금 공시 수집",
+  strategy: "전략 랩 스캔",
+};
+
 function renderJob(job) {
   if (!job) return;
-  const kinds = {
-    demo: "데모",
-    screen: "재계산",
-    live: "실데이터",
-    "krx-prices": "시세 받기",
-    "krx-history": "시세 이력",
-    "investor-kis": "공식 수급",
-    "dart-nps": "국민연금 공시",
-    strategy: "전략 랩",
-  };
-  $("#job-chip").textContent = `${statusKo(job.status)}${job.kind ? " · " + (kinds[job.kind] || job.kind) : ""}`;
+  $("#job-chip").textContent = `${statusKo(job.status)}${job.kind ? " · " + (JOB_KINDS[job.kind] || job.kind) : ""}`;
   $("#job-log").textContent = (job.logs || []).join("\n");
   $("#job-log").scrollTop = $("#job-log").scrollHeight;
 }
 
+async function reloadActiveView() {
+  try {
+    if (currentView === "dash" || currentView === "rank") await loadDash();
+    else if (currentView === "screens") await loadScreens();
+    else if (currentView === "market") await loadMacro();
+    else if (currentView === "sector") await loadSectors();
+    else if (currentView === "flow") await loadFlow();
+    else if (currentView === "investor") { await loadInvestor(); await loadInvestorEvents(); }
+    else if (currentView === "sunzi") await loadSunzi();
+    else if (currentView === "nps") await loadNps();
+    else if (currentView === "trade") await loadTrade();
+    else if (currentView === "strategy") await loadStrategy();
+    else if (currentView === "watch") await loadWatch();
+  } catch (err) {
+    console.error("reloadActiveView error:", err);
+  }
+}
+
 async function pollJob() {
-  const job = await api("/api/jobs");
-  renderJob(job);
-  if (job.status === "running") {
-    setTimeout(pollJob, 1500);
-  } else if (job.status === "success") {
-    await loadDash();
-    if (job.kind === "investor-kis") {
-      loadInvestor().catch(() => {});
-      loadInvestorEvents().catch(() => {});
+  try {
+    const job = await api("/api/jobs");
+    renderJob(job);
+    const krxBtn = $("#btn-krx-now");
+    if (job.status === "running") {
+      if (krxBtn && job.kind === "krx-prices") {
+        krxBtn.textContent = "⏳ 시세 수신 중...";
+        krxBtn.disabled = true;
+      }
+      setTimeout(pollJob, 1200);
+    } else {
+      if (krxBtn) {
+        krxBtn.textContent = "시세 받기";
+        krxBtn.disabled = false;
+      }
+      if (job.status === "success") {
+        const title = JOB_KINDS[job.kind] || job.kind || "작업";
+        showToast(`✅ <b>${title} 완료</b>`, "success");
+        await loadStatus();
+        await reloadActiveView();
+      } else if (job.status === "error") {
+        const title = JOB_KINDS[job.kind] || job.kind || "작업";
+        showToast(`❌ <b>${title} 실패</b>: ${escapeHtml(job.error || "")}`, "error", 5000);
+      }
     }
-    if (job.kind === "dart-nps") loadNps().catch(() => {});
-    if (job.kind === "strategy") loadStrategy().catch(() => {});
+  } catch (err) {
+    console.error("pollJob error:", err);
   }
 }
 
 async function startJob(kind) {
+  const asofVal = $("#run-asof")?.value?.trim() || "auto";
+  const lookbackVal = Number($("#run-lookback")?.value || 80);
+  const maxVal = Number($("#run-max")?.value || 400);
+
   const payload = {
     kind: kind.startsWith("live") ? "live" : kind,
-    as_of: $("#run-asof").value.trim() || "auto",
+    as_of: asofVal,
     source: "live",
-    lookback_days: Number($("#run-lookback").value),
-    max_corps: Number($("#run-max").value),
+    lookback_days: lookbackVal,
+    max_corps: maxVal,
     skip_ingest: kind === "live-skip" || kind === "screen",
   };
   if (kind === "screen") payload.kind = "screen";
@@ -3228,6 +3289,15 @@ async function startJob(kind) {
     payload.kind = "krx-history";
     payload.lookback_days = 750;
   }
+
+  const krxBtn = $("#btn-krx-now");
+  if (krxBtn && kind === "krx-prices") {
+    krxBtn.textContent = "⏳ 시세 수신 중...";
+    krxBtn.disabled = true;
+  }
+  const title = JOB_KINDS[kind] || kind;
+  showToast(`⏳ <b>${title}</b> 시작 (백그라운드 실행 중…)`, "info", 3000);
+
   await api("/api/jobs", { method: "POST", body: JSON.stringify(payload) });
   pollJob();
 }
