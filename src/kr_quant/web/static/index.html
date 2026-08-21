@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.3.5" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.3.6" />
 </head>
 <body>
   <aside class="nav">
@@ -15,34 +15,36 @@
         <span>Research</span>
       </div>
     </div>
-    <div class="nav-group">Quant</div>
-    <button class="nav-btn active" data-view="dash" data-tip="재무 Quant 후보 요약입니다. 가치·품질·성장·모멘텀·안정으로 점수를 냅니다. 수급·전략은 합산하지 않습니다.">대시보드</button>
-    <button class="nav-btn" data-view="rank" data-tip="시총·거래대금·보통주 조건을 통과한 종목을 점수순으로 봅니다. LLM은 점수를 고치지 않습니다.">점수 랭킹</button>
-    <button class="nav-btn" data-view="strategy" data-tip="Quant TOP20 일봉 백테스트입니다. 랭킹 후보의 진입 규칙을 연구합니다.">전략·백테스트</button>
-    <button class="nav-btn" data-view="screens" data-tip="밸류·성장·배당·모멘텀 테마별 정밀 스크리닝(골라보기) 목록입니다.">테마 스크리너</button>
-    <div class="nav-group">시장 · 매크로 · 섹터</div>
-    <button class="nav-btn" data-view="market" data-tip="글로벌 거시경제, 한·미 금리차, 환율, 원자재, 공포탐욕 및 계절성 분석입니다.">글로벌 매크로</button>
-    <button class="nav-btn" data-view="sector" data-tip="KSIC 업종별 상대강도(RS), 확산도, 실적성장 6축 종합 랭킹 및 모멘텀 차트입니다.">업종·섹터</button>
-    <button class="nav-btn" data-view="investor" data-tip="공식 수급 추적 및 DART 국민연금 5% 대량보유 공시 통합 분석입니다.">메이저 수급</button>
-    <button class="nav-btn" data-view="flow" data-tip="토스 투자자 매매에서 외인·기관이 같이 산 쌍끌이와 사모펀드 순매수입니다.">쌍끌이 수급</button>
-    <button class="nav-btn" data-view="empty" data-tip="외인·기관 빈집 털이 및 수급 복귀 조짐 종목 발굴입니다.">빈집 발굴</button>
-    <button class="nav-btn" data-view="trade" data-tip="퀀트 TOP100 밖 수급 후보에 일봉 스토캐스틱·일목을 붙인 연구 화면입니다.">트레이딩</button>
-    <button class="nav-btn" data-view="toss" data-tip="토스 급상승·급하락·거래대금 시세 랭킹입니다.">토스 랭킹</button>
-    <button class="nav-btn" data-view="watch" data-tip="직접 저장한 메모 목록입니다.">관심종목</button>
-    <div class="nav-group">글로벌 리서치</div>
-    <button class="nav-btn" data-view="us13f" data-tip="워런 버핏, 마이클 버리 등 글로벌 대가들의 분기별 SEC 13F 보유 지분 및 신규 매수 시각화입니다.">월가 대가 포트폴리오 (13F)</button>
-    <button class="nav-btn" data-view="sunzi" data-tip="손자 전장 조건과 양 웬리식 반대심문입니다.">손자 五事</button>
-    <button class="nav-btn" data-view="reports" data-tip="저장된 AI 심층 기업 분석 및 투자 검증 리포트입니다.">AI 리포트</button>
+    <div class="nav-group">📊 Quant Engine</div>
+    <button class="nav-btn active" data-view="dash" data-tip="재무 Quant 후보 요약입니다. 가치·품질·성장·모멘텀·안정으로 점수를 냅니다. 수급·전략은 합산하지 않습니다."><span class="nav-icon">📊</span><span>대시보드</span></button>
+    <button class="nav-btn" data-view="rank" data-tip="시총·거래대금·보통주 조건을 통과한 종목을 점수순으로 봅니다. LLM은 점수를 고치지 않습니다."><span class="nav-icon">🏆</span><span>점수 랭킹</span></button>
+    <button class="nav-btn" data-view="strategy" data-tip="Quant TOP20 일봉 백테스트입니다. 랭킹 후보의 진입 규칙을 연구합니다."><span class="nav-icon">🧪</span><span>전략·백테스트</span></button>
+    <button class="nav-btn" data-view="screens" data-tip="밸류·성장·배당·모멘텀 테마별 정밀 스크리닝(골라보기) 목록입니다."><span class="nav-icon">🔍</span><span>테마 스크리너</span></button>
+    <div class="nav-group">🌐 Market & Sector</div>
+    <button class="nav-btn" data-view="market" data-tip="글로벌 거시경제, 한·미 금리차, 환율, 원자재, 공포탐욕 및 계절성 분석입니다."><span class="nav-icon">🌐</span><span>글로벌 매크로</span></button>
+    <button class="nav-btn" data-view="sector" data-tip="KSIC 업종별 상대강도(RS), 확산도, 실적성장 6축 종합 랭킹 및 모멘텀 차트입니다."><span class="nav-icon">🔄</span><span>업종·섹터</span></button>
+    <div class="nav-group">⚡ Smart Flow</div>
+    <button class="nav-btn" data-view="investor" data-tip="공식 수급 추적 및 DART 국민연금 5% 대량보유 공시 통합 분석입니다."><span class="nav-icon">👥</span><span>메이저 수급</span></button>
+    <button class="nav-btn" data-view="flow" data-tip="토스 투자자 매매에서 외인·기관이 같이 산 쌍끌이와 사모펀드 순매수입니다."><span class="nav-icon">⚡</span><span>쌍끌이 수급</span></button>
+    <button class="nav-btn" data-view="empty" data-tip="외인·기관 빈집 털이 및 수급 복귀 조짐 종목 발굴입니다."><span class="nav-icon">🏚️</span><span>빈집 발굴</span></button>
+    <button class="nav-btn" data-view="trade" data-tip="퀀트 TOP100 밖 수급 후보에 일봉 스토캐스틱·일목을 붙인 연구 화면입니다."><span class="nav-icon">🎯</span><span>트레이딩 랩</span></button>
+    <button class="nav-btn" data-view="toss" data-tip="토스 급상승·급하락·거래대금 시세 랭킹입니다."><span class="nav-icon">📱</span><span>토스 랭킹</span></button>
+    <button class="nav-btn" data-view="watch" data-tip="직접 저장한 메모 목록입니다."><span class="nav-icon">⭐</span><span>관심종목</span></button>
+    <div class="nav-group">🏛️ Global Research</div>
+    <button class="nav-btn" data-view="us13f" data-tip="워런 버핏, 마이클 버리 등 글로벌 대가들의 분기별 SEC 13F 보유 지분 및 신규 매수 시각화입니다."><span class="nav-icon">🏛️</span><span>월가 대가 포트폴리오 (13F)</span></button>
+    <button class="nav-btn" data-view="sunzi" data-tip="손자 전장 조건과 양 웬리식 반대심문입니다."><span class="nav-icon">📜</span><span>손자 五事</span></button>
+    <button class="nav-btn" data-view="reports" data-tip="저장된 AI 심층 기업 분석 및 투자 검증 리포트입니다."><span class="nav-icon">📑</span><span>AI 리포트</span></button>
     <button class="nav-btn hidden" data-view="nps">국민연금 5%</button>
-    <div class="nav-group">시스템</div>
-    <button class="nav-btn" data-view="run" data-tip="데모, 재계산, KRX 시세, 실데이터 수집을 실행합니다.">실행 파이프라인</button>
-    <button class="nav-btn" data-view="settings" data-tip="API 키는 이 PC의 .env에만 저장됩니다.">API 설정</button>
+    <div class="nav-group">⚙️ System</div>
+    <button class="nav-btn" data-view="run" data-tip="데모, 재계산, KRX 시세, 실데이터 수집을 실행합니다."><span class="nav-icon">⚙️</span><span>실행 파이프라인</span></button>
+    <button class="nav-btn" data-view="settings" data-tip="API 키는 이 PC의 .env에만 저장됩니다."><span class="nav-icon">🔑</span><span>API 설정</span></button>
     <div class="nav-foot">
       <p>KR Quant Research<br />v1.3 Engine</p>
     </div>
   </aside>
 
   <main>
+    <div id="global-progress-bar" class="global-progress-bar hidden"></div>
     <header class="top">
       <div>
         <div class="top-title-row">
@@ -54,10 +56,12 @@
       </div>
       <div class="top-right">
         <div class="chips">
-          <span class="chip has-tip" id="chip-model" tabindex="0">model</span>
-          <span class="chip has-tip" id="chip-status" tabindex="0">status</span>
-          <span class="chip has-tip" id="chip-asof" tabindex="0">as_of</span>
-          <span class="chip has-tip" id="chip-fresh" tabindex="0">시세</span>
+          <span class="chip activity-idle has-tip" id="chip-activity" tabindex="0">🟢 시스템 준비됨</span>
+          <span class="chip ok has-tip" id="chip-fresh" tabindex="0">시세 확인 중</span>
+          <span class="chip has-tip" id="chip-llm" tabindex="0">🤖 AI 분석</span>
+          <span class="chip hidden" id="chip-model">model</span>
+          <span class="chip hidden" id="chip-status">status</span>
+          <span class="chip hidden" id="chip-asof">as_of</span>
         </div>
         <div class="top-actions">
           <button class="ghost" id="btn-krx-now" data-tip="최근 KRX 일봉만 받습니다. 점수는 바꾸지 않습니다. 장 마감 후 쓰는 버튼입니다.">시세 받기</button>
@@ -756,6 +760,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=1.3.5"></script>
+  <script src="/static/app.js?v=1.3.6"></script>
 </body>
 </html>

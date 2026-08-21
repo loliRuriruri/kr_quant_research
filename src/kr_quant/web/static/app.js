@@ -484,20 +484,17 @@ function renderFreshChip(fresh) {
   if (!el) return;
   const btn = $("#btn-krx-now");
   if (!fresh) {
-    setChip(el, "시세", "시세 정보가 없습니다.");
+    setChip(el, "📅 시세", "시세 정보가 없습니다.");
     return;
   }
   const px = fresh.price_max_date || "시세 없음";
-  const lag = Number(fresh.lag_days);
-  const hist = Number(fresh.price_days);
-  const histTxt = hist > 0 ? ` · ${hist}일` : "";
   const stale = Boolean(fresh.stale_price || fresh.stale_screen);
   const label = stale
-    ? `시세 ${px} · ${lag > 0 ? lag + "일 지연" : statusKo(fresh.status)}`
-    : `시세 ${px}${histTxt}`;
+    ? `📅 최근 종가 ${px}`
+    : `📅 시세 ${px} (최신)`;
   const tip = stale
-    ? `받은 시세 ${px}, 기대 날짜 ${fresh.expected_price_date || "—"}. ${fresh.label || "지연"}. 오른쪽 위 시세 받기로 최근 일봉만 받으면 됩니다. 점수는 안 바뀝니다.`
-    : `받은 시세 ${px}. 이력 ${hist || "—"}거래일. 기대 날짜 ${fresh.expected_price_date || "—"}.`;
+    ? `최근 KRX 종가 기준일: ${px}. 장 마감(15:30) 후 우측 상단의 [시세 받기]를 누르시면 당일 최신 종가로 즉시 동기화됩니다.`
+    : `최근 KRX 종가 기준일: ${px}. 당일 장 마감 종가까지 최신 상태입니다.`;
   setChip(el, label, tip);
   el.classList.toggle("stale", stale);
   el.classList.toggle("fresh", fresh.status === "fresh");
@@ -1207,7 +1204,7 @@ async function loadDash() {
     $(".chips").appendChild(chip);
   }
   const llmName = status.llm_label || status.llm_provider || "xai";
-  setChip($("#chip-llm"), `AI ${llmName}`, `리포트용 모델 ${status.llm_model || ""}. Quant 점수 계산에는 쓰지 않습니다.`);
+  setChip($("#chip-llm"), `🤖 AI: ${llmName}`, `AI 분석 리포트 생성 모델: ${status.llm_model || llmName}. 평소 퀀트 점수 산출에는 LLM을 사용하지 않아 과금되지 않습니다.`);
   dashRows = top.rows || [];
   renderKpis(status, dashRows);
   renderTop20(dashRows);
@@ -3654,9 +3651,33 @@ const JOB_KINDS = {
 
 function renderJob(job) {
   if (!job) return;
-  $("#job-chip").textContent = `${statusKo(job.status)}${job.kind ? " · " + (JOB_KINDS[job.kind] || job.kind) : ""}`;
-  $("#job-log").textContent = (job.logs || []).join("\n");
-  $("#job-log").scrollTop = $("#job-log").scrollHeight;
+  const chip = $("#job-chip");
+  if (chip) chip.textContent = `${statusKo(job.status)}${job.kind ? " · " + (JOB_KINDS[job.kind] || job.kind) : ""}`;
+  const logEl = $("#job-log");
+  if (logEl) {
+    logEl.textContent = (job.logs || []).join("\n");
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // Global Top Activity Chip & Animated Progress Line
+  const actChip = $("#chip-activity");
+  const progBar = $("#global-progress-bar");
+  if (job.status === "running") {
+    const title = JOB_KINDS[job.kind] || job.kind || "작업";
+    if (progBar) progBar.classList.remove("hidden");
+    if (actChip) {
+      actChip.className = "chip activity-running has-tip";
+      actChip.textContent = `⏳ ${title} 실행 중 (백그라운드)…`;
+      actChip.dataset.tip = "백그라운드에서 작업이 실행 중입니다. 브라우저를 닫거나 이동해도 계속 안전하게 실행됩니다. 클릭 시 실행 파이프라인으로 이동합니다.";
+    }
+  } else {
+    if (progBar) progBar.classList.add("hidden");
+    if (actChip) {
+      actChip.className = "chip activity-idle has-tip";
+      actChip.textContent = "🟢 시스템 정상";
+      actChip.dataset.tip = "현재 백그라운드 작업이 완료되었거나 대기 중입니다.";
+    }
+  }
 }
 
 async function reloadActiveView() {
@@ -3853,6 +3874,9 @@ document.addEventListener("keydown", (e) => {
     closeStatusModal();
   }
 });
+if ($("#chip-activity")) {
+  $("#chip-activity").addEventListener("click", () => switchView("run"));
+}
 if ($("#chip-status")) {
   $("#chip-status").addEventListener("click", () => openStatusModal());
 }
