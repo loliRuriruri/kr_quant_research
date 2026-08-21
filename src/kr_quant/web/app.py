@@ -862,11 +862,16 @@ def api_stock(ticker: str, as_of: str | None = None) -> dict[str, Any]:
         flow90 = ticker_payload(s, code)
     except Exception as exc:  # noqa: BLE001
         flow90 = {"used_in_quant": False, "chart": [], "error": str(exc)[:160]}
+
+    from kr_quant.factors.scorecard import build_factor_scorecard
+
+    scorecard = build_factor_scorecard(row)
     return {
         "row": row,
         "as_of": day,
         "profile": profile,
         "brief": stock_brief(row, profile),
+        "scorecard": scorecard,
         "dart": dart,
         "location": location,
         "toss": toss,

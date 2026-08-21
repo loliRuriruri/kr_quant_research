@@ -330,6 +330,148 @@ def build_macro_brief(
     }
 
 
+def compute_yencarry_monitor(yahoo_indexes: list[dict[str, Any]]) -> dict[str, Any]:
+    """Evaluates Yen Carry Trade risk based on USD/JPY, Nikkei 225, and US-JP rate trends."""
+    by_sym = {str(row.get("symbol") or ""): row for row in (yahoo_indexes or []) if isinstance(row, dict)}
+    usdjpy = by_sym.get("JPY=X") or {}
+    jpykrw = by_sym.get("JPYKRW=X") or {}
+    nikkei = by_sym.get("^N225") or {}
+    tnx = by_sym.get("^TNX") or {}
+
+    rate = _num(usdjpy.get("last"))
+    ret_1m = _num(usdjpy.get("ret_1m"))
+    ret_5d = _num(usdjpy.get("ret_5d"))
+    nikkei_1m = _num(nikkei.get("ret_1m"))
+    us_yield = _num(tnx.get("last"))
+
+    # Logic: When USD/JPY drops rapidly (Yen sharp appreciation), carry traders face margin calls / unwinding
+    unwind_score = 30  # baseline safe (0~100)
+    risk_level = "STABLE"
+    risk_ko = "안정"
+    reasons = []
+
+    if rate is not None:
+        if rate < 142.0:
+            unwind_score += 25
+            reasons.append(f"엔/달러 {rate:.1f}엔으로 엔화 강세 구간")
+        elif rate > 155.0:
+            reasons.append(f"엔/달러 {rate:.1f}엔으로 엔화 약세 유지 (캐리 유효)")
+
+    if ret_1m is not None and ret_1m <= -0.04:
+        unwind_score += 30
+        reasons.append(f"최근 1개월 엔화 급격한 절상 (USD/JPY {ret_1m*100:+.1f}%)")
+    elif ret_5d is not None and ret_5d <= -0.02:
+        unwind_score += 15
+        reasons.append(f"최근 5일 엔화 단기 급등 (USD/JPY {ret_5d*100:+.1f}%)")
+
+    if nikkei_1m is not None and nikkei_1m <= -0.05:
+        unwind_score += 20
+        reasons.append(f"일본 닛케이 225 1개월 {nikkei_1m*100:+.1f}% 하락 동조")
+
+    if unwind_score >= 65:
+        risk_level = "UNWIND_RISK"
+        risk_ko = "청산 경보"
+        summary = "엔화 급격한 강세 및 일본 증시 변동성으로 엔 캐리 트레이드 청산 압력이 높습니다. 글로벌 유동성 축소 및 코스피 대형주 외국인 매도 압력에 유의하세요."
+    elif unwind_score >= 45:
+        risk_level = "WATCH"
+        risk_ko = "변동성 주시"
+        summary = "미·일 금리차 및 환율 변동으로 엔 캐리 포지션의 재조정 가능성이 있습니다. 시장 모니터링이 필요한 구간입니다."
+    else:
+        risk_level = "STABLE"
+        risk_ko = "안정"
+        summary = "엔/달러 환율과 미·일 금리 흐름이 안정적이며, 급격한 엔 캐리 청산 징후는 낮습니다."
+
+    return {
+        "used_in_quant": False,
+        "risk_level": risk_level,
+        "risk_ko": risk_ko,
+        "unwind_score": min(100, unwind_score),
+        "summary": summary,
+        "usdjpy": {"last": rate, "ret_5d": ret_5d, "ret_1m": ret_1m, "spark": usdjpy.get("spark")},
+        "jpykrw": {"last": _num(jpykrw.get("last")), "ret_1m": _num(jpykrw.get("ret_1m"))},
+        "nikkei": {"last": _num(nikkei.get("last")), "ret_1m": nikkei_1m, "spark": nikkei.get("spark")},
+        "us_10y_yield": us_yield,
+        "reasons": reasons,
+        "disclaimer": "엔 캐리 모니터는 거시 위험 조사 지표이며 매매 지시가 아닙니다.",
+    }
+
+
+def compute_commodity_crypto_brief(yahoo_indexes: list[dict[str, Any]]) -> dict[str, Any]:
+    """Generates insightful macro comments on Gold, Oil, Copper, and Bitcoin."""
+    by_sym = {str(row.get("symbol") or ""): row for row in (yahoo_indexes or []) if isinstance(row, dict)}
+    gold = by_sym.get("GC=F") or {}
+    oil = by_sym.get("CL=F") or {}
+    copper = by_sym.get("HG=F") or {}
+    btc = by_sym.get("BTC-USD") or {}
+
+    items = []
+    if gold.get("last") is not None:
+        g_last = float(gold["last"])
+        g_1m = _num(gold.get("ret_1m"))
+        g_tone = "우호" if (g_1m or 0) > 0.03 else "중립"
+        items.append({
+            "id": "gold",
+            "name": "금 선물 (Gold)",
+            "last": g_last,
+            "unit": "$/oz",
+            "ret_1d": _num(gold.get("ret_1d")),
+            "ret_1m": g_1m,
+            "tone": g_tone,
+            "comment": f"온스당 ${g_last:,.1f}. 글로벌 지정학 위험 및 중앙은행 준비자산 수요 흐름을 반영합니다.",
+            "spark": gold.get("spark"),
+        })
+
+    if oil.get("last") is not None:
+        o_last = float(oil["last"])
+        o_1m = _num(oil.get("ret_1m"))
+        o_tone = "부담" if o_last >= 85 or (o_1m or 0) > 0.08 else "우호" if o_last <= 65 else "중립"
+        items.append({
+            "id": "oil",
+            "name": "WTI 원유 (Crude Oil)",
+            "last": o_last,
+            "unit": "$/bbl",
+            "ret_1d": _num(oil.get("ret_1d")),
+            "ret_1m": o_1m,
+            "tone": o_tone,
+            "comment": f"배럴당 ${o_last:.2f}. 한국 제조업 에너지 원가 및 인플레이션 압력 지표입니다.",
+            "spark": oil.get("spark"),
+        })
+
+    if copper.get("last") is not None:
+        c_last = float(copper["last"])
+        c_1m = _num(copper.get("ret_1m"))
+        c_tone = "우호" if (c_1m or 0) > 0.03 else "부담" if (c_1m or 0) < -0.05 else "중립"
+        items.append({
+            "id": "copper",
+            "name": "구리 선물 (Dr. Copper)",
+            "last": c_last,
+            "unit": "$/lb",
+            "ret_1d": _num(copper.get("ret_1d")),
+            "ret_1m": c_1m,
+            "tone": c_tone,
+            "comment": f"파운드당 ${c_last:.2f}. 글로벌 제조업 및 인프라 경기 선행 바로미터입니다.",
+            "spark": copper.get("spark"),
+        })
+
+    if btc.get("last") is not None:
+        b_last = float(btc["last"])
+        b_1m = _num(btc.get("ret_1m"))
+        b_tone = "우호" if (b_1m or 0) > 0.05 else "부담" if (b_1m or 0) < -0.08 else "중립"
+        items.append({
+            "id": "btc",
+            "name": "비트코인 (Bitcoin)",
+            "last": b_last,
+            "unit": "$",
+            "ret_1d": _num(btc.get("ret_1d")),
+            "ret_1m": b_1m,
+            "tone": b_tone,
+            "comment": f"${b_last:,.0f}. 글로벌 유동성 및 위험자산 선호도(Risk-on/off) 선행 프록시입니다.",
+            "spark": btc.get("spark"),
+        })
+
+    return {"used_in_quant": False, "items": items}
+
+
 def build_macro_dashboard(settings: Any, *, refresh: bool = False) -> dict[str, Any]:
     from kr_quant.ingest.ecos import ecos_snapshot
     from kr_quant.ingest.fred import macro_snapshot
@@ -341,10 +483,23 @@ def build_macro_dashboard(settings: Any, *, refresh: bool = False) -> dict[str, 
     except Exception as exc:  # noqa: BLE001
         ecos = {"configured": False, "used_in_quant": False, "error": str(exc)[:180], "series": []}
     try:
-        yahoo = index_snapshot()
+        yahoo = index_snapshot(refresh=refresh)
     except Exception as exc:  # noqa: BLE001
         yahoo = {"configured": True, "used_in_quant": False, "error": str(exc)[:180], "indexes": []}
     brief = build_macro_brief(fred, ecos, yahoo)
+    indexes_list = (yahoo or {}).get("indexes") or []
+    yencarry = compute_yencarry_monitor(indexes_list)
+    commodities_crypto = compute_commodity_crypto_brief(indexes_list)
+
+    # Grouped assets for visual dashboard
+    grouped_assets = {
+        "indices": [row for row in indexes_list if row.get("category") == "index"],
+        "fx": [row for row in indexes_list if row.get("category") == "fx"],
+        "commodities": [row for row in indexes_list if row.get("category") == "commodity"],
+        "crypto": [row for row in indexes_list if row.get("category") == "crypto"],
+        "rates": [row for row in indexes_list if row.get("category") == "rate"],
+    }
+
     news: dict[str, Any] = {"configured": False, "used_in_quant": False, "groups": [], "encyc": []}
     client_id = getattr(settings, "naver_client_id", None)
     client_secret = getattr(settings, "naver_client_secret", None)
@@ -365,6 +520,9 @@ def build_macro_dashboard(settings: Any, *, refresh: bool = False) -> dict[str, 
         "fred": fred,
         "ecos": ecos,
         "yahoo": yahoo,
+        "grouped_assets": grouped_assets,
+        "yencarry": yencarry,
+        "commodities_crypto": commodities_crypto,
         "brief": brief,
         "news": news,
     }

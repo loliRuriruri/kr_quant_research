@@ -14,13 +14,22 @@ HEADERS = {
     "Accept": "application/json",
 }
 
-INDEXES: list[dict[str, str]] = [
-    {"symbol": "^KS11", "label": "KOSPI"},
-    {"symbol": "^KQ11", "label": "KOSDAQ"},
-    {"symbol": "^GSPC", "label": "S&P 500"},
-    {"symbol": "^IXIC", "label": "NASDAQ"},
-    {"symbol": "KRW=X", "label": "원/달러"},
-    {"symbol": "^TNX", "label": "미국 10년(Yahoo)"},
+INDEXES: list[dict[str, Any]] = [
+    {"symbol": "^KS11", "label": "코스피 (KOSPI)", "category": "index", "unit": "pt"},
+    {"symbol": "^KQ11", "label": "코스닥 (KOSDAQ)", "category": "index", "unit": "pt"},
+    {"symbol": "^GSPC", "label": "S&P 500", "category": "index", "unit": "pt"},
+    {"symbol": "^IXIC", "label": "나스닥 (NASDAQ)", "category": "index", "unit": "pt"},
+    {"symbol": "^N225", "label": "일본 닛케이 225", "category": "index", "unit": "pt"},
+    {"symbol": "DX-Y.NYB", "label": "달러 인덱스 (DXY)", "category": "fx", "unit": "pt"},
+    {"symbol": "KRW=X", "label": "원/달러 (USD/KRW)", "category": "fx", "unit": "원"},
+    {"symbol": "JPY=X", "label": "엔/달러 (USD/JPY)", "category": "fx", "unit": "엔"},
+    {"symbol": "JPYKRW=X", "label": "100엔/원 (JPY/KRW)", "category": "fx", "unit": "원"},
+    {"symbol": "GC=F", "label": "금 선물 (Gold)", "category": "commodity", "unit": "$"},
+    {"symbol": "CL=F", "label": "WTI 원유", "category": "commodity", "unit": "$"},
+    {"symbol": "HG=F", "label": "구리 선물 (Copper)", "category": "commodity", "unit": "$"},
+    {"symbol": "BTC-USD", "label": "비트코인 (BTC)", "category": "crypto", "unit": "$"},
+    {"symbol": "ETH-USD", "label": "이더리움 (ETH)", "category": "crypto", "unit": "$"},
+    {"symbol": "^TNX", "label": "미국 10년물 국채", "category": "rate", "unit": "%"},
 ]
 
 _cache: dict[str, tuple[float, Any]] = {}
@@ -173,18 +182,31 @@ def fetch_chart(symbol: str, range_: str = "1y", *, refresh: bool = False) -> di
     return data
 
 
-def snapshot_from_chart(symbol: str, label: str | None = None, *, refresh: bool = False) -> dict[str, Any]:
+def snapshot_from_chart(
+    symbol: str,
+    label: str | None = None,
+    category: str | None = None,
+    unit: str | None = None,
+    *,
+    refresh: bool = False,
+) -> dict[str, Any]:
     raw = fetch_chart(symbol, refresh=refresh)
     stats = summarize_bars(raw.get("bars") or [], last_override=_as_float(raw.get("last")))
+    bars = raw.get("bars") or []
+    spark = [float(b["close"]) for b in bars[-60:] if b.get("close") is not None]
+    bars_30d = [{"date": b["date"], "close": float(b["close"])} for b in bars[-30:] if b.get("close") is not None]
     stats.update(
         {
             "symbol": raw.get("symbol") or symbol,
             "label": label or symbol,
+            "category": category or "index",
+            "unit": unit or "pt",
             "currency": raw.get("currency"),
             "exchange": raw.get("exchange"),
             "source": raw.get("source"),
             "page": yahoo_quote_url(symbol),
-            "spark": [float(b["close"]) for b in (raw.get("bars") or [])[-60:] if b.get("close") is not None],
+            "spark": spark,
+            "bars_30d": bars_30d,
             "used_in_quant": False,
         }
     )
@@ -204,13 +226,23 @@ def index_snapshot(*, refresh: bool = False) -> dict[str, Any]:
     error = None
     for spec in INDEXES:
         try:
-            rows.append(snapshot_from_chart(spec["symbol"], spec["label"], refresh=refresh))
+            rows.append(
+                snapshot_from_chart(
+                    spec["symbol"],
+                    spec["label"],
+                    spec.get("category"),
+                    spec.get("unit"),
+                    refresh=refresh,
+                )
+            )
         except Exception as exc:  # noqa: BLE001
             error = str(exc)[:180]
             rows.append(
                 {
                     "symbol": spec["symbol"],
                     "label": spec["label"],
+                    "category": spec.get("category", "index"),
+                    "unit": spec.get("unit", "pt"),
                     "error": error,
                     "used_in_quant": False,
                 }

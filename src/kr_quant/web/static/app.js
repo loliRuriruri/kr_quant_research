@@ -737,6 +737,7 @@ async function openStock(ticker) {
         <p>커버리지 ${fmt((gates.coverage || r.weighted_metric_coverage || 0) * 100, 0)}% · 신뢰도 ${fmt(gates.data_confidence || r.data_confidence, 1)}</p>
         ${data.fa && data.fa.fa_label ? `<p>${faChip({ fa_gate_pass: data.fa.fa_gate_pass, fa_comment: data.fa.comment, fa_reasons_ko: data.fa.fa_reasons_ko })} <span class="meta">법 점수 ${fmt(data.fa.fa_score, 0)}</span></p>
         <p class="hint">${escapeHtml(data.fa.comment || "")}</p>` : ""}
+        ${renderSeekingAlphaScorecard(data.scorecard)}
         ${fiveStrip(data)}
         ${criticCard(data.sunzi && data.sunzi.critic)}
         ${sunziCard(data.tian)}
@@ -2701,6 +2702,173 @@ async function removeWatch(ticker) {
   await loadWatch();
 }
 
+function renderSvgSparkline(spark, isUp, id) {
+  const pts = (spark || []).map((n) => Number(n)).filter((n) => Number.isFinite(n));
+  if (!pts || pts.length < 2) return "";
+  const min = Math.min(...pts);
+  const max = Math.max(...pts);
+  const range = max - min || 1;
+  const w = 260;
+  const h = 48;
+  const coords = pts.map((v, i) => {
+    const x = (i / (pts.length - 1)) * w;
+    const y = h - ((v - min) / range) * (h - 8) - 4;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const linePoints = coords.join(" ");
+  const areaPoints = `0,${h} ${linePoints} ${w},${h}`;
+  const strokeColor = isUp ? "#ef4b6a" : "#4c8dff";
+  const gradId = `grad-${id || Math.random().toString(36).slice(2, 8)}`;
+  const stopColor = isUp ? "rgba(239, 75, 106, 0.25)" : "rgba(76, 141, 255, 0.25)";
+
+  return `<svg class="macro-card-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${stopColor}" />
+        <stop offset="100%" stop-color="rgba(0,0,0,0)" />
+      </linearGradient>
+    </defs>
+    <polygon points="${areaPoints}" fill="url(#${gradId})" />
+    <polyline points="${linePoints}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>`;
+}
+
+function renderYenCarryCard(yc) {
+  if (!yc) return "";
+  const lvl = yc.risk_level || "STABLE";
+  const lvlKo = yc.risk_ko || "안정";
+  const score = yc.unwind_score || 30;
+  const usdjpy = yc.usdjpy || {};
+  const nikkei = yc.nikkei || {};
+  const jpykrw = yc.jpykrw || {};
+
+  const reasons = (yc.reasons || []).map((r) => `<li>${escapeHtml(r)}</li>`).join("");
+
+  return `
+    <div class="yencarry-card">
+      <div class="yencarry-header">
+        <div>
+          <h3>엔 캐리 트레이드 위험 모니터 (Yen Carry Monitor)</h3>
+          <span class="hint">엔/달러 환율 속도 + 닛케이 225 + 미·일 금리차 종합 청산 위험도</span>
+        </div>
+        <div class="yencarry-badge ${lvl}">
+          ${score}점 · ${escapeHtml(lvlKo)}
+        </div>
+      </div>
+      <div class="yencarry-grid">
+        <div class="yencarry-metric">
+          <span>엔/달러 (USD/JPY)</span>
+          <b>${usdjpy.last != null ? fmt(usdjpy.last, 2) + "엔" : "—"}</b>
+          <div class="meta">${pctCell(usdjpy.ret_1m)} (1개월)</div>
+        </div>
+        <div class="yencarry-metric">
+          <span>100엔/원 (JPY/KRW)</span>
+          <b>${jpykrw.last != null ? fmt(jpykrw.last, 2) + "원" : "—"}</b>
+          <div class="meta">${pctCell(jpykrw.ret_1m)} (1개월)</div>
+        </div>
+        <div class="yencarry-metric">
+          <span>일본 닛케이 225</span>
+          <b>${nikkei.last != null ? fmt(nikkei.last, 2) : "—"}</b>
+          <div class="meta">${pctCell(nikkei.ret_1m)} (1개월)</div>
+        </div>
+        <div class="yencarry-metric">
+          <span>미국 10년 국채금리</span>
+          <b>${yc.us_10y_yield != null ? fmt(yc.us_10y_yield, 2) + "%" : "—"}</b>
+          <div class="meta">할인율 및 금리차</div>
+        </div>
+      </div>
+      <p style="margin:8px 0 4px;font-size:13px;color:#d5deee"><b>${escapeHtml(yc.summary || "")}</b></p>
+      ${reasons ? `<ul style="margin:4px 0 0;padding-left:18px;font-size:12px;color:var(--muted)">${reasons}</ul>` : ""}
+      <p class="hint" style="margin-top:6px">${escapeHtml(yc.disclaimer || "")}</p>
+    </div>
+  `;
+}
+
+function renderTradingEconomicsMacroCards(grouped, cc) {
+  const g = grouped || {};
+  const allList = [
+    ...(g.indices || []),
+    ...(g.fx || []),
+    ...(g.commodities || []),
+    ...(g.crypto || []),
+    ...(g.rates || []),
+  ];
+  if (!allList.length) return "";
+
+  const cards = allList.map((item, idx) => {
+    if (!item || item.error || item.last == null) return "";
+    const chg = Number(item.ret_1d);
+    const chg1m = Number(item.ret_1m);
+    const isUp = chg >= 0;
+    const is1mUp = chg1m >= 0;
+    const chgTxt = chg == null || Number.isNaN(chg) ? "—" : `${isUp ? "+" : ""}${(chg * 100).toFixed(2)}%`;
+    const priceFmt = item.category === "crypto" || item.category === "index" ? fmt(item.last, 2) : fmt(item.last, 2);
+    const sparkSvg = renderSvgSparkline(item.spark, isUp, `spark-${idx}`);
+    const comment = item.comment || (item.ret_1y != null ? `1년 변동 ${pctCell(item.ret_1y)} · 52주고점 ${pctCell(item.high_52w_distance)}` : "");
+
+    return `
+      <div class="macro-card">
+        <div class="macro-card-top">
+          <div>
+            <div class="macro-card-name">${escapeHtml(item.label || item.symbol)}</div>
+            <div class="macro-card-sym">${escapeHtml(item.symbol)} · ${escapeHtml(item.unit || "")}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="macro-card-price">${priceFmt}</div>
+            <div class="macro-card-chg ${isUp ? "up" : "down"}">${chgTxt}</div>
+          </div>
+        </div>
+        ${sparkSvg}
+        ${comment ? `<div class="macro-card-comment">${comment}</div>` : ""}
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div style="margin-top:18px">
+      <h3>글로벌 매크로 바로미터 (지수 · 환율 · 금·원유 · 비트코인 · 금리)</h3>
+      <p class="hint">TradingEconomics 스타일 30일/60일 시계열 차트 및 실시간 등락률 · Quant 점수 미합산</p>
+      <div class="macro-card-grid">
+        ${cards}
+      </div>
+    </div>
+  `;
+}
+
+function renderSeekingAlphaScorecard(card) {
+  if (!card || !card.factors || !card.factors.length) return "";
+  const dec = card.decision || "HOLD";
+  const decKo = card.decision_ko || "보유 관망";
+  const rows = (card.factors || []).map((f) => {
+    const gradeClean = String(f.grade || "").replace("+", "_PLUS").replace("-", "_MINUS");
+    const sub = (f.submetrics || []).map((s) => `${escapeHtml(s.name)} ${escapeHtml(s.display)}`).join(" · ");
+    return `<div class="sa-factor-row">
+      <div class="sa-factor-name">${escapeHtml(f.label)}</div>
+      <div class="sa-grade-pill ${escapeHtml(gradeClean)}">${escapeHtml(f.grade)}</div>
+      <div class="sa-meter"><em style="width:${Math.max(2, Math.min(100, f.percentile))}%"></em></div>
+      <div class="sa-submetrics">${sub}</div>
+    </div>`;
+  }).join("");
+
+  return `
+    <article class="sa-scorecard">
+      <div class="sa-header">
+        <div>
+          <h3 style="margin:0 0 4px">Seeking Alpha 스타일 팩터 성적표 (Factor Scorecard)</h3>
+          <span class="hint">미국 기관형 A+ ~ F 5대 팩터 상대평가 · Quant 점수 요약</span>
+        </div>
+        <div class="sa-decision ${dec}">
+          ${escapeHtml(decKo)}
+        </div>
+      </div>
+      <div class="sa-factors-list">
+        ${rows}
+      </div>
+      <p class="hint" style="margin:10px 0 0">${escapeHtml(card.disclaimer || "")}</p>
+    </article>
+  `;
+}
+
 function toneTag(tone) {
   const t = tone || "중립";
   return `<span class="tag tone-${escapeHtml(t)}">${escapeHtml(t)}</span>`;
@@ -2733,17 +2901,23 @@ async function loadMacro(refresh) {
   const news = data.news || {};
   const fred = data.fred || {};
   const yahoo = data.yahoo || {};
+  const yencarry = data.yencarry || {};
+  const grouped = data.grouped_assets || {};
+  const cc = data.commodities_crypto || {};
+
   const briefBox = $("#brief-box");
   if (briefBox) {
     const overall = brief.overall || {};
     const kr = (brief.domestic || {}).stance || {};
     const us = (brief.international || {}).stance || {};
     briefBox.innerHTML = `
+      ${renderYenCarryCard(yencarry)}
       <div class="brief-head">
         ${renderStanceCard({ ...overall, title: "종합" })}
         ${renderStanceCard({ ...kr, title: "국내" })}
         ${renderStanceCard({ ...us, title: "국제" })}
       </div>
+      ${renderTradingEconomicsMacroCards(grouped, cc)}
       <div class="brief-grid">
         <div><h3>국내</h3>${renderBriefItems((brief.domestic || {}).items)}</div>
         <div><h3>국제</h3>${renderBriefItems((brief.international || {}).items)}</div>

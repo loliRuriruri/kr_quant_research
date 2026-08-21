@@ -754,10 +754,192 @@ body.modal-open { overflow: hidden; }
 .win-badge.mid { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
 .win-badge.low { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
 
+/* --- TradingEconomics Style Macro Asset & Chart Cards --- */
+.macro-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+.macro-card {
+  background: #111a2d;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.macro-card:hover {
+  transform: translateY(-2px);
+  border-color: #3b5cb8;
+}
+.macro-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.macro-card-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.macro-card-sym {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.macro-card-price {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.macro-card-chg {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+  display: inline-block;
+  text-align: right;
+}
+.macro-card-chg.up { background: rgba(239, 75, 106, 0.18); color: #ef4b6a; }
+.macro-card-chg.down { background: rgba(76, 141, 255, 0.18); color: #4c8dff; }
+.macro-card-svg {
+  width: 100%;
+  height: 48px;
+  margin: 8px 0;
+  overflow: visible;
+}
+.macro-card-comment {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 6px;
+}
+
+/* --- Yen Carry Trade Risk Monitor Card --- */
+.yencarry-card {
+  background: linear-gradient(145deg, #18233c, #10172a);
+  border: 1px solid #3558d4;
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin: 14px 0 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+.yencarry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.yencarry-badge {
+  font-size: 14px;
+  font-weight: 800;
+  padding: 4px 12px;
+  border-radius: 8px;
+}
+.yencarry-badge.UNWIND_RISK { background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid #ef4444; }
+.yencarry-badge.WATCH { background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid #fbbf24; }
+.yencarry-badge.STABLE { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; }
+.yencarry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 10px 0;
+}
+.yencarry-metric {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 10px;
+}
+.yencarry-metric span { font-size: 11px; color: var(--muted); display: block; }
+.yencarry-metric b { font-size: 16px; margin-top: 4px; display: block; }
+
+/* --- Seeking Alpha Style Factor Scorecard --- */
+.sa-scorecard {
+  background: #111a2d;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin: 14px 0;
+}
+.sa-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+}
+.sa-decision {
+  font-size: 14px;
+  font-weight: 800;
+  padding: 4px 12px;
+  border-radius: 8px;
+}
+.sa-decision.STRONG_BUY { background: rgba(16, 185, 129, 0.25); color: #10b981; border: 1px solid #10b981; }
+.sa-decision.BUY { background: rgba(52, 211, 153, 0.2); color: #34d399; border: 1px solid #34d399; }
+.sa-decision.HOLD { background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid #fbbf24; }
+.sa-decision.SELL { background: rgba(251, 146, 60, 0.2); color: #fb923c; border: 1px solid #fb923c; }
+.sa-decision.STRONG_SELL { background: rgba(239, 68, 68, 0.25); color: #ef4444; border: 1px solid #ef4444; }
+
+.sa-factor-row {
+  display: grid;
+  grid-template-columns: 140px 48px 1fr 140px;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.sa-factor-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.sa-grade-pill {
+  width: 36px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 13px;
+  border-radius: 6px;
+}
+.sa-grade-pill.A_PLUS, .sa-grade-pill.A, .sa-grade-pill.A_MINUS { background: #065f46; color: #34d399; border: 1px solid #10b981; }
+.sa-grade-pill.B_PLUS, .sa-grade-pill.B, .sa-grade-pill.B_MINUS { background: #164e63; color: #38bdf8; border: 1px solid #0284c7; }
+.sa-grade-pill.C_PLUS, .sa-grade-pill.C, .sa-grade-pill.C_MINUS { background: #713f12; color: #fde047; border: 1px solid #eab308; }
+.sa-grade-pill.D { background: #7c2d12; color: #fdba74; border: 1px solid #f97316; }
+.sa-grade-pill.F { background: #881337; color: #fda4af; border: 1px solid #f43f5e; }
+
+.sa-meter {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.sa-meter em {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #38bdf8, #10b981);
+}
+.sa-submetrics {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+
 @media (max-width: 1100px) {
   .screen-layout { grid-template-columns: 1fr; }
   body { grid-template-columns: 1fr; }
   .nav { display: flex; gap: 8px; overflow: auto; align-items: center; }
   .nav-foot, .brand span { display: none; }
-  .kpis, .grid-2, .settings-grid, .row, .fg-grid, .rank-grid { grid-template-columns: 1fr; }
+  .kpis, .grid-2, .settings-grid, .row, .fg-grid, .rank-grid, .macro-card-grid { grid-template-columns: 1fr; }
+  .sa-factor-row { grid-template-columns: 100px 40px 1fr; }
+  .sa-submetrics { display: none; }
 }
