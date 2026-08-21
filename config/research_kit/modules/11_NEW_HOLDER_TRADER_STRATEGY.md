@@ -1,4 +1,4 @@
-# 11. New Investor / Holder / Trader Strategy — VER4.0.0
+# 11. New Investor / Holder / Trader Strategy — VER3.7.2
 
 ## 1. 세 사용자 분리
 같은 종목도 신규·보유·트레이더의 답은 다르다.

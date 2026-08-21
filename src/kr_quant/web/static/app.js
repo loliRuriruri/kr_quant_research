@@ -1,4 +1,11 @@
 
+function aiReportBtn(ticker, company) {
+  const code = padTicker(ticker);
+  const name = company || code;
+  return `<button type="button" class="btn-ai-mini has-tip" data-ai-trigger="${code}" data-ai-company="${escapeHtml(name)}" data-tip="🤖 AI 심층 리서치 리포트 즉시 발간 (클릭 시 확인 창 표시)">🤖 AI</button>`;
+}
+
+
 async function runCustomBacktest(query) {
   const q = String(query || $("#custom-strategy-q")?.value || "").trim();
   if (!q) {
@@ -795,7 +802,7 @@ function renderTop20(rows) {
       <td class="num">${rankMedal(r.quant_rank)}</td>
       <td class="name-cell"><b>${r.company || r.ticker}</b><div class="meta">${padTicker(r.ticker)} · ${r.market || ""}
         <a class="ext inline" href="${naverUrl(r.ticker)}" target="_blank" rel="noopener">네이버</a>
-        ${reportBadge(r.ticker)} ${faChip(r)}</div>${rowNote(r.comment_short || r.comment)}</td>
+        ${aiReportBtn(r.ticker, r.company)} ${reportBadge(r.ticker)} ${faChip(r)}</div>${rowNote(r.comment_short || r.comment)}</td>
       <td class="num">${lastCell(r)}</td>
       <td class="num"><span class="score-pill ${Number(r.quant_score) >= 70 ? 'high' : ''}">${fmt(r.quant_score)}</span></td>
       <td>${factorBars(r)}</td>
@@ -819,7 +826,7 @@ function renderRank(q = "") {
       (r) => `<tr class="clickable" data-ticker="${padTicker(r.ticker)}">
       <td class="num">${rankMedal(r.quant_rank)}</td>
       <td>${padTicker(r.ticker)} <a class="ext inline" href="${naverUrl(r.ticker)}" target="_blank" rel="noopener">네이버</a></td>
-      <td class="name-cell"><b>${r.company || ""}</b> ${faChip(r)}${rowNote(r.comment_short || r.comment)}</td>
+      <td class="name-cell"><b>${r.company || ""}</b> ${aiReportBtn(r.ticker, r.company)} ${faChip(r)}${rowNote(r.comment_short || r.comment)}</td>
       <td>${r.market || ""}</td>
       <td>${r.industry || r.sector || ""}</td>
       <td class="num">${lastCell(r)}</td>

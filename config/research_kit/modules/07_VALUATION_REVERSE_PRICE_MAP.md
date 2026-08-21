@@ -1,4 +1,4 @@
-# 07. Valuation / Reverse / Price Map — VER4.0.0
+# 07. Valuation / Reverse / Price Map — VER3.7.2
 
 ## 1. 분모 정렬
 TTM, FY1, FY2, 정상화 EPS·FCF를 구분한다. 순현금·부채·리스·희석 기준을 통일한다.
@@ -68,7 +68,10 @@ TTM, FY1, FY2, 정상화 EPS·FCF를 구분한다. 순현금·부채·리스·�
 - 돌파/이탈 조건
 을 함께 적는다. 분석을 통째로 생략하지 않는다.
 
-
-## 9. VER4.0.0 Decision-Linked Valuation
-
-Bear/Base/Bull은 단순 배수 3개가 아니라 **각 시나리오의 사업 KPI와 폐기조건**을 연결한다. Base 가치가 높아도 가격·거래량이 붕괴 중이면 신규 실행은 분할/확인 조건으로 낮춘다. 반대로 차트가 강해도 Reverse가 비현실적 성장률을 요구하면 추격을 금지한다.
+## VER3.7.2 Valuation Minimum Pack
+- TTM/FY1/FY2/Normalized를 분리한다.
+- Reverse Valuation + Bear/Base/Bull을 기본 수행한다.
+- 10%·12%·15% 요구수익률 매수상한을 모두 제시한다.
+- Fundamental R/R 1.5x·2.0x가 허용하는 매수상한을 가능한 범위에서 계산한다.
+- 목표가, 가치가격, 실제 진입가격을 분리한다.
+12% 상한 하나만 제시하면 Quality Gate 실패다.

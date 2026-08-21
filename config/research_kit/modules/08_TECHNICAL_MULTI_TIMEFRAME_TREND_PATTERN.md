@@ -1,4 +1,4 @@
-# 08. Multi-Timeframe Technical / Intraday / Trend / Pattern — VER4.0.0
+# 08. Multi-Timeframe Technical / Intraday / Trend / Pattern — VER3.7.2
 
 ## 1. 목적
 
@@ -112,7 +112,8 @@
 
 정확한 최신가가 부족하면 마지막 검증가격 대비 퍼센트와 조건을 병기한다. 가격지도 자체를 삭제하지 않는다.
 
-
-## 9. VER4.0.0 Pattern Validation
-
-패턴 이름은 모양만 보고 붙이지 않는다. `구조 기간 + 피벗 고저점 + 거래량 + 돌파/이탈 종가 + 실패조건`이 있어야 한다. 이벤트 당일은 갭·VWAP·저점회복·거래량 pace를 별도 해석하고, 완성봉 추세와 섞지 않는다.
+## VER3.7.2 Technical Minimum Pack
+자료가 있으면 월봉·주봉·일봉을 함께 본다.
+최소 확인: 5/10/20/50/60/120/200D, 40W, HH/HL 또는 LH/LL, Stage, 20/60/120D RS, ATR, MDD, 변동성, 주요 패턴/지지/저항, 필요한 오실레이터 2~4개.
+OBV/CMF/A-D/Volume Profile/AVWAP는 가능한 범위에서 사용한다.
+5/10/20일선과 RSI만으로 Full Technical을 끝내면 Quality Gate 실패다.

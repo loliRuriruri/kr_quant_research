@@ -1,22 +1,24 @@
-# 13. Country / Live Queries / Macro / Policy / Source Rules — VER4.0.0
+# 13. Country / Live Queries / Macro / Policy / Source Rules — VER3.7.2 Cloud-First Deep
 
 ## 1. 공통
 
-거시·정책은:
+거시·정책은 `최신 공식상태 → 노출 사업부 → 수요·가격·비용 → OP/EPS/FCF → 가치·차트`로 연결한다.
 
-`최신 공식상태 → 노출 사업부 → 수요·가격·비용 → OP/EPS/FCF → 가치·차트`
-
-로 연결한다.
-
-## 2. 한국
+## 2. 한국 — Cloud Priority
 
 우선 출처:
 
-- DART/OpenDART
-- KIND/KRX
-- 회사 IR
-- 한국은행·통계청·정부부처
-- 신뢰 가능한 금융포털·주요 언론
+1. DART/OpenDART
+2. KIND/KRX
+3. 회사 IR
+4. KRX Data Marketplace/공식 웹 — 완료 거래일 가격·수급·공매도·통계
+5. 한국은행 ECOS — 금리·환율·물가·통화·채권
+6. 정부부처·통계청·협회
+7. 신뢰 가능한 금융포털·주요 언론
+8. 사용 가능한 경우 `data-stock`, `bok-ecos-stats`
+9. KIS/broker MCP는 연결돼 있을 때만 장중 보강
+
+`data-stock`은 종목검색·기본정보·완료 거래일 종가/거래량 fallback으로만 사용한다. `bok-ecos-stats`는 거시 시계열 수집 모듈로 사용한다.
 
 Live queries:
 
@@ -25,60 +27,23 @@ Live queries:
 - `site:kind.krx.co.kr + 회사명 + 날짜`
 - `site:dart.fss.or.kr + 회사명 + 분기보고서`
 - `종목코드 + 오늘 주가 + 거래량`
+- `회사명 + 외국인 기관 순매수 + 날짜`
 - `회사명 + 실적 발표 + 급등/급락 + 날짜`
 - `회사명 + 목표주가 + EPS 추정치 + 상향/하향`
-
-공식 검색 색인이 늦으면 포털·언론으로 이벤트를 발견한 뒤 원문을 역추적한다.
-
-추가:
-
-- 외국인·기관·개인·프로그램
-- 공매도·대차·신용
-- ETF·리밸런싱
-- CB/BW·유증·대주주 담보
-- 장후공시 다음날 갭
-- NXT·시간외와 KRX 정규장 분리
-- 가격제한·VI·거래정지
 
 ## 3. 미국
 
 - SEC EDGAR·회사 IR
 - 거래소·OCC·Cboe·FINRA
 - Fed/FRED/BLS/BEA/Treasury
-
-Live queries:
-
-- `ticker + earnings release + quarter + year`
-- `site:sec.gov + ticker + 8-K earnings`
-- `company IR domain + results + date`
-- `ticker + premarket/after-hours price volume`
-- `ticker + guidance consensus revision`
-
-추가:
-
-- GAAP/Non-GAAP·SBC·희석
-- 프리·애프터마켓
-- 옵션 IV/OI
-- 13F·short interest 지연
+- 신뢰 시장데이터/주요 금융언론
 
 ## 4. 일본
 
 - EDINET·TDnet·회사 IR
 - JPX·J-Quants
 - BOJ·MOF·FSA
-
-Live queries:
-
-- `회사명/코드 + 決算短信 + 분기`
-- `회사명 + 業績予想 修正`
-- `종목코드 + 株価 今日 出来高`
-
-추가:
-
-- 100주 단위·점심휴장
-- 엔화
-- 신용잔고·공매도
-- 지배구조 개혁·자사주
+- 신뢰 시장데이터/주요 금융언론
 
 ## 5. 정책 상태
 
@@ -88,18 +53,14 @@ Live queries:
 
 ## 6. Macro Selection
 
-기업별 상위 3~5개만 깊게 분석한다.
-
-- 주택/HVAC: 모기지금리·단독주택 허가·기존주택·교체수요
-- 반도체: ASP·재고·가동률·고객 CapEx
-- 소비재: 실질소득·트래픽·재고·판촉
-- 산업재: 수주·출하·백로그
-- 금융: 금리곡선·신용비용·연체
-
-예정 이벤트가 당일이면 이미 발표됐는지 먼저 확인한다.
+기업별 상위 3~5개만 깊게 분석한다. 한국 기업 환율 민감도가 중요하면 ECOS 또는 `bok-ecos-stats`의 원/달러와 회사 환노출/헤지를 연결한다.
 
 ## 7. Source Quality
 
-Primary > 공식 집계 > 라이선스/신뢰 데이터 > 주요 언론 > 일반 포털 > 커뮤니티.
+`Primary filing/exchange > official statistics > trustworthy market-data/provider > major financial news > general portal > community`
 
-커뮤니티는 서사·루머 발견용이며 핵심 숫자의 최종 근거가 아니다.
+사용 가능한 Skill은 **공식 원천의 조회 보조층**으로 취급한다. Skill 출력이 공식 원문보다 오래되면 폐기한다.
+
+## VER3.7.2 Macro Minimum Pack
+일반 종목도 실적·현금흐름에 영향을 주는 핵심 거시 3~5개를 선정한다. 단순 지표 나열이 아니라 `거시 변화 → 수요/가격/마진/자본비용/FCF → 기업 영향`으로 연결한다.
+정책 관련성이 있으면 발표→법적 발효→예산/규칙→회사 적격성→주문→납품→회계→현금회수의 전달경로를 최소 한 번 검증한다.

@@ -1,72 +1,101 @@
-# 15. Internal Quality Gate — VER4.0.0
+# 15. Internal Quality Gate — VER3.7.2 HARD GATE
 
-내부 검사 전용. 사용자에게 체크리스트·Audit Stamp·내부 코드를 출력하지 않는다.
+이 파일은 내부 검사 전용이다. 체크리스트·Audit Stamp·내부 코드를 사용자에게 출력하지 않는다.
 
-## A. Freshness Hard Fail
-- 최근 24h/7d 뉴스 없이 최신 주장
-- 첫 검색만으로 최신 실적 확정
-- 더 최신 잠정실적/수정공시/가격 후보를 놓침
-- 당일 장중가가 있는데 오래된 종가만 현재가처럼 사용
-- 샘플·과거 대화 숫자를 현재 사실로 복사
-- 이미 발표된 이벤트를 예정이라고 씀
+## 0. Final Response Prohibition
 
-## B. Source / Calculation Hard Fail
-- 핵심 숫자의 기간·연결/별도·잠정/확정 정의가 섞임
-- OPM·YoY·PER·Upside·R/R 산식 오류를 검산하지 않음
-- 서로 다른 출처 숫자를 정의 확인 없이 평균냄
-- 일회성 금액을 모른다고 임의의 정확한 값을 생성
-- 가격 하락 원인을 공식 근거 없이 사실로 단정
+Auto Hybrid Deep Research에서는 이 Gate를 실행하기 전 Final Action을 확정하지 않는다.
+Mandatory 항목이 빠졌고 공개자료로 추가 확인 가능성이 있으면 **재검색·재계산 후 다시 Gate**한다.
+사용자가 특정 모듈을 명시적으로 제외한 경우에만 해당 항목을 Gate에서 제외한다.
 
-## C. Financial Depth
-- 잠정 P&L + 제출 BS/CF 분리
-- 5~10년 + 최근 최대 8분기
-- Common-size·FCF·ROIC·부채·희석
-- Reported / Consensus / Normalized
-- Revenue/OP 괴리 브리지
-- 반복 가능한 EPS/FCF 범위
-- 다음 판결 KPI
+## A. Freshness / Finality Hard Fail
+- 최근 24h/7d 뉴스·공시 잠금 없이 최신이라고 주장
+- 더 최신 잠정실적/보고서/가격 후보가 있는데 과거값 선택
+- 잠정 P&L과 제출 BS/CF를 같은 확정성으로 혼합
+- 현재가격을 완료봉 지표에 사용하거나 미완성봉으로 장기 MA 계산
+- 장중 외인/기관/프로그램 수치를 검증 없이 생성
+- data-stock EOD snapshot을 실시간으로 표현
+- 프로젝트 예시·과거 분석 숫자를 현재 사실로 재사용
 
-## D. Business / Industry / Moat
-- 성장 브리지
-- Peer 최소 2개 또는 표본한계
-- Cycle/재고/가격/Profit Pool
-- 해자 운영증거 + 재무 흔적 + 경쟁사 반증 + 지속기간
-- 회사 고유 성장과 업황 베타 분리
+## B. Source Escalation Hard Fail
+최신 제출 보고서 존재가 확인됐는데 한 번의 endpoint 실패만으로 이전 분기 BS/CF에 후퇴하면 실패.
+최소 공식 재검색 + 대체 공식경로 + 보조경로를 거친 뒤에만 이전 검증값 사용 가능.
 
-## E. Technical / Volume / Analog
-- 장중 Layer와 완성봉 Layer 분리
-- 월/주/일 + 단/중/장기
-- 패턴 검증조건
-- MA/RS/ATR
-- 오실레이터 2~4개를 맥락 해석
-- 거래량/OBV/CMF 등 가능한 범위
-- 과거 유사국면 2~5개 또는 표본한계
-- 패턴/과거사례를 미래확률로 단정하지 않음
+## C. Financial Mandatory
+자료가 존재하는 범위에서:
+- 최신 P&L + 마지막 제출 BS/CF/주석
+- 5~10년 또는 가능한 최대 장기
+- 최근 최대 8개 단독분기
+- Gross/OP/Net/FCF margin
+- CFO/NI, FCF/NI, CapEx/CFO
+- 운전자본·재고·채권
+- 순현금/순차입·이자
+- ROIC/증분 ROIC 가능한 범위
+- 희석/SBC/CB/BW/자사주
+- 일회성·정상화 EPS/FCF
 
-## F. Contradiction / Event
-- 충돌 서사 최소 2개
-- 강세 근거와 약세/반증 모두 존재
-- Actual vs Consensus vs Normalized
-- 가격/거래량 반응과 원인 분리
-- revision 또는 Pending
-- 다음 판정 KPI/날짜
+빠진 항목은 `자료 미확인`으로 끝내기 전에 최소 1회 대체소스/대체계산을 시도한다.
 
-## G. Valuation / Strategy
-- TTM/FY1/FY2/정상화 분리
-- Reverse + Bear/Base/Bull
-- 가치가격과 실행가격 분리
-- 목표가와 매수가격 분리
-- 신규/보유/단기 서로 다름
-- Bear Value / Technical Invalidation / Thesis Invalidation 분리
-- 상단과 하단 가격 일치
+## D. Valuation Mandatory
+- TTM/FY1/FY2/Normalized
+- 역사/Peer
+- Reverse Valuation
+- Bear/Base/Bull
+- 10%·12%·15% 요구수익률 매수상한
+- Fundamental R/R 1.5x·2.0x 상한 가능한 범위
+- 가치가격 ≠ 목표가 ≠ 실제 진입가격
+- 상단/하단 숫자 일치
 
-## H. Output
-- 45초 총평만 읽어도 최신 변화·최종행동·가격·위험·다음 KPI가 보임
-- 최신 뉴스가 첫 본문 섹션
-- 각 주요 섹션에 소결론·반증·다음 KPI
-- Final Action Playbook 존재
-- 명확한 최종 행동 존재
-- 내부 Audit 코드 없음
+12% 한 개만 계산하면 실패.
 
-## I. Recovery
-누락 시 `재검색 → 정의/기간 확인 → 대체 출처 → 범위화 → 조건부 전략 → 결론 영향` 순으로 복구한다. 단순 N/A로 전체 모듈을 삭제하지 않는다.
+## E. Moat / Industry / Macro Mandatory
+- 해자: 운영 증거→재무 흔적→경쟁사 반증→지속기간
+- 산업: 수요·공급·가격·재고·점유율·Cycle Stage·선행지표
+- 거시: 회사에 중요한 3~5개를 실적/FCF 경로와 연결
+- 정책 관련성이 있으면 전달경로와 실패조건
+
+## F. Technical / Flow Mandatory
+자료가 존재하면:
+- 월/주/일
+- 5/10/20/50/60/120/200D + 40W 가능한 범위
+- 구조/Stage
+- 20/60/120D RS
+- ATR + MDD/변동성
+- 주요 패턴·지지·저항
+- 필요한 오실레이터 2~4개
+- 거래량 + EOD 수급 + 공매도/신용/대차 가능한 범위
+- 장중 수급은 Optional
+
+5/10/20D + RSI만으로 Full Technical을 끝내면 실패.
+
+## G. Event / Analog Mandatory
+Trigger가 있으면:
+- D-5/D-20/D-60
+- Actual vs Consensus
+- Revision 또는 Pending
+- D+1/D+5/D+20/D+60 가능한 범위
+- 계절성/서사
+- 같은 종목 Analog 최소 2개, 가능하면 3~5개
+
+동일종목 사례를 검색했지만 부족한 경우에만 부족 사유 + Peer analog로 대체 가능.
+
+## H. Position / Strategy Mandatory
+- 신규 / 보유 / 단기 분리
+- 1·2·3차 / 돌파 / 추격금지 / 목표 / 무효화
+- 포지션이 있으면 현재 대화와 Position Context 확인
+- 평단·수량이 있으면 평가손익과 계산 가능한 추가매수/목표가 시나리오
+- Bear Value, Technical Invalidation, Thesis Invalidation 분리
+
+포지션 정보가 있는데 `평단을 모른다`고 쓰면 실패.
+
+## I. Recovery Loop
+실패 항목마다:
+1. 쿼리·날짜·언어·공시유형 변경
+2. 공식 원문 직접 검색
+3. 다른 공식/신뢰 보조 소스
+4. 사용 가능한 외부 Skill 보조
+5. 직접 계산/범위 추정
+6. 그래도 불가하면 마지막 검증 데이터 + 기준일 + 정밀도 영향
+
+## J. Exit Condition
+모든 Mandatory 항목이 `충족`, `사용자 제외`, 또는 `재탐색 후 미확인 + 영향 명시` 중 하나가 되어야 Final Action을 확정한다.

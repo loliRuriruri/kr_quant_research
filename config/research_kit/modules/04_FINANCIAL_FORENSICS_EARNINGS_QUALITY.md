@@ -1,4 +1,4 @@
-# 04. Financial Forensics / Latest P&L / Earnings Quality — VER4.0.0
+# 04. Financial Forensics / Latest P&L / Earnings Quality — VER3.7.2
 
 ## 1. Layered Latest Financial
 
@@ -118,11 +118,15 @@ Revenue, Gross Profit, OP, NI, diluted EPS, CFO, CapEx, FCF, ROE, ROIC, net cash
 - 정상 EPS/FCF 범위
 - 다음 분기 확인 숫자
 
-
-## 12. VER4.0.0 Reported / Consensus / Normalized Bridge
-
-실적 이벤트는 세 숫자를 반드시 분리한다.
-
-`Reported → Consensus 차이 → 일회성/환율/세율/비용타이밍 조정 → Normalized`
-
-매출과 OP가 반대 방향이면 `물량·가격·믹스·원가·판관비·환율·일회성`으로 브리지한다. 마지막에는 **반복 가능한 OPM/EPS/FCF**와 이를 검증할 다음 분기 KPI 1~3개를 명시한다.
+## VER3.7.2 Financial Minimum Pack
+Auto Hybrid Deep Research에서는 자료가 존재하는 한 다음을 기본 수행한다.
+- 가능한 최대 5~10년 수평/공통형 추세
+- 최근 최대 8개 단독분기
+- Gross/OP/Net/FCF margin
+- CFO/NI, FCF/NI, CapEx/CFO
+- 재고·채권·운전자본
+- 순현금/순차입·이자비용
+- ROIC·증분 ROIC 가능한 범위
+- 희석/SBC/CB/BW/자사주
+- 일회성 정상화 EPS/FCF
+계산 불가 항목은 조용히 생략하지 말고 대체 지표 또는 미확인 영향을 표시한다.

@@ -1,4 +1,4 @@
-# 06. Latest Event / Expectations / Revision / Seasonality / Sentiment — VER4.0.0
+# 06. Latest Event / Expectations / Revision / Seasonality / Sentiment — VER3.7.2
 
 ## 1. Recent Window
 
@@ -115,7 +115,7 @@ post-event revision이 없으면 Pending이지만 분석 중단은 아니다.
 
 PEG는 Forward PER / 2~3년 정상화 EPS CAGR의 보조지표만 사용한다.
 
-
-## 11. VER4.0.0 Price-Reaction Interpretation
-
-가격은 높은 가중치의 증거지만 원인 자체는 아니다. `발표 사실 → 기대와 차이 → 정상화 → 가격/거래량 반응 → 리비전 → D+1/D+5 확인` 순으로 본다. 좋은 실적 후 급락이면 강세/약세 서사를 동시에 만들고 어느 쪽이 가격결정권을 잡았는지 provisional로 판정한다.
+## VER3.7.2 Event Hard Trigger
+좋은 실적 후 급락, 나쁜 실적 후 강세, 발표 전 강한 선행상승, 거래량 클라이맥스, 정책/루머 논쟁 중 하나라도 있으면 Full Event를 실행한다.
+최소: D-5/D-20/D-60, Actual vs Consensus, revision/Pending, D+1/D+5/D+20/D+60 가능한 범위, 계절성, 서사 타임라인, 공식 루머 검증.
+Trigger가 켜졌는데 Event 섹션이 축약되면 Quality Gate 실패다.

@@ -1,4 +1,4 @@
-# 05. Industry State / Cycle / Competition — VER4.0.0
+# 05. Industry State / Cycle / Competition — VER3.7.2
 
 ## 1. 업계 상태 자동 분석
 회사를 보지 말고 산업부터 본다.
@@ -65,14 +65,3 @@ Peer 최소 2개. 가능하면 직접 경쟁사, 고품질 글로벌 Peer, 저�
 - 6~12개월 우호·비우호 요인
 - 구조적 리레이팅 조건
 - 산업 Red Flag
-
-
-## 7. VER4.0.0 Company vs Industry Decomposition
-
-회사 성장률을 업황과 분리한다.
-- Industry beta: 시장 자체 성장/회복
-- Share gain/loss: 점유율 변화
-- Price/mix: 판가·고부가 믹스
-- Capacity/channel: 증설·유통 확대
-
-Peer 대비 성장·마진·재고·수주가 엇갈리면 왜 그런지 설명하고, 회사 고유 경쟁력인지 단순 업황인지 판정한다.
