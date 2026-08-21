@@ -1225,6 +1225,14 @@ def api_stocks_all() -> dict[str, Any]:
     return {"items": []}
 
 
+
+@app.get("/api/flow/ticker/{ticker}")
+def api_flow_ticker_get(ticker: str, days: int = 5) -> dict[str, Any]:
+    from kr_quant.flow.scan import diagnose_ticker_flow
+
+    return diagnose_ticker_flow(load_settings(), ticker, days=days)
+
+
 @app.get("/api/strategy")
 def api_strategy_get() -> dict[str, Any]:
     from kr_quant.strategy.run import load_strategy

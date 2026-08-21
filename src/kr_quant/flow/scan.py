@@ -390,3 +390,93 @@ def scan_flow(
     out = attach_technicals(out, settings, prices=prices)
     _save_cache(settings.root, out)
     return _with_comments(attach_live_quotes(out, settings))
+
+
+def diagnose_ticker_flow(settings: Settings, query: str, days: int = 5) -> dict[str, Any]:
+    q = str(query or "").strip()
+    code = ""
+    company = ""
+
+    p = settings.output_dir / "latest_all_stocks.parquet"
+    if p.exists():
+        try:
+            df = pd.read_parquet(p)
+            if q.isdigit():
+                code = q.zfill(6)
+                sub = df[df["ticker"] == code]
+                if not sub.empty:
+                    company = str(sub["company"].iloc[0])
+            else:
+                sub = df[df["company"].str.contains(q, case=False, na=False)]
+                if not sub.empty:
+                    code = str(sub["ticker"].iloc[0]).zfill(6)
+                    company = str(sub["company"].iloc[0])
+        except Exception:
+            pass
+
+    if not code:
+        from kr_quant.strategy.run import _prices
+        prices_df = _prices(settings)
+        if not prices_df.empty:
+            if q.isdigit():
+                code = q.zfill(6)
+                matched = prices_df[prices_df["ticker"].astype(str).str.zfill(6) == code]
+                if not matched.empty and "company" in matched.columns:
+                    company = str(matched["company"].iloc[0])
+            else:
+                if "company" in prices_df.columns:
+                    matched = prices_df[prices_df["company"].astype(str).str.contains(q, case=False, na=False)]
+                    if not matched.empty:
+                        code = str(matched["ticker"].iloc[0]).zfill(6)
+                        company = str(matched["company"].iloc[0])
+
+    if not code:
+        return {"ok": False, "error": f"종목 '{query}'을(를) 찾을 수 없습니다."}
+
+    cached = load_flow(settings, days=days)
+    for r in cached.get("rows") or []:
+        if str(r.get("ticker")).zfill(6) == code:
+            return {"ok": True, "found_in_scan": True, "row": r}
+
+    records = []
+    if settings.toss_client_id and settings.toss_client_secret:
+        try:
+            from kr_quant.ingest.toss import get_investor_trading
+            payload = get_investor_trading(settings.toss_client_id, settings.toss_client_secret, code)
+            records = payload.get("records") if isinstance(payload, dict) else []
+        except Exception:
+            records = []
+
+    summary = summarize_records(records, days=days)
+    from kr_quant.strategy.run import _prices
+    prices = _prices(settings)
+    hist = prices[prices["ticker"].astype(str).str.zfill(6) == code] if not prices.empty else pd.DataFrame()
+    last = float(pd.to_numeric(hist.sort_values("trade_date")["close"].iloc[-1], errors="coerce") or 0) if not hist.empty else 0.0
+
+    smart = (summary.get("foreign_net") or 0) + (summary.get("institution_net") or 0)
+    dual_krw = smart * last if last else 0
+    empty_krw = -smart * last if last else 0
+    pe_krw = (summary.get("pe_net") or 0) * last if last else 0
+
+    row = {
+        "ticker": code,
+        "company": company or code,
+        **summary,
+        "pe_krw": pe_krw,
+        "dual_krw": dual_krw,
+        "empty_krw": empty_krw,
+        "other_corp_krw": (summary.get("other_corp_net") or 0) * last if last else 0,
+        "pension_krw": (summary.get("pension_net") or 0) * last if last else 0,
+        "in_quant": False,
+    }
+    row["setups"] = classify_setups(row)
+
+    from kr_quant.timing.snapshot import attach_technicals
+    from kr_quant.web.comments import flow_comment
+
+    dummy_payload = {"rows": [row]}
+    attached = attach_technicals(dummy_payload, settings, prices=prices)
+    row = (attached.get("rows") or [row])[0]
+    row["comment"] = flow_comment(row)
+
+    return {"ok": True, "found_in_scan": False, "row": row}

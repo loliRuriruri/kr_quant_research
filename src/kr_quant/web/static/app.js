@@ -1,4 +1,110 @@
 
+async function triggerFlowDiag(ticker, company, scope = "empty") {
+  const boxId = scope === "empty" ? "#empty-box" : "#trade-box";
+  const box = $(boxId);
+  if (!box) return;
+
+  const data = await api(`/api/flow/ticker/${ticker}`);
+  if (data && data.ok && data.row) {
+    const diagHtml = renderFlowDiagCard(data.row, company || ticker);
+    const existingTable = box.querySelector(".table-wrap") ? box.querySelector(".table-wrap").outerHTML : "";
+    const existingKpis = box.querySelector(".flow-kpis") ? box.querySelector(".flow-kpis").outerHTML : "";
+    box.innerHTML = `${existingKpis}${diagHtml}${existingTable}`;
+
+    // Attach button handlers
+    box.querySelectorAll("[data-open]").forEach((b) => {
+      b.addEventListener("click", () => openStock(b.dataset.open).catch((e) => alert(e.message)));
+    });
+    box.querySelectorAll("[data-backtest-stock]").forEach((b) => {
+      b.addEventListener("click", () => {
+        const code = b.dataset.backtestStock;
+        switchView("strategy");
+        const inp = $("#custom-strategy-q");
+        if (inp) inp.value = code;
+        runCustomBacktest(code);
+      });
+    });
+    box.querySelectorAll("[data-watch-stock]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        await addWatch(b.dataset.watchStock, b.dataset.company);
+      });
+    });
+  } else {
+    if (flowCache) {
+      if (scope === "empty") renderEmpty(flowCache);
+      else renderTrade(flowCache);
+    }
+  }
+}
+
+
+function renderFlowDiagCard(row, query) {
+  if (!row) return "";
+  const code = padTicker(row.ticker);
+  const company = row.company || code;
+  const fNet = row.foreign_net != null ? `${row.foreign_net > 0 ? "+" : ""}${row.foreign_net.toLocaleString("ko-KR")}주` : "—";
+  const iNet = row.institution_net != null ? `${row.institution_net > 0 ? "+" : ""}${row.institution_net.toLocaleString("ko-KR")}주` : "—";
+  const pNet = row.individual_net != null ? `${row.individual_net > 0 ? "+" : ""}${row.individual_net.toLocaleString("ko-KR")}주` : "—";
+  const peNet = row.pe_net != null ? `${row.pe_net > 0 ? "+" : ""}${row.pe_net.toLocaleString("ko-KR")}주` : "—";
+  const fRate = row.foreign_holding_rate != null ? `${(row.foreign_holding_rate * 100).toFixed(1)}%` : "—";
+  const setups = (row.setups || []).join(" · ") || "일반 수급";
+
+  const ta = row.ta || {};
+  const stoch = ta.stoch_k != null ? `%K ${ta.stoch_k.toFixed(0)}` : "—";
+  const cloud = ta.ichi_cloud ? `구름대 ${ta.ichi_cloud === "above" ? "상회 (강세)" : ta.ichi_cloud === "below" ? "하회 (약세)" : "내부"}` : "—";
+
+  return `
+    <div class="flow-diag-card">
+      <div class="flow-diag-head">
+        <div>
+          <h3 style="margin:0; font-size:16px; color:#fff; display:flex; align-items:center; gap:6px;">
+            <span>🎯 ${escapeHtml(company)} (${code}) 실시간 수급 & 빈집 트레이딩 정밀 진단</span>
+          </h3>
+          <span class="hint" style="margin-top:2px;">검색어 '${escapeHtml(query)}' 맞춤 수급 셋업 및 기술적 지표 실시간 분석 결과</span>
+        </div>
+        <div>
+          <span class="chip ok" style="font-size:12px; padding:4px 10px;">${escapeHtml(setups)}</span>
+        </div>
+      </div>
+
+      <div class="flow-diag-grid">
+        <div class="portfolio-kpi-item">
+          <span>외국인 5일 순매수</span>
+          <b class="${row.foreign_net > 0 ? "up" : row.foreign_net < 0 ? "down" : ""}">${fNet}</b>
+        </div>
+        <div class="portfolio-kpi-item">
+          <span>기관 5일 순매수</span>
+          <b class="${row.institution_net > 0 ? "up" : row.institution_net < 0 ? "down" : ""}">${iNet}</b>
+        </div>
+        <div class="portfolio-kpi-item">
+          <span>개인 5일 순매수</span>
+          <b class="${row.individual_net > 0 ? "up" : row.individual_net < 0 ? "down" : ""}">${pNet}</b>
+        </div>
+        <div class="portfolio-kpi-item">
+          <span>외인 지분율 / 사모</span>
+          <b>${fRate} <small style="font-size:12px;font-weight:normal;color:#94a3b8;">/ ${peNet}</small></b>
+        </div>
+      </div>
+
+      <div style="background:#111a2e; padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:12.5px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:12px; color:#94a3b8;">
+          <span>⚡ 기술적 셋업: ${escapeHtml(stoch)} · ${escapeHtml(cloud)}</span>
+          <span>${row.empty ? "🏚️ 빈집 감지됨" : row.dual ? "⚡ 쌍끌이 감지됨" : "안정 수급"}</span>
+        </div>
+        <p style="margin:4px 0 0; color:#cbd5e1;">💡 ${escapeHtml(row.comment || "외인·기관의 최근 수급 동향과 기술적 위치를 점검했습니다.")}</p>
+      </div>
+
+      <div style="display:flex; gap:8px;">
+        <button class="primary" data-open="${code}">🔍 심층 리서치</button>
+        <button data-backtest-stock="${code}" style="background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4);">🧪 전략 백테스트</button>
+        <button class="btn-ai-mini" data-ai-trigger="${code}" data-ai-company="${escapeHtml(company)}" style="padding:0 14px; height:32px; font-size:12px;">🤖 AI 리포트 발간</button>
+        <button class="ghost" data-watch-stock="${code}" data-company="${escapeHtml(company)}">⭐ 관심종목 추가</button>
+      </div>
+    </div>
+  `;
+}
+
+
 // Korean Chosung Decomposer for Frontend
 const CHOSUNG_LIST = ["ㄱ", "ㄲ", "ㄴ", "ㄷ", "ㄸ", "ㄹ", "ㅁ", "ㅂ", "ㅃ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅉ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"];
 
