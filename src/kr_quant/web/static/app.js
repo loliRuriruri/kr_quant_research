@@ -3499,6 +3499,7 @@ function renderSeasonalitySection(season) {
   if (!season || !season.months) return "";
   const cur = season.current_stat || {};
   const strat = season.strategy || {};
+  const election = season.election_overlay || {};
   const toneCls = cur.tone === "우호" ? "good" : cur.tone === "부담" ? "bad" : "neutral";
   const stockRatio = strat.stock_ratio || 70;
   const cashRatio = strat.cash_ratio || 30;
@@ -3530,37 +3531,45 @@ function renderSeasonalitySection(season) {
 
   return `
     <div class="seasonality-wrapper">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <div>
-          <h3 style="margin:0;font-size:15px;color:#fff;">📅 주식시장 역사적 계절성 분석 & 월별 전략 가이드 (Market Seasonality Playbook)</h3>
-          <span class="hint">코스피 30개년 1~12월 역사적 월별 수익률, 상승 승률, 강세/약세 섹터 및 포트폴리오 비중 전략</span>
-        </div>
-      </div>
-
       <div class="season-diag-box">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+        <!-- Top Status Bar -->
+        <div class="season-diag-header">
           <div class="season-diag-badge ${toneCls}">
-            ${season.current_month_name} 계절성: ${escapeHtml(cur.theme || cur.tone || "")} (${strat.tone || ""})
+            📅 ${season.current_month_name} 계절성: ${escapeHtml(cur.theme || cur.tone || "")} · ${strat.tone || ""}
           </div>
           <div class="season-diag-cycle">
-            <span style="color:#60a5fa;font-weight:700;">${escapeHtml(strat.cycle_name || "")}</span>
-            <span class="meta" style="margin-left:6px;">${escapeHtml(strat.cycle_comment || "")}</span>
+            <span style="color:#60a5fa;font-weight:700;">🔄 ${escapeHtml(strat.cycle_name || "")}</span>
+            <span class="meta" style="margin-left:6px;">(${escapeHtml(strat.cycle_comment || "")})</span>
           </div>
         </div>
 
-        <div class="season-diag-desc" style="margin-bottom:12px;">
-          <b>전략 총평:</b> ${escapeHtml(strat.desc || "")}
+        <!-- Strategy Overview Full Width -->
+        <div class="season-diag-desc">
+          <b style="color:#60a5fa;">🎯 ${season.current_month_name} 퀀트 운용 가이드:</b> ${escapeHtml(strat.desc || "")}
         </div>
 
-        <!-- Strategy & Sector Playbook Grid -->
+        <!-- Election & Political Cycle Overlay Full Width -->
+        ${election.title ? `
+          <div class="season-election-box">
+            <div class="season-election-title">
+              <span>🏛️ ${escapeHtml(election.title)}</span>
+              <span class="chip warn" style="font-size:11px; padding:2px 6px;">선거 & 정책 변수 오버레이</span>
+            </div>
+            <div style="margin-bottom:4px; color:#fef9c3;"><b>📈 역사적 주기 패턴:</b> ${escapeHtml(election.pattern || "")}</div>
+            <div style="font-size:12px; color:#cbd5e1; margin-bottom:4px;"><b>💡 실전 파급 효과:</b> ${escapeHtml(election.impact || "")}</div>
+            <div style="font-size:12px; color:#94a3b8;"><b>🇰🇷 국내 선거·정책 변수:</b> ${escapeHtml(election.kr_policy || "")}</div>
+          </div>
+        ` : ""}
+
+        <!-- Strategy & Sector Playbook Grid (Auto-fit, Responsive) -->
         <div class="season-playbook-grid">
           <div class="season-playbook-box">
             <span class="season-playbook-title">⚖️ 권장 포트폴리오 비중</span>
-            <div style="display:flex; justify-content:space-between; font-size:12px; margin:6px 0 4px;">
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin:8px 0 6px;">
               <span>주식 <b style="color:#34d399;">${stockRatio}%</b></span>
               <span>현금 <b style="color:#fbbf24;">${cashRatio}%</b></span>
             </div>
-            <div style="height:8px; background:#1e293b; border-radius:99px; display:flex; overflow:hidden;">
+            <div style="height:10px; background:#1e293b; border-radius:99px; display:flex; overflow:hidden;">
               <div style="width:${stockRatio}%; background:linear-gradient(90deg, #10b981, #34d399);"></div>
               <div style="width:${cashRatio}%; background:linear-gradient(90deg, #f59e0b, #fbbf24);"></div>
             </div>
@@ -3582,15 +3591,16 @@ function renderSeasonalitySection(season) {
         </div>
 
         ${tactics.length ? `
-          <div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e293b; font-size:12px;">
-            <b style="color:#60a5fa;">💡 이 달의 핵심 실전 트레이딩 체크리스트:</b>
-            <ul style="margin:4px 0 0; padding-left:18px; color:#cbd5e1;">
+          <div style="margin-top:4px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); font-size:12.5px;">
+            <b style="color:#60a5fa;">💡 핵심 실전 트레이딩 체크리스트:</b>
+            <ul style="margin:6px 0 0; padding-left:18px; color:#cbd5e1; line-height:1.6;">
               ${tactics.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}
             </ul>
           </div>
         ` : ""}
       </div>
 
+      <!-- 12-Month Heatmap Calendar Grid -->
       <div class="seasonality-grid">
         ${monthCards}
       </div>

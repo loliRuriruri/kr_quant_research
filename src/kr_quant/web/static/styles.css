@@ -1592,34 +1592,67 @@ body.modal-open { overflow: hidden; }
 
 /* === Seasonality Visual Heatmap === */
 .seasonality-wrapper {
-  background: linear-gradient(180deg, #10192d 0%, #0c1322 100%);
-  border: 1px solid #233454;
-  border-radius: 14px;
-  padding: 16px 18px;
-  margin: 14px 0 18px;
+  background: transparent;
+  padding: 2px 0 0;
+  margin: 0;
 }
 .season-diag-box {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 16px;
-  align-items: center;
-  background: rgba(16, 28, 54, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(16, 28, 54, 0.6);
   border: 1px solid rgba(76, 141, 255, 0.25);
   border-radius: 12px;
-  padding: 12px 16px;
-  margin-bottom: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.season-diag-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 .season-diag-badge {
   font-size: 13px;
   font-weight: 700;
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 8px;
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
-.season-diag-badge.good { background: rgba(61, 207, 142, 0.2); color: #3dcf8e; border: 1px solid rgba(61, 207, 142, 0.4); }
-.season-diag-badge.bad { background: rgba(239, 75, 106, 0.2); color: #ef4b6a; border: 1px solid rgba(239, 75, 106, 0.4); }
-.season-diag-badge.neutral { background: rgba(240, 180, 41, 0.2); color: #f0b429; border: 1px solid rgba(240, 180, 41, 0.4); }
-.season-diag-desc { font-size: 13px; line-height: 1.45; color: #d0dcf0; }
+.season-diag-badge.good { background: rgba(61, 207, 142, 0.18); color: #3dcf8e; border: 1px solid rgba(61, 207, 142, 0.4); }
+.season-diag-badge.bad { background: rgba(239, 75, 106, 0.18); color: #ef4b6a; border: 1px solid rgba(239, 75, 106, 0.4); }
+.season-diag-badge.neutral { background: rgba(240, 180, 41, 0.18); color: #f0b429; border: 1px solid rgba(240, 180, 41, 0.4); }
+.season-diag-desc {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-left: 4px solid #3b82f6;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.season-election-box {
+  background: rgba(234, 179, 8, 0.08);
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  border-left: 4px solid #eab308;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #fef08a;
+}
+.season-election-title {
+  font-weight: 700;
+  color: #fde047;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
 .season-diag-cycle { font-size: 12px; color: var(--muted); text-align: right; }
 
 .seasonality-grid {
@@ -1861,9 +1894,9 @@ body.modal-open { overflow: hidden; }
 /* Seasonality Playbook Styles */
 .season-playbook-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
-  margin: 10px 0;
+  margin: 4px 0;
 }
 @media (max-width: 900px) {
   .season-playbook-grid { grid-template-columns: 1fr; }

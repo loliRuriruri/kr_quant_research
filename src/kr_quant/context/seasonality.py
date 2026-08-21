@@ -1,5 +1,5 @@
 """Stock market seasonality analysis module for KOSPI and global equities.
-Provides historical monthly win rates, average returns, seasonal cycle themes, leading/lagging sectors, and current month diagnostics.
+Provides historical monthly win rates, average returns, seasonal cycle themes, leading/lagging sectors, and election cycle overlays.
 Context only — used_in_quant = False.
 """
 
@@ -232,14 +232,51 @@ MONTHLY_KOSPI_STATS = [
 SP500_WIN_RATES = [57.0, 54.0, 62.0, 71.0, 59.0, 52.0, 60.0, 56.0, 45.0, 60.0, 72.0, 73.0]
 
 
+def get_election_cycle_overlay(year: int, month: int) -> dict[str, Any]:
+    """Computes US 4-Year Presidential Election Cycle & Korean Election/Policy variables."""
+    # US Presidential cycle: 2024 = Year 4 (Election), 2025 = Year 1 (Inauguration), 2026 = Year 2 (Midterm), 2027 = Year 3 (Pre-Election)
+    cycle_rem = year % 4
+    if cycle_rem == 0:
+        us_year_title = f"{year}년 미국 대통령 선거의 해 (Year 4: Presidential Election)"
+        us_pattern = "선거 전 정책 불확실성으로 상반기 관망 ➔ 대선 직후(11~12월) 정책 가시성 확보로 강력한 랠리"
+        us_impact = "대선 공약 수혜 섹터(친환경/인프라/방산/반도체) 정책 방향성 주목"
+    elif cycle_rem == 1:
+        us_year_title = f"{year}년 미국 신임 대통령 취임 1년차 (Year 1: Post-Election)"
+        us_pattern = "초기 정책 드라이브 및 허니문 기간 (평균 상승률 +7% 내외 완만한 상승)"
+        us_impact = "행정명령 및 신규 예산안 통과 수혜 섹터 강세"
+    elif cycle_rem == 2:
+        us_year_title = f"{year}년 미국 중간선거의 해 (Year 2: Midterm Election)"
+        us_pattern = "역사적으로 2~3분기(8~9월)는 정책 교착 및 선거 불확실성으로 변동성 최대 ➔ 중간선거 직후 4분기(10~12월)는 4개년 중 가장 폭발적인 안도 랠리(Relief Rally) 발생 (역사적 승률 85%+)"
+        us_impact = "여름 비수기 조정 구간을 4분기 중간선거 랠리 대비 저점 매수 기회로 활용"
+    else:
+        us_year_title = f"{year}년 미국 대선 직전 3년차 (Year 3: Pre-Election Year)"
+        us_pattern = "재선을 앞둔 경기 부양책과 금리 인하 기대감으로 4개년 주기 중 역사적 수익률 1위 (평균 +16.8%)"
+        us_impact = "대형 성장주 및 공격적 퀀트 팩터 비중 확대 유리"
+
+    kr_policy = (
+        "국내 선거(총선/지선/대선) 및 정부 정책 사이클상 밸류업 프로그램(자사주 소각·배당분리과세), 세제 개편 및 추경 예산 집행 여부가 외국인 수급의 핵심 변수로 작용합니다."
+    )
+
+    return {
+        "year": year,
+        "cycle_rem": cycle_rem,
+        "title": us_year_title,
+        "pattern": us_pattern,
+        "impact": us_impact,
+        "kr_policy": kr_policy,
+    }
+
+
 def compute_seasonality_brief(now_dt: datetime | None = None) -> dict[str, Any]:
-    """Generates stock market seasonality analysis, monthly statistics, sector guides, and current-month playbook."""
+    """Generates stock market seasonality analysis, monthly statistics, sector guides, election overlays, and current-month playbook."""
     if now_dt is None:
         now_dt = datetime.now(timezone.utc)
 
+    cur_year = now_dt.year
     cur_month = now_dt.month
     cur_stat = MONTHLY_KOSPI_STATS[cur_month - 1]
     sp_win = SP500_WIN_RATES[cur_month - 1]
+    election_overlay = get_election_cycle_overlay(cur_year, cur_month)
 
     # Strategic recommendations based on current season
     if cur_month in (11, 12, 1, 4):
@@ -272,6 +309,7 @@ def compute_seasonality_brief(now_dt: datetime | None = None) -> dict[str, Any]:
 
     return {
         "used_in_quant": False,
+        "current_year": cur_year,
         "current_month": cur_month,
         "current_month_name": f"{cur_month}월",
         "current_stat": {
@@ -289,6 +327,7 @@ def compute_seasonality_brief(now_dt: datetime | None = None) -> dict[str, Any]:
             "cash_ratio": cur_stat.get("cash_ratio", 30),
             "tactics": cur_stat.get("tactics", []),
         },
+        "election_overlay": election_overlay,
         "months": [
             {
                 **m,

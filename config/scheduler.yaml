@@ -1,11 +1,12 @@
-# 장 마감 후 KRX 일봉만 받는다. OpenDART 전체 수집은 하지 않는다.
 enabled: true
+job_kind: krx-prices
+hour: 18
+minute: 30
+lookback_days: 10
+official_flow: true
 timezone: Asia/Seoul
 krx_prices:
   hour: 18
   minute: 30
   lookback_days: 10
-  history_days: 750
-  skip_non_trading_days: true
   official_flow: true
-used_in_quant: false
