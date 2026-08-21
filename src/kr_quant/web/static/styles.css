@@ -1425,7 +1425,54 @@ body.modal-open { overflow: hidden; }
   border-color: #3b82f6;
   transform: translateY(-1px);
 }
-.sector-phase-chip b { font-size: 11px; color: #94a3b8; }
+.season-diag-cycle {
+  font-size: 12px;
+}
+
+/* Seasonality Playbook Styles */
+.season-playbook-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin: 10px 0;
+}
+@media (max-width: 900px) {
+  .season-playbook-grid { grid-template-columns: 1fr; }
+}
+.season-playbook-box {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.season-playbook-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+  display: block;
+}
+.season-sector-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.season-chip {
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-weight: 600;
+}
+.season-chip.lead {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+.season-chip.lag {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
 
 /* Full Sector RS Comparison Bar Chart */
 .sector-rs-chart-wrap {
