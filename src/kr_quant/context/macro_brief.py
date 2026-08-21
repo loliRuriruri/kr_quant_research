@@ -338,8 +338,8 @@ def build_macro_brief(
         item = _item(bucket, str(row.get("symbol") or label), label, _num(row.get("last")), "", row.get("as_of"), tone, comment, delta=_num(row.get("ret_1d")), spark=row.get("spark") or [])
         stance_items.append(item)
 
-    kr_all = [it for it in stance_items if it.get("bucket") == "domestic"]
-    us_all = [it for it in stance_items if it.get("bucket") == "international"]
+    kr_all = [it for it in stance_items if (it.get("kind") == "domestic" or it.get("bucket") == "domestic")]
+    us_all = [it for it in stance_items if (it.get("kind") == "international" or it.get("bucket") == "international")]
 
     kr = _stance(kr_all, "국내")
     us = _stance(us_all, "국제")

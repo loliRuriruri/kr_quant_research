@@ -1932,25 +1932,88 @@ async function loadMarket(refresh) {
     box.innerHTML = `${fgHtml}${krSentHtml}<p class="hint">${escapeHtml(data.error || "시세 없음")}</p>`;
     return;
   }
-  const rows = (data.components || [])
-    .map((c) => `<li>${escapeHtml(c.label)} <b>${c.value == null ? "미연결" : fmt(c.value, 1)}</b> · ${escapeHtml(c.tone)}</li>`)
-    .join("");
+  const REGIME_COMPONENT_GUIDE = {
+    "60일 추세": { icon: "📈", tip: "코스피 60일 이동평균선 상회 종목 비중으로 중기 상승 추세 확산도를 측정합니다." },
+    "20일 상승": { icon: "⚡", tip: "최근 20거래일 동안 플러스 수익률을 기록한 단기 강세 종목 비율입니다." },
+    "거래대금": { icon: "🔥", tip: "시장 전체 거래대금의 20일 이동평균 대비 강도와 유동성 활력도입니다." },
+    "변동성": { icon: "🛡️", tip: "코스피 200 변동성(VKOSPI) 지수 역산치로, 수치가 낮을수록 시장 공포가 큽니다." },
+    "미국 장단기": { icon: "🇺🇸", tip: "미국 국채 10년-2년 금리차로 글로벌 경기 침체 선행 신호를 진단합니다." },
+    "원화 안정": { icon: "💵", tip: "원/달러 환율의 1380원~1450원 안정 구간 및 외국인 환차손 방어 여력입니다." },
+    "60일 상승": { icon: "🌊", tip: "60일 중기 기간 동안 상승세를 유지한 시장 주도 종목군의 밀도입니다." }
+  };
+
+  const metricCards = (data.components || []).map((c) => {
+    const val = c.value != null ? Number(c.value) : 50;
+    const tone = c.tone || "중립";
+    const key = Object.keys(REGIME_COMPONENT_GUIDE).find(k => (c.label || "").includes(k)) || "60일 추세";
+    const g = REGIME_COMPONENT_GUIDE[key] || { icon: "📊", tip: `${c.label} 지표 점수입니다.` };
+
+    return `
+      <div class="regime-metric-box has-tip"
+           data-tip-title="${g.icon} ${escapeHtml(c.label)}"
+           data-tip="${escapeHtml(g.tip)}"
+           data-tip-hint="점수: ${fmt(val, 1)}점 · 상태: ${escapeHtml(tone)}"
+           tabindex="0">
+        <div class="regime-metric-top">
+          <span>${g.icon} ${escapeHtml(c.label)}</span>
+          <span class="regime-tone-badge ${tone}">${escapeHtml(tone)}</span>
+        </div>
+        <div class="regime-metric-score">${fmt(val, 1)} <small style="font-size:11px;font-weight:normal;color:#94a3b8;">/ 100</small></div>
+        <div class="regime-bar-track">
+          <div class="regime-bar-fill ${tone}" style="width:${Math.max(4, Math.min(100, val))}%;"></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
   const ecos = data.ecos || {};
-  const ecosRows = (ecos.series || [])
-    .map((s) => {
-      if (s.error) return `<li>${escapeHtml(s.alias || "")} — ${escapeHtml(s.error)}</li>`;
-      return `<li>${escapeHtml(s.alias || s.name || "")} <b>${fmt(s.value, 2)}</b> ${escapeHtml(s.unit || "")} · ${escapeHtml(s.time || "")}</li>`;
-    })
-    .join("");
+  const ecosCards = (ecos.series || []).map((s) => {
+    if (s.error) return `<div class="ecos-metric-box"><span style="color:#f87171;">${escapeHtml(s.alias || "")}</span><b>—</b><div class="meta">${escapeHtml(s.error)}</div></div>`;
+    return `
+      <div class="ecos-metric-box has-tip"
+           data-tip-title="🏛️ 한국은행 ${escapeHtml(s.alias || s.name || "")}"
+           data-tip="한국은행 ECOS 공식 통계 지표입니다. 기준일 ${escapeHtml(s.time || "")}"
+           tabindex="0">
+        <span>${escapeHtml(s.alias || s.name || "")}</span>
+        <b>${fmt(s.value, 2)} <small style="font-size:11px;font-weight:normal;color:#94a3b8;">${escapeHtml(s.unit || "")}</small></b>
+        <div class="meta">기준일 ${escapeHtml(s.time || "")}</div>
+      </div>
+    `;
+  }).join("");
+
+  const regimeScore = Number(data.regime_score || 50);
+  const regimeTone = regimeScore >= 55 ? "우호" : regimeScore <= 40 ? "부담" : "중립";
+
   box.innerHTML = `
     ${krSentHtml}
     ${fgHtml}
-    <p>내부 국면 <b>${escapeHtml(data.label || data.regime || "")}</b> · 점수 ${fmt(data.regime_score, 1)} <span class="hint">(KRX 일봉 · 장 마감 후 시세 받기)</span></p>
-    ${data.freshness ? `<p class="hint">시세 ${escapeHtml(data.freshness.price_max_date || "—")} · ${escapeHtml(data.freshness.label || "")}${data.freshness.stale_price ? " · 위쪽 시세 받기로 최근 일봉을 받으면 됩니다." : ""}</p>` : ""}
-    <ul>${rows}</ul>
-    <h3>한국은행 ECOS</h3>
-    ${ecosRows ? `<ul>${ecosRows}</ul>` : `<p class="hint">${escapeHtml(ecos.error || "조회 없음")}</p>`}
-    <p class="hint">${escapeHtml(ecos.disclaimer || data.disclaimer || "")}${ecos.demo_key ? " (데모 키 sample, 호출당 10행)" : ""}</p>
+
+    <div class="market-regime-card">
+      <div class="market-regime-header">
+        <div>
+          <h3 style="margin:0 0 4px;font-size:15px;color:#fff;">🏛️ 시장 내부 국면 & 건전성 진단 (Market Breadth Matrix)</h3>
+          <span class="hint">KRX 전 종목 일봉 기반 7대 내부 체력 지표 · 시세 기준일 ${escapeHtml(data.freshness?.price_max_date || "—")}</span>
+        </div>
+        <div class="stance-badge ${regimeTone}" style="font-size:13px;padding:5px 12px;">
+          내부 국면: ${escapeHtml(data.label || data.regime || "중립")} (${fmt(data.regime_score, 1)}점)
+        </div>
+      </div>
+      <div class="market-regime-grid">
+        ${metricCards}
+      </div>
+    </div>
+
+    <div class="market-regime-card">
+      <div class="market-regime-header">
+        <div>
+          <h3 style="margin:0 0 4px;font-size:15px;color:#fff;">🇰🇷 한국은행 ECOS 거시경제 핵심 지표</h3>
+          <span class="hint">한국은행 오픈 API 실시간 연동 기준금리, 국고채, 환율, 물가 통계</span>
+        </div>
+      </div>
+      <div class="ecos-visual-grid">
+        ${ecosCards || `<p class="hint">${escapeHtml(ecos.error || "조회 데이터 없음")}</p>`}
+      </div>
+    </div>
   `;
   stampLive("#market-live");
 }
@@ -4382,13 +4445,14 @@ function renderMacroData(data) {
     const internationalFiltered = (brief.international?.items || []).filter((it) => !DUP_IDS.has(it.id));
 
     briefBox.innerHTML = `
-      ${renderYenCarryCard(yencarry)}
-      ${renderMarginDebtBarometer(data.margin_debt)}
       <div class="brief-head">
         ${renderStanceCard({ ...overall, title: "종합" })}
         ${renderStanceCard({ ...kr, title: "국내" })}
         ${renderStanceCard({ ...us, title: "국제" })}
       </div>
+      ${renderYieldComparisonCard(brief.yield_comparison)}
+      ${renderMarginDebtBarometer(data.margin_debt)}
+      ${renderYenCarryCard(yencarry)}
       ${renderTradingEconomicsMacroCards(grouped, cc)}
       ${!seasonBox ? renderSeasonalitySection(seasonality) : ""}
       <div class="macro-bi-grid">

@@ -2528,3 +2528,175 @@ body.modal-open { overflow: hidden; }
 .margin-warning-banner.down { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.08); }
 .margin-warning-banner.warn { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.08); }
 .margin-warning-banner.up { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.08); }
+
+
+/* Enhanced Stance Cards in Global Macro */
+.brief-head {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+@media (max-width: 860px) {
+  .brief-head { grid-template-columns: 1fr; }
+}
+
+.stance-card {
+  background: linear-gradient(145deg, #0e172a, #0b1322);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  position: relative;
+  overflow: hidden;
+}
+.stance-card:hover {
+  transform: translateY(-2px);
+  border-color: #38bdf8;
+}
+.stance-card.우호 { border-left: 4px solid #22c55e; }
+.stance-card.부담 { border-left: 4px solid #ef4444; }
+.stance-card.혼합, .stance-card.중립 { border-left: 4px solid #f59e0b; }
+.stance-card.미연결 { border-left: 4px solid #64748b; }
+
+.stance-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.stance-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+.stance-badge {
+  padding: 3px 9px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.stance-badge.우호 { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); }
+.stance-badge.부담 { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+.stance-badge.혼합, .stance-badge.중립 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+.stance-badge.미연결 { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
+
+.stance-verdict {
+  font-size: 16px;
+  font-weight: 800;
+  color: #f8fafc;
+  margin-bottom: 6px;
+}
+.stance-comment {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #cbd5e1;
+  margin-bottom: 10px;
+}
+.stance-counts-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: #1e293b;
+  margin-top: 6px;
+}
+.stance-counts-bar .seg-good { background: #22c55e; }
+.stance-counts-bar .seg-mid { background: #f59e0b; }
+.stance-counts-bar .seg-bad { background: #ef4444; }
+
+/* Market Internal Health & Breadth Matrix in Market Sentiment View */
+.market-regime-card {
+  background: #0e1626;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.market-regime-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.market-regime-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.regime-metric-box {
+  background: #111a2e;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: help;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.regime-metric-box:hover {
+  transform: translateY(-2px);
+  border-color: #38bdf8;
+}
+.regime-metric-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.regime-metric-top span {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+.regime-metric-score {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+.regime-bar-track {
+  height: 6px;
+  border-radius: 99px;
+  background: #1e293b;
+  overflow: hidden;
+  margin: 6px 0 4px;
+}
+.regime-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+.regime-bar-fill.우호 { background: linear-gradient(90deg, #10b981, #34d399); }
+.regime-bar-fill.중립 { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.regime-bar-fill.부담 { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+.regime-tone-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.regime-tone-badge.우호 { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+.regime-tone-badge.중립 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+.regime-tone-badge.부담 { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+/* ECOS Visual Grid */
+.ecos-visual-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.ecos-metric-box {
+  background: #111a2e;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.ecos-metric-box span { display: block; font-size: 11.5px; color: #94a3b8; margin-bottom: 3px; }
+.ecos-metric-box b { display: block; font-size: 16px; color: #f8fafc; font-weight: 700; margin-bottom: 2px; }
+.ecos-metric-box .meta { font-size: 11px; color: #64748b; }
