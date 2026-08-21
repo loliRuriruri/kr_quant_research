@@ -1575,6 +1575,10 @@ def serve(host: str = "127.0.0.1", port: int = 8790, open_browser: bool = True) 
 
         threading.Thread(target=_open, daemon=True).start()
 
+    print("  ✅ 서버가 정상 구동 중입니다. 이 콘솔 창은 열어 두세요.")
+    print("     (아래에 아무 것도 안 나오는 게 정상입니다 — 서버가 요청을 대기 중)")
+    print("")
+
     uvicorn.run(
         "kr_quant.web.app:app",
         host=host,
