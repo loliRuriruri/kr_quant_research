@@ -165,8 +165,8 @@ function switchView(name) {
   if (name === "sector") loadSectors().catch((err) => alert(err.message));
   if (name === "screens") loadScreens().catch((err) => alert(err.message));
   if (name === "market") {
-    loadMarket(true).catch((err) => alert(err.message));
-    loadMacro(true).catch(() => {});
+    loadMarket().catch((err) => alert(err.message));
+    loadMacro().catch(() => {});
   }
   if (name === "strategy") {
     loadStrategy().catch((err) => alert(err.message));
@@ -3604,14 +3604,67 @@ function renderStanceCard(block) {
   </div>`;
 }
 
+let macroCache = null;
+
 async function loadMacro(refresh) {
   const briefBox = $("#brief-box");
-  if (!briefBox && !$("#news-box")) return;
-  const data = await api(`/api/macro${refresh ? "?refresh=true" : ""}`);
+  const seasonBox = $("#seasonality-box");
+  const newsBox = $("#news-box");
+  if (!briefBox && !newsBox && !seasonBox) return;
+
+  if (macroCache && !refresh) {
+    renderMacroData(macroCache);
+    return;
+  }
+
+  if (seasonBox && !seasonBox.innerHTML.trim()) {
+    seasonBox.innerHTML = `
+      <div class="skeleton-spinner-box" style="margin:6px 0;">
+        <div class="skeleton-spinner"></div>
+        <div class="skeleton-loading-text">
+          <b>📅 30개년 코스피 계절성 빅데이터 & 월별 전략 분석 중...</b>
+          <p>1~12월 역사적 월별 수익률, 승률 및 추천 섹터 전략을 집계하고 있습니다.</p>
+        </div>
+      </div>
+    `;
+  }
+  if (briefBox && !briefBox.innerHTML.trim()) {
+    briefBox.innerHTML = `
+      <div class="skeleton-spinner-box" style="margin:6px 0;">
+        <div class="skeleton-spinner"></div>
+        <div class="skeleton-loading-text">
+          <b>🌐 한국은행 ECOS, 미국 연준 FRED 및 글로벌 매크로 지표 동기화 중...</b>
+          <p>환율, 국채 금리, 원자재 및 거시 펀더멘털 실시간 데이터를 불러오고 있습니다.</p>
+        </div>
+      </div>
+      <div class="skeleton-shimmer-card" style="height:110px; margin:8px 0;"></div>
+      <div class="skeleton-shimmer-card" style="height:180px; margin:8px 0;"></div>
+    `;
+  }
+  if (newsBox && !newsBox.innerHTML.trim()) {
+    newsBox.innerHTML = `
+      <div class="skeleton-spinner-box" style="margin:6px 0;">
+        <div class="skeleton-spinner"></div>
+        <div class="skeleton-loading-text">
+          <b>📰 글로벌 실시간 매크로 뉴스 수집 중...</b>
+          <p>네이버 금융 및 주요 언론사 거시경제 헤드라인을 수집하고 있습니다.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  try {
+    const data = await api(`/api/macro${refresh ? "?refresh=true" : ""}`);
+    macroCache = data;
+    renderMacroData(data);
+  } catch (err) {
+    if (briefBox) briefBox.innerHTML = `<div style="padding:16px; color:#ef4444;">❌ 매크로 지표 로딩 실패: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderMacroData(data) {
   const brief = data.brief || {};
   const news = data.news || {};
-  const fred = data.fred || {};
-  const yahoo = data.yahoo || {};
   const yencarry = data.yencarry || {};
   const grouped = data.grouped_assets || {};
   const cc = data.commodities_crypto || {};
@@ -3622,6 +3675,7 @@ async function loadMacro(refresh) {
     seasonBox.innerHTML = renderSeasonalitySection(seasonality);
   }
 
+  const briefBox = $("#brief-box");
   if (briefBox) {
     const overall = brief.overall || {};
     const kr = (brief.domestic || {}).stance || {};
@@ -3688,19 +3742,9 @@ async function loadMacro(refresh) {
         ${asofBanner(news.fetched_at ? `네이버 뉴스 ${fmtWhen(news.fetched_at)}` : "")}
         <div class="news-groups">${groups || `<p class="hint">${escapeHtml(news.error || "뉴스 없음")}</p>`}</div>
         ${encyc ? `<h3>용어 설명 (네이버 지식백과)</h3><ul class="news-list">${encyc}</ul>` : ""}
-        <p class="hint">${escapeHtml(news.disclaimer || "네이버 검색 헤드라인입니다. ")}</p>
+        <p class="hint">${escapeHtml(news.disclaimer || "네이버 금융 주요 실시간 뉴스입니다.")}</p>
       `;
     }
-  }
-  const asofBits = [];
-  const dates = brief.as_of || {};
-  if (lastStatus?.freshness?.price_max_date) asofBits.push(`국면 시세 ${lastStatus.freshness.price_max_date}`);
-  if (dates.ecos) asofBits.push(`한은 ${dates.ecos}`);
-  if (dates.fred) asofBits.push(`FRED ${dates.fred}`);
-  if (dates.yahoo) asofBits.push(`지수 ${dates.yahoo}`);
-  if (news.fetched_at) asofBits.push(`뉴스 ${fmtWhen(news.fetched_at)}`);
-  if (currentView === "market") {
-    setPageAsOf(asofBits.join(" · ") || `매크로 수신 ${fmtWhen(data.fetched_at) || ""}`, "국내 금리는 한국은행, 국제는 FRED, 뉴스는 네이버 검색입니다. Quant와 합산하지 않습니다.");
   }
 }
 
@@ -4108,7 +4152,7 @@ if ($("#macro-refresh-btn")) {
     btn.textContent = "⏳ 갱신 중...";
     btn.disabled = true;
     try {
-      await loadMacro(true);
+      macroCache = null; await loadMacro(true);
       showToast("✅ 글로벌 매크로·환율·원자재 실시간 지표 갱신 완료", "success");
     } catch (err) {
       showToast(`❌ 매크로 갱신 실패: ${escapeHtml(err.message)}`, "error");
@@ -4145,7 +4189,7 @@ if ($("#news-refresh")) {
     btn.textContent = "⏳ 갱신 중...";
     btn.disabled = true;
     try {
-      await loadMacro(true);
+      macroCache = null; await loadMacro(true);
       showToast("✅ 뉴스 및 매크로 지표 갱신 완료", "success");
     } catch (err) {
       showToast(`❌ 갱신 실패: ${escapeHtml(err.message)}`, "error");
@@ -4591,11 +4635,14 @@ loadDash().catch((err) => {
   $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
 });
 loadSettings().catch(() => {});
+loadMacro().catch(() => {});
+loadMarket().catch(() => {});
 
 function reloadCurrentView() {
   const name = currentView || "dash";
   const p = [loadDash()];
   if (name === "market") {
+    macroCache = null;
     p.push(loadMarket(true));
     p.push(loadMacro(true));
   } else if (name === "investor") {
