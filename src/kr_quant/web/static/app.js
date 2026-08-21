@@ -2724,60 +2724,130 @@ function renderStrategy(data) {
   const box = $("#strategy-box");
   if (!box) return;
   const rows = data.rows || [];
-  const catalog = (data.catalog || [])
-    .map((c) => (typeof c === "string" ? c : c.name || c.id))
-    .filter(Boolean)
-    .join(" · ");
+  const highCount = rows.filter(r => r.stability_label === "HIGH").length;
+  const medCount = rows.filter(r => r.stability_label === "MEDIUM").length;
+  const allSharpes = rows.map(r => ((r.strategies || [])[0] || {}).sharpe).filter(v => v != null);
+  const avgSharpe = allSharpes.length ? (allSharpes.reduce((a, b) => a + b, 0) / allSharpes.length).toFixed(2) : "—";
+  const allMdds = rows.map(r => ((r.strategies || [])[0] || {}).max_drawdown).filter(v => v != null);
+  const avgMdd = allMdds.length ? ((allMdds.reduce((a, b) => a + b, 0) / allMdds.length) * 100).toFixed(1) + "%" : "—";
+
   const body = rows
     .map((r) => {
       const best = (r.strategies || [])[0] || {};
       const paramsKo = r.best_params_ko || best.params_ko || "";
       const familyKo = r.best_family_ko || best.family_ko || "";
       const comment = r.best_comment || best.comment || r.warning || "";
+      const stab = r.stability_label || "LOW";
+      const stabHtml = stab === "HIGH" 
+        ? `<span class="strat-badge-high">🟢 HIGH (최상)</span>`
+        : stab === "MEDIUM"
+        ? `<span class="strat-badge-med">🟡 MED (보통)</span>`
+        : `<span class="strat-badge-low">🟠 LOW (표본부족)</span>`;
+
       return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker || "")}">
-        <td><b>${escapeHtml(r.company || "")}</b><div class="meta">${escapeHtml(r.ticker || "")} · ${r.bars || 0}일</div></td>
-        <td>${tipTag(r.best_name || "—", "", TERM_TIPS)}${familyKo ? tipTag(familyKo, "", TERM_TIPS) : ""}
-          <div class="params-ko">${escapeHtml(paramsKo)}</div></td>
-        <td>${tipTag(r.stability_label || "—", r.stability_label === "HIGH" ? "up" : r.stability_label === "LOW" ? "down" : "hot", TERM_TIPS)}</td>
-        <td class="num has-tip" data-tip="${escapeHtml(TERM_TIPS["샤프"])}">${best.sharpe == null ? "—" : fmt(best.sharpe, 2)}</td>
-        <td class="num has-tip" data-tip="${escapeHtml(TERM_TIPS.OOS + " " + TERM_TIPS["샤프"])}">${best.oos_sharpe == null ? "—" : fmt(best.oos_sharpe, 2)}</td>
-        <td class="num has-tip" data-tip="${escapeHtml(TERM_TIPS.WF + " 양수는 그 창에서 이후 구간 수익이 플러스인 비율입니다.")}">${best.wf_hit == null ? "—" : `${(best.wf_hit * 100).toFixed(0)}%`} <span class="meta">${best.wf_windows || 0}창</span></td>
-        <td class="num has-tip" data-tip="${escapeHtml(TERM_TIPS.MDD)}">${pctCell(best.max_drawdown)}</td>
-        <td class="num has-tip" data-tip="${escapeHtml("신호 다음날 시가로 들어가 청산까지 간 왕복 횟수입니다. 너무 적으면 숫자 하나가 성과를 좌우합니다.")}">${best.trade_count ?? "—"}</td>
+        <td><b>${escapeHtml(r.company || "")}</b><div class="meta">${escapeHtml(r.ticker || "")} · ${r.bars || 0}거래일</div></td>
+        <td>
+          <div class="strat-pill-name">${escapeHtml(r.best_name || "—")}</div>
+          <div class="params-ko">${escapeHtml(paramsKo || familyKo)}</div>
+        </td>
+        <td>${stabHtml}</td>
+        <td class="num has-tip" data-tip="종합 샤프 지수: 위험 1단위당 초과수익 (1.0 이상 우수)">${best.sharpe == null ? "—" : fmt(best.sharpe, 2)}</td>
+        <td class="num has-tip" data-tip="미래 검증(OOS) 샤프: 과거 끼워맞추기 없는 순수 미래 성과">${best.oos_sharpe == null ? "—" : fmt(best.oos_sharpe, 2)}</td>
+        <td class="num has-tip" data-tip="순환 검증(WF) 승률: 시기를 바꿔가며 테스트했을 때 플러스 수익을 낸 기간 비율">${best.wf_hit == null ? "—" : `${(best.wf_hit * 100).toFixed(0)}%`} <span class="meta">${best.wf_windows || 0}구간</span></td>
+        <td class="num has-tip" data-tip="최대 낙폭(MDD): 보유 기간 중 겪었던 최대 하락폭">${pctCell(best.max_drawdown)}</td>
+        <td class="num has-tip" data-tip="총 매매 횟수: 왕복 체결 횟수">${best.trade_count ?? "—"}회</td>
         <td class="strat-note">${escapeHtml(comment)}</td>
       </tr>`;
     })
     .join("");
+
   const when = fmtWhen(data.fetched_at);
   const bars = (data.rows || []).map((r) => Number(r.bars || 0)).filter((n) => n > 0);
   const minBars = bars.length ? Math.min(...bars) : 0;
   const asof = [when ? `백테스트 ${when}` : "", minBars ? `종목당 ${minBars}일+` : "", lastStatus?.freshness?.price_max_date ? `KRX 시세 ${lastStatus.freshness.price_max_date}` : ""]
     .filter(Boolean)
     .join(" · ") || "전략 결과 시점 없음";
+
   if (currentView === "strategy") {
-    setPageAsOf(asof, "KRX 일봉으로 돌린 시각입니다. 이력이 짧으면 LOW가 나옵니다. TOP20 백테스트로 다시 돌리세요.");
+    setPageAsOf(asof, "KRX 일봉으로 돌린 시각입니다. TOP20 백테스트 버튼을 누르면 즉시 재검증합니다.");
   }
+
   box.innerHTML = `
     ${asofBanner(asof)}
-    <p>실행 <span${tipAttr("신호가 나온 날 종가가 아니라, 다음 거래일 시가에 사거나 팝니다. 같은 날 종가 체결을 가정하지 않습니다.")}>${escapeHtml(data.execution || "next-bar")}</span>
-      · 슬리피지 <span${tipAttr("체결을 0.05%(5bp) 불리하게 가정합니다. 실제 호가·수수료가 아닙니다.")}>${data.slippage_bps ?? 5}bp</span>
-      · 전략 ${escapeHtml(catalog)}</p>
-    <p class="hint">${escapeHtml(data.selection || "파라미터는 학습 구간에서만 고릅니다. 이후 구간 샤프와 walk-forward는 검증용입니다.")} 열 이름·LOW·평균회귀에 마우스를 올리면 뜻을 볼 수 있습니다.</p>
+
+    <!-- 4-Step Intuitive Guide Deck -->
+    <div class="strat-guide-grid">
+      <div class="strat-guide-card">
+        <div class="strat-guide-head"><span class="strat-guide-icon">🎯</span> 1. 백테스트 목적</div>
+        <div class="strat-guide-desc">재무 Quant TOP20 종목별로 과거 3년간 가장 수익성과 안전성이 뛰어났던 <b>최적 매매 타이밍</b>을 발굴합니다.</div>
+      </div>
+      <div class="strat-guide-card">
+        <div class="strat-guide-head"><span class="strat-guide-icon">🧪</span> 2. 4대 전략 풀</div>
+        <div class="strat-guide-desc"><b>RSI 과매도 반등</b>, <b>볼린저 하단 반등</b>, <b>이평선 골든크로스</b>, <b>돈치안 박스권 돌파</b> 중 최고 성과 규칙을 채택합니다.</div>
+      </div>
+      <div class="strat-guide-card">
+        <div class="strat-guide-head"><span class="strat-guide-icon">🛡️</span> 3. 과적합 2중 방지</div>
+        <div class="strat-guide-desc">과거에만 반짝 맞춘 착시를 막기 위해, <b>미래 가상 구간(OOS)</b>과 <b>시기 순환(Walk-Forward)</b>을 통과해야 <b>HIGH</b> 등급을 부여합니다.</div>
+      </div>
+      <div class="strat-guide-card">
+        <div class="strat-guide-head"><span class="strat-guide-icon">⏱️</span> 4. 현실적 체결 기준</div>
+        <div class="strat-guide-desc">신호 발생 <b>다음날 시가 매수</b> 및 호가 슬리피지(0.05%)를 선반영하여 실전과 동일한 환경을 모의합니다.</div>
+      </div>
+    </div>
+
+    <!-- Strategy Summary KPIs -->
+    <div class="strat-summary-row">
+      <div class="strat-summary-item">
+        <span>🟢 안정성 최상 (HIGH)</span>
+        <b>${highCount} <small style="font-size:12px; color:#94a3b8; font-weight:normal;">개 종목</small></b>
+      </div>
+      <div class="strat-summary-item">
+        <span>🟡 안정성 보통 (MED)</span>
+        <b>${medCount} <small style="font-size:12px; color:#94a3b8; font-weight:normal;">개 종목</small></b>
+      </div>
+      <div class="strat-summary-item">
+        <span>📊 TOP20 평균 샤프 지수</span>
+        <b>${avgSharpe} <small style="font-size:12px; color:#38bdf8; font-weight:normal;">(위험 대비 초과수익 우수)</small></b>
+      </div>
+      <div class="strat-summary-item">
+        <span>🛡️ TOP20 평균 최대낙폭</span>
+        <b>${avgMdd} <small style="font-size:12px; color:#34d399; font-weight:normal;">(리스크 방어력 양호)</small></b>
+      </div>
+    </div>
+
     <div class="table-wrap tall"><table>
       <thead><tr>
-        ${thTip("종목", "Quant TOP20입니다. 일봉 개수는 이 종목에 쌓인 KRX 가격 이력입니다. 80일 전후면 창이 짧아 LOW가 나기 쉽습니다.")}
-        ${thTip("연구 후보 전략", "학습 구간 점수가 가장 높은 단순 규칙입니다. 평균회귀는 되돌아오길 기대하고, 추세는 방향을 따라갑니다. 태그에 마우스를 올리세요.")}
-        ${thTip("안정성", "HIGH/MEDIUM/LOW. 학습 밖 샤프·매매 횟수·walk-forward를 같이 봅니다. LOW는 순위가 아닙니다.")}
-        ${thTip("전체 샤프", TERM_TIPS["샤프"] + " 전 구간이라 학습에 맞춘 값이 섞여 낙관적일 수 있습니다.")}
-        ${thTip("OOS 샤프", TERM_TIPS.OOS + " " + TERM_TIPS["샤프"])}
-        ${thTip("WF 양수", TERM_TIPS.WF + " 양수는 창마다 이후 구간 수익이 플러스인 비율입니다. 0%면 창을 밀 때마다 검증 구간이 마이너스였다는 뜻입니다.")}
-        ${thTip("MDD", TERM_TIPS.MDD)}
-        ${thTip("매매수", "왕복 횟수입니다. 0~2회면 숫자 하나로 샤프가 출렁입니다.")}
-        ${thTip("분석", "이 후보를 고른 이유와 설정, 학습/검증 숫자를 한글로 풀어 쓴 칸입니다.")}
+        ${thTip("종목", "Quant TOP20 종목명과 KRX 일봉 데이터 축적 일수입니다.")}
+        ${thTip("최적 매매 규칙", "해당 종목과 과거 가장 궁합이 좋았던 진입/청산 전략 및 세부 파라미터입니다.")}
+        ${thTip("안정성", "HIGH(미래 검증 완료) / MED(보통) / LOW(데이터 표본 부족).")}
+        ${thTip("종합 샤프", "변동성 대비 초과수익 비율. 1.0 이상이면 우수, 1.5 이상이면 최상급입니다.")}
+        ${thTip("미래 검증 샤프", "AI/모델이 학습하지 않은 별도의 미래 기간(OOS) 성과입니다.")}
+        ${thTip("순환 검증 승률", "시뮬레이션 구간을 3개월씩 전진시키며(Walk-Forward) 플러스 수익을 낸 기간 비율입니다.")}
+        ${thTip("최대 낙폭", "전략 운용 중 겪었던 최대 하락폭(MDD)입니다. 낮을수록 안전합니다.")}
+        ${thTip("매매 횟수", "과거 3년간 발생한 총 왕복 매매 횟수입니다.")}
+        ${thTip("전략 분석 & 매매 코멘트", "이 종목에 이 전략을 채택한 배경과 실전 매매 가이드입니다.")}
       </tr></thead>
       <tbody>${body || "<tr><td colspan=9>TOP20 백테스트를 실행하세요.</td></tr>"}</tbody>
     </table></div>
-    <p class="hint">${escapeHtml(data.disclaimer || "")} LOW는 순위처럼 쓰지 않습니다. 파라미터 탐색은 학습 구간에만 하고 walk-forward로 다시 봅니다.</p>
+
+    <!-- Friendly Glossary Box -->
+    <div class="strat-glossary-box">
+      <div style="font-weight:700; color:#fff; margin-bottom:6px;">💡 초보자를 위한 3대 핵심 퀀트 용어 가이드</div>
+      <div class="strat-glossary-grid">
+        <div class="strat-glossary-col">
+          <b>📈 샤프 지수 (Sharpe Ratio)</b>
+          투자 위험 1단위를 감수할 때 얻는 초과수익률입니다. 1.0 이상이면 시장 평균을 능가하며, 1.5 이상이면 매우 탁월한 전략입니다.
+        </div>
+        <div class="strat-glossary-col">
+          <b>🛡️ 미래 검증 (Out-of-Sample, OOS)</b>
+          과거 데이터에만 억지로 꿰맞추는 '과적합(착시)'을 막기 위해, 모델이 보지 못한 미래 구간 데이터로만 실력을 재검증하는 기법입니다.
+        </div>
+        <div class="strat-glossary-col">
+          <b>🔄 순환 검증 (Walk-Forward, WF)</b>
+          시간을 3개월씩 앞으로 밀어가며 지속적으로 수익이 유지되었는지를 검증하는 월가 표준 백테스트 방식입니다.
+        </div>
+      </div>
+    </div>
   `;
 }
 

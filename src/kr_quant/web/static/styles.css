@@ -418,8 +418,129 @@ tr.clickable:hover { background: #1b2640; }
 .quality h3 { margin: 14px 0 6px; font-size: 13px; }
 .quality ul { margin: 0 0 8px; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .quality li { margin: 3px 0; }
-.params-ko { display: block; margin-top: 3px; font-size: 12px; color: var(--muted); }
+.params-ko { display: block; margin-top: 3px; font-size: 12px; color: #94a3b8; }
 .strat-note { min-width: 14em; max-width: 28em; white-space: normal; line-height: 1.45; color: #c5d0e2; font-size: 12px; }
+
+/* Strategy Lab Visual Upgrades */
+.strat-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+.strat-guide-card {
+  background: linear-gradient(145deg, #131e36 0%, #0d1527 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.strat-guide-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, #3b82f6, #10b981);
+}
+.strat-guide-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+.strat-guide-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.strat-summary-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.strat-summary-item {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.strat-summary-item span { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; }
+.strat-summary-item b { display: block; font-size: 18px; font-weight: 700; color: #fff; margin-top: 2px; }
+
+.strat-badge-high {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.strat-badge-med {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.strat-badge-low {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.strat-pill-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.strat-glossary-box {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+.strat-glossary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 8px;
+}
+.strat-glossary-col b { color: #e2e8f0; display: block; margin-bottom: 2px; }
+
 .row-note {
   display: -webkit-box;
   -webkit-line-clamp: 2;
