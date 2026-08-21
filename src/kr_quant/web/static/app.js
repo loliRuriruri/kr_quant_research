@@ -660,11 +660,56 @@ function renderDashDna(rows) {
   const avgTotal = (rows.reduce((acc, r) => acc + (Number(r.quant_score) || 0), 0) / n).toFixed(1);
 
   const factors = [
-    { label: "💎 저평가 밸류 (Value)", score: avgVal, max: 30, cls: "val" },
-    { label: "👑 우량 펀더멘털 (Quality)", score: avgQua, max: 25, cls: "qua" },
-    { label: "🚀 실적 고성장 (Growth)", score: avgGro, max: 25, cls: "gro" },
-    { label: "⚡ 주가 모멘텀 (Momentum)", score: avgMom, max: 10, cls: "mom" },
-    { label: "🛡️ 재무 안정성 (Stability)", score: avgFin, max: 10, cls: "fin" },
+    {
+      label: "💎 저평가 밸류 (Value)",
+      score: avgVal,
+      max: 30,
+      cls: "val",
+      tip: "PER, PBR, EV/EBITDA, 배당수익률 등을 종합해 본질가치 대비 주가가 저평가되어 안전마진이 높은 종목을 발굴합니다.",
+      up: "저평가 매력 및 하방 경직성(안전마진) 강화",
+      down: "고평가 밸류에이션 부담 가중",
+      hint: "가치 점수가 높을수록 주가 급락장에서도 방어력이 우수합니다."
+    },
+    {
+      label: "👑 우량 펀더멘털 (Quality)",
+      score: avgQua,
+      max: 25,
+      cls: "qua",
+      tip: "ROE, ROIC, 영업이익률, 부채비율 등을 평가해 경제적 해자(Moat)와 이익의 지속성을 검증합니다.",
+      up: "자본 효율성 및 이익의 질적 우수성 입증 (장기 복리 수익 견인)",
+      down: "마진율 둔화 또는 과도한 레버리지 주의",
+      hint: "ROE 15% 이상, 부채비율 100% 미만 기업이 높은 점수를 받습니다."
+    },
+    {
+      label: "🚀 실적 고성장 (Growth)",
+      score: avgGro,
+      max: 25,
+      cls: "gro",
+      tip: "최근 3개년 매출액 및 영업이익 연평균 성장률(CAGR), 최근 분기 턴어라운드 가속도를 측정합니다.",
+      up: "기업 외형 및 이익의 폭발적 성장으로 주가 리레이팅 기대",
+      down: "실적 정체 또는 역성장 위험",
+      hint: "성장 점수가 높을수록 기관 선호도가 높아집니다."
+    },
+    {
+      label: "⚡ 주가 모멘텀 (Momentum)",
+      score: avgMom,
+      max: 10,
+      cls: "mom",
+      tip: "3/6/12개월 상대수익률과 이동평균선 정배열 추세를 바탕으로 시장의 매수세가 집중되는 종목을 포착합니다.",
+      up: "외인·기관 수급 유입 및 강력한 우상향 추세 편승",
+      down: "단기 소외 또는 역배열 하락 추세",
+      hint: "가치주라도 모멘텀이 살아있을 때 진입하면 시간 비용을 줄일 수 있습니다."
+    },
+    {
+      label: "🛡️ 재무 안정성 (Stability)",
+      score: avgFin,
+      max: 10,
+      cls: "fin",
+      tip: "유동비율, 당좌비율, 이자보상배율, 자본잠식 여부를 점검해 부도나 유상증자 등 한계기업 리스크를 철저히 차단합니다.",
+      up: "탄탄한 현금 유동성으로 경기 침체기에도 생존력 확보",
+      down: "이자비용 부담 또는 유동성 리스크 주의",
+      hint: "안정 점수 미달 기업은 Quant 유니버스에서 자동 탈락됩니다."
+    },
   ];
 
   box.innerHTML = `
@@ -672,7 +717,13 @@ function renderDashDna(rows) {
       ${factors.map(f => {
         const pct = Math.min(100, Math.max(5, (f.score / f.max) * 100));
         return `
-          <div class="dna-bar-item">
+          <div class="dna-bar-item has-tip"
+               data-tip-title="${escapeHtml(f.label)}"
+               data-tip="${escapeHtml(f.tip)}"
+               data-tip-up="${escapeHtml(f.up)}"
+               data-tip-down="${escapeHtml(f.down)}"
+               data-tip-hint="${escapeHtml(f.hint)}"
+               tabindex="0">
             <div class="dna-bar-head">
               <span>${f.label}</span>
               <b>${f.score.toFixed(1)} <small style="color:#64748b; font-weight:normal;">/ ${f.max}점</small> (${pct.toFixed(0)}%)</b>
@@ -3323,6 +3374,128 @@ function renderYenCarryCard(yc) {
   `;
 }
 
+const MACRO_BAROMETER_GUIDE = {
+  "^KS11": {
+    name: "코스피 지수 (KOSPI)",
+    tip: "대한민국 유가증권시장 대표 대형 수출주 종합 지수입니다. 삼성전자·SK하이닉스·현대차 등 대표 기업들의 시가총액 가중 방식입니다.",
+    up: "외국인/기관 순매수 유입 및 국내 투자심리 개선 (국내 주식시장 호재)",
+    down: "글로벌 위험회피 및 대형주 매물 출회 (단기 분할매수 기회 탐색)",
+    hint: "상승 승률과 거래대금 동반 여부가 추세 지속성의 핵심입니다."
+  },
+  "^KQ11": {
+    name: "코스닥 지수 (KOSDAQ)",
+    tip: "대한민국 중소형 성장주, 바이오·헬스케어, IT·소부장, 2차전지 기업 중심의 기술주 시장 지수입니다.",
+    up: "개인 투자자 자금 유입 및 성장주·테마주 투자심리 극대화 (중소형주 호재)",
+    down: "신용융자 청산 및 고PER 성장주 차익 매물 출회 (리스크 관리 필요)",
+    hint: "금리 하락기 및 연초 1월 효과 시기에 탄력성이 뛰어납니다."
+  },
+  "^GSPC": {
+    name: "미국 S&P 500",
+    tip: "미국 대표 500대 우량 대형 기업으로 구성된 글로벌 증시의 절대적 기준 벤치마크 지수입니다.",
+    up: "글로벌 위험자산 선호 심리(Risk-On) 확산 및 한국 수출주 동반 상승 (국내 증시 호재)",
+    down: "글로벌 증시 조정 및 안전자산 도피 (국내 증시 갭하락 요인)",
+    hint: "미국 기업 실적(어닝) 서프라이즈 여부가 핵심 드라이버입니다."
+  },
+  "^IXIC": {
+    name: "미국 나스닥 (NASDAQ)",
+    tip: "애플·엔비디아·마이크로소프트·구글 등 글로벌 빅테크와 첨단 기술주 중심 지수입니다.",
+    up: "AI·반도체 기술주 랠리 ➔ 국내 반도체(삼성전자·SK하이닉스) 강력 호재",
+    down: "국채 금리 급등 시 고평가 테크주 밸류에이션 하락 압박",
+    hint: "미국 10년물 국채 금리와 역의 상관관계를 자주 보입니다."
+  },
+  "^N225": {
+    name: "일본 닛케이 225",
+    tip: "일본 도쿄증권거래소의 225개 대표 우량주 지수이자 아시아 증시 선행 지표입니다.",
+    up: "아시아 전반으로 글로벌 펀드 자금 유입 (우호적 환경)",
+    down: "엔화 급격한 강세 및 엔캐리 트레이드 청산 시 아시아 증시 변동성 확대",
+    hint: "엔/달러 환율 및 일본은행(BOJ) 금리 인상 정책과 밀접합니다."
+  },
+  "DX-Y.NYB": {
+    name: "달러 인덱스 (DXY)",
+    tip: "유로, 엔, 파운드 등 주요 6개국 통화 대비 미국 달러화의 가치를 나타내는 지수입니다.",
+    up: "강달러 ➔ 글로벌 안전자산 쏠림으로 한국/신흥국 증시에서 외국인 자금 유출 (악재)",
+    down: "약달러 ➔ 글로벌 유동성 완화로 한국 증시로 외국인 순매수 유입 촉진 (강력 호재)",
+    hint: "100 이하 하락 시 한국 주식시장에 가장 강력한 외국인 매수세가 유입됩니다."
+  },
+  "KRW=X": {
+    name: "원/달러 환율 (USD/KRW)",
+    tip: "1달러를 구매하기 위한 원화 금액입니다. 한국 증시 외국인 수급의 가장 결정적인 변수입니다.",
+    up: "원화 약세(1,400원 초과) ➔ 외국인 환차손 회피 매도 및 수입물가 상승 부담 (악재)",
+    down: "원화 강세(1,350원 이하) ➔ 외국인 환차익 매력 증가로 대규모 순매수 유입 (호재)",
+    hint: "원/달러 하락 추세 전환 시 코스피 대형 수출주 매수를 적극 고려하세요."
+  },
+  "JPY=X": {
+    name: "엔/달러 환율 (USD/JPY)",
+    tip: "1달러당 엔화 가치입니다. 글로벌 엔캐리 트레이드 및 한·일 수출 경쟁력 척도입니다.",
+    up: "엔화 약세(160엔 접근) ➔ 일본 수출기업 가격경쟁력 상승으로 한국 자동차·IT 부담",
+    down: "엔화 강세(150엔 이하 급락) ➔ 글로벌 엔캐리 청산에 따른 단기 변동성 주의",
+    hint: "완만한 엔화 강세는 한국 수출 기업의 가격 경쟁력 회복에 유리합니다."
+  },
+  "JPYKRW=X": {
+    name: "100엔/원 환율 (JPY/KRW)",
+    tip: "100엔당 원화 환율입니다. 일본 제품 대비 한국 수출품의 상대 가격 경쟁력을 나타냅니다.",
+    up: "엔화 강세/원화 약세 ➔ 일본 대비 한국 수출기업(조선, 자동차, 철강) 경쟁력 강화 (호재)",
+    down: "엔저 심화 ➔ 일본 제품 가격경쟁력 상승 및 원자재 수입 부담",
+    hint: "900원선 이상 회복 시 한국 제조업 수출 마진에 우호적입니다."
+  },
+  "GC=F": {
+    name: "국제 금 선물 (Gold)",
+    tip: "전 세계 대표 안전자산이자 화폐 가치 하락(인플레이션) 헤지 상품입니다.",
+    up: "지정학적 전쟁 위기, 경기 침체 우려, 통화가치 하락 시 안전자산 자금 쏠림 (경계)",
+    down: "시장 공포 완화 및 주식 등 실물 위험자산으로 자금 복귀 (주식시장 호재)",
+    hint: "금 가격이 사상 최고치 경신 중일 때는 포트폴리오 안전마진(현금/방어주) 확보가 권장됩니다."
+  },
+  "CL=F": {
+    name: "WTI 국제 원유 (Crude Oil)",
+    tip: "글로벌 제조업, 운송, 화학 산업의 핵심 에너지이자 글로벌 원자재 물가 지표입니다.",
+    up: "고유가($85 이상) ➔ 국내 제조기업 원가 상승, 무역수지 악화, 인플레 유발 (악재)",
+    down: "적정 유가($65~$75) ➔ 물가 안정, 제조원가 절감, 금리 인하 여력 확대 (한국 제조업 호재)",
+    hint: "에너지 의존도가 높은 한국 경제 특성상 급격한 유가 상승은 기업 마진을 압박합니다."
+  },
+  "HG=F": {
+    name: "구리 선물 (Copper / '닥터 코퍼')",
+    tip: "전선, 전력망, 전기차, AI 데이터센터 등 산업 전반에 쓰여 실물 경기를 가장 정확히 진단하는 지표입니다.",
+    up: "글로벌 제조업 확장 및 AI 전력 인프라 투자 수요 폭발 (한국 전력기기·수출주 호재)",
+    down: "글로벌 경기 침체 및 제조업 수요 둔화 신호 (경계)",
+    hint: "구리 가격 상승은 글로벌 경기 회복과 AI 인프라 확장을 강력히 지지합니다."
+  },
+  "BTC-USD": {
+    name: "비트코인 (Bitcoin)",
+    tip: "글로벌 디지털 유동성과 투기적 위험자산 심리를 대변하는 최전선 자산입니다.",
+    up: "글로벌 유동성 풍부 및 극단적 위험자산 선호 심리 (Risk-On) 확인 (성장주 우호)",
+    down: "글로벌 유동성 축소 및 레버리지 청산 확산 (경계)",
+    hint: "비트코인의 급등락은 위험자산 시장 전반의 유동성 민감도를 선행해서 보여줍니다."
+  },
+  "ETH-USD": {
+    name: "이더리움 (Ethereum)",
+    tip: "스마트 컨트랙트, 디파이, 웹3 블록체인 생태계의 대표 플랫폼 암호화폐입니다.",
+    up: "알트코인 및 블록체인 기술 산업 전반의 유동성 유입 (성장 테마주 우호)",
+    down: "가상자산 시장 전반의 위험 회피",
+    hint: "이더리움/비트코인 비율은 암호화폐 시장 내 위험 선호 확산 강도를 나타냅니다."
+  },
+  "^TNX": {
+    name: "미국 10년물 국채 금리",
+    tip: "전 세계 모든 금융자산 가치평가의 '무위험 할인율' 기준이 되는 글로벌 벤치마크 금리입니다.",
+    up: "고금리(4.5% 이상) ➔ 미래 현금흐름 할인율 상승으로 기술주/성장주 밸류에이션 타격 (악재)",
+    down: "금리 안정(3.8%~4.2%) ➔ 기업 자금조달 비용 완화 및 주식시장 밸류에이션 확장 (강력 호재)",
+    hint: "미국 10년물 금리가 4.5%를 넘어서면 주식 비중을 조절하고 방어적으로 운용하세요."
+  },
+  "DGS10": {
+    name: "미국 10년물 국채 금리 (FRED)",
+    tip: "미국 연준 FRED 공식 10년물 국채 수익률입니다. 글로벌 무위험 할인율의 기준점입니다.",
+    up: "성장주 및 밸류에이션 부담 가중 (악재)",
+    down: "성장주 밸류에이션 리레이팅 호재",
+    hint: "4.5% 초과 여부를 주시하세요."
+  },
+  "T10Y2Y": {
+    name: "미국 10Y-2Y 장단기 금리차",
+    tip: "미국 10년물 금리 - 2년물 금리 스프레드로, 역사상 가장 정확한 경기 침체 선행 지표입니다.",
+    up: "정상화/스티프닝 ➔ 장단기 금리 역전 해소 및 연준의 완화적 통화정책 사이클 (호재)",
+    down: "금리 역전 심화(<0) ➔ 1~2년 내 글로벌 경기 침체(Recession) 경고 신호 (주의)",
+    hint: "역전 이후 정상화되는 초기에 일시적 시장 변동성이 커질 수 있습니다."
+  }
+};
+
 function renderTradingEconomicsMacroCards(grouped, cc) {
   const g = grouped || {};
   const allList = [
@@ -3344,9 +3517,22 @@ function renderTradingEconomicsMacroCards(grouped, cc) {
     const priceFmt = item.category === "crypto" || item.category === "index" ? fmt(item.last, 2) : fmt(item.last, 2);
     const sparkSvg = renderSvgSparkline(item.spark, isUp, `spark-${idx}`);
     const comment = item.comment || (item.ret_1y != null ? `1년 변동 ${pctCell(item.ret_1y)} · 52주고점 ${pctCell(item.high_52w_distance)}` : "");
+    const guide = MACRO_BAROMETER_GUIDE[item.symbol] || MACRO_BAROMETER_GUIDE[item.id] || {
+      name: item.label || item.symbol,
+      tip: `${item.label || item.symbol} 실시간 글로벌 매크로 시세 지표입니다.`,
+      up: "지표 상승 추세",
+      down: "지표 하락 추세",
+      hint: "거시경제 환경과 환율·금리 동향을 종합적으로 참고하세요."
+    };
 
     return `
-      <div class="macro-card">
+      <div class="macro-card has-tip"
+           data-tip-title="${escapeHtml(guide.name || item.label || item.symbol)}"
+           data-tip="${escapeHtml(guide.tip)}"
+           data-tip-up="${escapeHtml(guide.up)}"
+           data-tip-down="${escapeHtml(guide.down)}"
+           data-tip-hint="${escapeHtml(guide.hint)}"
+           tabindex="0">
         <div class="macro-card-top">
           <div>
             <div class="macro-card-name">${escapeHtml(item.label || item.symbol)}</div>
@@ -3365,8 +3551,11 @@ function renderTradingEconomicsMacroCards(grouped, cc) {
 
   return `
     <div style="margin-top:18px">
-      <h3>글로벌 매크로 바로미터 (지수 · 환율 · 금·원유 · 비트코인 · 금리)</h3>
-      <p class="hint">TradingEconomics 스타일 30일/60일 시계열 차트 및 실시간 등락률 · Quant 점수 미합산</p>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <h3 style="margin:0;">글로벌 매크로 바로미터 (지수 · 환율 · 금·원유 · 비트코인 · 금리)</h3>
+        <span class="chip has-tip" data-tip-title="💡 글로벌 매크로 바로미터 도움말" data-tip="각 카드를 마우스로 가리키면 해당 지표의 의미와 상승/하락 시 한국 증시 영향(호재/악재) 상세 가이드가 표시됩니다.">💡 카드에 마우스를 올리면 호재/악재 가이드 표시</span>
+      </div>
+      <p class="hint" style="margin-top:4px;">TradingEconomics 스타일 30일/60일 시계열 차트 및 실시간 등락률 · Quant 점수 미합산</p>
       <div class="macro-card-grid">
         ${cards}
       </div>
@@ -4112,11 +4301,31 @@ function showFloatTip(el) {
   const text = el.getAttribute("data-tip");
   if (!text) return;
   const box = floatTip();
-  const title = (el.textContent || "").trim().split("\n")[0];
-  box.innerHTML = `<b>${escapeHtml(title)}</b><p>${escapeHtml(text)}</p>`;
+  const explicitTitle = el.getAttribute("data-tip-title");
+  const title = explicitTitle || (el.getAttribute("aria-label") || el.textContent || "").trim().split("\n")[0].slice(0, 45);
+  const upImpact = el.getAttribute("data-tip-up");
+  const downImpact = el.getAttribute("data-tip-down");
+  const hintImpact = el.getAttribute("data-tip-hint");
+
+  let html = `
+    <div class="float-tip-header">
+      <h4 class="float-tip-title">${escapeHtml(title)}</h4>
+    </div>
+    <div class="float-tip-body">${escapeHtml(text)}</div>
+  `;
+
+  if (upImpact || downImpact || hintImpact) {
+    html += `<div class="float-tip-impact">`;
+    if (upImpact) html += `<div class="up-impact">🔺 <b>상승 시 영향:</b> ${escapeHtml(upImpact)}</div>`;
+    if (downImpact) html += `<div class="down-impact">🔻 <b>하락 시 영향:</b> ${escapeHtml(downImpact)}</div>`;
+    if (hintImpact) html += `<div class="hint-impact">🎯 <b>핵심 판정 팁:</b> ${escapeHtml(hintImpact)}</div>`;
+    html += `</div>`;
+  }
+
+  box.innerHTML = html;
   box.classList.remove("hidden");
   const r = el.getBoundingClientRect();
-  const maxW = Math.min(340, window.innerWidth - 24);
+  const maxW = Math.min(380, window.innerWidth - 24);
   box.style.width = `${maxW}px`;
   let left = Math.min(r.left, window.innerWidth - maxW - 12);
   left = Math.max(12, left);
