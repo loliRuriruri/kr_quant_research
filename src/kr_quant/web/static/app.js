@@ -1,4 +1,86 @@
 
+function renderMarginDebtBarometer(md) {
+  if (!md || !md.ok) return "";
+  const d1 = md.delta_1d_trillion;
+  const d5 = md.delta_5d_trillion;
+  const d1Txt = d1 > 0 ? `+${d1}조원` : `${d1}조원`;
+  const d5Txt = d5 > 0 ? `+${d5}조원` : `${d5}조원`;
+  const d1Cls = d1 > 0 ? "down" : "up"; // Debt increase is risk (red)
+  const d5Cls = d5 > 0 ? "down" : "up";
+
+  const sparkSvg = renderSvgSparkline(md.sparkline, d5 < 0, "spark-margin");
+
+  return `
+    <div class="margin-barometer-card">
+      <div class="margin-barometer-header">
+        <div class="margin-barometer-title">
+          <h3>📊 코스피·코스닥 신용융자 잔고 & 레버리지 진단 (Margin Debt Barometer)</h3>
+          <span class="hint">한국금융투자협회·KRX 일봉 기준 증시 신용잔고 및 고객예탁금 빚투 비율 · 기준일 ${escapeHtml(md.latest_date || "")}</span>
+        </div>
+        <div class="margin-status-badge ${md.status_cls}">
+          ${escapeHtml(md.status_label)}
+        </div>
+      </div>
+
+      <div class="margin-kpi-grid">
+        <div class="margin-kpi-box has-tip"
+             data-tip-title="🏦 전체 신용융자 잔고 (Total Margin Debt)"
+             data-tip="개인 투자자가 주가 상승을 노리고 증권사에서 돈을 빌려 주식을 매수한 총 융자 잔액입니다."
+             data-tip-up="신용잔고 급증 ➔ 단기 과열 및 지수 급락 시 반대매매(투매) 뇌관 위험"
+             data-tip-down="신용잔고 급감 ➔ 악성 빚투 매물 소화 완료로 반등 탄력성 극대화"
+             data-tip-hint="30조원 초과 시 경계, 20조원 이하 시 역사적 바닥권 형성"
+             tabindex="0">
+          <span>전체 신용융자 잔고</span>
+          <b>${fmt(md.margin_debt_trillion, 2)} <small style="font-size:13px; font-weight:normal; color:#94a3b8;">조원</small></b>
+          <div class="sub">1일 전 대비 <span class="${d1Cls}">${d1Txt}</span> · 5일 전 <span class="${d5Cls}">${d5Txt}</span></div>
+          <div style="margin-top:6px;">${sparkSvg}</div>
+        </div>
+
+        <div class="margin-kpi-box has-tip"
+             data-tip-title="💰 고객예탁금 (증시 대기 실탄)"
+             data-tip="주식을 매수하기 위해 투자자들이 증권사 계좌에 입금해 둔 현금 잔액 총액입니다."
+             data-tip-up="예탁금 증가 ➔ 증시 유동성 유입 및 매수 대기 자금 풍부 (강력 호재)"
+             data-tip-down="예탁금 감소 ➔ 자금 이탈 및 거래대금 축소"
+             data-tip-hint="예탁금 증가 추세와 함께 주가가 오를 때 상승장의 지속성이 가장 깁니다."
+             tabindex="0">
+          <span>고객예탁금 (대기 자금)</span>
+          <b>${fmt(md.deposit_trillion, 2)} <small style="font-size:13px; font-weight:normal; color:#94a3b8;">조원</small></b>
+          <div class="sub" style="color:#38bdf8;">증시 매수 대기 유동성 풍부</div>
+        </div>
+
+        <div class="margin-kpi-box has-tip"
+             data-tip-title="⚖️ 예탁금 대비 신용잔고율 (Leverage Ratio)"
+             data-tip="고객예탁금 대비 신용융자 잔고의 비율로, 개인 투자자의 실질적인 빚투 레버리지 과열도를 측정합니다."
+             data-tip-up="35% 이상 과열 ➔ 하락 시 담보부족 계좌 속출로 연쇄 하한가/급락 위험"
+             data-tip-down="22% 이하 안정 ➔ 빚투 부담이 없는 클린 수급 환경"
+             data-tip-hint="30% 이상에서는 레버리지 종목 매수를 자제하세요."
+             tabindex="0">
+          <span>예탁금 대비 신용잔고율</span>
+          <b class="${md.margin_deposit_ratio >= 30 ? 'down' : md.margin_deposit_ratio <= 22 ? 'up' : ''}">
+            ${fmt(md.margin_deposit_ratio, 2)}%
+          </b>
+          <div class="sub">위험 기준: 35% 이상 과열</div>
+        </div>
+
+        <div class="margin-kpi-box has-tip"
+             data-tip-title="🇰🇷 시장별 신용잔고 분할 (KOSPI vs KOSDAQ)"
+             data-tip="코스피(대형주)와 코스닥(중소형 성장주)의 신용잔고 추정 분포입니다. 코스닥은 시총 대비 신용 비율이 높아 반대매매 충격에 훨씬 취약합니다."
+             data-tip-hint="코스닥 신용 급증 시 중소형 테마주 급락 변동성을 특별히 주의하세요."
+             tabindex="0">
+          <span>코스피 vs 코스닥 신용</span>
+          <b>코스피 ${fmt(md.kospi_est_trillion, 1)}조 / 코스닥 ${fmt(md.kosdaq_est_trillion, 1)}조</b>
+          <div class="sub">코스피 58% · 코스닥 42% (과열 취약)</div>
+        </div>
+      </div>
+
+      <div class="margin-warning-banner ${md.status_cls}">
+        ${md.warning}
+      </div>
+    </div>
+  `;
+}
+
+
 function renderHexagonRadarSvg(factors, timingScore) {
   // 6 Axes: 가치(30), 품질(25), 성장(25), 모멘텀(10), 안정(10), 기술타이밍(100)
   const axes = [
@@ -4265,6 +4347,7 @@ function renderMacroData(data) {
 
     briefBox.innerHTML = `
       ${renderYenCarryCard(yencarry)}
+      ${renderMarginDebtBarometer(data.margin_debt)}
       <div class="brief-head">
         ${renderStanceCard({ ...overall, title: "종합" })}
         ${renderStanceCard({ ...kr, title: "국내" })}

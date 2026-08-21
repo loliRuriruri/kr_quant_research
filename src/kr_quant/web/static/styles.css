@@ -2396,3 +2396,135 @@ body.modal-open { overflow: hidden; }
 }
 .stoch-pill span { display: block; font-size: 11px; color: #94a3b8; }
 .stoch-pill b { display: block; font-size: 13.5px; margin-top: 2px; color: #f1f5f9; }
+
+
+/* Margin Debt Barometer (신용융자 잔고 & 레버리지 진단) */
+.margin-barometer-card {
+  background: linear-gradient(145deg, #0e172a, #0b1424);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 16px 0;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+.margin-barometer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.margin-barometer-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.margin-barometer-title h3 {
+  margin: 0;
+  font-size: 15px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.margin-status-badge {
+  padding: 5px 12px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid transparent;
+}
+.margin-status-badge.down {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.25);
+  animation: pulseRisk 2s infinite ease-in-out;
+}
+.margin-status-badge.warn {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.5);
+}
+.margin-status-badge.up {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.5);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.25);
+}
+.margin-status-badge.neutral {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+@keyframes pulseRisk {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+.margin-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+@media (max-width: 900px) {
+  .margin-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 520px) {
+  .margin-kpi-grid { grid-template-columns: 1fr; }
+}
+
+.margin-kpi-box {
+  background: #0d1527;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: help;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.margin-kpi-box:hover {
+  transform: translateY(-2px);
+  border-color: #38bdf8;
+}
+.margin-kpi-box span {
+  display: block;
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+.margin-kpi-box b {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 4px;
+}
+.margin-kpi-box .sub {
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.margin-warning-banner {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 4px solid #38bdf8;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #cbd5e1;
+}
+.margin-warning-banner.down { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.08); }
+.margin-warning-banner.warn { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.08); }
+.margin-warning-banner.up { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.08); }

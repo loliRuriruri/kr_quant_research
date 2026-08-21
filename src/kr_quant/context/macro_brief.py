@@ -568,8 +568,10 @@ def build_macro_dashboard(settings: Any, *, refresh: bool = False) -> dict[str, 
     else:
         news["error"] = "네이버 검색 Client ID/Secret이 없습니다. API 설정에서 넣으면 금리·환율·증시 뉴스가 붙습니다."
     from kr_quant.context.seasonality import compute_seasonality_brief
+    from kr_quant.context.margin_debt import get_margin_debt_snapshot
 
     seasonality = compute_seasonality_brief()
+    margin_debt = get_margin_debt_snapshot(refresh=refresh)
     now = datetime.now(timezone.utc).isoformat()
     return {
         "used_in_quant": False,
@@ -582,6 +584,7 @@ def build_macro_dashboard(settings: Any, *, refresh: bool = False) -> dict[str, 
         "yencarry": yencarry,
         "commodities_crypto": commodities_crypto,
         "seasonality": seasonality,
+        "margin_debt": margin_debt,
         "brief": brief,
         "news": news,
     }
