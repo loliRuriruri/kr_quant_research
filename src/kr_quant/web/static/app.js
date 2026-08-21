@@ -1571,13 +1571,59 @@ function renderFearGreed(fg) {
     <p class="hint">${escapeHtml(fg.disclaimer || "")} 출처: <a class="ext inline" href="${escapeHtml(fg.page || "https://feargreed.co.kr/")}" target="_blank" rel="noopener">feargreed.co.kr</a></p>`;
 }
 
+const SENTIMENT_ITEM_GUIDE = {
+  "모멘텀": {
+    tip: "코스피 지수와 125일 이동평균선 간의 이격도를 측정해 시장의 중기 추세적 과열/침체 강도를 진단합니다.",
+    up: "이평선 상향 돌파 및 상승 추세 가속",
+    down: "이평선 하회 및 중기 조정 구간 진입",
+    hint: "이격도가 과도하게 벌어지면 평균 회귀 압력이 발생합니다."
+  },
+  "주가 강도": {
+    tip: "최근 52주 신고가 종목 수와 신저가 종목 수의 비율을 통해 시장 내부 건전성을 분석합니다.",
+    up: "신고가 종목 증가 ➔ 시장 상승 종목군 확산 (건전한 상승장)",
+    down: "신저가 종목 급증 ➔ 하락 종목 속출 및 내부 체력 악화",
+    hint: "지수는 올라도 신저가가 많다면 착시 현상일 수 있습니다."
+  },
+  "시장 변동성": {
+    tip: "코스피 200 변동성(VKOSPI) 및 30일 일봉 변동성을 100점 역산하여 시장의 불안 심리를 포착합니다.",
+    up: "변동성 축소 ➔ 시장 안정 및 안도 랠리 지속",
+    down: "변동성 급등 ➔ 시장 패닉 및 투매 가능성",
+    hint: "변동성 최고조 구간은 역사적 바닥권 형성과 일치합니다."
+  },
+  "외인 수급": {
+    tip: "최근 5거래일간 외국인 투자자의 코스피 시장 순매수 강도와 수급 방향성을 추적합니다.",
+    up: "외국인 대규모 순매수 유입 ➔ 대형 수출주 주도 랠리",
+    down: "외국인 연속 순매도 ➔ 지수 상단 제한 및 수급 공백",
+    hint: "환율 안정과 맞물릴 때 외국인 수급 탄력성이 극대화됩니다."
+  },
+  "거래 활동성": {
+    tip: "20일 평균 대비 당일 거래대금 및 회전율 증가율을 바탕으로 시장 참여자의 에너지와 유동성을 측정합니다.",
+    up: "거래대금 폭증 ➔ 강력한 추세 돌파 또는 바닥 탈출 신호",
+    down: "거래대금 급감 ➔ 관망세 및 거래 절벽",
+    hint: "거래대금이 실리지 않는 반등은 단기 되돌림에 그칠 확률이 높습니다."
+  }
+};
+
 function renderKrSentiment(sent) {
   if (!sent || !sent.components) return "";
   const st = sent.state || "NEUTRAL";
   const stKo = sent.state_ko || "중립";
   const score = fmt(sent.score, 1);
   const comps = Object.entries(sent.components || {}).map(([, c]) => {
-    return `<div class="sentiment-item">
+    const key = Object.keys(SENTIMENT_ITEM_GUIDE).find(k => (c.label || "").includes(k)) || "모멘텀";
+    const g = SENTIMENT_ITEM_GUIDE[key] || {
+      tip: `${c.label} 지표 점수입니다.`,
+      up: "과열 및 탐욕 심리 증가",
+      down: "공포 및 침체 심리 증가",
+      hint: "점수가 20점 이하일 때 역발상 분할매수를 고려하세요."
+    };
+    return `<div class="sentiment-item has-tip"
+                 data-tip-title="${escapeHtml(c.label)} (비중 ${c.weight}%)"
+                 data-tip="${escapeHtml(g.tip)}"
+                 data-tip-up="${escapeHtml(g.up)}"
+                 data-tip-down="${escapeHtml(g.down)}"
+                 data-tip-hint="${escapeHtml(g.hint)}"
+                 tabindex="0">
       <span>${escapeHtml(c.label)} (비중 ${c.weight}%)</span>
       <b>${fmt(c.score, 1)}점</b>
     </div>`;
@@ -1587,10 +1633,14 @@ function renderKrSentiment(sent) {
     <div class="sentiment-box">
       <div class="sentiment-head">
         <div>
-          <h3>자체 한국 시장 공포·탐욕 지수 (KR Market Sentiment)</h3>
+          <h3 style="margin:0 0 4px">자체 한국 시장 공포·탐욕 지수 (KR Market Sentiment)</h3>
           <span class="hint">KRX 일봉 + 외인 5일 수급 기반 100점 만점 자체 감성 지수</span>
         </div>
-        <div class="sentiment-score-badge ${st}">
+        <div class="sentiment-score-badge ${st} has-tip"
+             data-tip-title="📊 공포·탐욕 지수 종합: ${score}점 (${escapeHtml(stKo)})"
+             data-tip="0~25점: 극단적 공포 (투매 및 역사적 저점 매수 구간), 25~45점: 공포, 45~55점: 중립, 55~75점: 탐욕, 75~100점: 극단적 탐욕 (과열 및 분할 익절 구간)"
+             data-tip-hint="워런 버핏의 '남들이 공포에 질려 있을 때 욕심을 내라'는 원칙을 시스템화한 지표입니다."
+             tabindex="0">
           ${score}점 · ${stKo}
         </div>
       </div>
@@ -2570,28 +2620,48 @@ function renderSectors(data) {
 
   const phaseMatrixHtml = `
     <div class="sector-phase-matrix">
-      <div class="sector-phase-box leading">
+      <div class="sector-phase-box leading has-tip"
+           data-tip-title="🌟 선행 (Leading) 국면"
+           data-tip="코스피 지수 대비 상대강도(RS)와 가격 모멘텀이 모두 시장 최상위권인 주도 업종입니다."
+           data-tip-up="주도주 랠리 및 업종 비중 확대 최우선 후보"
+           data-tip-hint="포트폴리오 수익률을 견인하는 핵심 주도 섹터입니다."
+           tabindex="0">
         <div class="sector-phase-header">
           <span>🌟 선행 (Leading)</span>
           <span>${leadingRows.length}개</span>
         </div>
         <div class="sector-phase-chips">${renderPhaseChips(leadingRows)}</div>
       </div>
-      <div class="sector-phase-box improving">
+      <div class="sector-phase-box improving has-tip"
+           data-tip-title="📈 개선 (Improving) 국면"
+           data-tip="바닥권 침체에서 벗어나 상대강도와 수급이 턴어라운드하기 시작한 업종입니다."
+           data-tip-up="선행 국면 진입 전 초기 선취매 및 저점 분할매수 기회"
+           data-tip-hint="추세 반전 성공 시 가장 높은 상승 탄력성을 보입니다."
+           tabindex="0">
         <div class="sector-phase-header">
           <span>📈 개선 (Improving)</span>
           <span>${improvingRows.length}개</span>
         </div>
         <div class="sector-phase-chips">${renderPhaseChips(improvingRows)}</div>
       </div>
-      <div class="sector-phase-box weakening">
+      <div class="sector-phase-box weakening has-tip"
+           data-tip-title="⚠️ 둔화 (Weakening/Neutral) 국면"
+           data-tip="상승 추세가 완만해지거나 차익 실현 매물이 출회되며 모멘텀이 둔화되는 구간입니다."
+           data-tip-down="고점 분할 차익실현 및 신규 추격매수 자제"
+           data-tip-hint="지지선 이탈 여부를 주의 깊게 관찰하세요."
+           tabindex="0">
         <div class="sector-phase-header">
           <span>⚠️ 보통/약화 (Neutral)</span>
           <span>${weakeningRows.length}개</span>
         </div>
         <div class="sector-phase-chips">${renderPhaseChips(weakeningRows)}</div>
       </div>
-      <div class="sector-phase-box lagging">
+      <div class="sector-phase-box lagging has-tip"
+           data-tip-title="❄️ 부진 (Lagging) 국면"
+           data-tip="시장 대비 상대강도와 모멘텀이 모두 최하위권에 머무는 소외/조정 업종입니다."
+           data-tip-down="비중 축소 및 반등 신호 확인 전까지 관망"
+           data-tip-hint="개선(Improving) 신호가 뜰 때까지 섣부른 물타기를 피하세요."
+           tabindex="0">
         <div class="sector-phase-header">
           <span>❄️ 부진 (Lagging)</span>
           <span>${laggingRows.length}개</span>
@@ -3069,10 +3139,18 @@ function renderUs13f(data) {
   const err = (data.errors || []).map((e) => `${e.filer}: ${e.error}`).join(" · ");
   const kpis = `
     <div class="kpis" style="grid-template-columns:repeat(4,1fr);margin:8px 0 16px">
-      <div class="kpi"><span>펀드</span><b>${data.scanned || (data.filers || []).length}</b></div>
-      <div class="kpi"><span>신규</span><b>${(data.new || []).length}</b></div>
-      <div class="kpi"><span>공통(2+)</span><b>${(data.common || []).length}</b></div>
-      <div class="kpi"><span>청산</span><b>${(data.exits || []).length}</b></div>
+      <div class="kpi has-tip" data-tip-title="🏛️ 스캔 대상 대가 펀드 수" data-tip="버크셔 해서웨이, 브리지워터, 시타델 등 미국 SEC에 13F를 공시한 핵심 글로벌 헤지펀드/기관 수입니다." tabindex="0">
+        <span>펀드</span><b>${data.scanned || (data.filers || []).length}</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="🔥 이번 분기 신규 매수 종목 수" data-tip="월가 거물들이 이번 분기에 새롭게 포트폴리오에 편입한 신규 베팅 종목 수입니다." tabindex="0">
+        <span>신규</span><b style="color:#4ade80;">${(data.new || []).length}</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="🎯 2인 이상 대가 공통 보유 종목 수" data-tip="버핏, 달리오, 켄 그리핀 등 2개 이상의 독립 대형 펀드가 동시에 러브콜을 보낸 핵심 종목 수입니다." tabindex="0">
+        <span>공통(2+)</span><b style="color:#38bdf8;">${(data.common || []).length}</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="🚪 이번 분기 전량 청산 종목 수" data-tip="거물들이 이번 분기 포트폴리오에서 비중 100%를 전량 매도한 종목 수입니다." tabindex="0">
+        <span>청산</span><b style="color:#f87171;">${(data.exits || []).length}</b>
+      </div>
     </div>
     <p class="hint">${escapeHtml(data.selection || "SEC EDGAR 13F-HR 분기 말 보유입니다. 신규·확대·청산은 직전 분기 대비 주수 변화입니다. ")}</p>
     ${asofBanner([`13F 보고 ${(data.periods || []).join(" · ") || "—"}`, data.fetched_at ? `받은 시각 ${fmtWhen(data.fetched_at)}` : ""].filter(Boolean).join(" · "))}
@@ -3631,6 +3709,34 @@ function renderTradingEconomicsMacroCards(grouped, cc) {
   `;
 }
 
+const SA_FACTOR_GUIDE = {
+  "가치": {
+    name: "💎 가치 (Value)",
+    tip: "동종 업계 대비 PER, PBR, EV/EBITDA, 배당수익률 수준을 상대평가합니다. A+일수록 현저한 저평가 상태입니다.",
+    hint: "A+ ~ A-: 상위 10% 저평가, B+: 상위 20%, C: 업계 평균, D/F: 고평가 부담"
+  },
+  "품질": {
+    name: "👑 품질 (Quality)",
+    tip: "ROE, ROIC, 영업이익률, 부채비율을 종합해 기업의 자본 효율성과 경제적 해자(Moat)를 검증합니다.",
+    hint: "A+ 등급 기업은 장기 복리 수익 창출 능력이 가장 뛰어납니다."
+  },
+  "성장": {
+    name: "🚀 성장 (Growth)",
+    tip: "3개년 연평균 매출성장률(CAGR), 영업이익 증가율 및 최근 분기 실적 가속도를 측정합니다.",
+    hint: "실적 턴어라운드 및 어닝 서프라이즈 시 등급이 가파르게 상승합니다."
+  },
+  "모멘텀": {
+    name: "⚡ 모멘텀 (Momentum)",
+    tip: "3/6/12개월 주가 수익률 및 이동평균 정배열 추세를 통해 시장의 매수세 유입 강도를 평가합니다.",
+    hint: "가치와 품질이 좋고 모멘텀까지 A 등급인 종목이 주도주가 됩니다."
+  },
+  "안정성": {
+    name: "🛡️ 안정성 (Safety)",
+    tip: "유동비율, 당좌비율, 이자보상배율 등 부도 리스크와 재무 건전성을 점검합니다.",
+    hint: "D/F 등급 기업은 Quant 유니버스에서 자동 제외됩니다."
+  }
+};
+
 function renderSeekingAlphaScorecard(card) {
   if (!card || !card.factors || !card.factors.length) return "";
   const dec = card.decision || "HOLD";
@@ -3638,7 +3744,14 @@ function renderSeekingAlphaScorecard(card) {
   const rows = (card.factors || []).map((f) => {
     const gradeClean = String(f.grade || "").replace("+", "_PLUS").replace("-", "_MINUS");
     const sub = (f.submetrics || []).map((s) => `${escapeHtml(s.name)} ${escapeHtml(s.display)}`).join(" · ");
-    return `<div class="sa-factor-row">
+    const key = Object.keys(SA_FACTOR_GUIDE).find(k => (f.label || "").includes(k)) || "가치";
+    const g = SA_FACTOR_GUIDE[key] || { name: f.label, tip: "팩터 상대평가 백분위입니다.", hint: "동종 업계 내 상대 순위" };
+
+    return `<div class="sa-factor-row has-tip"
+                 data-tip-title="${escapeHtml(g.name)}: ${escapeHtml(f.grade)} (백분위 ${f.percentile.toFixed(0)}%)"
+                 data-tip="${escapeHtml(g.tip)}"
+                 data-tip-hint="${escapeHtml(g.hint)}"
+                 tabindex="0">
       <div class="sa-factor-name">${escapeHtml(f.label)}</div>
       <div class="sa-grade-pill ${escapeHtml(gradeClean)}">${escapeHtml(f.grade)}</div>
       <div class="sa-meter"><em style="width:${Math.max(2, Math.min(100, f.percentile))}%"></em></div>
@@ -3653,7 +3766,11 @@ function renderSeekingAlphaScorecard(card) {
           <h3 style="margin:0 0 4px">Seeking Alpha 스타일 팩터 성적표 (Factor Scorecard)</h3>
           <span class="hint">미국 기관형 A+ ~ F 5대 팩터 상대평가 · Quant 점수 요약</span>
         </div>
-        <div class="sa-decision ${dec}">
+        <div class="sa-decision ${dec} has-tip"
+             data-tip-title="🎯 팩터 종합 의견: ${escapeHtml(decKo)} (${escapeHtml(dec)})"
+             data-tip="5대 팩터(가치·품질·성장·모멘텀·안정)의 상대평가 등급을 가중 집계하여 산출한 최종 투자 판단입니다."
+             data-tip-hint="STRONG BUY/BUY: 팩터 종합 최상위 5% 우량주, HOLD: 건전하나 모멘텀 관망, SELL: 밸류에이션 부담"
+             tabindex="0">
           ${escapeHtml(decKo)}
         </div>
       </div>
