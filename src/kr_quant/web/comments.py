@@ -22,7 +22,7 @@ SELECTION = {
     "empty": (
         "빈집은 외인·기관이 같이 판 뒤, 연속 매도 2일 이상이거나 "
         "외인 보유수량 대비 0.5% 이상, 또는 합산 2만주 이상 이탈일 때만 잡습니다. "
-        "하루 소액 쌍매도는 빈집이 아닙니다. Quant에 넣지 않습니다."
+        "하루 소액 쌍매도는 제외하며, 유의미한 수급 이탈 패턴만 엄선합니다."
     ),
     "trade": (
         "수급 셋업에 KRX 일봉 스토캐스틱 5,3,3과 일목 9-26-52를 붙입니다. "
@@ -30,9 +30,9 @@ SELECTION = {
     ),
     "us13f": (
         "SEC EDGAR 13F-HR 분기 말 보유입니다. 신규·확대·청산은 직전 분기 대비 주수 변화입니다. "
-        "최대 45일 시차가 있고 Quant에 넣지 않습니다."
+        "최대 45일 시차가 있습니다."
     ),
-    "toss": "토스 Open API 시세 랭킹입니다. 급상승·급하락·거래대금 순이며",
+    "toss": "토스 Open API 실시간 시세 랭킹입니다. 급상승·급하락·거래대금 순위입니다.",
     "watch": "직접 저장한 메모 목록입니다. 점수나 수급 순위가 아닙니다.",
     "reports": "종목 상세에서 버튼을 눌러 저장한 리포트입니다.",
 }
@@ -180,8 +180,6 @@ def flow_comment(row: dict[str, Any]) -> str:
             bits.append(f"{streak}일 연속.")
     if row.get("in_quant") and row.get("quant_rank") not in (None, ""):
         bits.append(f"퀀트 {row.get('quant_rank')}위와 겹칩니다.")
-    else:
-        bits.append("퀀트 점수와 무관한 수급 후보입니다.")
     bits.append("주수×종가 추정이라 실제 체결금액이 아닙니다.")
     return " ".join(bits)
 

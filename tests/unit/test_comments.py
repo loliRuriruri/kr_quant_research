@@ -74,7 +74,7 @@ def test_flow_and_empty_and_trade_comments_are_korean():
     flow = flow_comment(row)
     assert "외인" in flow and "기관" in flow
     assert "사모" in flow
-    assert "Quant" in flow or "퀀트" in flow
+    # assert "Quant" in flow or "퀀트" in flow (removed repetitive disclaimer)
     pe = pe_comment(row)
     assert "사모" in pe
     assert "3일 연속" in pe

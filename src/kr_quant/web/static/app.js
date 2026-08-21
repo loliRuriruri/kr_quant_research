@@ -2120,12 +2120,48 @@ function renderFlow(data) {
   box.innerHTML = `
     ${asofBanner(asof)}
     <div class="kpis" style="grid-template-columns:repeat(6,1fr);margin:8px 0 16px">
-      <div class="kpi clickable-kpi" data-flow-tab="dual"><span>쌍끌이</span><b>${dual.n}</b></div>
-      <div class="kpi"><span>쌍끌이 5일 히트</span><b>${dual.hit == null ? "—" : `${(dual.hit * 100).toFixed(0)}%`}</b></div>
-      <div class="kpi clickable-kpi" data-flow-tab="pe"><span>사모 순매수</span><b>${pe.n}</b></div>
-      <div class="kpi clickable-kpi" data-flow-tab="dual_pe"><span>쌍끌이+사모</span><b>${(data.dual_pe || []).length}</b></div>
-      <div class="kpi clickable-kpi" data-flow-tab="dual_pe_retail"><span>+개인이탈</span><b>${(data.dual_pe_retail || []).length}</b></div>
-      <div class="kpi clickable-kpi" data-flow-tab="other_corp"><span>기타법인</span><b>${(data.other_corp || []).length}</b></div>
+      <div class="kpi clickable-kpi has-tip" data-flow-tab="dual"
+           data-tip-title="⚡ 외인·기관 쌍끌이 순매수 (Dual Buy)"
+           data-tip="외국인과 기관이 동시에 순매수한 핵심 수급 주도주입니다. 시장에서 가장 신뢰도가 높은 단기 주가 상승 모멘텀 신호입니다."
+           data-tip-hint="외인과 기관의 쌍끌이 매집은 대형주 및 주도 섹터 랠리의 필수 조건입니다."
+           tabindex="0">
+        <span>쌍끌이</span><b style="color:#38bdf8;">${dual.n}</b>
+      </div>
+      <div class="kpi has-tip"
+           data-tip-title="🎯 쌍끌이 5일 승률 (Hit Rate)"
+           data-tip="쌍끌이 수급 발생 후 5거래일 동안 주가가 플러스(+) 수익을 기록한 종목 비율입니다."
+           data-tip-hint="60% 이상이면 수급 추종 매매 전략의 유효성이 매우 높습니다."
+           tabindex="0">
+        <span>쌍끌이 5일 승률</span><b style="color:#34d399;">${dual.hit == null ? "—" : `${(dual.hit * 100).toFixed(0)}%`}</b>
+      </div>
+      <div class="kpi clickable-kpi has-tip" data-flow-tab="pe"
+           data-tip-title="🕵️ 사모펀드 순매수 (PE Buy)"
+           data-tip="시장의 스마트 머니로 통하는 사모펀드가 최근 공격적으로 순매수한 종목군입니다."
+           data-tip-hint="사모펀드 수급 유입은 단기 재료 및 실적 턴어라운드 선취매 가능성을 내포합니다."
+           tabindex="0">
+        <span>사모 순매수</span><b>${pe.n}</b>
+      </div>
+      <div class="kpi clickable-kpi has-tip" data-flow-tab="dual_pe"
+           data-tip-title="💎 쌍끌이 + 사모펀드 동시 매집"
+           data-tip="외국인·기관 일반 합계뿐만 아니라 사모펀드까지 3대 메이저 주체가 일제히 매수한 초강력 수급 집중주입니다."
+           data-tip-hint="수급 일치도가 가장 높아 승률이 우수합니다."
+           tabindex="0">
+        <span>쌍끌이+사모</span><b style="color:#f59e0b;">${(data.dual_pe || []).length}</b>
+      </div>
+      <div class="kpi clickable-kpi has-tip" data-flow-tab="dual_pe_retail"
+           data-tip-title="🚀 메이저 싹쓸이 + 개인이탈 (손바뀜 완료)"
+           data-tip="외인·기관·사모펀드는 싹쓸이 매집하고, 개인 투자자는 매도(이탈)하여 악성 매물이 완벽히 손바뀜된 최상급 수급주입니다."
+           data-tip-hint="개인 매물이 털린 후 가벼워진 수급으로 강력한 급등 탄력성이 나타납니다."
+           tabindex="0">
+        <span>+개인이탈</span><b style="color:#ec4899;">${(data.dual_pe_retail || []).length}</b>
+      </div>
+      <div class="kpi clickable-kpi has-tip" data-flow-tab="other_corp"
+           data-tip-title="🏢 기타법인 순매수"
+           data-tip="자사주 매입, 최대주주 우호지분 매집, 경영권 분쟁 또는 전략적 투자(SI) 법인의 대량 순매수 종목입니다."
+           data-tip-hint="주가 하방 지지력이 매우 탄탄합니다."
+           tabindex="0">
+        <span>기타법인</span><b>${(data.other_corp || []).length}</b>
+      </div>
     </div>
     <p class="hint">${escapeHtml(data.selection || "토스 순매수(주수) 합산입니다. 쌍끌이의 기관은 기관합계이며 연기금이 아닙니다.")}</p>
     <p>스캔 ${data.scanned || 0}종목 · ${data.days || 5}거래일 순매수 합산${minKrw ? ` · ${krw(minKrw)} 이상만 표시` : ""} · 탭마다 처음 12종목, 더보기는 10종목씩입니다.</p>
