@@ -95,6 +95,15 @@ class StrategyIn(BaseModel):
     force: bool = True
 
 
+class SchedulerIn(BaseModel):
+    enabled: bool = False
+    job_kind: str = "krx-prices"
+    hour: int = 18
+    minute: int = 30
+    lookback_days: int = 10
+    official_flow: bool = True
+
+
 def _clean(obj: Any) -> Any:
     if obj is None:
         return None
@@ -1422,6 +1431,20 @@ def api_job_start(body: JobIn) -> dict[str, Any]:
         )
     except RuntimeError as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+@app.get("/api/scheduler")
+def api_scheduler_get() -> dict[str, Any]:
+    from kr_quant.web.scheduler import scheduler_status
+
+    return scheduler_status()
+
+
+@app.post("/api/scheduler")
+def api_scheduler_post(body: SchedulerIn) -> dict[str, Any]:
+    from kr_quant.web.scheduler import save_scheduler_config
+
+    return save_scheduler_config(body.model_dump())
 
 
 def port_in_use(host: str, port: int) -> bool:

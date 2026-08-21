@@ -507,13 +507,43 @@ function renderFreshChip(fresh) {
 
 function renderSchedLine(sched) {
   const el = $("#sched-line");
-  if (!el || !sched) return;
-  if (!sched.enabled) {
-    el.textContent = "자동 시세 갱신: 꺼짐 또는 KRX 키 없음. 실행 탭에서 수동으로 받을 수 있습니다.";
-    return;
+  const badge = $("#sched-badge");
+  const nxtEl = $("#sched-next");
+  const lastEl = $("#sched-last");
+  const enabledEl = $("#sched-enabled");
+  const kindEl = $("#sched-kind");
+  const hourEl = $("#sched-hour");
+  const minEl = $("#sched-min");
+
+  if (!sched) return;
+  const nxt = sched.next_fire ? String(sched.next_fire).replace("T", " ").slice(0, 16) : "대기 (다음 영업일 대기)";
+  const last = sched.last_fire ? String(sched.last_fire).replace("T", " ").slice(0, 19) : "기록 없음";
+
+  if (enabledEl) enabledEl.checked = Boolean(sched.enabled);
+  if (kindEl) kindEl.value = sched.job_kind || "krx-prices";
+  if (hourEl && sched.hour != null) hourEl.value = sched.hour;
+  if (minEl && sched.minute != null) minEl.value = sched.minute;
+  if (nxtEl) nxtEl.textContent = sched.enabled ? `${nxt} KST` : "비활성화됨 (설정 후 활성화 필요)";
+  if (lastEl) lastEl.textContent = last;
+
+  if (badge) {
+    if (sched.enabled) {
+      badge.textContent = `🟢 매일 ${sched.hour}:${String(sched.minute).padStart(2, "0")} KST 예약됨`;
+      badge.className = "chip ok";
+    } else {
+      badge.textContent = "⏸️ 비활성화";
+      badge.className = "chip";
+    }
   }
-  const nxt = sched.next_fire ? String(sched.next_fire).replace("T", " ").slice(0, 16) : "대기";
-  el.textContent = `자동 시세 갱신: 평일 ${sched.hour}:${String(sched.minute).padStart(2, "0")} KST · 다음 ${nxt} · 시세 10일 뒤 관심종목 공식수급. Quant·OpenDART 전량은 안 돌립니다.`;
+
+  if (el) {
+    if (!sched.enabled) {
+      el.textContent = "자동 스케줄: 비활성화됨. 아래 스케줄러에서 매일 실행을 켜고 원하는 시간을 저장하세요.";
+    } else {
+      const kindTxt = sched.job_kind === "live" ? "실데이터 수집+계산" : "KRX 시세 갱신";
+      el.textContent = `자동 스케줄: 매일 ${sched.hour}:${String(sched.minute).padStart(2, "0")} KST · 대상 [${kindTxt}] · 다음 ${nxt}`;
+    }
+  }
 }
 
 function renderQuality(q, guide, fresh) {
@@ -4324,6 +4354,33 @@ function setupInvestorSubtabs() {
   }
   if ($("#nps-sub-collect")) {
     $("#nps-sub-collect").addEventListener("click", () => startJob("dart-nps").catch((err) => alert(err.message)));
+  }
+  if ($("#save-sched-btn")) {
+    $("#save-sched-btn").addEventListener("click", () => saveSchedulerSettings().catch((err) => alert(err.message)));
+  }
+}
+
+async function saveSchedulerSettings() {
+  const enabled = $("#sched-enabled")?.checked || false;
+  const jobKind = $("#sched-kind")?.value || "krx-prices";
+  const hour = Number($("#sched-hour")?.value || 18);
+  const minute = Number($("#sched-min")?.value || 30);
+
+  const payload = {
+    enabled,
+    job_kind: jobKind,
+    hour,
+    minute,
+    lookback_days: jobKind === "live" ? 80 : 10,
+    official_flow: true,
+  };
+
+  try {
+    const res = await api("/api/scheduler", { method: "POST", body: JSON.stringify(payload) });
+    renderSchedLine(res);
+    showToast(enabled ? `⏰ <b>매일 ${hour}:${String(minute).padStart(2, "0")} KST 자동 실행 예약 완료</b>` : "⏸️ <b>자동 스케줄러가 비활성화되었습니다.</b>", "success");
+  } catch (err) {
+    alert("스케줄 저장 실패: " + err.message);
   }
 }
 

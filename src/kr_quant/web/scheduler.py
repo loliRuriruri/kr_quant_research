@@ -28,32 +28,84 @@ def load_scheduler_config() -> dict[str, Any]:
     s = load_settings()
     path = s.root / "config" / "scheduler.yaml"
     if not path.exists():
-        return {"enabled": False, "krx_prices": {"hour": 18, "minute": 30, "lookback_days": 10}}
+        return {
+            "enabled": False,
+            "job_kind": "krx-prices",
+            "hour": 18,
+            "minute": 30,
+            "lookback_days": 10,
+            "official_flow": True,
+            "timezone": "Asia/Seoul",
+            "krx_prices": {"hour": 18, "minute": 30, "lookback_days": 10, "official_flow": True},
+        }
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    data.setdefault("krx_prices", {})
-    data["krx_prices"].setdefault("hour", 18)
-    data["krx_prices"].setdefault("minute", 30)
-    data["krx_prices"].setdefault("lookback_days", 10)
-    return data
+    kp = data.get("krx_prices") or {}
+    hour = int(data.get("hour", kp.get("hour", 18)))
+    minute = int(data.get("minute", kp.get("minute", 30)))
+    lookback = int(data.get("lookback_days", kp.get("lookback_days", 10)))
+    job_kind = data.get("job_kind", "krx-prices")
+    enabled = bool(data.get("enabled", False))
+    official_flow = bool(data.get("official_flow", kp.get("official_flow", True)))
+    return {
+        "enabled": enabled,
+        "job_kind": job_kind,
+        "hour": hour,
+        "minute": minute,
+        "lookback_days": lookback,
+        "official_flow": official_flow,
+        "timezone": data.get("timezone", "Asia/Seoul"),
+        "krx_prices": {
+            "hour": hour,
+            "minute": minute,
+            "lookback_days": lookback,
+            "official_flow": official_flow,
+        },
+    }
+
+
+def save_scheduler_config(cfg: dict[str, Any]) -> dict[str, Any]:
+    s = load_settings()
+    path = s.root / "config" / "scheduler.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = load_scheduler_config()
+    existing.update(cfg)
+    hour = int(existing.get("hour", 18))
+    minute = int(existing.get("minute", 30))
+    lookback = int(existing.get("lookback_days", 10))
+    official_flow = bool(existing.get("official_flow", True))
+    existing["krx_prices"] = {
+        "hour": hour,
+        "minute": minute,
+        "lookback_days": lookback,
+        "official_flow": official_flow,
+    }
+    path.write_text(yaml.safe_dump(existing, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return scheduler_status()
 
 
 def scheduler_status() -> dict[str, Any]:
     cfg = load_scheduler_config()
+    s = load_settings()
+    job_kind = cfg.get("job_kind") or "krx-prices"
+    enabled = bool(cfg.get("enabled")) and (bool(s.krx_api_key) or job_kind == "demo")
     return {
         **_STATE,
-        "enabled": bool(cfg.get("enabled")) and bool(load_settings().krx_api_key),
-        "hour": int((cfg.get("krx_prices") or {}).get("hour") or 18),
-        "minute": int((cfg.get("krx_prices") or {}).get("minute") or 30),
-        "lookback_days": int((cfg.get("krx_prices") or {}).get("lookback_days") or 10),
+        "enabled": enabled,
+        "job_kind": job_kind,
+        "hour": int(cfg.get("hour") or 18),
+        "minute": int(cfg.get("minute") or 30),
+        "lookback_days": int(cfg.get("lookback_days") or 10),
+        "official_flow": bool(cfg.get("official_flow", True)),
         "timezone": cfg.get("timezone") or "Asia/Seoul",
-        "kind": "krx-prices",
+        "krx_prices": cfg.get("krx_prices") or {},
+        "kind": job_kind,
         "used_in_quant": False,
     }
 
 
 def _next_slot(cfg: dict[str, Any], now: datetime | None = None) -> datetime:
-    hour = int((cfg.get("krx_prices") or {}).get("hour") or 18)
-    minute = int((cfg.get("krx_prices") or {}).get("minute") or 30)
+    hour = int(cfg.get("hour") or (cfg.get("krx_prices") or {}).get("hour") or 18)
+    minute = int(cfg.get("minute") or (cfg.get("krx_prices") or {}).get("minute") or 30)
     current = now or datetime.now(KST)
     if current.tzinfo is None:
         current = current.replace(tzinfo=KST)
@@ -73,9 +125,9 @@ def _scheduled_evening() -> dict[str, Any]:
     from kr_quant.web.jobs import job_krx_prices
 
     cfg = load_scheduler_config()
-    lookback = int((cfg.get("krx_prices") or {}).get("lookback_days") or 10)
+    lookback = int(cfg.get("lookback_days") or (cfg.get("krx_prices") or {}).get("lookback_days") or 10)
     out = job_krx_prices("auto", lookback_days=lookback)
-    want_flow = bool((cfg.get("krx_prices") or {}).get("official_flow") or cfg.get("official_flow"))
+    want_flow = bool(cfg.get("official_flow", (cfg.get("krx_prices") or {}).get("official_flow", True)))
     if want_flow:
         try:
             from kr_quant.flow.official import collect_official
@@ -88,28 +140,42 @@ def _scheduled_evening() -> dict[str, Any]:
     return out
 
 
+def _scheduled_live() -> dict[str, Any]:
+    from kr_quant.web.jobs import job_live
+
+    cfg = load_scheduler_config()
+    lookback = int(cfg.get("lookback_days") or 80)
+    return job_live("auto", lookback_days=lookback, max_corps=400, skip_ingest=False)
+
+
 def _fire() -> None:
     from kr_quant.web.jobs import RUNNER
 
+    cfg = load_scheduler_config()
+    job_kind = cfg.get("job_kind") or "krx-prices"
     _STATE["last_fire"] = datetime.now(KST).isoformat()
     try:
         if RUNNER.snapshot().get("status") == "running":
             _STATE["last_error"] = "다른 작업이 실행 중이라 건너뜀"
             return
-        snap = RUNNER.start("krx-prices", _scheduled_evening)
+        if job_kind == "live":
+            snap = RUNNER.start("live", _scheduled_live)
+        else:
+            snap = RUNNER.start("krx-prices", _scheduled_evening)
         _STATE["last_error"] = None
         _STATE["last_result"] = {"started": True, "kind": snap.get("kind")}
-        logger.info("scheduled krx-prices job started")
+        logger.info("scheduled %s job started", job_kind)
     except Exception as exc:  # noqa: BLE001
         _STATE["last_error"] = str(exc)[:200]
-        logger.warning("scheduled krx-prices skipped: %s", exc)
+        logger.warning("scheduled %s skipped: %s", job_kind, exc)
 
 
 def _loop() -> None:
     while True:
         cfg = load_scheduler_config()
         s = load_settings()
-        enabled = bool(cfg.get("enabled")) and bool(s.krx_api_key)
+        job_kind = cfg.get("job_kind") or "krx-prices"
+        enabled = bool(cfg.get("enabled")) and (bool(s.krx_api_key) or job_kind == "demo")
         _STATE["enabled"] = enabled
         if not enabled:
             _STATE["next_fire"] = None
