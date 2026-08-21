@@ -328,6 +328,7 @@ def build_macro_brief(
     tone, comment = _comment_fx("원/달러(FRED)", _num(fx_us.get("value")), _num(fx_us.get("delta")), fx_us.get("date"))
     international.append(_item("international", "DEXKOUS", "원/달러(FRED)", _num(fx_us.get("value")), "원", fx_us.get("date"), tone, comment, delta=_num(fx_us.get("delta")), spark=fx_spark))
 
+    stance_items = list(domestic + international)
     for row in (yahoo or {}).get("indexes") or []:
         if not isinstance(row, dict) or row.get("error"):
             continue
@@ -335,14 +336,14 @@ def build_macro_brief(
         tone, comment = _comment_index(label, _num(row.get("last")), _num(row.get("ret_1d")), _num(row.get("ret_1y")), row.get("as_of"))
         bucket = "domestic" if label.upper() in {"KOSPI", "KOSDAQ"} or str(row.get("symbol") or "").startswith("^K") else "international"
         item = _item(bucket, str(row.get("symbol") or label), label, _num(row.get("last")), "", row.get("as_of"), tone, comment, delta=_num(row.get("ret_1d")), spark=row.get("spark") or [])
-        if bucket == "domestic":
-            domestic.append(item)
-        else:
-            international.append(item)
+        stance_items.append(item)
 
-    kr = _stance(domestic, "국내")
-    us = _stance(international, "국제")
-    overall = _stance(domestic + international, "종합")
+    kr_all = [it for it in stance_items if it.get("bucket") == "domestic"]
+    us_all = [it for it in stance_items if it.get("bucket") == "international"]
+
+    kr = _stance(kr_all, "국내")
+    us = _stance(us_all, "국제")
+    overall = _stance(stance_items, "종합")
     if kr["tone"] == "부담" and us["tone"] == "부담":
         overall["tone"] = "부담"
         overall["label"] = "국내·국제 모두 부담"
