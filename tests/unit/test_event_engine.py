@@ -20,6 +20,8 @@ def test_event_catalog_and_upcoming():
         assert "d_day" in ev
         assert "default_entry_window" in ev
         assert "invalidating_rule" in ev
+        assert "beneficiary_sectors" in ev
+        assert "beneficiary_stocks" in ev
 
 
 def test_event_exposure():

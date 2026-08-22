@@ -6674,38 +6674,87 @@ async function loadInstitutionalCalendar() {
   const container = $("#seasonality-calendar-list");
   if (!container) return;
 
-  const res = await api(`/api/seasonality/events?horizon_days=${currentInstHorizon}`);
+  const res = await api(`/api/seasonality/events?horizon_days=${currentV11Horizon}`);
   institutionalEvents = res.events || [];
 
   if (!institutionalEvents.length) {
-    container.innerHTML = `<div class="text-center text-slate-400 py-8">향후 ${currentInstHorizon}일 내 예정된 마스터 이벤트가 없습니다.</div>`;
+    container.innerHTML = `<div class="text-center text-slate-400 py-8">향후 ${currentV11Horizon}일 내 예정된 마스터 이벤트가 없습니다.</div>`;
     return;
   }
 
   container.innerHTML = institutionalEvents.map((ev) => {
+    const sectorsHtml = (ev.beneficiary_sectors || []).map((s) => {
+      return `<span class="sector-badge">${escapeHtml(s)}</span>`;
+    }).join(" ");
+
+    const stocksHtml = (ev.beneficiary_stocks || []).map((stk) => {
+      return `
+        <div class="event-stock-chip" onclick="openStock('${escapeHtml(stk.ticker)}')">
+          <div>
+            <b style="color:#fff; font-size:12.5px;">${escapeHtml(stk.company)}</b>
+            <span style="color:#94a3b8; font-size:11px; margin-left:4px;">${escapeHtml(stk.ticker)}</span>
+            <div style="font-size:11px; color:#cbd5e1; margin-top:2px;">${escapeHtml(stk.role || '')}</div>
+          </div>
+          <button type="button" class="ghost small btn-cal-ai" data-ticker="${escapeHtml(stk.ticker)}" data-company="${escapeHtml(stk.company)}" style="font-size:10.5px; height:24px; padding:0 6px; margin-left:6px;">🤖 AI</button>
+        </div>
+      `;
+    }).join("");
+
     return `
       <div class="event-timeline-card">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
-          <div>
-            <div style="display:flex; align-items:center; gap:8px;">
+          <div style="flex:1; min-width:300px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <span class="chip" style="background:rgba(56,189,248,0.2); color:#38bdf8; font-weight:800; font-size:12px;">D-${ev.d_day} (${escapeHtml(ev.target_date)})</span>
-              <b style="font-size:15px; color:#fff;">${escapeHtml(ev.title)}</b>
+              <b style="font-size:15.5px; color:#fff;">${escapeHtml(ev.title)}</b>
               <span class="chip" style="background:rgba(30,41,59,0.8); color:#94a3b8; font-size:11px;">${escapeHtml(ev.group_name)}</span>
             </div>
             <p style="margin:6px 0 0; color:#cbd5e1; font-size:12.5px; line-height:1.5;">${escapeHtml(ev.description)}</p>
+
+            ${sectorsHtml ? `
+              <div class="event-sectors-row">
+                <span style="font-size:11.5px; color:#94a3b8; font-weight:700;">🎯 수혜 섹터:</span>
+                ${sectorsHtml}
+              </div>
+            ` : ''}
           </div>
           <div style="text-align:right;">
-            <div style="font-size:12px; color:#34d399; font-weight:700;">권장 진입: ${escapeHtml(ev.default_entry_window)}</div>
+            <div style="font-size:12.5px; color:#34d399; font-weight:700;">권장 진입: ${escapeHtml(ev.default_entry_window)}</div>
             <div style="font-size:11.5px; color:#94a3b8;">목표 청산: ${escapeHtml(ev.default_exit_window)}</div>
+            <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">확정성: <b>${(ev.date_certainty * 100).toFixed(0)}%</b> · 리스크: <b style="color:${ev.binary_risk === 'HIGH' ? '#f87171' : '#34d399'}">${ev.binary_risk}</b></div>
           </div>
         </div>
+
+        ${stocksHtml ? `
+          <div class="event-stocks-wrap">
+            <div style="font-size:12px; font-weight:700; color:#38bdf8; display:flex; justify-content:space-between; align-items:center;">
+              <span>🏢 핵심 수혜 및 수급 종목 (${ev.beneficiary_stocks.length}개사)</span>
+              <span style="font-size:11px; color:#94a3b8; font-weight:normal;">종목 클릭 시 상세 리서치 창 열림</span>
+            </div>
+            <div class="event-stocks-grid">
+              ${stocksHtml}
+            </div>
+          </div>
+        ` : ''}
+
         <div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; font-size:11.5px; color:#94a3b8;">
           <div>⚠️ <b>무효화 조건:</b> <span style="color:#fca5a5;">${escapeHtml(ev.invalidating_rule)}</span></div>
-          <div>확정성: <b>${(ev.date_certainty * 100).toFixed(0)}%</b> · 리스크: <b>${ev.binary_risk}</b></div>
         </div>
       </div>
     `;
   }).join("");
+
+  container.querySelectorAll(".btn-cal-ai").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const code = btn.dataset.ticker;
+      const comp = btn.dataset.company || code;
+      const proceed = confirm(`[${comp} (${code})] AI 심층 분석 리포트를 발간하시겠습니까?\n(LLM 토큰이 사용되며 백그라운드에서 안전하게 작성됩니다.)`);
+      if (proceed) {
+        runReport(code).catch((err) => alert(err.message));
+      }
+    });
+  });
 }
 
 function setupInstitutionalSeasonalityUI() {
