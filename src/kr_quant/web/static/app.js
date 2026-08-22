@@ -2071,12 +2071,136 @@ function reportArticleHtml(rec) {
 
 let modalTicker = "";
 
-function openReportModal(rec, title) {
-  modalTicker = padTicker(rec && rec.ticker);
-  $("#report-modal-title").textContent = title || `${(rec && rec.company) || modalTicker || "리포트"}`;
-  $("#report-modal-body").innerHTML = reportArticleHtml(rec);
-  $("#report-modal").classList.remove("hidden");
-  document.body.classList.add("modal-open");
+function openReportModal(rec, customTitle = null) {
+  const code = padTicker(rec.ticker);
+  const company = rec.company || code;
+  const title = customTitle || `📑 ${escapeHtml(company)} (${code}) 심층 리서치 & 인포그래픽 리포트`;
+  const md = renderMarkdown(rec.report_markdown || "");
+  const usage = rec.usage || {};
+  const meta = `${rec.provider || ""} · ${rec.model || ""} · ${rec.as_of_date || ""} · tokens: ${usage.total_tokens || "—"}`;
+
+  const infographicUrl = `/api/research/${code}/infographic?as_of=${encodeURIComponent(rec.as_of_date || "")}`;
+
+  // Strategy Backtest Summary Hero if available
+  let btHtml = "";
+  const bt = rec.strategy_backtest || {};
+  if (bt && bt.ok && bt.strategies && bt.strategies.length) {
+    const strats = bt.strategies;
+    const stratRows = strats.map((s, idx) => {
+      const isBest = s.strategy_id === bt.best_id;
+      const sh = s.sharpe != null ? fmt(s.sharpe, 2) : "—";
+      const oosSh = s.oos_sharpe != null ? fmt(s.oos_sharpe, 2) : "—";
+      const wfHit = s.wf_hit != null ? `${(s.wf_hit * 100).toFixed(0)}%` : "—";
+      const mddVal = s.max_drawdown != null ? -Math.abs(s.max_drawdown * 100) : null;
+      const mdd = mddVal != null ? `${mddVal.toFixed(1)}%` : "—";
+      const ret = s.total_return != null ? `${s.total_return > 0 ? "+" : ""}${(s.total_return * 100).toFixed(1)}%` : "—";
+      const retCls = s.total_return != null && s.total_return > 0 ? "up" : s.total_return < 0 ? "down" : "";
+      return `
+        <tr style="${isBest ? 'background:rgba(56,189,248,0.12); font-weight:600;' : ''}">
+          <td>${isBest ? '👑 1위 ' : `${idx + 1}위 `}${escapeHtml(s.name || s.strategy_id)}</td>
+          <td><span class="chip">${escapeHtml(s.family_ko || s.family || "")}</span></td>
+          <td class="${retCls}">${ret}</td>
+          <td><b>${sh}</b></td>
+          <td>${oosSh}</td>
+          <td>${wfHit}</td>
+          <td class="down">${mdd}</td>
+          <td>${s.trade_count || 0}회</td>
+          <td class="meta">${escapeHtml(s.params_ko || "")}</td>
+        </tr>
+      `;
+    }).join("");
+
+    btHtml = `
+      <div style="background:linear-gradient(145deg, #0e172a, #0b1322); border:1px solid rgba(56,189,248,0.35); border-radius:10px; padding:14px; margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <b style="color:#38bdf8; font-size:14px;">🧪 4대 전략 백테스트 & 최적 타이밍 검증</b>
+          <span style="font-size:11.5px; color:#94a3b8;">${bt.bars || 0}거래일 일봉 검증</span>
+        </div>
+        <div style="padding:8px 10px; background:rgba(56,189,248,0.1); border-radius:6px; margin-bottom:10px; font-size:12.5px;">
+          <b style="color:#38bdf8;">👑 최적 추천 1위: ${escapeHtml(bt.best_name || "")} (${escapeHtml(bt.best_params_ko || "")})</b>
+          <p style="margin:3px 0 0; color:#cbd5e1; font-size:12px;">${escapeHtml(bt.best_comment || "")}</p>
+        </div>
+        <div class="table-wrap">
+          <table class="table" style="font-size:11.5px;">
+            <thead>
+              <tr>
+                <th>전략명</th>
+                <th>유형</th>
+                <th>총수익률</th>
+                <th>샤프</th>
+                <th>OOS 샤프</th>
+                <th>WF 승률</th>
+                <th>최대낙폭</th>
+                <th>매매횟수</th>
+                <th>최적 파라미터</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${stratRows}
+            </tbody>
+          </table>
+        </div>
+        ${renderPlaybookHtml(bt.playbook)}
+      </div>
+    `;
+  }
+
+  // Dual View Body Container
+  const drawerContent = `
+    <div class="report-modal-toolbar">
+      <div class="report-view-subtabs">
+        <button type="button" class="report-view-btn active" id="modal-tab-infographic">🎨 인포그래픽 뷰 (Interactive Deck)</button>
+        <button type="button" class="report-view-btn" id="modal-tab-markdown">📑 정통 리포트 뷰 (Text Deep-Dive)</button>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="primary small" id="btn-open-fullscreen-report" style="height:32px; font-size:12px;">🖥️ 새 창에서 전체화면 보기</button>
+        <a class="ghost small" href="${infographicUrl}" download="${encodeURIComponent(company)}_${code}_인포그래픽리포트.html" style="height:32px; font-size:12px; display:inline-flex; align-items:center; text-decoration:none;">📥 HTML 저장</a>
+      </div>
+    </div>
+
+    <!-- Pane 1: Infographic View (Default) -->
+    <div id="modal-pane-infographic" class="report-iframe-wrap">
+      <iframe src="${infographicUrl}" title="Infographic Report"></iframe>
+    </div>
+
+    <!-- Pane 2: Markdown Deep-Dive View -->
+    <div id="modal-pane-markdown" class="hidden">
+      <div class="meta" style="margin-bottom:12px">${escapeHtml(meta)}</div>
+      ${btHtml}
+      <div class="report-render">${md}</div>
+    </div>
+  `;
+
+  openDrawer(title, drawerContent);
+
+  // Wire up dual view tab switching in modal
+  setTimeout(() => {
+    const tabInfo = $("#modal-tab-infographic");
+    const tabMd = $("#modal-tab-markdown");
+    const paneInfo = $("#modal-pane-infographic");
+    const paneMd = $("#modal-pane-markdown");
+    const btnFull = $("#btn-open-fullscreen-report");
+
+    if (tabInfo && tabMd && paneInfo && paneMd) {
+      tabInfo.onclick = () => {
+        tabInfo.classList.add("active");
+        tabMd.classList.remove("active");
+        paneInfo.classList.remove("hidden");
+        paneMd.classList.add("hidden");
+      };
+      tabMd.onclick = () => {
+        tabMd.classList.add("active");
+        tabInfo.classList.remove("active");
+        paneMd.classList.remove("hidden");
+        paneInfo.classList.add("hidden");
+      };
+    }
+    if (btnFull) {
+      btnFull.onclick = () => {
+        window.open(infographicUrl, "_blank");
+      };
+    }
+  }, 30);
 }
 
 function closeReportModal() {

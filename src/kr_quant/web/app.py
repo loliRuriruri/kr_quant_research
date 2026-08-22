@@ -1486,6 +1486,30 @@ def api_research_post(body: ResearchIn) -> dict[str, Any]:
     return {"ok": True, "row": record}
 
 
+
+@app.get("/api/research/{ticker}/infographic")
+def api_research_infographic_get(ticker: str, as_of: str | None = None) -> Any:
+    from fastapi.responses import HTMLResponse
+    from kr_quant.research.report import find_report_file
+    from kr_quant.research.infographic import generate_infographic_html
+
+    s = load_settings()
+    code = str(ticker).zfill(6)
+    path = find_report_file(s.output_dir, code, as_of)
+    if not path or not path.exists():
+        row, day = _load_stock_row(code, as_of)
+        record = {"ticker": code, "company": row.get("company") or code, "as_of_date": day or as_of}
+        html = generate_infographic_html(record, stock_row=row)
+        return HTMLResponse(content=html)
+
+    record = json.loads(path.read_text(encoding="utf-8"))
+    html = record.get("infographic_html")
+    if not html:
+        row, day = _load_stock_row(code, as_of)
+        html = generate_infographic_html(record, stock_row=row)
+    return HTMLResponse(content=html)
+
+
 @app.get("/api/research/{ticker}/report")
 def api_research_report_get(ticker: str, as_of: str | None = None) -> dict[str, Any]:
     from kr_quant.research.report import find_report_file

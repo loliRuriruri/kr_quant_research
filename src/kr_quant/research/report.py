@@ -185,6 +185,8 @@ def write_report(
     markdown = strip_fence(raw_text)
     if any(key in markdown for key in ('"quant_score"', "'quant_score'")):
         raise RuntimeError("리포트가 Quant 필드를 수정하려 해 거부됨")
+    from kr_quant.research.infographic import generate_infographic_html
+
     record = {
         "schema_version": "research_report_v4",
         "prompt_version": PROMPT_VERSION,
@@ -202,7 +204,14 @@ def write_report(
         "strategy_backtest": strategy_backtest or {},
         "disclaimer": "리서치 의견이며 매수·매도 지시가 아닙니다.",
     }
+    infographic_html = generate_infographic_html(record, stock_row=row)
+    record["infographic_html"] = infographic_html
+
     path = report_path(output_dir, as_of, ticker)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(record, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+
+    html_path = path.with_suffix(".html")
+    html_path.write_text(infographic_html, encoding="utf-8")
+
     return record
