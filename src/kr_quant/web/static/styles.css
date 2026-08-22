@@ -3119,3 +3119,51 @@ body.modal-open { overflow: hidden; }
 @media (max-width: 800px) {
   .flow-diag-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+
+/* Strategy Playbook Plain Explanation Card */
+.strategy-playbook-card {
+  background: linear-gradient(145deg, #0f172a, #0d1527);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-top: 14px;
+}
+.playbook-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.playbook-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+@media (max-width: 768px) {
+  .playbook-grid { grid-template-columns: 1fr; }
+}
+.playbook-item {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.playbook-item h4 {
+  margin: 0 0 4px 0;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.playbook-item p {
+  margin: 0;
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.45;
+}

@@ -1,4 +1,43 @@
 
+function renderPlaybookHtml(pb) {
+  if (!pb || !pb.archetype) return "";
+  return `
+    <div class="strategy-playbook-card">
+      <div class="playbook-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <b style="color:#38bdf8; font-size:14px;">💡 3초 핵심 퀀트 해석 & 실전 매매 플레이북</b>
+          <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:600;">${escapeHtml(pb.archetype_badge || "")}</span>
+        </div>
+        <span style="font-size:11.5px; color:#94a3b8;">👑 실전 1픽: <b>${escapeHtml(pb.actionable_name || "")}</b> (${escapeHtml(pb.actionable_params_ko || "")})</span>
+      </div>
+
+      <div style="background:rgba(56,189,248,0.06); border-left:3px solid #38bdf8; border-radius:4px; padding:8px 12px; margin-bottom:12px; font-size:12.5px; line-height:1.5; color:#f1f5f9;">
+        <b>🔍 주가 파동 진단:</b> ${escapeHtml(pb.archetype_desc || "")}
+      </div>
+
+      <div style="background:rgba(168,85,247,0.06); border-left:3px solid #c084fc; border-radius:4px; padding:8px 12px; margin-bottom:12px; font-size:12px; line-height:1.5; color:#e2e8f0;">
+        <b>🎯 실전 1픽 선정 사유:</b> ${escapeHtml(pb.actionable_reason || "")}
+      </div>
+
+      <div class="playbook-grid">
+        <div class="playbook-item" style="border-left:3px solid #22c55e;">
+          <h4 style="color:#4ade80;">⭕ 가장 유리한 매수 타이밍</h4>
+          <p>${escapeHtml(pb.entry_rule || "")}</p>
+        </div>
+        <div class="playbook-item" style="border-left:3px solid #38bdf8;">
+          <h4 style="color:#38bdf8;">🎯 목표가 및 익절 타이밍</h4>
+          <p>${escapeHtml(pb.exit_rule || "")}</p>
+        </div>
+        <div class="playbook-item" style="border-left:3px solid #ef4444; grid-column: 1 / -1;">
+          <h4 style="color:#f87171;">❌ 절대 피해야 할 매매 (치명적 함정)</h4>
+          <p>${escapeHtml(pb.avoid_rule || "")}</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+
 async function triggerFlowDiag(ticker, company, scope = "empty") {
   const boxId = scope === "empty" ? "#empty-box" : "#trade-box";
   const box = $(boxId);
@@ -352,6 +391,7 @@ async function runCustomBacktest(query) {
             </tbody>
           </table>
         </div>
+        ${renderPlaybookHtml(bt.playbook)}
       </div>
     `;
   } catch (err) {
