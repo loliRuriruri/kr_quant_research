@@ -154,19 +154,35 @@ def watchlist_state(settings: Settings) -> dict[str, Any]:
             if p_info.get("sector"):
                 item["sector"] = p_info.get("sector")
 
+        def _safe_float(v, default=0.0):
+            try:
+                if v is None or pd.isna(v):
+                    return default
+                return float(v)
+            except Exception:
+                return default
+
+        def _safe_int(v, default=None):
+            try:
+                if v is None or pd.isna(v):
+                    return default
+                return int(float(v))
+            except Exception:
+                return default
+
         # Attach Quant scores
         s_info = scored_map.get(code) or {}
         if s_info:
-            item["quant_score"] = round(float(s_info.get("quant_score") or 0), 1)
-            item["quant_rank"] = int(s_info.get("quant_rank") or 0) if s_info.get("quant_rank") else None
-            item["value_score"] = round(float(s_info.get("value_score") or 0), 1)
-            item["quality_score"] = round(float(s_info.get("quality_score") or 0), 1)
-            item["growth_score"] = round(float(s_info.get("growth_score") or 0), 1)
-            item["momentum_score"] = round(float(s_info.get("momentum_score") or 0), 1)
-            item["financial_score"] = round(float(s_info.get("financial_score") or 0), 1)
-            if s_info.get("sector"):
+            item["quant_score"] = round(_safe_float(s_info.get("quant_score")), 1)
+            item["quant_rank"] = _safe_int(s_info.get("quant_rank"))
+            item["value_score"] = round(_safe_float(s_info.get("value_score")), 1)
+            item["quality_score"] = round(_safe_float(s_info.get("quality_score")), 1)
+            item["growth_score"] = round(_safe_float(s_info.get("growth_score")), 1)
+            item["momentum_score"] = round(_safe_float(s_info.get("momentum_score")), 1)
+            item["financial_score"] = round(_safe_float(s_info.get("financial_score")), 1)
+            if s_info.get("sector") and not pd.isna(s_info.get("sector")):
                 item["sector"] = str(s_info.get("sector"))
-            if s_info.get("company"):
+            if s_info.get("company") and not pd.isna(s_info.get("company")):
                 item["company"] = str(s_info.get("company"))
 
             total_quant += item["quant_score"]
