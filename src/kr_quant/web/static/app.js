@@ -2109,16 +2109,106 @@ async function loadReport(ticker, asOf) {
   return data.exists ? data.row : null;
 }
 
+
+const inFlightReports = new Map();
+
+function updateAiReportStatusBanner() {
+  let banner = $("#ai-report-floating-banner");
+  const prog = $("#global-progress-bar");
+  const chip = $("#chip-activity");
+
+  if (inFlightReports.size === 0) {
+    if (banner) banner.remove();
+    if (prog) prog.classList.add("hidden");
+    if (chip) {
+      chip.classList.remove("activity-running");
+      chip.classList.add("activity-idle");
+      chip.innerHTML = "🟢 시스템 준비됨";
+    }
+    return;
+  }
+
+  // Active items exist
+  const items = Array.from(inFlightReports.values());
+  const latest = items[items.length - 1];
+  const countText = items.length > 1 ? ` (+${items.length - 1}건)` : "";
+
+  if (prog) prog.classList.remove("hidden");
+  if (chip) {
+    chip.classList.remove("activity-idle");
+    chip.classList.add("activity-running");
+    chip.innerHTML = `⚡ AI 리포트 작성 중: ${escapeHtml(latest.company || latest.ticker)}${countText}`;
+  }
+
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "ai-report-floating-banner";
+    banner.className = "ai-report-floating-banner";
+    document.body.appendChild(banner);
+  }
+
+  banner.innerHTML = `
+    <div class="spinner"></div>
+    <div>
+      <b>🤖 [${escapeHtml(latest.company || latest.ticker)}] AI 리포트 백그라운드 생성 중…</b>${countText}
+      <div style="font-size:11px; color:#94a3b8; margin-top:2px;">창을 닫아도 계속 실행되며 완료 시 자동 알림 및 보관됩니다.</div>
+    </div>
+    <button type="button" id="btn-reopen-ai-modal" class="ghost" style="padding:4px 10px; font-size:12px; height:28px; white-space:nowrap;">진행창 열기</button>
+  `;
+
+  const btnReopen = $("#btn-reopen-ai-modal");
+  if (btnReopen) {
+    btnReopen.onclick = () => {
+      openReportModal({
+        ticker: latest.ticker,
+        company: latest.company,
+        report_markdown: `⏳ **[${latest.company || latest.ticker}] AI 심층 분석 리포트를 작성하고 있습니다.**\n\n- DeepSeek / OpenRouter LLM을 통해 최신 공시, 5대 팩터, 4대 전략 백테스트 및 실전 매매 플레이북을 생성 중입니다.\n- 예상 소요 시간: 약 1~2분\n- **이 창을 닫아도 백그라운드에서 정상 완료됩니다.**`,
+      }, "리포트 작성 중 (백그라운드)");
+    };
+  }
+}
+
 async function runReport(ticker) {
-  openReportModal({ ticker, report_markdown: "AI 분석 리포트 작성 중… 1~3분 걸릴 수 있습니다." }, "리포트 작성 중");
-  if ($("#report-box")) $("#report-box").innerHTML = "<p>AI 분석 리포트 작성 중…</p>";
-  const data = await api("/api/research/report", {
-    method: "POST",
-    body: JSON.stringify({ ticker }),
-  });
-  renderReport(data.row);
-  openReportModal(data.row);
-  loadReportArchive().catch(() => {});
+  const code = padTicker(ticker);
+  let company = code;
+  const matchRow = rankRows.find((r) => padTicker(r.ticker) === code) || (dashRows || []).find((r) => padTicker(r.ticker) === code);
+  if (matchRow && matchRow.company) company = matchRow.company;
+
+  // 1. Register in inFlightReports
+  inFlightReports.set(code, { ticker: code, company, startedAt: Date.now() });
+  updateAiReportStatusBanner();
+
+  // 2. Open initial progress modal
+  openReportModal({
+    ticker: code,
+    company,
+    report_markdown: `⏳ **[${company} (${code})] AI 심층 기업 분석 리포트를 작성하고 있습니다.**\n\n- DeepSeek / OpenRouter LLM을 호출하여 최신 공시, 재무 팩터, 해자, 4대 전략 백테스트 및 실전 매매 플레이북을 실시간 분석 중입니다.\n- 예상 소요 시간: 약 1~2분\n- **이 창을 닫아도 백그라운드에서 안전하게 완료되며, 완료 시 상단 알림이 뜹니다.**`,
+  }, "리포트 작성 중 (백그라운드 진행)");
+
+  showToast(`⚡ <b>[${company} (${code})] AI 분석 리포트 발간 시작</b> (백그라운드 실행 중)`, "info", 5000);
+
+  try {
+    const data = await api("/api/research/report", {
+      method: "POST",
+      body: JSON.stringify({ ticker: code }),
+    });
+
+    // 3. Finished successfully
+    inFlightReports.delete(code);
+    updateAiReportStatusBanner();
+
+    if (data && data.row) {
+      renderReport(data.row);
+      openReportModal(data.row);
+      loadReportArchive().catch(() => {});
+      showToast(`🎉 <b>[${data.row.company || company} (${code})] AI 분석 리포트 작성이 완료되었습니다!</b>`, "success", 8000);
+    }
+  } catch (err) {
+    inFlightReports.delete(code);
+    updateAiReportStatusBanner();
+    showToast(`⚠️ [${company}] AI 리포트 작성 실패: ${err.message}`, "error", 8000);
+    alert(`AI 리포트 작성 오류: ${err.message}`);
+  }
 }
 
 async function openArchivedItem(ticker, asOf, kind) {

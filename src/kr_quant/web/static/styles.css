@@ -3167,3 +3167,39 @@ body.modal-open { overflow: hidden; }
   color: #cbd5e1;
   line-height: 1.45;
 }
+
+
+/* Floating Background AI Report Activity Banner */
+.ai-report-floating-banner {
+  position: fixed;
+  top: 14px;
+  right: 24px;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 16px rgba(56, 189, 248, 0.25);
+  border-radius: 10px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 99998;
+  animation: bannerSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  color: #fff;
+  font-size: 13px;
+}
+@keyframes bannerSlideIn {
+  from { transform: translateY(-30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.ai-report-floating-banner .spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(56, 189, 248, 0.2);
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: bannerSpin 0.8s linear infinite;
+}
+@keyframes bannerSpin {
+  to { transform: rotate(360deg); }
+}
