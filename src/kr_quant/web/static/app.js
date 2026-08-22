@@ -6303,6 +6303,180 @@ decorateSelect($("#llm-provider"));
 decorateSelect($("#llm-model-select"));
 
 
+
+// --- Seasonality & Calendar Anomaly Screener ---
+let currentSeasonalityMonth = new Date().getMonth() + 1; // 1-12
+let currentSeasonalityPreset = "";
+let seasonalityRows = [];
+
+function renderMonthHeatmapBar(months, targetMonth) {
+  if (!months || months.length < 12) return "—";
+  return `
+    <div class="month-heatmap-bar">
+      ${months.map((m) => {
+        const ret = m.avg_return || 0;
+        const wr = (m.win_rate || 0) * 100;
+        let cls = "ret-flat";
+        if (ret >= 0.10) cls = "ret-super-up";
+        else if (ret > 0.01) cls = "ret-up";
+        else if (ret <= -0.10) cls = "ret-super-down";
+        else if (ret < -0.01) cls = "ret-down";
+
+        const isTarget = m.month === targetMonth ? "current-target-month" : "";
+        const tip = `${m.month}월: 승률 ${wr.toFixed(0)}% · 평균 ${(ret * 100).toFixed(1)}% (표본 ${m.years_count}년)`;
+        return `<div class="month-mini-cell ${cls} ${isTarget}" data-tip="${escapeHtml(tip)}" title="${escapeHtml(tip)}">${m.month}</div>`;
+      }).join("")}
+    </div>
+  `;
+}
+
+async function loadSeasonality() {
+  const minWr = parseFloat($("#seasonality-min-wr") ? $("#seasonality-min-wr").value : "0.67");
+  const minRet = parseFloat($("#seasonality-min-ret") ? $("#seasonality-min-ret").value : "0.03");
+  const q = $("#seasonality-q") ? $("#seasonality-q").value.trim() : "";
+
+  const params = new URLSearchParams({
+    month: currentSeasonalityMonth,
+    min_win_rate: minWr,
+    min_avg_return: minRet,
+  });
+  if (currentSeasonalityPreset) params.set("preset", currentSeasonalityPreset);
+  if (q) params.set("query", q);
+
+  const data = await api(`/api/seasonality/scan?${params.toString()}`);
+  seasonalityRows = data.rows || [];
+
+  const countBadge = $("#seasonality-count-badge");
+  if (countBadge) countBadge.textContent = `${currentSeasonalityMonth}월 조건 부합 ${seasonalityRows.length}종목`;
+
+  renderSeasonalityTable();
+}
+
+function renderSeasonalityTable() {
+  const tbody = $("#seasonality-body");
+  if (!tbody) return;
+
+  if (!seasonalityRows.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="text-center text-slate-400 py-8">조건에 부합하는 ${currentSeasonalityMonth}월 계절성 종목이 없습니다. 필터를 완화해 보세요.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = seasonalityRows.map((r, idx) => {
+    const wr = (r.win_rate || 0) * 100;
+    const wrCls = wr >= 75 ? "text-emerald-400 font-bold" : wr >= 60 ? "text-emerald-300" : "";
+    const avgRet = (r.avg_return || 0) * 100;
+    const retCls = avgRet > 0 ? "up font-bold" : "down";
+    const medRet = (r.median_return || 0) * 100;
+
+    const tagBadges = (r.tags || []).map((t) => {
+      if (t === "winter_heater") return `<span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">❄️ 난방/보일러</span>`;
+      if (t === "summer_heat") return `<span class="chip" style="background:rgba(245,158,11,0.15); color:#f59e0b;">☀️ 폭염/냉방</span>`;
+      if (t === "galaxy_phone") return `<span class="chip" style="background:rgba(168,85,247,0.15); color:#c084fc;">📱 갤럭시</span>`;
+      if (t === "dividend_play") return `<span class="chip" style="background:rgba(16,185,129,0.15); color:#34d399;">💰 연말배당</span>`;
+      if (t === "shopping_frenzy") return `<span class="chip" style="background:rgba(244,63,94,0.15); color:#fb7185;">🛍️ 쇼핑/콘텐츠</span>`;
+      return "";
+    }).join(" ");
+
+    return `
+      <tr data-ticker="${escapeHtml(r.ticker)}" class="clickable-row">
+        <td>${idx + 1}</td>
+        <td>
+          <b>${escapeHtml(r.company || r.ticker)}</b>
+          <span class="meta">${escapeHtml(r.ticker)}</span>
+        </td>
+        <td><span class="chip">${escapeHtml(r.market || "KOSPI")}</span></td>
+        <td><b class="text-accent-cyan">${r.target_month}월</b></td>
+        <td class="${wrCls}">${wr.toFixed(0)}%</td>
+        <td class="${retCls}">${avgRet > 0 ? "+" : ""}${avgRet.toFixed(1)}%</td>
+        <td>${medRet > 0 ? "+" : ""}${medRet.toFixed(1)}%</td>
+        <td class="meta">${r.years_count}년</td>
+        <td>${renderMonthHeatmapBar(r.all_months, r.target_month)}</td>
+        <td>${tagBadges || "—"}</td>
+        <td>
+          <button type="button" class="ghost small btn-seasonality-ai" data-ticker="${escapeHtml(r.ticker)}" data-company="${escapeHtml(r.company || r.ticker)}">🤖 AI 리포트</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  // Bind clicks
+  tbody.querySelectorAll("tr.clickable-row").forEach((tr) => {
+    tr.addEventListener("click", (e) => {
+      if (e.target.closest(".btn-seasonality-ai")) return;
+      openStock(tr.dataset.ticker).catch((err) => alert(err.message));
+    });
+  });
+
+  tbody.querySelectorAll(".btn-seasonality-ai").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const code = btn.dataset.ticker;
+      const comp = btn.dataset.company || code;
+      const proceed = confirm(`[${comp} (${code})] AI 심층 분석 리포트를 발간하시겠습니까?\n(LLM 토큰이 사용되며 백그라운드에서 안전하게 작성됩니다.)`);
+      if (proceed) {
+        runReport(code).catch((err) => alert(err.message));
+      }
+    });
+  });
+}
+
+function setupSeasonalityUI() {
+  const monthTabsContainer = $("#seasonality-month-tabs");
+  if (monthTabsContainer) {
+    const curM = new Date().getMonth() + 1;
+    const nextM = curM === 12 ? 1 : curM + 1;
+
+    let tabsHtml = `
+      <button type="button" class="month-tab-btn ${currentSeasonalityMonth === curM ? 'active' : ''}" data-month="${curM}">🔥 ${curM}월 (현재)</button>
+      <button type="button" class="month-tab-btn ${currentSeasonalityMonth === nextM ? 'active' : ''}" data-month="${nextM}">🚀 ${nextM}월 (선취매 픽)</button>
+    `;
+    for (let m = 1; m <= 12; m++) {
+      tabsHtml += `<button type="button" class="month-tab-btn ${currentSeasonalityMonth === m ? 'active' : ''}" data-month="${m}">${m}월</button>`;
+    }
+    monthTabsContainer.innerHTML = tabsHtml;
+
+    monthTabsContainer.querySelectorAll(".month-tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        monthTabsContainer.querySelectorAll(".month-tab-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentSeasonalityMonth = parseInt(btn.dataset.month, 10);
+        loadSeasonality().catch(() => {});
+      });
+    });
+  }
+
+  // Preset chips
+  const presetContainer = $("#seasonality-presets");
+  if (presetContainer) {
+    presetContainer.querySelectorAll(".preset-chip-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        presetContainer.querySelectorAll(".preset-chip-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentSeasonalityPreset = btn.dataset.preset || "";
+        loadSeasonality().catch(() => {});
+      });
+    });
+  }
+
+  // Filter dropdowns
+  $("#seasonality-min-wr")?.addEventListener("change", () => loadSeasonality().catch(() => {}));
+  $("#seasonality-min-ret")?.addEventListener("change", () => loadSeasonality().catch(() => {}));
+
+  // Search autocomplete
+  const qInput = $("#seasonality-q");
+  const qMenu = $("#seasonality-q-menu");
+  if (qInput && qMenu) {
+    setupStockAutocomplete(qInput, qMenu, (selected) => {
+      qInput.value = selected.company || selected.ticker;
+      loadSeasonality().catch(() => {});
+    });
+    qInput.addEventListener("input", () => {
+      if (qInput.value === "") loadSeasonality().catch(() => {});
+    });
+  }
+}
+
+
 function setupWatchSubtabs() {
   const btnPort = $("#subtab-watch-port");
   const btnReports = $("#subtab-watch-reports");
@@ -6388,6 +6562,7 @@ async function saveSchedulerSettings() {
 applyPriceChrome("dash");
 setupInvestorSubtabs();
 setupWatchSubtabs();
+  setupSeasonalityUI();
 setupKeyShowHideToggles();
 loadDash().catch((err) => {
   $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
@@ -6414,7 +6589,10 @@ function reloadCurrentView() {
   else if (name === "sector") p.push(loadSectors());
   else if (name === "screens") p.push(loadScreens());
   else if (name === "strategy") p.push(loadStrategy());
-  else if (name === "watch") { p.push(loadWatch()); p.push(loadReportArchive()); }
+  else if (name === "seasonality") {
+    loadSeasonality().catch(() => {});
+  }
+  if (name === "watch") { p.push(loadWatch()); p.push(loadReportArchive()); }
   else if (name === "reports") p.push(loadReportArchive());
   return Promise.all(p);
 }

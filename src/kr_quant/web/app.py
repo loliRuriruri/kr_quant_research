@@ -1233,6 +1233,48 @@ def api_flow_ticker_get(ticker: str, days: int = 5) -> dict[str, Any]:
     return diagnose_ticker_flow(load_settings(), ticker, days=days)
 
 
+
+@app.get("/api/seasonality/scan")
+def api_seasonality_scan_get(
+    month: int | None = None,
+    min_win_rate: float = 0.5,
+    min_avg_return: float = 0.0,
+    preset: str | None = None,
+    query: str | None = None,
+) -> dict[str, Any]:
+    from kr_quant.strategy.seasonality import scan_seasonality, EVENT_PRESETS
+
+    s = load_settings()
+    rows = scan_seasonality(
+        s,
+        target_month=month,
+        min_win_rate=min_win_rate,
+        min_avg_return=min_avg_return,
+        preset=preset,
+        query=query,
+    )
+    return {
+        "ok": True,
+        "target_month": month or pd.Timestamp.now().month,
+        "count": len(rows),
+        "presets": EVENT_PRESETS,
+        "rows": rows,
+    }
+
+
+@app.get("/api/seasonality/ticker/{ticker}")
+def api_seasonality_ticker_get(ticker: str) -> dict[str, Any]:
+    from kr_quant.strategy.seasonality import build_seasonality_database
+
+    s = load_settings()
+    db = build_seasonality_database(s)
+    code = str(ticker).zfill(6)
+    stock = db.get("stocks", {}).get(code)
+    if not stock:
+        return {"ok": False, "error": f"종목 {code}의 계절성 데이터가 없습니다."}
+    return {"ok": True, "stock": stock}
+
+
 @app.get("/api/strategy")
 def api_strategy_get() -> dict[str, Any]:
     from kr_quant.strategy.run import load_strategy

@@ -3253,3 +3253,94 @@ body.modal-open { overflow: hidden; }
   height: 100%;
   border: none;
 }
+
+
+/* Seasonality & Calendar Anomaly Screener */
+.month-tabs-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.month-tab-btn {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid var(--line);
+  color: #94a3b8;
+  padding: 6px 13px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.month-tab-btn:hover {
+  border-color: #38bdf8;
+  color: #fff;
+}
+.month-tab-btn.active {
+  background: linear-gradient(135deg, #0284c7, #38bdf8);
+  border-color: #38bdf8;
+  color: #0f172a;
+  font-weight: 800;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+}
+.event-preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.preset-chip-btn {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.preset-chip-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+.preset-chip-btn.active {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.3);
+}
+.month-heatmap-bar {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+.month-mini-cell {
+  width: 14px;
+  height: 18px;
+  border-radius: 2px;
+  font-size: 8.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.month-mini-cell:hover {
+  transform: scale(1.35);
+  z-index: 10;
+  box-shadow: 0 0 6px rgba(0,0,0,0.8);
+}
+.month-mini-cell.ret-super-up { background: #10b981; }
+.month-mini-cell.ret-up { background: rgba(16, 185, 129, 0.65); }
+.month-mini-cell.ret-flat { background: #334155; color: #94a3b8; }
+.month-mini-cell.ret-down { background: rgba(244, 63, 94, 0.65); }
+.month-mini-cell.ret-super-down { background: #f43f5e; }
+.month-mini-cell.current-target-month {
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 4px #fff;
+}

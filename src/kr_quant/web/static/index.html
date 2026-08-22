@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.7.2" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.8.0" />
 </head>
 <body>
   <aside class="nav">
@@ -28,6 +28,7 @@
     <button class="nav-btn" data-view="flow" data-tip="토스 투자자 매매에서 외인·기관이 같이 산 쌍끌이와 사모펀드 순매수입니다."><span class="nav-icon">⚡</span><span>쌍끌이 수급</span></button>
     <button class="nav-btn" data-view="empty" data-tip="외인·기관 빈집 털이 및 수급 복귀 조짐 종목 발굴입니다."><span class="nav-icon">🏚️</span><span>빈집 발굴</span></button>
     <button class="nav-btn" data-view="trade" data-tip="퀀트 TOP100 밖 수급 후보에 일봉 스토캐스틱·일목을 붙인 연구 화면입니다."><span class="nav-icon">🎯</span><span>트레이딩 랩</span></button>
+    <button class="nav-btn" data-view="seasonality" data-tip="12개월 계절성 캘린더 아노말리 및 이벤트 드리븐(폭염/난방/갤럭시/배당) 고승률 선취매 스크리너입니다."><span class="nav-icon">📅</span><span>계절성·캘린더</span></button>
     <button class="nav-btn" data-view="toss" data-tip="토스 급상승·급하락·거래대금 시세 랭킹입니다."><span class="nav-icon">📱</span><span>토스 랭킹</span></button>
     <button class="nav-btn" data-view="watch" data-tip="나만의 포트폴리오 팩터 분석 및 발간된 AI 심층 리포트 통합 보관함입니다."><span class="nav-icon">⭐</span><span>관심종목 & AI리포트</span></button>
     <div class="nav-group">🏛️ Global Research</div>
@@ -400,6 +401,82 @@
         <div id="trade-box" class="quality"></div>
       </article>
     </section>
+
+    
+    <section id="view-seasonality" class="view hidden">
+      <article class="card">
+        <div class="card-h">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h2 style="margin:0;">📅 계절성 & 캘린더 이벤트 드리븐 퀀트 (Seasonality Screener)</h2>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">월별 승률 · 캘린더 아노말리</span>
+          </div>
+          <div class="autocomplete-wrap" style="max-width: 260px;">
+            <input id="seasonality-q" type="text" autocomplete="off" placeholder="종목명 또는 코드 검색" />
+            <ul id="seasonality-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
+          </div>
+        </div>
+        <p class="hint">매년 특정 시점(계절/신제품/배당)에 반복적으로 강세를 보이는 계절성 캘린더 아노말리 종목을 발굴하고, 지금 선취매할 최적 종목을 탐색합니다.</p>
+
+        <!-- Month Tabs -->
+        <div class="month-tabs-bar" id="seasonality-month-tabs"></div>
+
+        <!-- Event Presets -->
+        <div class="event-preset-chips" id="seasonality-presets">
+          <button type="button" class="preset-chip-btn active" data-preset="">✨ 전체 고승률 탐색</button>
+          <button type="button" class="preset-chip-btn" data-preset="winter_heater">❄️ 겨울 난방/보일러 (7~8월 선취매)</button>
+          <button type="button" class="preset-chip-btn" data-preset="summer_heat">☀️ 여름 폭염/냉방 (4~6월 선취매)</button>
+          <button type="button" class="preset-chip-btn" data-preset="galaxy_phone">📱 갤럭시/스마트폰 언팩</button>
+          <button type="button" class="preset-chip-btn" data-preset="dividend_play">💰 연말 고배당 선취매 (9~11월)</button>
+          <button type="button" class="preset-chip-btn" data-preset="shopping_frenzy">🛍️ 광군제/블프/콘텐츠</button>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="filters" style="margin-bottom: 16px; background: rgba(15, 23, 42, 0.5); padding: 10px 14px; border-radius: 8px;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1;">
+            최소 승률:
+            <select id="seasonality-min-wr" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:4px; padding:2px 6px;">
+              <option value="0.5">50% 이상</option>
+              <option value="0.67" selected>67% 이상 (3년 중 2년+)</option>
+              <option value="0.75">75% 이상</option>
+              <option value="1.0">100% (전승)</option>
+            </select>
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1;">
+            최소 평균수익률:
+            <select id="seasonality-min-ret" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:4px; padding:2px 6px;">
+              <option value="0.0">0% 이상</option>
+              <option value="0.03" selected>+3% 이상</option>
+              <option value="0.05">+5% 이상</option>
+              <option value="0.10">+10% 이상 (급등주)</option>
+            </select>
+          </label>
+          <span id="seasonality-count-badge" class="chip" style="margin-left:auto;">검색 중…</span>
+        </div>
+
+        <!-- Result Table -->
+        <div class="table-wrap">
+          <table data-scope="seasonality">
+            <thead>
+              <tr>
+                <th style="width:40px;">순위</th>
+                <th>종목명 (코드)</th>
+                <th>시장</th>
+                <th>타겟월</th>
+                <th class="sortable" data-sort="win_rate">상승 승률</th>
+                <th class="sortable" data-sort="avg_return">평균 수익률</th>
+                <th>중간값</th>
+                <th>표본</th>
+                <th>12개월 계절성 히트맵</th>
+                <th>이벤트 테마</th>
+                <th>분석</th>
+              </tr>
+            </thead>
+            <tbody id="seasonality-body"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
 
     <section id="view-watch" class="view hidden">
       <!-- Subtabs Bar -->
@@ -869,6 +946,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=1.7.2"></script>
+  <script src="/static/app.js?v=1.8.0"></script>
 </body>
 </html>
