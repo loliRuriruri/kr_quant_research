@@ -2171,7 +2171,15 @@ function openReportModal(rec, customTitle = null) {
     </div>
   `;
 
-  openDrawer(title, drawerContent);
+  // Open the report modal using the existing #report-modal structure
+  modalTicker = code;
+  const modal = $("#report-modal");
+  const titleEl = $("#report-modal-title");
+  const bodyEl = $("#report-modal-body");
+  if (titleEl) titleEl.textContent = title;
+  if (bodyEl) bodyEl.innerHTML = drawerContent;
+  modal.classList.remove("hidden");
+  document.body.classList.add("modal-open");
 
   // Wire up dual view tab switching in modal
   setTimeout(() => {
