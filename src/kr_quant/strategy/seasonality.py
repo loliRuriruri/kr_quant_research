@@ -276,3 +276,49 @@ def scan_seasonality(
 
     results.sort(key=lambda x: x["seasonality_score"], reverse=True)
     return results
+
+
+
+def get_seasonality_highlights(settings: Settings) -> dict[str, Any]:
+    """Extracts current month and next month top 3 champions + active events for dashboard widget."""
+    now_m = pd.Timestamp.now().month
+    next_m = 1 if now_m == 12 else now_m + 1
+
+    cur_rows = scan_seasonality(settings, target_month=now_m, min_win_rate=0.67, min_avg_return=0.03)
+    next_rows = scan_seasonality(settings, target_month=next_m, min_win_rate=0.67, min_avg_return=0.03)
+
+    # Active presets for current or upcoming months
+    active_presets = []
+    for p_key, p_val in EVENT_PRESETS.items():
+        if now_m in p_val["peak_months"] or next_m in p_val["peak_months"]:
+            active_presets.append({
+                "key": p_key,
+                "title": p_val["title"],
+                "description": p_val["description"],
+                "peak_months": p_val["peak_months"],
+                "tickers_count": len(p_val["tickers"]),
+            })
+
+    def _trim(rows, max_n=3):
+        out = []
+        for r in rows[:max_n]:
+            out.append({
+                "ticker": r["ticker"],
+                "company": r["company"],
+                "market": r["market"],
+                "win_rate": r["win_rate"],
+                "avg_return": r["avg_return"],
+                "median_return": r["median_return"],
+                "years_count": r["years_count"],
+                "seasonality_score": r["seasonality_score"],
+                "tags": r.get("tags", []),
+            })
+        return out
+
+    return {
+        "current_month": now_m,
+        "next_month": next_m,
+        "current_champions": _trim(cur_rows, 3),
+        "upcoming_champions": _trim(next_rows, 3),
+        "active_presets": active_presets,
+    }

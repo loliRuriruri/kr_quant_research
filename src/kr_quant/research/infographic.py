@@ -355,9 +355,12 @@ def generate_infographic_html(record: dict[str, Any], stock_row: dict[str, Any] 
                     </span>
                     <span class="text-xs text-slate-400 font-medium">{market} · {industry} · 코드 {ticker}</span>
                 </div>
-                <div class="flex items-center gap-3 text-xs text-slate-400">
+                <div class="flex items-center gap-3 text-xs text-slate-400 no-print">
                     <span>기준일: <b class="text-slate-200">{as_of}</b></span>
                     <span>엔진: <b class="text-indigo-400">{provider} ({model})</b></span>
+                    <button type="button" onclick="window.print()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 flex items-center gap-1.5 transition font-semibold">
+                        🖨️ PDF / 인쇄
+                    </button>
                 </div>
             </div>
 

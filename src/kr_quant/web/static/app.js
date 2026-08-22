@@ -2152,8 +2152,9 @@ function openReportModal(rec, customTitle = null) {
         <button type="button" class="report-view-btn active" id="modal-tab-infographic">🎨 인포그래픽 뷰 (Interactive Deck)</button>
         <button type="button" class="report-view-btn" id="modal-tab-markdown">📑 정통 리포트 뷰 (Text Deep-Dive)</button>
       </div>
-      <div style="display:flex; gap:8px;">
-        <button type="button" class="primary small" id="btn-open-fullscreen-report" style="height:32px; font-size:12px;">🖥️ 새 창에서 전체화면 보기</button>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button type="button" class="primary small" id="btn-open-fullscreen-report" style="height:32px; font-size:12px;">🖥️ 새 창 전체화면</button>
+        <button type="button" class="ghost small" id="btn-print-report" style="height:32px; font-size:12px;">🖨️ PDF / 인쇄</button>
         <a class="ghost small" href="${infographicUrl}" download="${encodeURIComponent(company)}_${code}_인포그래픽리포트.html" style="height:32px; font-size:12px; display:inline-flex; align-items:center; text-decoration:none;">📥 HTML 저장</a>
       </div>
     </div>
@@ -2206,6 +2207,18 @@ function openReportModal(rec, customTitle = null) {
     if (btnFull) {
       btnFull.onclick = () => {
         window.open(infographicUrl, "_blank");
+      };
+    }
+    const btnPrint = $("#btn-print-report");
+    if (btnPrint) {
+      btnPrint.onclick = () => {
+        const iframe = $("#modal-pane-infographic iframe");
+        if (iframe && iframe.contentWindow) {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        } else {
+          window.print();
+        }
       };
     }
   }, 30);

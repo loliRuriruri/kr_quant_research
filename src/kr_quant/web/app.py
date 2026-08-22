@@ -1234,6 +1234,16 @@ def api_flow_ticker_get(ticker: str, days: int = 5) -> dict[str, Any]:
 
 
 
+
+@app.get("/api/seasonality/highlights")
+def api_seasonality_highlights_get() -> dict[str, Any]:
+    from kr_quant.strategy.seasonality import get_seasonality_highlights
+
+    s = load_settings()
+    data = get_seasonality_highlights(s)
+    return {"ok": True, "data": data}
+
+
 @app.get("/api/seasonality/scan")
 def api_seasonality_scan_get(
     month: int | None = None,
