@@ -1,4 +1,63 @@
 
+let onDemandTimer = null;
+async function fetchOnDemandFlow(query, boxTarget, scope = "trade") {
+  const box = $(boxTarget);
+  if (!box) return;
+
+  box.innerHTML = `
+    <div class="flow-diag-card" style="text-align:center; padding:24px 18px;">
+      <p style="margin:0; font-size:14px; color:#38bdf8;">⏳ <b>[${escapeHtml(query)}]</b> 전 종목 실시간 수급 & 기술적 지표 온디맨드 정밀 진단 중…</p>
+      <span class="hint" style="margin-top:6px; display:block;">KIS / Toss 수급 시계열 및 KRX 일봉 지표를 실시간 분석하고 있습니다.</span>
+    </div>
+  `;
+
+  try {
+    const data = await api(`/api/flow/ticker/${encodeURIComponent(query)}`);
+    if (data && data.ok && data.row) {
+      const diagHtml = renderFlowDiagCard(data.row, query);
+      const hintMsg = scope === "empty"
+        ? "※ 해당 종목은 현재 빈집(외인·기관 동반 10억 이상 순매도) 스캔 조건에는 해당하지 않으나, 위와 같이 실시간 개별 진단이 완료되었습니다."
+        : "※ 해당 종목은 현재 퀀트 밖 수급 셋업 상위 유니버스 목록에는 없으나, 위와 같이 실시간 개별 정밀 진단이 완료되었습니다.";
+
+      box.innerHTML = `
+        ${diagHtml}
+        <div style="text-align:center; padding:16px; background:rgba(15,23,42,0.4); border-radius:8px; border:1px dashed rgba(255,255,255,0.1);">
+          <p class="hint" style="margin:0;">${hintMsg}</p>
+        </div>
+      `;
+
+      // Attach button handlers
+      box.querySelectorAll("[data-open]").forEach((b) => {
+        b.addEventListener("click", () => openStock(b.dataset.open).catch((e) => alert(e.message)));
+      });
+      box.querySelectorAll("[data-backtest-stock]").forEach((b) => {
+        b.addEventListener("click", () => {
+          const code = b.dataset.backtestStock;
+          switchView("strategy");
+          const inp = $("#custom-strategy-q");
+          if (inp) inp.value = code;
+          runCustomBacktest(code);
+        });
+      });
+      box.querySelectorAll("[data-watch-stock]").forEach((b) => {
+        b.addEventListener("click", async () => {
+          await addWatch(b.dataset.watchStock, b.dataset.company);
+        });
+      });
+    } else {
+      box.innerHTML = `
+        <div class="flow-diag-card" style="border-color:#ef4444; text-align:center; padding:20px;">
+          <p style="color:#f87171; font-weight:600; margin:0;">⚠️ 종목 '${escapeHtml(query)}'의 수급 정보를 찾을 수 없습니다.</p>
+          <span class="hint" style="margin-top:6px; display:block;">정확한 6자리 종목코드나 공식 종목명을 입력해주세요.</span>
+        </div>
+      `;
+    }
+  } catch (err) {
+    box.innerHTML = `<div class="flow-diag-card" style="border-color:#ef4444;"><p style="color:#f87171;">진단 오류: ${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+
 function renderPlaybookHtml(pb) {
   if (!pb || !pb.archetype) return "";
   return `
@@ -3305,7 +3364,12 @@ function renderTrade(data) {
     return;
   }
   const all = data.rows || [];
+  const qVal = ($("#trade-q")?.value || "").trim();
   const rows = sortedCopy(filterTradeRows(all), "trade", "setup_notional", "desc");
+  if (rows.length === 0 && qVal.length > 0) {
+    fetchOnDemandFlow(qVal, "#trade-box", "trade");
+    return;
+  }
   const outside = all.filter((r) => !r.in_quant);
   const dualN = outside.filter((r) => r.dual).length;
   const peN = outside.filter((r) => r.pe_buy || r.pe_accum).length;
