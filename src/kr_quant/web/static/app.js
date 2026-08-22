@@ -793,6 +793,7 @@ const titles = {
   investor: ["메이저 수급 & 지분", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
   sunzi: ["손자 五事", "道·天·地·將·法 다각도 심층 기업 분석"],
   nps: ["국민연금 5%", "OpenDART 국민연금 5% 이상 대량보유 공시 추적"],
+  seasonality: ["계절성·캘린더 퀀트", "가격 선행형 Discovery · 10대 정량 이벤트 · AI 원인 역추적 스크리너"],
 };
 
 let rankRows = [];
@@ -906,13 +907,21 @@ function switchView(name) {
   $$(".view").forEach((el) => el.classList.add("hidden"));
   $(`#view-${name}`).classList.remove("hidden");
   $$(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
-  $("#page-title").textContent = titles[name][0];
-  $("#page-sub").textContent = titles[name][1];
+  if (titles[name]) {
+    $("#page-title").textContent = titles[name][0];
+    $("#page-sub").textContent = titles[name][1];
+  } else {
+    $("#page-title").textContent = name;
+    $("#page-sub").textContent = "";
+  }
   const modeBadge = $("#top-mode-badge");
   if (modeBadge) {
     if (name === "dash" || name === "rank" || name === "screens") {
       modeBadge.className = "top-mode-badge quant-active";
       modeBadge.innerHTML = "⭐ <b>재무 Quant 엔진 적용</b>";
+    } else if (name === "seasonality") {
+      modeBadge.className = "top-mode-badge quant-active";
+      modeBadge.innerHTML = "📅 <b>계절성 & 캘린더 엔진</b>";
     } else if (name === "run" || name === "settings") {
       modeBadge.className = "top-mode-badge system-active";
       modeBadge.innerHTML = "⚙️ <b>시스템 관리</b>";
