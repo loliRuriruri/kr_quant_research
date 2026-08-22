@@ -6080,6 +6080,31 @@ $$("[data-job]").forEach((btn) =>
 decorateSelect($("#llm-provider"));
 decorateSelect($("#llm-model-select"));
 
+
+function setupWatchSubtabs() {
+  const btnPort = $("#subtab-watch-port");
+  const btnReports = $("#subtab-watch-reports");
+  const panePort = $("#watch-subtab-port-pane");
+  const paneReports = $("#watch-subtab-reports-pane");
+
+  if (btnPort && btnReports && panePort && paneReports) {
+    btnPort.addEventListener("click", () => {
+      btnPort.classList.add("active");
+      btnReports.classList.remove("active");
+      panePort.classList.remove("hidden");
+      paneReports.classList.add("hidden");
+      loadWatch().catch(() => {});
+    });
+    btnReports.addEventListener("click", () => {
+      btnReports.classList.add("active");
+      btnPort.classList.remove("active");
+      paneReports.classList.remove("hidden");
+      panePort.classList.add("hidden");
+      loadReportArchive().catch(() => {});
+    });
+  }
+}
+
 function setupInvestorSubtabs() {
   const btnFlow = $("#subtab-investor-flow");
   const btnNps = $("#subtab-investor-nps");
@@ -6140,6 +6165,7 @@ async function saveSchedulerSettings() {
 
 applyPriceChrome("dash");
 setupInvestorSubtabs();
+setupWatchSubtabs();
 setupKeyShowHideToggles();
 loadDash().catch((err) => {
   $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
@@ -6166,7 +6192,7 @@ function reloadCurrentView() {
   else if (name === "sector") p.push(loadSectors());
   else if (name === "screens") p.push(loadScreens());
   else if (name === "strategy") p.push(loadStrategy());
-  else if (name === "watch") p.push(loadWatch());
+  else if (name === "watch") { p.push(loadWatch()); p.push(loadReportArchive()); }
   else if (name === "reports") p.push(loadReportArchive());
   return Promise.all(p);
 }

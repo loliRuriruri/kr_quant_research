@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.6.9" />
+  <link rel="stylesheet" href="/static/styles.css?v=1.7.0" />
 </head>
 <body>
   <aside class="nav">
@@ -402,13 +402,61 @@
     </section>
 
     <section id="view-watch" class="view hidden">
-      <article class="card">
-        <div class="card-h">
-          <h2>관심종목</h2>
-        </div>
-        <p class="hint">메모와 함께 저장합니다. 점수와 무관합니다. 종목 상세에서도 추가할 수 있습니다.</p>
-        <div id="watch-box" class="quality"></div>
-      </article>
+      <!-- Subtabs Bar -->
+      <div class="subtabs-bar" style="margin-bottom: 16px;">
+        <button type="button" class="subtab-btn active" id="subtab-watch-port" data-subtab="port">💼 나만의 포트폴리오 (Portfolio Studio)</button>
+        <button type="button" class="subtab-btn" id="subtab-watch-reports" data-subtab="reports">📑 발간된 AI 리포트 보관함 (AI Research Archive)</button>
+      </div>
+
+      <!-- Pane 1: Visual Portfolio Studio -->
+      <div id="watch-subtab-port-pane">
+        <article class="card">
+          <div class="card-h">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <h2 style="margin:0;">💼 나만의 포트폴리오 & 관심종목 (Visual Portfolio Studio)</h2>
+              <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">실시간 팩터 DNA 분석</span>
+            </div>
+          </div>
+          <p class="hint">관심 있는 종목을 포트폴리오로 구성하여, 종합 5대 팩터 DNA, 업종별 분산 비중, 최근 종가 및 4대 전략 백테스트를 한눈에 관리합니다.</p>
+
+          <!-- Quick Add Stock Bar -->
+          <div class="watch-add-bar">
+            <div class="autocomplete-wrap"><input id="watch-add-input" type="text" autocomplete="off" placeholder="포트폴리오에 추가할 종목명 또는 6자리 코드 (예: 삼성전자, 005930, 삼양식품 - 실시간 자동완성 지원)" /><ul id="watch-add-menu" class="stock-autocomplete-menu" style="display:none;"></ul></div>
+            <button id="btn-watch-add" class="primary" style="white-space:nowrap; padding:0 18px;">➕ 관심종목 추가</button>
+          </div>
+
+          <div id="watch-box" class="quality"></div>
+        </article>
+      </div>
+
+      <!-- Pane 2: AI Report Archive Integrated -->
+      <div id="watch-subtab-reports-pane" class="hidden">
+        <article class="card">
+          <div class="card-h">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <h2 style="margin:0;">📑 발간된 AI 리포트 보관함</h2>
+              <span class="chip" style="background:rgba(168,85,247,0.15); color:#c084fc;">EquityResearch 3.7.2 Deep</span>
+            </div>
+            <div class="autocomplete-wrap" style="max-width: 280px;"><input id="report-q" type="text" autocomplete="off" placeholder="종목명 또는 코드 검색" /><ul id="report-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul></div>
+          </div>
+          <p class="hint">EquityResearch v3.7.2 Cloud-First Deep 지침 및 4대 전략 백테스트가 반영되어 발간된 AI 심층 기업 분석 리포트 목록입니다.</p>
+          <div class="table-wrap">
+            <table data-scope="reports">
+              <thead>
+                <tr>
+                  <th>종목</th>
+                  <th>구분</th>
+                  <th>제공자/모델</th>
+                  <th class="sortable" data-sort="researched_at">작성</th>
+                  <th>요약</th>
+                  <th>보기</th>
+                </tr>
+              </thead>
+              <tbody id="reports-body"></tbody>
+            </table>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section id="view-screens" class="view hidden">
@@ -821,6 +869,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=1.6.9"></script>
+  <script src="/static/app.js?v=1.7.0"></script>
 </body>
 </html>
