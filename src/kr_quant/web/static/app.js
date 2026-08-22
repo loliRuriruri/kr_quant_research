@@ -6317,6 +6317,225 @@ decorateSelect($("#llm-model-select"));
 
 
 
+
+// --- Institutional Seasonality & Calendar Event Engine v2.0 ---
+let currentInstSubtab = "ranked";
+let currentInstHorizon = 90;
+let institutionalRows = [];
+let institutionalEvents = [];
+
+async function loadInstitutionalRanked() {
+  const tbody = $("#seasonality-ranked-body");
+  if (!tbody) return;
+
+  const minGrade = $("#seasonality-grade-filter") ? $("#seasonality-grade-filter").value : "";
+  const confFilter = $("#seasonality-conf-filter") ? $("#seasonality-conf-filter").value : "all";
+  const groupFilter = $("#seasonality-group-filter") ? $("#seasonality-group-filter").value : "all";
+  const q = $("#seasonality-q") ? $("#seasonality-q").value.trim() : "";
+
+  const params = new URLSearchParams({
+    horizon_days: currentInstHorizon,
+  });
+  if (minGrade) params.set("min_grade", minGrade);
+  if (confFilter && confFilter !== "all") params.set("confirmation", confFilter);
+  if (groupFilter && groupFilter !== "all") params.set("group_id", groupFilter);
+  if (q) params.set("query", q);
+
+  const res = await api(`/api/seasonality/ranked?${params.toString()}`);
+  institutionalRows = res.rows || [];
+
+  if (!institutionalRows.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="text-center text-slate-400 py-8">조건에 부합하는 이벤트 후보가 없습니다. 필터를 완화해 보세요.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = institutionalRows.map((r, idx) => {
+    let gradeCls = "grade-b";
+    if (r.grade === "S+") gradeCls = "grade-s-plus";
+    else if (r.grade === "S") gradeCls = "grade-s";
+    else if (r.grade === "A+") gradeCls = "grade-a-plus";
+    else if (r.grade === "A") gradeCls = "grade-a";
+    else if (r.grade === "C") gradeCls = "grade-c";
+
+    let confCls = "conf-neutral";
+    let confKo = "⚪ NEUTRAL (중립)";
+    if (r.confirmation_state === "STRONG") {
+      confCls = "conf-strong";
+      confKo = "🟢 STRONG (강한 지지)";
+    } else if (r.confirmation_state === "CONFIRMED") {
+      confCls = "conf-confirmed";
+      confKo = "🟡 CONFIRMED (확인)";
+    } else if (r.confirmation_state === "CONTRADICTED") {
+      confCls = "conf-contradicted";
+      confKo = "🔴 CONTRADICTED (역행·주의)";
+    }
+
+    const b = r.score_breakdown || {};
+    const histW = ((b.historical_edge || 0) / 45 * 100).toFixed(0);
+    const currW = ((b.current_confirmation || 0) / 35 * 100).toFixed(0);
+    const evW = ((b.event_quality || 0) / 20 * 100).toFixed(0);
+
+    const wr = ((r.win_rate || 0) * 100).toFixed(0);
+    const avgRet = ((r.avg_return || 0) * 100).toFixed(1);
+    const prePriceBadge = r.pre_pricing_flag ? `<span class="chip" style="background:rgba(244,63,94,0.2); color:#fb7185; font-size:10px;">⚠️ 3M 과열 감점</span>` : "";
+
+    return `
+      <tr data-ticker="${escapeHtml(r.ticker)}" class="clickable-row">
+        <td>${idx + 1}</td>
+        <td><span class="grade-badge ${gradeCls}">${escapeHtml(r.grade)}</span></td>
+        <td>
+          <b>${escapeHtml(r.company || r.ticker)}</b>
+          <span class="meta">${escapeHtml(r.ticker)}</span>
+        </td>
+        <td>
+          <div style="font-weight:700; color:#fff; font-size:12.5px;">${escapeHtml(r.event_title)}</div>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:10.5px;">D-${r.d_day} (${escapeHtml(r.target_date)})</span>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(r.event_group_name)}</span>
+            ${prePriceBadge}
+          </div>
+        </td>
+        <td>
+          <div style="font-size:15px; font-weight:900; color:#38bdf8;">${r.seasonality_score}점</div>
+        </td>
+        <td>
+          <div class="pillar-bars-wrap" title="과거우위 ${b.historical_edge}점 / 현재확인 ${b.current_confirmation}점 / 이벤트품질 ${b.event_quality}점">
+            <div class="pillar-bar-segment pillar-bar-hist" style="width:${Math.max(histW * 0.4, 6)}px;" title="과거우위: ${b.historical_edge}/45점"></div>
+            <div class="pillar-bar-segment pillar-bar-curr" style="width:${Math.max(currW * 0.35, 6)}px;" title="현재확인: ${b.current_confirmation}/35점"></div>
+            <div class="pillar-bar-segment pillar-bar-event" style="width:${Math.max(evW * 0.2, 6)}px;" title="이벤트품질: ${b.event_quality}/20점"></div>
+          </div>
+          <div style="font-size:10px; color:#94a3b8; margin-top:2px;">${b.historical_edge} / ${b.current_confirmation} / ${b.event_quality}</div>
+        </td>
+        <td><span class="conf-pill ${confCls}">${confKo}</span></td>
+        <td class="font-bold">${wr}%</td>
+        <td class="${r.avg_return > 0 ? 'up font-bold' : 'down'}">${r.avg_return > 0 ? '+' : ''}${avgRet}%</td>
+        <td>
+          <div style="font-size:12px; color:#34d399; font-weight:700;">진입: ${escapeHtml(r.optimal_entry_window)}</div>
+          <div style="font-size:11px; color:#cbd5e1;">청산: ${escapeHtml(r.optimal_exit_window)}</div>
+        </td>
+        <td>
+          <button type="button" class="ghost small btn-seasonality-ai" data-ticker="${escapeHtml(r.ticker)}" data-company="${escapeHtml(r.company || r.ticker)}">🤖 AI 리포트</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  // Bind clicks
+  tbody.querySelectorAll("tr.clickable-row").forEach((tr) => {
+    tr.addEventListener("click", (e) => {
+      if (e.target.closest(".btn-seasonality-ai")) return;
+      openStock(tr.dataset.ticker).catch((err) => alert(err.message));
+    });
+  });
+
+  tbody.querySelectorAll(".btn-seasonality-ai").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const code = btn.dataset.ticker;
+      const comp = btn.dataset.company || code;
+      const proceed = confirm(`[${comp} (${code})] AI 심층 분석 리포트를 발간하시겠습니까?\n(LLM 토큰이 사용되며 백그라운드에서 안전하게 작성됩니다.)`);
+      if (proceed) {
+        runReport(code).catch((err) => alert(err.message));
+      }
+    });
+  });
+}
+
+async function loadInstitutionalCalendar() {
+  const container = $("#seasonality-calendar-list");
+  if (!container) return;
+
+  const res = await api(`/api/seasonality/events?horizon_days=${currentInstHorizon}`);
+  institutionalEvents = res.events || [];
+
+  if (!institutionalEvents.length) {
+    container.innerHTML = `<div class="text-center text-slate-400 py-8">향후 ${currentInstHorizon}일 내 예정된 마스터 이벤트가 없습니다.</div>`;
+    return;
+  }
+
+  container.innerHTML = institutionalEvents.map((ev) => {
+    return `
+      <div class="event-timeline-card">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="chip" style="background:rgba(56,189,248,0.2); color:#38bdf8; font-weight:800; font-size:12px;">D-${ev.d_day} (${escapeHtml(ev.target_date)})</span>
+              <b style="font-size:15px; color:#fff;">${escapeHtml(ev.title)}</b>
+              <span class="chip" style="background:rgba(30,41,59,0.8); color:#94a3b8; font-size:11px;">${escapeHtml(ev.group_name)}</span>
+            </div>
+            <p style="margin:6px 0 0; color:#cbd5e1; font-size:12.5px; line-height:1.5;">${escapeHtml(ev.description)}</p>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:12px; color:#34d399; font-weight:700;">권장 진입: ${escapeHtml(ev.default_entry_window)}</div>
+            <div style="font-size:11.5px; color:#94a3b8;">목표 청산: ${escapeHtml(ev.default_exit_window)}</div>
+          </div>
+        </div>
+        <div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; font-size:11.5px; color:#94a3b8;">
+          <div>⚠️ <b>무효화 조건:</b> <span style="color:#fca5a5;">${escapeHtml(ev.invalidating_rule)}</span></div>
+          <div>확정성: <b>${(ev.date_certainty * 100).toFixed(0)}%</b> · 리스크: <b>${ev.binary_risk}</b></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function setupInstitutionalSeasonalityUI() {
+  // Subtab switching
+  const tabRanked = $("#tab-inst-ranked");
+  const tabCalendar = $("#tab-inst-calendar");
+  const tabHeatmap = $("#tab-inst-heatmap");
+  const paneRanked = $("#pane-inst-ranked");
+  const paneCalendar = $("#pane-inst-calendar");
+  const paneHeatmap = $("#pane-inst-heatmap");
+
+  function switchInstSubtab(subtab) {
+    currentInstSubtab = subtab;
+    [tabRanked, tabCalendar, tabHeatmap].forEach((t) => t?.classList.remove("active"));
+    [paneRanked, paneCalendar, paneHeatmap].forEach((p) => p?.classList.add("hidden"));
+
+    if (subtab === "ranked") {
+      tabRanked?.classList.add("active");
+      paneRanked?.classList.remove("hidden");
+      loadInstitutionalRanked().catch(() => {});
+    } else if (subtab === "calendar") {
+      tabCalendar?.classList.add("active");
+      paneCalendar?.classList.remove("hidden");
+      loadInstitutionalCalendar().catch(() => {});
+    } else if (subtab === "heatmap") {
+      tabHeatmap?.classList.add("active");
+      paneHeatmap?.classList.remove("hidden");
+      loadSeasonality().catch(() => {});
+    }
+  }
+
+  tabRanked?.addEventListener("click", () => switchInstSubtab("ranked"));
+  tabCalendar?.addEventListener("click", () => switchInstSubtab("calendar"));
+  tabHeatmap?.addEventListener("click", () => switchInstSubtab("heatmap"));
+
+  // Horizon Filter Chips
+  const horizonContainer = $("#seasonality-horizon-tabs");
+  if (horizonContainer) {
+    horizonContainer.querySelectorAll(".preset-chip-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        horizonContainer.querySelectorAll(".preset-chip-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentInstHorizon = parseInt(btn.dataset.horizon, 10);
+        if (currentInstSubtab === "ranked") loadInstitutionalRanked().catch(() => {});
+        else if (currentInstSubtab === "calendar") loadInstitutionalCalendar().catch(() => {});
+      });
+    });
+  }
+
+  // Dropdown filter triggers
+  $("#seasonality-grade-filter")?.addEventListener("change", () => loadInstitutionalRanked().catch(() => {}));
+  $("#seasonality-conf-filter")?.addEventListener("change", () => loadInstitutionalRanked().catch(() => {}));
+  $("#seasonality-group-filter")?.addEventListener("change", () => loadInstitutionalRanked().catch(() => {}));
+
+  // Setup original Heatmap UI controls
+  setupInstitutionalSeasonalityUI();
+}
+
+
 // --- Seasonality & Calendar Anomaly Screener ---
 let currentSeasonalityMonth = new Date().getMonth() + 1; // 1-12
 let currentSeasonalityPreset = "";
@@ -6575,7 +6794,7 @@ async function saveSchedulerSettings() {
 applyPriceChrome("dash");
 setupInvestorSubtabs();
 setupWatchSubtabs();
-  setupSeasonalityUI();
+  setupInstitutionalSeasonalityUI();
 setupKeyShowHideToggles();
 loadDash().catch((err) => {
   $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
@@ -6603,7 +6822,9 @@ function reloadCurrentView() {
   else if (name === "screens") p.push(loadScreens());
   else if (name === "strategy") p.push(loadStrategy());
   else if (name === "seasonality") {
-    loadSeasonality().catch(() => {});
+    if (currentInstSubtab === "ranked") loadInstitutionalRanked().catch(() => {});
+    else if (currentInstSubtab === "calendar") loadInstitutionalCalendar().catch(() => {});
+    else loadSeasonality().catch(() => {});
   }
   if (name === "watch") { p.push(loadWatch()); p.push(loadReportArchive()); }
   else if (name === "reports") p.push(loadReportArchive());

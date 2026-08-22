@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=1.9.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.0.0" />
 </head>
 <body>
   <aside class="nav">
@@ -406,77 +406,145 @@
     </section>
 
     
-    <section id="view-seasonality" class="view hidden">
+        <section id="view-seasonality" class="view hidden">
       <article class="card">
         <div class="card-h">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <h2 style="margin:0;">📅 계절성 & 캘린더 이벤트 드리븐 퀀트 (Seasonality Screener)</h2>
-            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">월별 승률 · 캘린더 아노말리</span>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <h2 style="margin:0;">📅 계절성 & 캘린더 이벤트 드리븐 퀀트 (Specification v1.0)</h2>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">3대 기둥(100점) · 90일 미래 캘린더</span>
           </div>
           <div class="autocomplete-wrap" style="max-width: 260px;">
             <input id="seasonality-q" type="text" autocomplete="off" placeholder="종목명 또는 코드 검색" />
             <ul id="seasonality-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
           </div>
         </div>
-        <p class="hint">매년 특정 시점(계절/신제품/배당)에 반복적으로 강세를 보이는 계절성 캘린더 아노말리 종목을 발굴하고, 지금 선취매할 최적 종목을 탐색합니다.</p>
+        <p class="hint">향후 90일 내 발생하는 10대 그룹 이벤트를 수집하고, 과거 통계(45점) + 현재 실적/수급(35점) + 매출 노출도/확정성(20점)을 결합하여 최적 진입창과 고승률 후보를 정량화합니다.</p>
 
-        <!-- Month Tabs -->
-        <div class="month-tabs-bar" id="seasonality-month-tabs"></div>
-
-        <!-- Event Presets -->
-        <div class="event-preset-chips" id="seasonality-presets">
-          <button type="button" class="preset-chip-btn active" data-preset="">✨ 전체 고승률 탐색</button>
-          <button type="button" class="preset-chip-btn" data-preset="winter_heater">❄️ 겨울 난방/보일러 (7~8월 선취매)</button>
-          <button type="button" class="preset-chip-btn" data-preset="summer_heat">☀️ 여름 폭염/냉방 (4~6월 선취매)</button>
-          <button type="button" class="preset-chip-btn" data-preset="galaxy_phone">📱 갤럭시/스마트폰 언팩</button>
-          <button type="button" class="preset-chip-btn" data-preset="dividend_play">💰 연말 고배당 선취매 (9~11월)</button>
-          <button type="button" class="preset-chip-btn" data-preset="shopping_frenzy">🛍️ 광군제/블프/콘텐츠</button>
+        <!-- Subtabs Bar -->
+        <div class="inst-subtabs-bar">
+          <button type="button" class="inst-subtab-btn active" id="tab-inst-ranked" data-subtab="ranked">🏆 90일 고승률 TOP 랭킹</button>
+          <button type="button" class="inst-subtab-btn" id="tab-inst-calendar" data-subtab="calendar">📅 90일 이벤트 마스터 캘린더</button>
+          <button type="button" class="inst-subtab-btn" id="tab-inst-heatmap" data-subtab="heatmap">📊 12개월 히트맵 스크리너</button>
         </div>
 
-        <!-- Filter Controls -->
-        <div class="filters" style="margin-bottom: 16px; background: rgba(15, 23, 42, 0.5); padding: 10px 14px; border-radius: 8px;">
-          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1;">
-            최소 승률:
-            <select id="seasonality-min-wr" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:4px; padding:2px 6px;">
-              <option value="0.5">50% 이상</option>
-              <option value="0.67" selected>67% 이상 (3년 중 2년+)</option>
-              <option value="0.75">75% 이상</option>
-              <option value="1.0">100% (전승)</option>
-            </select>
-          </label>
-          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1;">
-            최소 평균수익률:
-            <select id="seasonality-min-ret" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:4px; padding:2px 6px;">
-              <option value="0.0">0% 이상</option>
-              <option value="0.03" selected>+3% 이상</option>
-              <option value="0.05">+5% 이상</option>
-              <option value="0.10">+10% 이상 (급등주)</option>
-            </select>
-          </label>
-          <span id="seasonality-count-badge" class="chip" style="margin-left:auto;">검색 중…</span>
+        <!-- PANE 1: Institutional 90D Ranked Candidates -->
+        <div id="pane-inst-ranked">
+          <!-- Horizon & Group Filters -->
+          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+            <div style="display:flex; gap:4px;" id="seasonality-horizon-tabs">
+              <button type="button" class="preset-chip-btn active" data-horizon="90">🌐 전체 90일</button>
+              <button type="button" class="preset-chip-btn" data-horizon="7">⚡ 7일 이내 (임박)</button>
+              <button type="button" class="preset-chip-btn" data-horizon="30">🚀 30일 이내 (선취매 적기)</button>
+            </div>
+            <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
+              <select id="seasonality-grade-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px;">
+                <option value="">전체 등급 (S+ ~ D)</option>
+                <option value="S">👑 S등급 이상 (85+)</option>
+                <option value="A">⭐ A등급 이상 (75+)</option>
+                <option value="B">B등급 이상 (65+)</option>
+              </select>
+              <select id="seasonality-conf-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px;">
+                <option value="all">전체 확인 신호</option>
+                <option value="STRONG">🟢 STRONG (강한 지지)</option>
+                <option value="CONFIRMED">🟡 CONFIRMED (정상 확인)</option>
+              </select>
+              <select id="seasonality-group-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px;">
+                <option value="all">전체 10대 이벤트 그룹</option>
+                <option value="01_market_cal">01. Market Calendar (TOM/명절)</option>
+                <option value="02_passive_flow">02. Passive Flow (MSCI/KOSPI200)</option>
+                <option value="03_earnings">03. Earnings & PEAD (실적 드리프트)</option>
+                <option value="04_shareholder">04. Shareholder Return (배당/자사주)</option>
+                <option value="05_weather">05. Weather (난방/폭염/장마)</option>
+                <option value="06_tech_cycle">06. Tech Cycle (갤럭시/iPhone/CES)</option>
+                <option value="07_bio_catalyst">07. Bio Catalyst (ESMO/AACR)</option>
+                <option value="08_game_content">08. Game & Content (지스타/신작)</option>
+                <option value="09_consumer_shopping">09. Consumer Shopping (광군제/블프)</option>
+                <option value="10_special_situation">10. Special Situation (락업해제)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table data-scope="seasonality">
+              <thead>
+                <tr>
+                  <th style="width:36px;">순위</th>
+                  <th>등급</th>
+                  <th>종목명 (코드)</th>
+                  <th>타겟 이벤트 & D-Day</th>
+                  <th class="sortable" data-sort="seasonality_score">종합 스코어 (100점)</th>
+                  <th>3대 기둥 분해 (45/35/20)</th>
+                  <th>확인 신호</th>
+                  <th>과거 승률</th>
+                  <th>평균 수익률</th>
+                  <th>최적 진입 / 청산 윈도우</th>
+                  <th>분석</th>
+                </tr>
+              </thead>
+              <tbody id="seasonality-ranked-body"></tbody>
+            </table>
+          </div>
         </div>
 
-        <!-- Result Table -->
-        <div class="table-wrap">
-          <table data-scope="seasonality">
-            <thead>
-              <tr>
-                <th style="width:40px;">순위</th>
-                <th>종목명 (코드)</th>
-                <th>시장</th>
-                <th>타겟월</th>
-                <th class="sortable" data-sort="win_rate">상승 승률</th>
-                <th class="sortable" data-sort="avg_return">평균 수익률</th>
-                <th>중간값</th>
-                <th>표본</th>
-                <th>12개월 계절성 히트맵</th>
-                <th>이벤트 테마</th>
-                <th>분석</th>
-              </tr>
-            </thead>
-            <tbody id="seasonality-body"></tbody>
-          </table>
+        <!-- PANE 2: 90-Day Event Master Calendar -->
+        <div id="pane-inst-calendar" class="hidden">
+          <div id="seasonality-calendar-list" style="display:flex; flex-direction:column; gap:12px;"></div>
         </div>
+
+        <!-- PANE 3: Monthly Heatmap Screener (Existing Engine) -->
+        <div id="pane-inst-heatmap" class="hidden">
+          <div class="month-tabs-bar" id="seasonality-month-tabs"></div>
+          <div class="event-preset-chips" id="seasonality-presets">
+            <button type="button" class="preset-chip-btn active" data-preset="">✨ 전체 고승률 탐색</button>
+            <button type="button" class="preset-chip-btn" data-preset="winter_heater">❄️ 겨울 난방/보일러 (7~8월 선취매)</button>
+            <button type="button" class="preset-chip-btn" data-preset="summer_heat">☀️ 여름 폭염/냉방 (4~6월 선취매)</button>
+            <button type="button" class="preset-chip-btn" data-preset="galaxy_phone">📱 갤럭시/스마트폰 언팩</button>
+            <button type="button" class="preset-chip-btn" data-preset="dividend_play">💰 연말 고배당 선취매 (9~11월)</button>
+            <button type="button" class="preset-chip-btn" data-preset="shopping_frenzy">🛍️ 광군제/블프/콘텐츠</button>
+          </div>
+          <div class="filters" style="margin-bottom: 16px; background: rgba(15, 23, 42, 0.5); padding: 10px 14px; border-radius: 8px;">
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1;">
+              최소 승률:
+              <select id="seasonality-min-wr" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:4px; padding:2px 6px;">
+                <option value="0.5">50% 이상</option>
+                <option value="0.67" selected>67% 이상 (3년 중 2년+)</option>
+                <option value="0.75">75% 이상</option>
+                <option value="1.0">100% (전승)</option>
+              </select>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1;">
+              최소 평균수익률:
+              <select id="seasonality-min-ret" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:4px; padding:2px 6px;">
+                <option value="0.0">0% 이상</option>
+                <option value="0.03" selected>+3% 이상</option>
+                <option value="0.05">+5% 이상</option>
+                <option value="0.10">+10% 이상 (급등주)</option>
+              </select>
+            </label>
+            <span id="seasonality-count-badge" class="chip" style="margin-left:auto;">검색 중…</span>
+          </div>
+          <div class="table-wrap">
+            <table data-scope="seasonality">
+              <thead>
+                <tr>
+                  <th style="width:40px;">순위</th>
+                  <th>종목명 (코드)</th>
+                  <th>시장</th>
+                  <th>타겟월</th>
+                  <th class="sortable" data-sort="win_rate">상승 승률</th>
+                  <th class="sortable" data-sort="avg_return">평균 수익률</th>
+                  <th>중간값</th>
+                  <th>표본</th>
+                  <th>12개월 계절성 히트맵</th>
+                  <th>이벤트 테마</th>
+                  <th>분석</th>
+                </tr>
+              </thead>
+              <tbody id="seasonality-body"></tbody>
+            </table>
+          </div>
+        </div>
+
       </article>
     </section>
 
@@ -949,6 +1017,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=1.9.0"></script>
+  <script src="/static/app.js?v=2.0.0"></script>
 </body>
 </html>

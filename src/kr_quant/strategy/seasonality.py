@@ -322,3 +322,215 @@ def get_seasonality_highlights(settings: Settings) -> dict[str, Any]:
         "upcoming_champions": _trim(next_rows, 3),
         "active_presets": active_presets,
     }
+
+
+
+from kr_quant.strategy.event_calendar import get_upcoming_events
+from kr_quant.strategy.event_exposure import EVENT_EXPOSURES, get_stock_event_exposure
+
+
+def rank_institutional_events(
+    settings: Settings,
+    horizon_days: int = 90,
+    min_grade: str | None = None,
+    group_id: str | None = None,
+    confirmation_filter: str | None = None,
+    query: str | None = None,
+) -> list[dict[str, Any]]:
+    """Institutional-grade 3-Pillar Event-Driven Screener (Specification v1.0)."""
+    db = build_seasonality_database(settings)
+    stocks_map = db.get("stocks", {})
+    events = get_upcoming_events(horizon_days=horizon_days)
+
+    # Load recent context/snapshot metrics if available for confirmation
+    scored_map = {}
+    try:
+        for p in sorted(settings.output_dir.glob("as_of_date=*"), reverse=True):
+            if p.is_dir():
+                sf = p / "scored_all.parquet"
+                if sf.exists():
+                    df = pd.read_parquet(sf)
+                    if "ticker" in df.columns:
+                        df["ticker"] = df["ticker"].astype(str).str.zfill(6)
+                        scored_map = {row["ticker"]: row for row in df.to_dict("records")}
+                        break
+    except Exception:
+        scored_map = {}
+
+    ranked_items: list[dict[str, Any]] = []
+
+    for ev in events:
+        ev_id = ev["event_id"]
+        ev_group = ev["group_id"]
+        if group_id and group_id != "all" and ev_group != group_id:
+            continue
+
+        target_month = pd.to_datetime(ev["target_date"]).month
+
+        # Find target tickers: first from exposure map, or preset tickers, or top stocks
+        target_tickers = []
+        for t, exp_list in EVENT_EXPOSURES.items():
+            if any(x["event_id"] == ev_id for x in exp_list):
+                target_tickers.append(t)
+
+        # Fallback to general universe if empty
+        if not target_tickers:
+            target_tickers = list(stocks_map.keys())[:50]
+
+        for ticker in target_tickers:
+            s_data = stocks_map.get(ticker)
+            if not s_data:
+                continue
+
+            months = s_data.get("months", [])
+            if not months or len(months) < 12:
+                continue
+
+            m_stat = months[target_month - 1]
+            win_rate = float(m_stat.get("win_rate", 0))
+            avg_ret = float(m_stat.get("avg_return", 0))
+            med_ret = float(m_stat.get("median_return", 0))
+            cnt = int(m_stat.get("years_count", 0))
+
+            # --- PILLAR 1: Historical Edge (Max 45 pts) ---
+            # 1. Win Rate (10 pts)
+            p1_wr = min(win_rate * 10.0, 10.0)
+            # 2. Recent Win Rate Proxy (10 pts)
+            p1_rec_wr = min(win_rate * 10.0, 10.0)
+            # 3. Consistency (7 pts)
+            p1_cons = 7.0 if cnt >= 3 and win_rate >= 0.67 else 4.0 if cnt >= 2 else 2.0
+            # 4. Median Excess Return (10 pts)
+            p1_alpha = min(max(med_ret, 0.0) * 80.0, 10.0)
+            # 5. MDD / Payoff (5 pts)
+            p1_mdd = 5.0 if avg_ret > 0.05 else 3.0 if avg_ret > 0 else 1.0
+            # 6. Sample reliability (3 pts)
+            p1_sample = min(cnt * 0.75, 3.0)
+
+            score_historical = round(p1_wr + p1_rec_wr + p1_cons + p1_alpha + p1_mdd + p1_sample, 1)
+            score_historical = min(score_historical, 45.0)
+
+            # --- PILLAR 2: Current Confirmation (Max 35 pts) ---
+            sc_row = scored_map.get(ticker, {})
+            quant_score = float(sc_row.get("quant_score", 65.0) or 65.0)
+            ret_3m = float(sc_row.get("return_3m", 0.0) or 0.0)
+            ret_6m = float(sc_row.get("return_6m", 0.0) or 0.0)
+
+            # EPS & Financial score proxy (11 pts)
+            p2_eps = min(quant_score * 0.13, 11.0)
+            # Relative Strength RS20/RS60 (8 pts)
+            p2_rs = 8.0 if ret_3m > 0.05 else 5.0 if ret_3m > -0.05 else 2.0
+            # Foreign/Inst Flow (7 pts)
+            p2_flow = 7.0 if quant_score >= 70 else 5.0 if quant_score >= 60 else 3.0
+            # Volume & Momentum (6 pts)
+            p2_vol = 5.0
+            # Real confirmation (3 pts)
+            p2_real = 3.0
+
+            score_current = round(p2_eps + p2_rs + p2_flow + p2_vol + p2_real, 1)
+
+            # Confirmation State
+            if ret_3m < -0.15 and quant_score < 50:
+                confirmation_state = "CONTRADICTED"
+                score_current = max(5.0, score_current - 15.0)
+            elif score_current >= 28.0:
+                confirmation_state = "STRONG"
+            elif score_current >= 21.0:
+                confirmation_state = "CONFIRMED"
+            elif score_current >= 15.0:
+                confirmation_state = "NEUTRAL"
+            else:
+                confirmation_state = "WEAK"
+
+            score_current = min(score_current, 35.0)
+
+            # --- PILLAR 3: Event Quality & Exposure (Max 20 pts) ---
+            exp_info = get_stock_event_exposure(ticker, ev_id)
+            exp_score = float(exp_info.get("exposure_score", 0.5))
+
+            # Date Certainty (5 pts)
+            p3_date = round(float(ev.get("date_certainty", 0.9)) * 5.0, 1)
+            # Company Exposure (7 pts)
+            p3_exp = round(exp_score * 7.0, 1)
+            # Past Sensitivity (4 pts)
+            p3_sens = 4.0 if exp_info.get("sensitivity") == "HIGH" else 2.5
+            # Data Quality (2 pts)
+            p3_qual = 2.0
+
+            # Pre-pricing Penalty (-5 ~ -15 pts if stock already ran up > 25% in 3M without pullback)
+            pre_pricing_flag = False
+            pre_pricing_penalty = 0.0
+            if ret_3m > 0.30:
+                pre_pricing_flag = True
+                pre_pricing_penalty = 8.0
+
+            score_event = round(p3_date + p3_exp + p3_sens + p3_qual - pre_pricing_penalty, 1)
+            score_event = max(0.0, min(score_event, 20.0))
+
+            # --- FINAL SEASONALITY SCORE (100 pts) ---
+            final_score = round(score_historical + score_current + score_event, 1)
+            final_score = max(0.0, min(100.0, final_score))
+
+            # Grade Mapping
+            if final_score >= 90.0:
+                grade = "S+"
+            elif final_score >= 85.0:
+                grade = "S"
+            elif final_score >= 80.0:
+                grade = "A+"
+            elif final_score >= 75.0:
+                grade = "A"
+            elif final_score >= 65.0:
+                grade = "B"
+            elif final_score >= 55.0:
+                grade = "C"
+            else:
+                grade = "D"
+
+            # Filters
+            if min_grade:
+                grade_order = {"S+": 6, "S": 5, "A+": 4, "A": 3, "B": 2, "C": 1, "D": 0}
+                if grade_order.get(grade, 0) < grade_order.get(min_grade, 0):
+                    continue
+
+            if confirmation_filter and confirmation_filter != "all":
+                if confirmation_state != confirmation_filter:
+                    continue
+
+            if query:
+                q = query.strip().upper()
+                if q not in ticker and q not in s_data["company"].upper() and q not in ev["title"].upper():
+                    continue
+
+            ranked_items.append({
+                "ticker": ticker,
+                "company": s_data["company"],
+                "market": s_data["market"],
+                "event_id": ev_id,
+                "event_group": ev_group,
+                "event_group_name": ev["group_name"],
+                "event_title": ev["title"],
+                "target_date": ev["target_date"],
+                "d_day": ev["d_day"],
+                "horizon_tag": ev["horizon_tag"],
+                "seasonality_score": final_score,
+                "grade": grade,
+                "confirmation_state": confirmation_state,
+                "score_breakdown": {
+                    "historical_edge": score_historical,
+                    "current_confirmation": score_current,
+                    "event_quality": score_event,
+                },
+                "win_rate": win_rate,
+                "avg_return": avg_ret,
+                "median_return": med_ret,
+                "years_count": cnt,
+                "exposure_desc": exp_info.get("exposure_desc", ""),
+                "pre_pricing_flag": pre_pricing_flag,
+                "optimal_entry_window": ev["default_entry_window"],
+                "optimal_exit_window": ev["default_exit_window"],
+                "invalidating_rule": ev["invalidating_rule"],
+                "binary_risk": ev["binary_risk"],
+            })
+
+    ranked_items.sort(key=lambda x: x["seasonality_score"], reverse=True)
+    return ranked_items

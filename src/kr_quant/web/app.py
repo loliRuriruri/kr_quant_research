@@ -1235,6 +1235,42 @@ def api_flow_ticker_get(ticker: str, days: int = 5) -> dict[str, Any]:
 
 
 
+
+@app.get("/api/seasonality/ranked")
+def api_seasonality_ranked_get(
+    horizon_days: int = 90,
+    min_grade: str | None = None,
+    group_id: str | None = None,
+    confirmation: str | None = None,
+    query: str | None = None,
+) -> dict[str, Any]:
+    from kr_quant.strategy.seasonality import rank_institutional_events
+
+    s = load_settings()
+    rows = rank_institutional_events(
+        s,
+        horizon_days=horizon_days,
+        min_grade=min_grade,
+        group_id=group_id,
+        confirmation_filter=confirmation,
+        query=query,
+    )
+    return {
+        "ok": True,
+        "horizon_days": horizon_days,
+        "count": len(rows),
+        "rows": rows,
+    }
+
+
+@app.get("/api/seasonality/events")
+def api_seasonality_events_get(horizon_days: int = 90) -> dict[str, Any]:
+    from kr_quant.strategy.event_calendar import get_upcoming_events
+
+    events = get_upcoming_events(horizon_days=horizon_days)
+    return {"ok": True, "horizon_days": horizon_days, "count": len(events), "events": events}
+
+
 @app.get("/api/seasonality/highlights")
 def api_seasonality_highlights_get() -> dict[str, Any]:
     from kr_quant.strategy.seasonality import get_seasonality_highlights

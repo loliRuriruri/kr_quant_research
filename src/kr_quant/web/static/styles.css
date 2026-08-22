@@ -3397,3 +3397,112 @@ body.modal-open { overflow: hidden; }
   gap: 6px;
   margin-top: 8px;
 }
+
+
+/* Institutional Seasonality v2.0 Styles */
+.grade-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+}
+.grade-badge.grade-s-plus {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  color: #0f172a;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+}
+.grade-badge.grade-s {
+  background: linear-gradient(135deg, #8b5cf6, #c084fc);
+  color: #fff;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.4);
+}
+.grade-badge.grade-a-plus {
+  background: linear-gradient(135deg, #059669, #34d399);
+  color: #0f172a;
+}
+.grade-badge.grade-a {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+}
+.grade-badge.grade-b {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+}
+.grade-badge.grade-c {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+}
+
+.conf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+.conf-pill.conf-strong { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35); }
+.conf-pill.conf-confirmed { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+.conf-pill.conf-neutral { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
+.conf-pill.conf-contradicted { background: rgba(244, 63, 94, 0.25); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.4); font-weight: 800; }
+
+.pillar-bars-wrap {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.pillar-bar-segment {
+  height: 6px;
+  border-radius: 3px;
+}
+.pillar-bar-hist { background: #38bdf8; }
+.pillar-bar-curr { background: #10b981; }
+.pillar-bar-event { background: #f59e0b; }
+
+.inst-subtabs-bar {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+}
+.inst-subtab-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 13.5px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.inst-subtab-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+.inst-subtab-btn.active {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.event-timeline-card {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 12px;
+  transition: all 0.2s ease;
+}
+.event-timeline-card:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
