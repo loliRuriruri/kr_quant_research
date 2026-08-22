@@ -534,3 +534,113 @@ def rank_institutional_events(
 
     ranked_items.sort(key=lambda x: x["seasonality_score"], reverse=True)
     return ranked_items
+
+
+
+from kr_quant.strategy.discovery_engine import pattern_from_month_stat, SeasonalityPattern
+from kr_quant.strategy.event_explainer import explain_and_score_pattern
+
+
+from kr_quant.strategy.discovery_engine import pattern_from_month_stat, SeasonalityPattern
+from kr_quant.strategy.event_explainer import explain_and_score_pattern
+
+
+def scan_seasonality_discovery(
+    settings: Settings,
+    horizon_days: int = 90,
+    min_grade: str | None = None,
+    status_filter: str | None = None,
+    query: str | None = None,
+) -> list[dict[str, Any]]:
+    """Price-First Seasonality Discovery & AI Explanation Engine (Specification v1.1)."""
+    cache_dir = settings.data_dir / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / "discovery_cache.json"
+    cached_list: list[dict[str, Any]] = []
+
+    if cache_file.exists():
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                c_data = json.load(f)
+                if isinstance(c_data, list) and len(c_data) > 0:
+                    cached_list = c_data
+        except Exception:
+            cached_list = []
+
+    if not cached_list:
+        db = build_seasonality_database(settings)
+        stocks_map = db.get("stocks", {})
+
+        scored_map = {}
+        try:
+            for p in sorted(settings.output_dir.glob("as_of_date=*"), reverse=True):
+                if p.is_dir():
+                    sf = p / "scored_all.parquet"
+                    if sf.exists():
+                        df_sc = pd.read_parquet(sf)
+                        if "ticker" in df_sc.columns:
+                            df_sc["ticker"] = df_sc["ticker"].astype(str).str.zfill(6)
+                            scored_map = {row["ticker"]: row for row in df_sc.to_dict("records")}
+                            break
+        except Exception:
+            scored_map = {}
+
+        all_patterns: list[dict[str, Any]] = []
+
+        for ticker, s_info in stocks_map.items():
+            company = s_info.get("company", ticker)
+            market = s_info.get("market", "KOSPI")
+            months = s_info.get("months", [])
+            sc_row = scored_map.get(ticker, {})
+
+            for m_stat in months:
+                pat = pattern_from_month_stat(ticker, company, market, m_stat)
+                if pat and pat.win_rate >= 0.50 and pat.sample_count >= 2:
+                    exp_res = explain_and_score_pattern(pat, sc_row)
+                    all_patterns.append(exp_res)
+
+        all_patterns.sort(key=lambda x: x["seasonality_score"], reverse=True)
+        cached_list = all_patterns
+
+        try:
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(cached_list, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    # Filter by horizon: target month within today + horizon_days
+    now_m = pd.Timestamp.now().month
+    target_months = []
+    for d in range(0, horizon_days + 1, 15):
+        m = (pd.Timestamp.now() + pd.Timedelta(days=d)).month
+        if m not in target_months:
+            target_months.append(m)
+
+    filtered = []
+    grade_order = {"S": 4, "A": 3, "B": 2, "C": 1, "D": 0}
+
+    for item in cached_list:
+        w_name = item.get("window_name", "")
+        try:
+            item_m = int(w_name.replace("월", ""))
+        except Exception:
+            item_m = now_m
+
+        if item_m not in target_months:
+            continue
+
+        if min_grade and grade_order.get(item.get("grade", "D"), 0) < grade_order.get(min_grade, 0):
+            continue
+
+        if status_filter and status_filter != "all" and item.get("current_status") != status_filter:
+            continue
+
+        if query:
+            q = query.strip().upper()
+            if q not in item["ticker"] and q not in item["company"].upper() and q not in item["common_event_cluster"].upper():
+                continue
+
+        filtered.append(item)
+
+    filtered.sort(key=lambda x: x["seasonality_score"], reverse=True)
+    return filtered

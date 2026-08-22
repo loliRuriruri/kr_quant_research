@@ -3506,3 +3506,45 @@ body.modal-open { overflow: hidden; }
   border-color: rgba(56, 189, 248, 0.4);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
+
+
+/* v1.1 Discovery & AI Explanation Styles */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+.status-pill.status-active { background: rgba(16, 185, 129, 0.25); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); }
+.status-pill.status-watch { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); }
+.status-pill.status-discovery { background: rgba(139, 92, 246, 0.2); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.35); }
+.status-pill.status-weakening { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+.status-pill.status-broken { background: rgba(244, 63, 94, 0.25); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.4); }
+.status-pill.status-unknown { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
+
+.year-track-bar {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-top: 4px;
+}
+.year-track-cell {
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+.year-track-win { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+.year-track-loss { background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+
+.discovery-modal-card {
+  background: #1e293b;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  color: #fff;
+}

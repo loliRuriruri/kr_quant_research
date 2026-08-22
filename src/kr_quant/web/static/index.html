@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.0.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.1.0" />
 </head>
 <body>
   <aside class="nav">
@@ -406,60 +406,49 @@
     </section>
 
     
-        <section id="view-seasonality" class="view hidden">
+            <section id="view-seasonality" class="view hidden">
       <article class="card">
         <div class="card-h">
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <h2 style="margin:0;">📅 계절성 & 캘린더 이벤트 드리븐 퀀트 (Specification v1.0)</h2>
-            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">3대 기둥(100점) · 90일 미래 캘린더</span>
+            <h2 style="margin:0;">📅 계절성 탐색 & AI 역추적 스크리너 (Specification v1.1)</h2>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">가격 선행형 Discovery · AI 원인 규명</span>
           </div>
           <div class="autocomplete-wrap" style="max-width: 260px;">
             <input id="seasonality-q" type="text" autocomplete="off" placeholder="종목명 또는 코드 검색" />
             <ul id="seasonality-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
           </div>
         </div>
-        <p class="hint">향후 90일 내 발생하는 10대 그룹 이벤트를 수집하고, 과거 통계(45점) + 현재 실적/수급(35점) + 매출 노출도/확정성(20점)을 결합하여 최적 진입창과 고승률 후보를 정량화합니다.</p>
+        <p class="hint">가격 데이터가 먼저 말하게 하고, 반복 상승 구간의 공통 이벤트를 AI가 역추적하여 올해 유효성과 무효화 조건을 도출합니다.</p>
 
-        <!-- Subtabs Bar -->
+        <!-- 4 Subtabs Bar -->
         <div class="inst-subtabs-bar">
-          <button type="button" class="inst-subtab-btn active" id="tab-inst-ranked" data-subtab="ranked">🏆 90일 고승률 TOP 랭킹</button>
-          <button type="button" class="inst-subtab-btn" id="tab-inst-calendar" data-subtab="calendar">📅 90일 이벤트 마스터 캘린더</button>
-          <button type="button" class="inst-subtab-btn" id="tab-inst-heatmap" data-subtab="heatmap">📊 12개월 히트맵 스크리너</button>
+          <button type="button" class="inst-subtab-btn active" id="tab-v11-discovery" data-subtab="discovery">🚀 90일 진입 디스커버리 TOP</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-explanation" data-subtab="explanation">🤖 AI 이벤트 역추적 & 설명</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-calendar" data-subtab="calendar">📅 10대 정량 이벤트 캘린더</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-heatmap" data-subtab="heatmap">📊 12개월 히트맵 스크리너</button>
         </div>
 
-        <!-- PANE 1: Institutional 90D Ranked Candidates -->
-        <div id="pane-inst-ranked">
-          <!-- Horizon & Group Filters -->
+        <!-- PANE 1: v1.1 Price Discovery Ranked Candidates -->
+        <div id="pane-v11-discovery">
           <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-            <div style="display:flex; gap:4px;" id="seasonality-horizon-tabs">
+            <div style="display:flex; gap:4px;" id="discovery-horizon-tabs">
               <button type="button" class="preset-chip-btn active" data-horizon="90">🌐 전체 90일</button>
               <button type="button" class="preset-chip-btn" data-horizon="7">⚡ 7일 이내 (임박)</button>
               <button type="button" class="preset-chip-btn" data-horizon="30">🚀 30일 이내 (선취매 적기)</button>
             </div>
             <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
-              <select id="seasonality-grade-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px;">
-                <option value="">전체 등급 (S+ ~ D)</option>
-                <option value="S">👑 S등급 이상 (85+)</option>
-                <option value="A">⭐ A등급 이상 (75+)</option>
-                <option value="B">B등급 이상 (65+)</option>
+              <select id="discovery-grade-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px;">
+                <option value="">전체 등급 (S ~ D)</option>
+                <option value="S">👑 S등급 (85점+)</option>
+                <option value="A">⭐ A등급 이상 (75점+)</option>
+                <option value="B">B등급 이상 (65점+)</option>
               </select>
-              <select id="seasonality-conf-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px;">
-                <option value="all">전체 확인 신호</option>
-                <option value="STRONG">🟢 STRONG (강한 지지)</option>
-                <option value="CONFIRMED">🟡 CONFIRMED (정상 확인)</option>
-              </select>
-              <select id="seasonality-group-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px;">
-                <option value="all">전체 10대 이벤트 그룹</option>
-                <option value="01_market_cal">01. Market Calendar (TOM/명절)</option>
-                <option value="02_passive_flow">02. Passive Flow (MSCI/KOSPI200)</option>
-                <option value="03_earnings">03. Earnings & PEAD (실적 드리프트)</option>
-                <option value="04_shareholder">04. Shareholder Return (배당/자사주)</option>
-                <option value="05_weather">05. Weather (난방/폭염/장마)</option>
-                <option value="06_tech_cycle">06. Tech Cycle (갤럭시/iPhone/CES)</option>
-                <option value="07_bio_catalyst">07. Bio Catalyst (ESMO/AACR)</option>
-                <option value="08_game_content">08. Game & Content (지스타/신작)</option>
-                <option value="09_consumer_shopping">09. Consumer Shopping (광군제/블프)</option>
-                <option value="10_special_situation">10. Special Situation (락업해제)</option>
+              <select id="discovery-status-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px;">
+                <option value="all">전체 상태</option>
+                <option value="ACTIVE">🟢 ACTIVE (강력 추천)</option>
+                <option value="WATCH">🟡 WATCH (관찰)</option>
+                <option value="DISCOVERY">🟣 DISCOVERY (발견)</option>
+                <option value="BROKEN">🔴 BROKEN (역행·제외)</option>
               </select>
             </div>
           </div>
@@ -469,30 +458,36 @@
               <thead>
                 <tr>
                   <th style="width:36px;">순위</th>
+                  <th>상태</th>
                   <th>등급</th>
                   <th>종목명 (코드)</th>
-                  <th>타겟 이벤트 & D-Day</th>
-                  <th class="sortable" data-sort="seasonality_score">종합 스코어 (100점)</th>
-                  <th>3대 기둥 분해 (45/35/20)</th>
-                  <th>확인 신호</th>
+                  <th>반복 상승구간</th>
+                  <th class="sortable" data-sort="seasonality_score">종합 스코어</th>
                   <th>과거 승률</th>
                   <th>평균 수익률</th>
-                  <th>최적 진입 / 청산 윈도우</th>
-                  <th>분석</th>
+                  <th>중간값 Alpha</th>
+                  <th>AI 공통 상승 원인</th>
+                  <th>연도별 트랙 레코드</th>
+                  <th>상세</th>
                 </tr>
               </thead>
-              <tbody id="seasonality-ranked-body"></tbody>
+              <tbody id="discovery-ranked-body"></tbody>
             </table>
           </div>
         </div>
 
-        <!-- PANE 2: 90-Day Event Master Calendar -->
-        <div id="pane-inst-calendar" class="hidden">
+        <!-- PANE 2: AI Explanations & Failed Years Deck -->
+        <div id="pane-v11-explanation" class="hidden">
+          <div id="explanation-cards-list" style="display:flex; flex-direction:column; gap:12px;"></div>
+        </div>
+
+        <!-- PANE 3: 10-Event Master Calendar -->
+        <div id="pane-v11-calendar" class="hidden">
           <div id="seasonality-calendar-list" style="display:flex; flex-direction:column; gap:12px;"></div>
         </div>
 
-        <!-- PANE 3: Monthly Heatmap Screener (Existing Engine) -->
-        <div id="pane-inst-heatmap" class="hidden">
+        <!-- PANE 4: Monthly Heatmap Screener -->
+        <div id="pane-v11-heatmap" class="hidden">
           <div class="month-tabs-bar" id="seasonality-month-tabs"></div>
           <div class="event-preset-chips" id="seasonality-presets">
             <button type="button" class="preset-chip-btn active" data-preset="">✨ 전체 고승률 탐색</button>
@@ -1017,6 +1012,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.0.0"></script>
+  <script src="/static/app.js?v=2.1.0"></script>
 </body>
 </html>

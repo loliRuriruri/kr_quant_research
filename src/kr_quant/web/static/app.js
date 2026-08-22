@@ -6318,6 +6318,235 @@ decorateSelect($("#llm-model-select"));
 
 
 
+
+// --- Seasonality Discovery Screener v1.1 ---
+let currentV11Subtab = "discovery";
+let currentV11Horizon = 90;
+let discoveryRows = [];
+
+async function loadDiscoveryRanked() {
+  const tbody = $("#discovery-ranked-body");
+  if (!tbody) return;
+
+  const minGrade = $("#discovery-grade-filter") ? $("#discovery-grade-filter").value : "";
+  const statusFilter = $("#discovery-status-filter") ? $("#discovery-status-filter").value : "all";
+  const q = $("#seasonality-q") ? $("#seasonality-q").value.trim() : "";
+
+  const params = new URLSearchParams({ horizon_days: currentV11Horizon });
+  if (minGrade) params.set("min_grade", minGrade);
+  if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
+  if (q) params.set("query", q);
+
+  const res = await api(`/api/seasonality/discovery?${params.toString()}`);
+  discoveryRows = res.rows || [];
+
+  if (!discoveryRows.length) {
+    tbody.innerHTML = `<tr><td colspan="12" class="text-center text-slate-400 py-8">조건에 부합하는 디스커버리 후보가 없습니다.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = discoveryRows.map((r, idx) => {
+    let statusCls = "status-discovery";
+    let statusKo = "🟣 DISCOVERY";
+    if (r.current_status === "ACTIVE") {
+      statusCls = "status-active";
+      statusKo = "🟢 ACTIVE";
+    } else if (r.current_status === "WATCH") {
+      statusCls = "status-watch";
+      statusKo = "🟡 WATCH";
+    } else if (r.current_status === "WEAKENING") {
+      statusCls = "status-weakening";
+      statusKo = "🟠 WEAKENING";
+    } else if (r.current_status === "BROKEN") {
+      statusCls = "status-broken";
+      statusKo = "🔴 BROKEN";
+    }
+
+    let gradeCls = "grade-b";
+    if (r.grade === "S") gradeCls = "grade-s";
+    else if (r.grade === "A") gradeCls = "grade-a";
+    else if (r.grade === "C") gradeCls = "grade-c";
+
+    const wr = ((r.win_rate || 0) * 100).toFixed(0);
+    const avgRet = ((r.median_return || 0) * 100).toFixed(1);
+    const alpha = ((r.median_alpha || 0) * 100).toFixed(1);
+
+    const yearsTrackHtml = (r.years_track || []).map((y) => {
+      const cls = y.is_win ? "year-track-win" : "year-track-loss";
+      const retStr = (y.return * 100).toFixed(0);
+      return `<span class="year-track-cell ${cls}" title="${y.year}년: ${(y.return*100).toFixed(1)}%">${y.year}: ${y.return > 0 ? '+' : ''}${retStr}%</span>`;
+    }).join("");
+
+    return `
+      <tr data-ticker="${escapeHtml(r.ticker)}" class="clickable-row">
+        <td>${idx + 1}</td>
+        <td><span class="status-pill ${statusCls}">${statusKo}</span></td>
+        <td><span class="grade-badge ${gradeCls}">${escapeHtml(r.grade)}</span></td>
+        <td>
+          <b>${escapeHtml(r.company || r.ticker)}</b>
+          <span class="meta">${escapeHtml(r.ticker)}</span>
+        </td>
+        <td>
+          <b style="color:#38bdf8; font-size:13px;">${escapeHtml(r.window_name)}</b>
+          <span style="font-size:11px; color:#94a3b8; margin-left:4px;">(${r.sample_count}개년 검증)</span>
+        </td>
+        <td>
+          <div style="font-size:15px; font-weight:900; color:#38bdf8;">${r.seasonality_score}점</div>
+        </td>
+        <td class="font-bold">${wr}%</td>
+        <td class="${r.median_return > 0 ? 'up font-bold' : 'down'}">${r.median_return > 0 ? '+' : ''}${avgRet}%</td>
+        <td class="font-bold text-emerald-400">${r.median_alpha > 0 ? '+' : ''}${alpha}%</td>
+        <td style="max-width:220px; font-size:12px; color:#cbd5e1;">
+          <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(r.common_event_cluster)}">
+            ${escapeHtml(r.common_event_cluster)}
+          </div>
+        </td>
+        <td>
+          <div class="year-track-bar">${yearsTrackHtml}</div>
+        </td>
+        <td>
+          <button type="button" class="ghost small btn-seasonality-ai" data-ticker="${escapeHtml(r.ticker)}" data-company="${escapeHtml(r.company || r.ticker)}">🤖 AI 리포트</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  // Bind clicks
+  tbody.querySelectorAll("tr.clickable-row").forEach((tr) => {
+    tr.addEventListener("click", (e) => {
+      if (e.target.closest(".btn-seasonality-ai")) return;
+      openStock(tr.dataset.ticker).catch((err) => alert(err.message));
+    });
+  });
+
+  tbody.querySelectorAll(".btn-seasonality-ai").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const code = btn.dataset.ticker;
+      const comp = btn.dataset.company || code;
+      const proceed = confirm(`[${comp} (${code})] AI 심층 분석 리포트를 발간하시겠습니까?\n(LLM 토큰이 사용되며 백그라운드에서 안전하게 작성됩니다.)`);
+      if (proceed) {
+        runReport(code).catch((err) => alert(err.message));
+      }
+    });
+  });
+}
+
+async function loadAIExplanations() {
+  const container = $("#explanation-cards-list");
+  if (!container) return;
+
+  const res = await api(`/api/seasonality/discovery?horizon_days=${currentV11Horizon}`);
+  const rows = res.rows || [];
+
+  if (!rows.length) {
+    container.innerHTML = `<div class="text-center text-slate-400 py-8">분석된 AI 이벤트 설명 데이터가 없습니다.</div>`;
+    return;
+  }
+
+  container.innerHTML = rows.slice(0, 30).map((r) => {
+    const failedListHtml = (r.failed_analysis || []).map((f) => `<li style="color:#fca5a5; font-size:12px;">${escapeHtml(f)}</li>`).join("");
+
+    return `
+      <div class="event-timeline-card">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <b style="font-size:16px; color:#fff;">${escapeHtml(r.company || r.ticker)} (${escapeHtml(r.ticker)})</b>
+              <span class="chip" style="background:rgba(56,189,248,0.2); color:#38bdf8; font-weight:800;">${escapeHtml(r.window_name)} 상승패턴</span>
+              <span class="chip" style="background:rgba(139,92,246,0.2); color:#c084fc;">AI 신뢰도: ${r.event_confidence}</span>
+            </div>
+            <div style="margin-top:8px; font-size:13.5px; color:#38bdf8; font-weight:700;">
+              💡 공통 상승 원인: ${escapeHtml(r.common_event_cluster)}
+            </div>
+            <div style="margin-top:4px; font-size:12.5px; color:#cbd5e1;">
+              📌 부 원인: ${escapeHtml(r.secondary_cluster || '분기 실적 호조 및 수급 유입')}
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:14px; font-weight:800; color:#34d399;">승률 ${((r.win_rate || 0)*100).toFixed(0)}% · Alpha +${((r.median_alpha || 0)*100).toFixed(1)}%</div>
+            <div style="font-size:11.5px; color:#94a3b8;">${r.sample_count}개년 추적</div>
+          </div>
+        </div>
+
+        ${failedListHtml ? `
+          <div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.06);">
+            <b style="font-size:12px; color:#f87171;">⚠️ 실패 연도 원인 분석:</b>
+            <ul style="margin:4px 0 0 16px; padding:0;">${failedListHtml}</ul>
+          </div>
+        ` : ''}
+
+        <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; font-size:11.5px; color:#94a3b8;">
+          <div>🛑 <b>무효화 조건:</b> <span style="color:#cbd5e1;">${escapeHtml(r.invalidating_conditions)}</span></div>
+          <button type="button" class="ghost small" onclick="openStock('${escapeHtml(r.ticker)}')">종목 심층 분석 →</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function setupV11SeasonalityUI() {
+  const tabDisc = $("#tab-v11-discovery");
+  const tabExpl = $("#tab-v11-explanation");
+  const tabCal = $("#tab-v11-calendar");
+  const tabHeat = $("#tab-v11-heatmap");
+
+  const paneDisc = $("#pane-v11-discovery");
+  const paneExpl = $("#pane-v11-explanation");
+  const paneCal = $("#pane-v11-calendar");
+  const paneHeat = $("#pane-v11-heatmap");
+
+  function switchV11Subtab(subtab) {
+    currentV11Subtab = subtab;
+    [tabDisc, tabExpl, tabCal, tabHeat].forEach((t) => t?.classList.remove("active"));
+    [paneDisc, paneExpl, paneCal, paneHeat].forEach((p) => p?.classList.add("hidden"));
+
+    if (subtab === "discovery") {
+      tabDisc?.classList.add("active");
+      paneDisc?.classList.remove("hidden");
+      loadDiscoveryRanked().catch(() => {});
+    } else if (subtab === "explanation") {
+      tabExpl?.classList.add("active");
+      paneExpl?.classList.remove("hidden");
+      loadAIExplanations().catch(() => {});
+    } else if (subtab === "calendar") {
+      tabCal?.classList.add("active");
+      paneCal?.classList.remove("hidden");
+      loadInstitutionalCalendar().catch(() => {});
+    } else if (subtab === "heatmap") {
+      tabHeat?.classList.add("active");
+      paneHeat?.classList.remove("hidden");
+      loadSeasonality().catch(() => {});
+    }
+  }
+
+  tabDisc?.addEventListener("click", () => switchV11Subtab("discovery"));
+  tabExpl?.addEventListener("click", () => switchV11Subtab("explanation"));
+  tabCal?.addEventListener("click", () => switchV11Subtab("calendar"));
+  tabHeat?.addEventListener("click", () => switchV11Subtab("heatmap"));
+
+  // Horizon Filter Chips
+  const horizonContainer = $("#discovery-horizon-tabs");
+  if (horizonContainer) {
+    horizonContainer.querySelectorAll(".preset-chip-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        horizonContainer.querySelectorAll(".preset-chip-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentV11Horizon = parseInt(btn.dataset.horizon, 10);
+        if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
+        else if (currentV11Subtab === "explanation") loadAIExplanations().catch(() => {});
+      });
+    });
+  }
+
+  $("#discovery-grade-filter")?.addEventListener("change", () => loadDiscoveryRanked().catch(() => {}));
+  $("#discovery-status-filter")?.addEventListener("change", () => loadDiscoveryRanked().catch(() => {}));
+
+  // Setup original Heatmap UI controls
+  setupSeasonalityUI();
+}
+
+
 // --- Institutional Seasonality & Calendar Event Engine v2.0 ---
 let currentInstSubtab = "ranked";
 let currentInstHorizon = 90;
@@ -6520,7 +6749,8 @@ function setupInstitutionalSeasonalityUI() {
         horizonContainer.querySelectorAll(".preset-chip-btn").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         currentInstHorizon = parseInt(btn.dataset.horizon, 10);
-        if (currentInstSubtab === "ranked") loadInstitutionalRanked().catch(() => {});
+        if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
+    else if (currentV11Subtab === "explanation") loadAIExplanations().catch(() => {});
         else if (currentInstSubtab === "calendar") loadInstitutionalCalendar().catch(() => {});
       });
     });
@@ -6532,7 +6762,7 @@ function setupInstitutionalSeasonalityUI() {
   $("#seasonality-group-filter")?.addEventListener("change", () => loadInstitutionalRanked().catch(() => {}));
 
   // Setup original Heatmap UI controls
-  setupInstitutionalSeasonalityUI();
+  setupV11SeasonalityUI();
 }
 
 
@@ -6794,7 +7024,7 @@ async function saveSchedulerSettings() {
 applyPriceChrome("dash");
 setupInvestorSubtabs();
 setupWatchSubtabs();
-  setupInstitutionalSeasonalityUI();
+  setupV11SeasonalityUI();
 setupKeyShowHideToggles();
 loadDash().catch((err) => {
   $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
@@ -6822,7 +7052,8 @@ function reloadCurrentView() {
   else if (name === "screens") p.push(loadScreens());
   else if (name === "strategy") p.push(loadStrategy());
   else if (name === "seasonality") {
-    if (currentInstSubtab === "ranked") loadInstitutionalRanked().catch(() => {});
+    if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
+    else if (currentV11Subtab === "explanation") loadAIExplanations().catch(() => {});
     else if (currentInstSubtab === "calendar") loadInstitutionalCalendar().catch(() => {});
     else loadSeasonality().catch(() => {});
   }

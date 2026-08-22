@@ -1236,6 +1236,45 @@ def api_flow_ticker_get(ticker: str, days: int = 5) -> dict[str, Any]:
 
 
 
+
+@app.get("/api/seasonality/discovery")
+def api_seasonality_discovery_get(
+    horizon_days: int = 90,
+    min_grade: str | None = None,
+    status: str | None = None,
+    query: str | None = None,
+) -> dict[str, Any]:
+    from kr_quant.strategy.seasonality import scan_seasonality_discovery
+
+    s = load_settings()
+    rows = scan_seasonality_discovery(
+        s,
+        horizon_days=horizon_days,
+        min_grade=min_grade,
+        status_filter=status,
+        query=query,
+    )
+    return {
+        "ok": True,
+        "horizon_days": horizon_days,
+        "count": len(rows),
+        "rows": rows,
+    }
+
+
+@app.get("/api/seasonality/discovery/{ticker}")
+def api_seasonality_discovery_ticker_get(ticker: str) -> dict[str, Any]:
+    from kr_quant.strategy.seasonality import scan_seasonality_discovery
+
+    s = load_settings()
+    code = str(ticker).zfill(6)
+    rows = scan_seasonality_discovery(s, horizon_days=365, query=code)
+    match = [r for r in rows if r["ticker"] == code]
+    if not match:
+        raise HTTPException(status_code=404, detail=f"No seasonality discovery pattern for {code}")
+    return {"ok": True, "ticker": code, "patterns": match}
+
+
 @app.get("/api/seasonality/ranked")
 def api_seasonality_ranked_get(
     horizon_days: int = 90,
