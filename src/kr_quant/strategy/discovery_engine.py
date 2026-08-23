@@ -146,41 +146,49 @@ def pattern_from_month_stat(
     neg_rets = abs(sum([r for r in rets if r < 0]))
     profit_factor = round(pos_rets / neg_rets, 1) if neg_rets > 0.0001 else (9.9 if pos_rets > 0 else 1.0)
 
-    # Calculate Entry Timing Stage and Windows based on current calendar date
+    # Calculate Entry Timing Stage and Windows based on exact calendar date
     ref_dt = pd.to_datetime(as_of_date).date() if as_of_date else date.today()
     cur_m = ref_dt.month
     cur_d = ref_dt.day
 
     # Target seasonality window: month M (01 ~ 28)
     # Entry Window: 15~20 days before target month start
-    # Exit Window: middle/end of target month or following month
+    # Exit Window: 20th~25th of target month
     entry_m = month - 1 if month > 1 else 12
     entry_window_str = f"{entry_m:02d}/15 ~ {month:02d}/05"
-    exit_window_str = f"{month:02d}/20 ~ {(month % 12) + 1:02d}/10"
+    exit_window_str = f"{month:02d}/20 ~ {month:02d}/28"
 
-    # Compute D-Day from ref_dt to target month start
-    target_year = ref_dt.year if month >= cur_m else ref_dt.year + 1
-    target_dt = date(target_year, month, 1)
-    d_days = (target_dt - ref_dt).days
-
-    if cur_m == month:
-        entry_stage = "TODAY_ENTRY"
-        entry_stage_label = "🔥 오늘 진입 (D-0)"
-    elif 0 < d_days <= 15:
-        entry_stage = "PRE_ENTRY_15"
-        entry_stage_label = f"⚡ 선취매 적기 (D-{d_days})"
-    elif 15 < d_days <= 35:
-        entry_stage = "PRE_ENTRY_30"
-        entry_stage_label = f"⚡ 선취매 구간 (D-{d_days})"
-    elif 35 < d_days <= 65:
-        entry_stage = "ACCUMULATE_60"
-        entry_stage_label = f"🎯 매집 윈도우 (D-{d_days})"
-    elif d_days < 0 and abs(d_days) <= 25:
-        entry_stage = "EXIT_PEAK"
-        entry_stage_label = "💰 피크 엑시트/매도"
+    # Compute exact D-Day from ref_dt to target month start
+    if month == cur_m:
+        if cur_d <= 7:
+            entry_stage = "TODAY_ENTRY"
+            entry_stage_label = f"🔥 당월 진입 초반 (D+{cur_d})"
+        elif cur_d <= 18:
+            entry_stage = "RALLY_ACTIVE"
+            entry_stage_label = f"📈 랠리 진행중 (D+{cur_d})"
+        else:
+            entry_stage = "EXIT_PEAK"
+            entry_stage_label = f"💰 피크 엑시트/매도 (D+{cur_d})"
     else:
-        entry_stage = "WATCH"
-        entry_stage_label = f"👀 관찰 (D-{d_days})"
+        target_year = ref_dt.year if month > cur_m else ref_dt.year + 1
+        target_dt = date(target_year, month, 1)
+        d_days = (target_dt - ref_dt).days
+
+        if 0 < d_days <= 10:
+            entry_stage = "TODAY_ENTRY"
+            entry_stage_label = f"🔥 선취매 집중 진입 (D-{d_days})"
+        elif 10 < d_days <= 25:
+            entry_stage = "PRE_ENTRY_15"
+            entry_stage_label = f"⚡ 선취매 적기 (D-{d_days})"
+        elif 25 < d_days <= 45:
+            entry_stage = "PRE_ENTRY_30"
+            entry_stage_label = f"⚡ 선취매 분할구간 (D-{d_days})"
+        elif 45 < d_days <= 75:
+            entry_stage = "ACCUMULATE_60"
+            entry_stage_label = f"🎯 매집 윈도우 (D-{d_days})"
+        else:
+            entry_stage = "WATCH"
+            entry_stage_label = f"👀 중장기 관찰 (D-{d_days})" 
 
     # Playbook rules
     target_alpha_str = f"+{med_alpha * 100:.1f}%" if med_alpha > 0 else "+10.0%"
