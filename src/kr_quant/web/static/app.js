@@ -3937,44 +3937,74 @@ function renderEmpty(data) {
   }
   const ordered = sortedCopy(rows, "empty", sortState.empty.key, sortState.empty.dir);
   const hit = analyzeHit(ordered, "ret_5d");
+
+  const renderEmptyBadgeTags = (r) => {
+    const tags = [];
+    if (r.comeback) tags.push('<span class="chip" style="background:rgba(16,185,129,0.2); color:#4ade80; font-weight:800; border:1px solid rgba(74,222,128,0.4);">🔄 복귀</span>');
+    else if (r.empty) tags.push('<span class="chip" style="background:rgba(239,68,68,0.15); color:#f87171; font-weight:700;">🚪 쌍매도</span>');
+    if (r.retail_absorb) tags.push('<span class="chip" style="background:rgba(250,204,21,0.15); color:#facc15; font-weight:700;">🛒 개인받음</span>');
+    const baseTags = emptyTags(r);
+    return tags.length ? tags.join(" ") : baseTags;
+  };
+
   const body = ordered
     .map(
       (r, i) => `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
-      <td class="num">${i + 1}</td>
-      <td class="name-cell"><b>${escapeHtml(r.company || "")}</b><div class="meta">${escapeHtml(r.ticker || "")}${emptyTags(r)}</div>${rowNote(r.comment_empty_short || r.comment_empty)}</td>
+      <td class="num font-bold">${i + 1}</td>
+      <td class="name-cell">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b>
+          <span class="meta">${escapeHtml(r.ticker || "")}</span>
+        </div>
+        <div class="meta" style="margin-top:2px;">${renderEmptyBadgeTags(r)}</div>
+        ${rowNote(r.comment_empty_short || r.comment_empty)}
+      </td>
       <td class="num">${quoteCell(r)}</td>
-      <td class="num">${r.foreign_holding_rate == null ? "—" : fmtPct(r.foreign_holding_rate, 2)}</td>
+      <td class="num font-bold" style="color:#e2e8f0;">${r.foreign_holding_rate == null ? "—" : fmtPct(r.foreign_holding_rate, 2)}</td>
       <td class="num">${r.foreign_rate_chg == null ? "—" : pctCell(r.foreign_rate_chg)}</td>
-      <td class="num">${signedInt(r.foreign_net)}</td>
-      <td class="num">${signedInt(r.institution_net)}</td>
-      <td class="num">${signedInt(r.individual_net)}</td>
+      <td class="num ${r.foreign_net < 0 ? 'text-rose-400 font-bold' : r.foreign_net > 0 ? 'text-emerald-400 font-bold' : ''}">${signedInt(r.foreign_net)}</td>
+      <td class="num ${r.institution_net < 0 ? 'text-rose-400 font-bold' : r.institution_net > 0 ? 'text-emerald-400 font-bold' : ''}">${signedInt(r.institution_net)}</td>
+      <td class="num ${r.individual_net > 0 ? 'text-amber-400 font-bold' : r.individual_net < 0 ? 'text-slate-400' : ''}">${signedInt(r.individual_net)}</td>
       <td class="num">${r.empty_share == null ? "—" : fmtPct(r.empty_share, 0)}</td>
       <td class="num">${r.holding_exit == null ? "—" : fmtPct(r.holding_exit, 2)}</td>
-      <td class="num">${escapeHtml(krw(r.empty_krw))}</td>
-      <td class="num">${r.sell_streak || 0}</td>
-      <td class="num">${pctCell(r.ret_5d)}</td>
+      <td class="num font-bold text-accent-cyan">${escapeHtml(krw(r.empty_krw))}</td>
+      <td class="num">${r.sell_streak ? `<b style="color:#f87171;">${r.sell_streak}일 연속</b>` : "—"}</td>
+      <td class="num font-bold">${pctCell(r.ret_5d)}</td>
     </tr>`
     )
     .join("");
+
   const when = fmtWhen(data.fetched_at);
   const asof = when ? `빈집 데이터 ${when} · ${data.days || 5}거래일` : `빈집 스캔 시점 없음 · ${data.days || 5}거래일`;
   if (currentView === "empty") setPageAsOf(asof, "수급 스캔과 같은 토스 데이터입니다. 다시 스캔하면 갱신됩니다.");
+
   box.innerHTML = `
-    ${asofBanner(asof)}
-    <div class="kpis" style="grid-template-columns:repeat(4,1fr);margin:8px 0 16px">
-      <div class="kpi"><span>조건 종목</span><b>${rows.length}</b></div>
-      <div class="kpi"><span>쌍매도</span><b>${(data.empty || []).length}</b></div>
-      <div class="kpi"><span>복귀 조짐</span><b>${(data.comeback || []).length}</b></div>
-      <div class="kpi"><span>외인 5%↓</span><b>${(data.low_foreign || []).length}</b></div>
+    <div class="kpis" style="grid-template-columns:repeat(4,1fr); margin:0 0 16px;">
+      <div class="kpi has-tip" data-tip-title="🎯 조건 부합 종목" data-tip="현재 설정된 필터 조건(유형, 지분, 이탈금액)을 통과한 종목 수입니다." tabindex="0">
+        <span>조건 종목</span><b style="color:#00e5ff;">${rows.length}</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="🚪 외인·기관 쌍매도 빈집" data-tip="외국인과 기관이 2일 이상 동반 순매도하여 수급 공백이 발생한 종목입니다." tabindex="0">
+        <span>쌍매도 빈집</span><b style="color:#f87171;">${(data.empty || []).length}</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="🔄 수급 복귀 조짐 (턴어라운드)" data-tip="외인·기관의 연속 매도세가 멈추고 최근 1~2거래일 재매수가 유입된 턴어라운드 종목입니다." tabindex="0">
+        <span>복귀 조짐</span><b style="color:#4ade80;">${(data.comeback || []).length}</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="📉 외인 지분 5% 이하" data-tip="외국인 보유 비중이 5% 이하로 떨어져 추가 매도 압력이 현저히 낮아진 바닥권 종목입니다." tabindex="0">
+        <span>외인 5%↓</span><b style="color:#c084fc;">${(data.low_foreign || []).length}</b>
+      </div>
     </div>
-    <p class="hint">${escapeHtml(data.selection_empty || "쌍매도는 외인·기관 동시 순매도, 지분은 토스 외인 보유비율, 복귀는 최근 1~2일 재매수입니다. ")}</p>
-    <p>스캔 ${data.scanned || 0}종목 · ${data.days || 5}거래일 · ${hitLine("선택 집합", hit)}</p>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+      <span class="chip" style="background:rgba(239,68,68,0.12); color:#f87171;">스캔 ${data.scanned || 0}종목 · ${data.days || 5}거래일 순매도 합산</span>
+      <span class="meta">${hitLine("선택 집합", hit)}</span>
+    </div>
+
     <div class="table-wrap tall">
       <table data-scope="empty">
         <thead>
           <tr>
-            <th>#</th>
-            <th class="sortable" data-sort="company">종목</th>
+            <th style="width:40px;">#</th>
+            <th class="sortable" data-sort="company" style="min-width:150px;">종목 · 셋업</th>
             <th class="sortable" data-sort="last">최근가</th>
             <th class="sortable" data-sort="foreign_holding_rate">외인 지분</th>
             <th class="sortable" data-sort="foreign_rate_chg">지분 변화</th>
@@ -3988,10 +4018,10 @@ function renderEmpty(data) {
             <th class="sortable" data-sort="ret_5d">이후 5일</th>
           </tr>
         </thead>
-        <tbody>${body || `<tr><td colspan="13" class="hint">조건에 맞는 종목이 없습니다. 유형을 바꾸거나 다시 스캔해 보세요.</td></tr>`}</tbody>
+        <tbody>${body || `<tr><td colspan="13" class="hint" style="text-align:center; padding:30px;">조건에 맞는 종목이 없습니다. 유형을 바꾸거나 다시 스캔해 보세요.</td></tr>`}</tbody>
       </table>
     </div>
-    <p class="hint">${escapeHtml(data.disclaimer || "")} 이탈 추정은 (외인+기관 순매도 주수)×종가입니다. 외인 지분은 토스 holdingRate입니다. 기관 보유비율은 이 API에 없어서 순매수로 봅니다. 열 이름을 누르면 정렬합니다.</p>
+    <p class="hint" style="margin-top:10px;">💡 이탈 추정금액은 (외인+기관 순매도 주수) × 종가 기준입니다. 열 이름을 클릭하면 외인 지분, 이탈금액, 연속매도 일수로 정렬할 수 있습니다.</p>
   `;
   emptyCache = data;
   paintSortHeaders("empty");
@@ -6336,6 +6366,18 @@ if ($("#flow-min-krw")) {
 }
 if ($("#empty-refresh")) {
   $("#empty-refresh").addEventListener("click", () => loadEmpty(true).catch((err) => alert(err.message)));
+}
+if ($("#empty-q")) {
+  $("#empty-q").addEventListener("input", () => { if (flowCache) renderEmpty(flowCache); });
+  $("#empty-q").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (flowCache) renderEmpty(flowCache);
+    }
+  });
+}
+if ($("#btn-empty-search")) {
+  $("#btn-empty-search").addEventListener("click", () => { if (flowCache) renderEmpty(flowCache); });
 }
 ["empty-mode", "empty-rate", "empty-min-krw"].forEach((id) => {
   const el = document.getElementById(id);

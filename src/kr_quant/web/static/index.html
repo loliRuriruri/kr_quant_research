@@ -390,38 +390,63 @@
     <section id="view-empty" class="view hidden">
       <article class="card">
         <div class="card-h">
-          <h2>기관·외인 빈집</h2>
-          <div class="actions">
-            <div class="search-input-group" style="display:flex; align-items:center; gap:4px;"><div class="autocomplete-wrap" style="min-width: 190px;"><input id="empty-q" type="text" autocomplete="off" placeholder="종목명 또는 코드 검색" /><ul id="empty-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul></div><button type="button" id="btn-empty-search" class="primary" style="height:36px; padding:0 12px; font-size:12.5px; white-space:nowrap;">검색</button></div>
-            <label>유형
-              <select id="empty-mode">
-                <option value="empty" selected>쌍매도 빈집</option>
-                <option value="low_foreign">외인 지분 낮음</option>
-                <option value="comeback">복귀 조짐</option>
-                <option value="retail">개인만 받음</option>
-                <option value="all">스캔 전체</option>
-              </select>
-            </label>
-            <label>외인 지분 상한
-              <select id="empty-rate">
-                <option value="" selected>제한 없음</option>
-                <option value="0.03">3% 이하</option>
-                <option value="0.05">5% 이하</option>
-                <option value="0.10">10% 이하</option>
-              </select>
-            </label>
-            <label>최소 이탈금액
-              <select id="empty-min-krw">
-                <option value="0">전체</option>
-                <option value="1000000000" selected>10억 이상</option>
-                <option value="5000000000">50억 이상</option>
-                <option value="10000000000">100억 이상</option>
-              </select>
-            </label>
-            <button class="ghost" id="empty-refresh">다시 스캔</button>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h2 style="margin:0;">🚪 메이저 수급 이탈 &amp; 빈집 복귀 발굴</h2>
+            <span class="chip" style="background:rgba(239,68,68,0.15); color:#f87171; font-weight:700;">외인·기관 동시 이탈 후 수급 턴어라운드(복귀) 선취매 레이더</span>
           </div>
         </div>
-        <p class="hint">빈집은 외인·기관 연속 순매도 2일, 외인 보유 대비 0.5% 이상 또는 합산 2만주 이상 이탈 종목을 탐색합니다. (기본 이탈금액 10억)</p>
+        <p class="hint" style="margin-bottom:14px;">외국인·기관의 연속 동반 순매도(쌍매도)로 수급이 비워진 종목 및 최근 메이저 수급이 재유입되기 시작한 복귀 조짐 종목을 분석합니다.</p>
+
+        <!-- Modern Unified Empty House Filter Toolbar -->
+        <div class="trade-toolbar-container">
+          <div class="trade-filter-bar">
+            <!-- Search Box Group -->
+            <div class="trade-search-wrap">
+              <div class="autocomplete-wrap">
+                <input id="empty-q" type="text" autocomplete="off" placeholder="종목명 또는 6자리 코드 검색" />
+                <ul id="empty-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
+              </div>
+              <button type="button" id="btn-empty-search" class="primary search-btn" style="height:38px; padding:0 14px; font-size:12.5px; font-weight:700; white-space:nowrap; border-radius:8px;">🔍 검색</button>
+            </div>
+
+            <!-- Filter Controls Group -->
+            <div class="trade-filter-group">
+              <label class="trade-filter-label">
+                <span class="filter-tag">수급 유형</span>
+                <select id="empty-mode" class="trade-select">
+                  <option value="empty" selected>🚪 쌍매도 빈집</option>
+                  <option value="comeback">🔄 복귀 조짐 (재매수)</option>
+                  <option value="low_foreign">📉 외인 지분 낮음</option>
+                  <option value="retail">🛒 개인만 받음</option>
+                  <option value="all">✨ 스캔 전체</option>
+                </select>
+              </label>
+
+              <label class="trade-filter-label">
+                <span class="filter-tag">외인 지분 상한</span>
+                <select id="empty-rate" class="trade-select">
+                  <option value="" selected>제한 없음</option>
+                  <option value="0.03">3% 이하 (초극저지분)</option>
+                  <option value="0.05">5% 이하</option>
+                  <option value="0.10">10% 이하</option>
+                </select>
+              </label>
+
+              <label class="trade-filter-label">
+                <span class="filter-tag">최소 이탈금액</span>
+                <select id="empty-min-krw" class="trade-select">
+                  <option value="0">전체 금액</option>
+                  <option value="1000000000" selected>💰 10억 이상</option>
+                  <option value="5000000000">💰 50억 이상</option>
+                  <option value="10000000000">💰 100억 이상</option>
+                </select>
+              </label>
+
+              <button type="button" class="trade-refresh-btn" id="empty-refresh">🔄 빈집 다시 스캔</button>
+            </div>
+          </div>
+        </div>
+
         <div id="empty-box" class="quality"></div>
       </article>
     </section>
