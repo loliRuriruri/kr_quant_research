@@ -7241,8 +7241,10 @@ async function loadPreEntryView() {
   // Render Donut Chart and Theme Ranking Cards
   renderThemeDonutAndRanking(preEntryThemeData);
 
-  // Filter and Sort Candidates: Filter out SEASON_END stocks automatically so only active forward opportunities show
-  let filtered = allRows.filter((r) => r.entry_stage !== "SEASON_END");
+  // Allowed active pre-entry stages: strictly require actionable pre-entry window (TODAY_ENTRY, PRE_ENTRY_15, PRE_ENTRY_30, ACCUMULATE_60)
+  const allowedStages = new Set(["TODAY_ENTRY", "PRE_ENTRY_15", "PRE_ENTRY_30", "ACCUMULATE_60"]);
+  let filtered = allRows.filter((r) => allowedStages.has(r.entry_stage));
+
   if (currentPreEntryMarket !== "all") {
     filtered = filtered.filter((r) => r.market === currentPreEntryMarket);
   }
@@ -7253,22 +7255,24 @@ async function loadPreEntryView() {
     }
   }
 
-  // Stage Priority Weight: Forward Entry & Pre-Entry (TODAY_ENTRY > PRE_ENTRY_15 > PRE_ENTRY_30 > ACCUMULATE_60 > EXIT_PEAK)
+  // Stage Priority Weight: Forward Entry & Pre-Entry (TODAY_ENTRY > PRE_ENTRY_15 > PRE_ENTRY_30 > ACCUMULATE_60)
   const getStageWeight = (stg) => {
     if (stg === "TODAY_ENTRY") return 100;
     if (stg === "PRE_ENTRY_15") return 80;
     if (stg === "PRE_ENTRY_30") return 60;
     if (stg === "ACCUMULATE_60") return 40;
-    if (stg === "RALLY_ACTIVE") return 30;
-    if (stg === "EXIT_PEAK") return 10;
     return 0;
   };
 
   if (currentPreEntrySort === "score") {
     filtered.sort((a, b) => {
-      const wDiff = getStageWeight(b.entry_stage) - getStageWeight(a.entry_stage);
+      const wa = getStageWeight(a.entry_stage);
+      const wb = getStageWeight(b.entry_stage);
+      const wDiff = wb - wa;
       if (Math.abs(wDiff) >= 40) return wDiff;
-      return (b.seasonality_score || 0) - (a.seasonality_score || 0);
+      const sa = Number(a.seasonality_score) || 0;
+      const sb = Number(b.seasonality_score) || 0;
+      return sb - sa;
     });
   } else if (currentPreEntrySort === "return") {
     filtered.sort((a, b) => (b.expected_p50 || b.median_return || 0) - (a.expected_p50 || a.median_return || 0));
