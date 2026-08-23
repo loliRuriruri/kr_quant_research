@@ -1436,6 +1436,103 @@ function renderChampions(rows) {
   });
 }
 
+function glanceRankBadge(rank) {
+  if (rank === 1) return "🥇 1위";
+  if (rank === 2) return "🥈 2위";
+  if (rank === 3) return "🥉 3위";
+  return `${rank}위`;
+}
+
+async function loadGlanceTop3() {
+  const box = $("#dash-seasonality-banner");
+  if (!box) return;
+  box.innerHTML = `<div class="hint" style="margin:0;">오늘의 선취매 Top 3를 불러오는 중…</div>`;
+  try {
+    const res = await api("/api/seasonality/highlights");
+    const data = res.data || {};
+    const picks = data.glance_top3 || [];
+    const scanned = data.universe_scanned || 0;
+    const listed = data.universe_listed || 0;
+    const asOf = (picks[0] && picks[0].price_as_of) || "";
+    const markets = data.markets || {};
+    const mktBits = Object.keys(markets).map((k) => `${k} ${markets[k]}`).join(" · ");
+
+    if (!picks.length) {
+      box.innerHTML = `
+        <div class="seasonality-widget-head">
+          <div class="seasonality-widget-title">⚡ 오늘의 선취매 Top 3</div>
+          <button type="button" class="ghost small" id="btn-open-seasonality-from-glance">계절성 화면 →</button>
+        </div>
+        <p class="hint" style="margin:0;">진입 유효 선취매 종목이 없습니다. 계절성 화면에서 필터를 완화해 보세요.</p>
+      `;
+      $("#btn-open-seasonality-from-glance")?.addEventListener("click", () => switchView("seasonality"));
+      return;
+    }
+
+    const cards = picks.map((p) => {
+      const rank = Number(p.rank) || 0;
+      const wr = ((p.win_rate || 0) * 100).toFixed(0);
+      const ret = ((p.expected_p50 || 0) * 100).toFixed(1);
+      const close = p.last_close == null ? "—" : `${Number(p.last_close).toLocaleString("ko-KR")}원`;
+      const chg = Number(p.chg_pct || 0);
+      const chgCls = chg > 0 ? "up" : chg < 0 ? "down" : "";
+      const chgTxt = `${chg > 0 ? "+" : ""}${(chg * 100).toFixed(2)}%`;
+      return `
+        <div class="glance-pick-card rank-${rank}" data-ticker="${escapeHtml(p.ticker || "")}">
+          <div class="glance-pick-head">
+            <span class="chip" style="background:#eab308; color:#0f172a; font-weight:900; font-size:11px;">${glanceRankBadge(rank)}</span>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11px;">${escapeHtml(p.entry_stage_label || p.window_name || "")}</span>
+          </div>
+          <h3 class="glance-pick-name">${escapeHtml(p.company || p.ticker || "")}</h3>
+          <div class="glance-pick-meta">${escapeHtml(p.market || "")} ${escapeHtml(p.ticker || "")}</div>
+          <div class="glance-pick-price">
+            <b>${close}</b>
+            <span class="${chgCls}">${chgTxt}</span>
+          </div>
+          <div class="glance-pick-kpis">
+            <span>승률 <b style="color:#facc15;">${wr}%</b></span>
+            <span>5년 <b class="text-emerald-400">+${ret}%</b></span>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    box.innerHTML = `
+      <div class="seasonality-widget-head">
+        <div class="seasonality-widget-title">⚡ 오늘의 선취매 Top 3</div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">전종목 스캔 ${scanned.toLocaleString("ko-KR")}/${listed.toLocaleString("ko-KR")}${mktBits ? ` · ${mktBits}` : ""}</span>
+          ${asOf ? `<span class="meta">시세 ${escapeHtml(asOf)}</span>` : ""}
+          <button type="button" class="ghost small" id="btn-open-seasonality-from-glance">전체 보기 →</button>
+        </div>
+      </div>
+      <div class="glance-top3-grid">${cards}</div>
+    `;
+    $("#btn-open-seasonality-from-glance")?.addEventListener("click", () => switchView("seasonality"));
+    box.querySelectorAll(".glance-pick-card").forEach((card) => {
+      card.addEventListener("click", () => openGlancePlaybook(card.dataset.ticker));
+    });
+  } catch (err) {
+    box.innerHTML = `<p class="hint" style="margin:0;">선취매 Top 3를 불러오지 못했습니다. ${escapeHtml(err.message || "")}</p>`;
+  }
+}
+
+async function openGlancePlaybook(ticker) {
+  const code = String(ticker || "").padStart(6, "0");
+  if (!code || code === "000000") return;
+  try {
+    const data = await api(`/api/seasonality/discovery/${code}?lookback_years=${currentV11Lookback || 5}`);
+    const match = (data.patterns || [])[0];
+    if (match) {
+      openDiscoveryDetailModal(match);
+      return;
+    }
+  } catch (_) {
+    /* fall through to stock drawer */
+  }
+  openStock(code).catch((err) => alert(err.message));
+}
+
 function renderDashDna(rows) {
   const box = $("#dash-dna-box");
   if (!box) return;
@@ -2425,6 +2522,7 @@ async function loadDash() {
   dashRows = top.rows || [];
   renderKpis(status, dashRows);
   renderChampions(dashRows);
+  loadGlanceTop3().catch(() => {});
   renderDashDna(dashRows);
   renderTop20(dashRows);
   renderQuality(status.quality, guideCache, status.freshness);
@@ -6944,12 +7042,13 @@ async function loadAIExplanations() {
   const res = await api(`/api/seasonality/discovery?horizon_days=${currentV11Horizon}&lookback_years=${currentV11Lookback}&exclude_expired=${currentV11ExcludeExpired}`);
   const rows = res.rows || [];
 
+  const lookbackLabel = currentV11Lookback > 0 ? `최근 ${currentV11Lookback}개년` : "전체 기간";
   if (!rows.length) {
-    container.innerHTML = `<div class="text-center text-slate-400 py-8">분석된 AI 이벤트 설명 데이터가 없습니다.</div>`;
+    container.innerHTML = `<div class="text-center text-slate-400 py-8">분석된 AI 이벤트 설명 데이터가 없습니다. (${lookbackLabel} · 진입 ${currentV11Horizon}일)</div>`;
     return;
   }
 
-  container.innerHTML = rows.slice(0, 30).map((r) => {
+  const cards = rows.slice(0, 30).map((r) => {
     const failedListHtml = (r.failed_analysis || []).map((f) => `<li style="color:#fca5a5; font-size:12px;">${escapeHtml(f)}</li>`).join("");
 
     return `
@@ -6988,6 +7087,14 @@ async function loadAIExplanations() {
       </div>
     `;
   }).join("");
+
+  container.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+      <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">${lookbackLabel} · 진입 ${currentV11Horizon}일 · ${rows.length}건 중 상위 30</span>
+      <span class="meta">실패 연도·무효화 조건은 종목별 반복 상승 구간의 공통 이벤트를 역추적한 결과입니다.</span>
+    </div>
+    ${cards}
+  `;
 }
 
 function setupV11SeasonalityUI() {
@@ -7433,7 +7540,14 @@ async function loadSeasonality() {
   seasonalityRows = data.rows || [];
 
   const countBadge = $("#seasonality-count-badge");
-  if (countBadge) countBadge.textContent = `${currentSeasonalityMonth}월 조건 부합 ${seasonalityRows.length}종목`;
+  if (countBadge) {
+    const scanned = data.universe_scanned || seasonalityRows.length;
+    const listed = data.universe_listed || scanned;
+    const kosdaq = (data.markets || {}).KOSDAQ;
+    const kospi = (data.markets || {}).KOSPI;
+    const mkt = [kospi != null ? `KOSPI ${kospi}` : null, kosdaq != null ? `KOSDAQ ${kosdaq}` : null].filter(Boolean).join(" · ");
+    countBadge.textContent = `${currentSeasonalityMonth}월 조건 부합 ${seasonalityRows.length}종목 · 전종목 스캔 ${scanned}/${listed}${mkt ? ` (${mkt})` : ""}`;
+  }
 
   renderSeasonalityTable();
 }
@@ -7464,7 +7578,7 @@ function renderSeasonalityTable() {
     }).join(" ");
 
     return `
-      <tr data-ticker="${escapeHtml(r.ticker)}" class="clickable-row">
+      <tr data-ticker="${escapeHtml(r.ticker)}" data-index="${idx}" class="clickable-row">
         <td>${idx + 1}</td>
         <td>
           <b>${escapeHtml(r.company || r.ticker)}</b>
@@ -7485,30 +7599,12 @@ function renderSeasonalityTable() {
     `;
   }).join("");
 
-  // Bind hover on status pills
-  tbody.querySelectorAll(".status-pill").forEach((pill) => {
-    pill.addEventListener("mouseenter", (e) => {
-      const st = pill.dataset.status || "ACTIVE";
-      showStatusPopover(st, e);
-    });
-    pill.addEventListener("mousemove", (e) => {
-      const st = pill.dataset.status || "ACTIVE";
-      showStatusPopover(st, e);
-    });
-    pill.addEventListener("mouseleave", () => {
-      hideStatusPopover();
-    });
-  });
-
-  // Bind clicks to open rich Playbook Detail Modal
   tbody.querySelectorAll("tr.clickable-row").forEach((tr) => {
     tr.addEventListener("click", (e) => {
       if (e.target.closest(".btn-seasonality-ai")) return;
       const idx = parseInt(tr.dataset.index, 10);
-      const rowData = discoveryRows[idx];
-      if (rowData) {
-        openDiscoveryDetailModal(rowData);
-      }
+      const rowData = Number.isFinite(idx) ? seasonalityRows[idx] : null;
+      if (rowData) openHeatmapPlaybook(rowData);
     });
   });
 
@@ -7523,6 +7619,24 @@ function renderSeasonalityTable() {
       }
     });
   });
+}
+
+async function openHeatmapPlaybook(row) {
+  const code = String(row?.ticker || "").padStart(6, "0");
+  if (!code || code === "000000") return;
+  const month = Number(row.target_month);
+  try {
+    const data = await api(`/api/seasonality/discovery/${code}?lookback_years=${currentV11Lookback || 5}`);
+    const patterns = data.patterns || [];
+    const match = patterns.find((p) => parseInt(String(p.window_name || "").replace("월", ""), 10) === month) || patterns[0];
+    if (match) {
+      openDiscoveryDetailModal(match);
+      return;
+    }
+  } catch (_) {
+    /* fall through to stock drawer */
+  }
+  openStock(code).catch((err) => alert(err.message));
 }
 
 function setupSeasonalityUI() {

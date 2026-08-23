@@ -1368,9 +1368,10 @@ def api_seasonality_scan_get(
     preset: str | None = None,
     query: str | None = None,
 ) -> dict[str, Any]:
-    from kr_quant.strategy.seasonality import scan_seasonality, EVENT_PRESETS
+    from kr_quant.strategy.seasonality import scan_seasonality, EVENT_PRESETS, seasonality_universe_stats
 
     s = load_settings()
+
     rows = scan_seasonality(
         s,
         target_month=month,
@@ -1379,12 +1380,16 @@ def api_seasonality_scan_get(
         preset=preset,
         query=query,
     )
+    stats = seasonality_universe_stats(s)
     return {
         "ok": True,
         "target_month": month or pd.Timestamp.now().month,
         "count": len(rows),
         "presets": EVENT_PRESETS,
         "rows": rows,
+        "universe_scanned": stats["universe_scanned"],
+        "universe_listed": stats["universe_listed"],
+        "markets": stats["markets"],
     }
 
 

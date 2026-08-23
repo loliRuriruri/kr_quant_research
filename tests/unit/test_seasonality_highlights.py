@@ -16,8 +16,17 @@ def test_get_seasonality_highlights():
     assert "current_champions" in data
     assert "upcoming_champions" in data
     assert "active_presets" in data
+    assert "glance_top3" in data
     assert len(data["current_champions"]) <= 3
     assert len(data["upcoming_champions"]) <= 3
+    assert len(data["glance_top3"]) <= 3
+    assert data["universe_scanned"] > 100
+    if data["glance_top3"]:
+        pick = data["glance_top3"][0]
+        assert pick["rank"] == 1
+        assert pick["ticker"]
+        assert pick["company"]
+        assert pick.get("entry_stage") in {"TODAY_ENTRY", "PRE_ENTRY_15", "PRE_ENTRY_30", "ACCUMULATE_60"}
 
 
 def test_api_seasonality_highlights():
@@ -29,3 +38,5 @@ def test_api_seasonality_highlights():
     d = json_data["data"]
     assert "current_champions" in d
     assert "upcoming_champions" in d
+    assert "glance_top3" in d
+    assert "universe_scanned" in d

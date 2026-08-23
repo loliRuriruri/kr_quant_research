@@ -50,6 +50,76 @@ def cache_path(settings: Settings) -> Path:
     return settings.root / "data" / "cache" / "seasonality_cache.json"
 
 
+_TICKER_META_CACHE: dict[str, Any] = {"ts": 0.0, "map": {}}
+PRE_ENTRY_STAGE_WEIGHT: dict[str, int] = {
+    "TODAY_ENTRY": 100,
+    "PRE_ENTRY_15": 80,
+    "PRE_ENTRY_30": 60,
+    "ACCUMULATE_60": 40,
+    "RALLY_ACTIVE": 30,
+    "EXIT_PEAK": 10,
+}
+
+
+def ticker_meta_map(settings: Settings) -> dict[str, dict[str, str]]:
+    """Unique ticker → {company, market} from staged prices. Cached 1 hour."""
+    now = time.time()
+    cached = _TICKER_META_CACHE.get("map") or {}
+    if cached and now - float(_TICKER_META_CACHE.get("ts") or 0) < 3600:
+        return cached
+
+    prices = _prices(settings)
+    out: dict[str, dict[str, str]] = {}
+    if prices is None or prices.empty or "ticker" not in prices.columns:
+        _TICKER_META_CACHE["ts"] = now
+        _TICKER_META_CACHE["map"] = out
+        return out
+
+    cols = [c for c in ("ticker", "company", "market") if c in prices.columns]
+    uniq = prices[cols].drop_duplicates(subset=["ticker"], keep="last")
+    for row in uniq.itertuples(index=False):
+        ticker = str(getattr(row, "ticker", "")).zfill(6)
+        company = str(getattr(row, "company", "") or "") if "company" in cols else ""
+        market = str(getattr(row, "market", "") or "KOSPI") if "market" in cols else "KOSPI"
+        if not market or market == "nan":
+            market = "KOSPI"
+        out[ticker] = {"company": company, "market": market}
+
+    _TICKER_META_CACHE["ts"] = now
+    _TICKER_META_CACHE["map"] = out
+    return out
+
+
+def _apply_market_meta(stock: dict[str, Any], meta: dict[str, dict[str, str]]) -> None:
+    info = meta.get(str(stock.get("ticker") or "").zfill(6))
+    if not info:
+        return
+    if info.get("market"):
+        stock["market"] = info["market"]
+    if info.get("company") and (not stock.get("company") or stock.get("company") == stock.get("ticker")):
+        stock["company"] = info["company"]
+
+
+def seasonality_universe_stats(settings: Settings) -> dict[str, Any]:
+    db = build_seasonality_database(settings)
+    stocks = db.get("stocks") or {}
+    markets: dict[str, int] = {}
+    for s in stocks.values():
+        m = str(s.get("market") or "UNKNOWN")
+        markets[m] = markets.get(m, 0) + 1
+    listed = ticker_meta_map(settings)
+    listed_markets: dict[str, int] = {}
+    for info in listed.values():
+        m = str(info.get("market") or "UNKNOWN")
+        listed_markets[m] = listed_markets.get(m, 0) + 1
+    return {
+        "universe_scanned": len(stocks),
+        "universe_listed": len(listed),
+        "markets": markets,
+        "listed_markets": listed_markets,
+    }
+
+
 def calculate_stock_seasonality(hist: pd.DataFrame) -> list[dict[str, Any]]:
     """Calculates 12 months win rate, avg return, median return, and years count for a single stock dataframe."""
     if hist.empty or len(hist) < 20:
@@ -113,6 +183,9 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
         try:
             cached = json.loads(c_path.read_text(encoding="utf-8"))
             if time.time() - cached.get("updated_at", 0) < 86400 * 3 and len(cached.get("stocks", {})) > 100:
+                meta = ticker_meta_map(settings)
+                for stock in (cached.get("stocks") or {}).values():
+                    _apply_market_meta(stock, meta)
                 return cached
         except Exception:
             pass
@@ -128,12 +201,13 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
     df["month"] = df["date"].dt.month
     df["ticker"] = df["ticker"].astype(str).str.zfill(6)
 
-    names_map: dict[str, dict[str, str]] = {}
-    if "company" in df.columns:
-        for _, row in df[["ticker", "company"]].drop_duplicates(subset=["ticker"]).iterrows():
+    names_map: dict[str, dict[str, str]] = ticker_meta_map(settings)
+    if not names_map and "company" in df.columns:
+        cols = [c for c in ("ticker", "company", "market") if c in df.columns]
+        for _, row in df[cols].drop_duplicates(subset=["ticker"]).iterrows():
             names_map[str(row["ticker"]).zfill(6)] = {
                 "company": str(row.get("company") or ""),
-                "market": "KOSPI",
+                "market": str(row.get("market") or "KOSPI") if "market" in cols else "KOSPI",
             }
 
     monthly = df.groupby(["ticker", "year", "month"]).agg(
@@ -315,12 +389,17 @@ def get_seasonality_highlights(settings: Settings) -> dict[str, Any]:
             })
         return out
 
+    stats = seasonality_universe_stats(settings)
     return {
         "current_month": now_m,
         "next_month": next_m,
         "current_champions": _trim(cur_rows, 3),
         "upcoming_champions": _trim(next_rows, 3),
         "active_presets": active_presets,
+        "glance_top3": get_pre_entry_glance(settings, n=3, lookback_years=5),
+        "universe_scanned": stats["universe_scanned"],
+        "universe_listed": stats["universe_listed"],
+        "markets": stats["markets"],
     }
 
 
@@ -541,10 +620,6 @@ from kr_quant.strategy.discovery_engine import pattern_from_month_stat, Seasonal
 from kr_quant.strategy.event_explainer import explain_and_score_pattern
 
 
-from kr_quant.strategy.discovery_engine import pattern_from_month_stat, SeasonalityPattern
-from kr_quant.strategy.event_explainer import explain_and_score_pattern
-
-
 def scan_seasonality_discovery(
     settings: Settings,
     horizon_days: int = 90,
@@ -610,6 +685,10 @@ def scan_seasonality_discovery(
         except Exception:
             pass
 
+    meta = ticker_meta_map(settings)
+    for item in cached_list:
+        _apply_market_meta(item, meta)
+
     # Filter by horizon: target month within today + horizon_days
     now_m = pd.Timestamp.now().month
     target_months = []
@@ -649,3 +728,85 @@ def scan_seasonality_discovery(
 
     filtered.sort(key=lambda x: x["seasonality_score"], reverse=True)
     return filtered
+
+
+def _latest_quotes(settings: Settings, tickers: list[str]) -> dict[str, dict[str, Any]]:
+    wanted = {str(t).zfill(6) for t in tickers if t}
+    if not wanted:
+        return {}
+    prices = _prices(settings)
+    if prices is None or prices.empty or "ticker" not in prices.columns:
+        return {}
+    df = prices.copy()
+    df["ticker"] = df["ticker"].astype(str).str.zfill(6)
+    df = df[df["ticker"].isin(wanted)]
+    if df.empty:
+        return {}
+    date_col = "trade_date" if "trade_date" in df.columns else "date"
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+    df = df.dropna(subset=[date_col]).sort_values(["ticker", date_col])
+    out: dict[str, dict[str, Any]] = {}
+    for ticker, g in df.groupby("ticker"):
+        last = g.iloc[-1]
+        prev = g.iloc[-2] if len(g) >= 2 else last
+        close = float(last["close"]) if pd.notna(last.get("close")) else None
+        prev_close = float(prev["close"]) if pd.notna(prev.get("close")) else close
+        chg = ((close - prev_close) / prev_close) if close and prev_close else 0.0
+        as_of = last[date_col]
+        out[str(ticker)] = {
+            "last_close": round(close, 2) if close is not None else None,
+            "chg_pct": round(float(chg), 4),
+            "as_of": str(as_of.date()) if hasattr(as_of, "date") else str(as_of)[:10],
+        }
+    return out
+
+
+def _pre_entry_cmp(a: dict[str, Any], b: dict[str, Any]) -> int:
+    wa = PRE_ENTRY_STAGE_WEIGHT.get(str(a.get("entry_stage") or ""), 0)
+    wb = PRE_ENTRY_STAGE_WEIGHT.get(str(b.get("entry_stage") or ""), 0)
+    wdiff = wb - wa
+    if abs(wdiff) >= 40:
+        return 1 if wdiff > 0 else (-1 if wdiff < 0 else 0)
+    sa = float(a.get("seasonality_score") or 0)
+    sb = float(b.get("seasonality_score") or 0)
+    diff = sb - sa
+    return 1 if diff > 0 else (-1 if diff < 0 else 0)
+
+
+def get_pre_entry_glance(settings: Settings, n: int = 3, lookback_years: int = 5) -> list[dict[str, Any]]:
+    """Android Glance Top 3 equivalent: stage-weighted pre-entry picks with last price."""
+    from functools import cmp_to_key
+
+    rows = scan_seasonality_discovery(
+        settings,
+        horizon_days=90,
+        lookback_years=lookback_years,
+        exclude_expired=True,
+    )
+    allowed = {k for k, w in PRE_ENTRY_STAGE_WEIGHT.items() if w >= 40}
+    rows = [r for r in rows if r.get("entry_stage") in allowed]
+    rows.sort(key=cmp_to_key(_pre_entry_cmp))
+    top = rows[: max(0, n)]
+    quotes = _latest_quotes(settings, [r.get("ticker") for r in top])
+    glance: list[dict[str, Any]] = []
+    for idx, r in enumerate(top, start=1):
+        q = quotes.get(str(r.get("ticker") or "").zfill(6), {})
+        glance.append({
+            "rank": idx,
+            "ticker": r.get("ticker"),
+            "company": r.get("company"),
+            "market": r.get("market"),
+            "win_rate": r.get("win_rate"),
+            "expected_p50": r.get("expected_p50") or r.get("median_return"),
+            "seasonality_score": r.get("seasonality_score"),
+            "entry_stage": r.get("entry_stage"),
+            "entry_stage_label": r.get("entry_stage_label"),
+            "window_name": r.get("window_name"),
+            "entry_window_str": r.get("entry_window_str"),
+            "exit_window_str": r.get("exit_window_str"),
+            "common_event_cluster": r.get("common_event_cluster"),
+            "last_close": q.get("last_close"),
+            "chg_pct": q.get("chg_pct"),
+            "price_as_of": q.get("as_of"),
+        })
+    return glance

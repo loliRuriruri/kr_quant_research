@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.16.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.17.0" />
 </head>
 <body>
   <aside class="nav">
@@ -40,7 +40,7 @@
     <button class="nav-btn" data-view="run" data-tip="데모, 재계산, KRX 시세, 실데이터 수집을 실행합니다."><span class="nav-icon">⚙️</span><span>실행 파이프라인</span></button>
     <button class="nav-btn" data-view="settings" data-tip="API 키는 이 PC의 .env에만 저장됩니다."><span class="nav-icon">🔑</span><span>API 설정</span></button>
     <div class="nav-foot">
-      <p>KR Quant Research<br />v1.3 Engine</p>
+      <p>KR Quant Research<br />v2.17 Engine</p>
     </div>
   </aside>
 
@@ -414,7 +414,7 @@
             <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">가격 선행형 Discovery · AI 원인 규명</span>
           </div>
           <div class="autocomplete-wrap" style="max-width: 260px;">
-            <input id="seasonality-q" type="text" autocomplete="off" placeholder="종목명 또는 코드 검색" />
+            <input id="seasonality-q" type="text" autocomplete="off" placeholder="KOSPI/KOSDAQ 전종목 검색" />
             <ul id="seasonality-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
           </div>
         </div>
@@ -1101,7 +1101,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.16.0"></script>
+  <script src="/static/app.js?v=2.17.0"></script>
 
     <!-- Discovery Candidate Detail Modal (Mobile Dashboard Integration) -->
     <div id="discovery-detail-modal" class="discovery-modal-overlay hidden">

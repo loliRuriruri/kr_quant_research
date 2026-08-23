@@ -27,6 +27,15 @@ def test_index_and_status():
     assert home.status_code == 200
     assert "KR Quant" in home.text
     assert "Research" in home.text
+    assert "styles.css?v=2.17.0" in home.text
+    assert "app.js?v=2.17.0" in home.text
+    assert "v2.17 Engine" in home.text
+    assert 'id="dash-seasonality-banner"' in home.text
+    assert "KOSPI/KOSDAQ 전종목 검색" in home.text
+    js = client.get("/static/app.js").text
+    assert "function loadGlanceTop3" in js
+    assert "function openHeatmapPlaybook" in js
+    assert "seasonalityRows[idx]" in js
     status = client.get("/api/status")
     assert status.status_code == 200
     body = status.json()
