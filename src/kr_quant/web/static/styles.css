@@ -3825,3 +3825,32 @@ body.modal-open { overflow: hidden; }
   margin-top: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+
+/* Status Hover Popover */
+.status-hover-popover {
+  position: fixed;
+  z-index: 10002;
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 12px 14px;
+  max-width: 340px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.8), 0 0 15px rgba(56, 189, 248, 0.2);
+  pointer-events: none;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #fff;
+  transition: opacity 0.12s ease;
+}
+.status-hover-popover.hidden {
+  display: none !important;
+}
+.status-pill {
+  cursor: help;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.status-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}

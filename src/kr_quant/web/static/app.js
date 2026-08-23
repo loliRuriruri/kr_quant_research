@@ -6693,6 +6693,78 @@ function renderThemeDonutAndRanking(themes) {
 
 
 
+
+const STATUS_HOVER_GUIDE_DATA = {
+  ACTIVE: {
+    title: "🟢 ACTIVE (진입 유효 / 강력 추천)",
+    color: "#10b981",
+    desc: "과거 5~10년 계절성 패턴과 올해 실적(EPS)/수급/상대강도(RS) 3중 검증 완료 (최우선 공략주)",
+    criteria: "계절성 점수 78점 이상 + 과거 승률 70% 이상 + 최근 3M 수익률 양호",
+    action: "권장 선취매 Window 진입 시 분할 매수 및 목표 엑시트 대응 유효",
+    actionColor: "#34d399",
+  },
+  WATCH: {
+    title: "🟡 WATCH (관찰 / 대기)",
+    color: "#eab308",
+    desc: "과거 계절성 패턴은 우수하나, 올해 수급 유입이나 이벤트 촉매 발생 확인 대기 중",
+    criteria: "계절성 점수 68점 이상 또는 최근 3개년 승률 60% 이상",
+    action: "목표 D-Day 도달 시 거래량 급증 및 외인/기관 순매수 전환 확인 후 진입",
+    actionColor: "#fde047",
+  },
+  DISCOVERY: {
+    title: "🟣 DISCOVERY (신규 발굴)",
+    color: "#a855f7",
+    desc: "최근 3~5년간 새롭게 계절성 상승 패턴이 형성된 신규 발굴 후보주",
+    criteria: "표본수 3년 이상 + 승률 67% 이상 + AI 원인 역추적 진행",
+    action: "소액 분할 매수 또는 AI 리포트 분석 후 진입 권장",
+    actionColor: "#c084fc",
+  },
+  WEAKENING: {
+    title: "🟠 WEAKENING (엣지 약화)",
+    color: "#f97316",
+    desc: "과거에는 강했으나 최근 3년간 승률/초과수익이 하락하여 계절성 모멘텀이 둔화된 상태",
+    criteria: "최근 3개년 승률 50% 미만",
+    action: "비중 축소 또는 다른 ACTIVE 종목으로 교체 매매 권장",
+    actionColor: "#fb923c",
+  },
+  BROKEN: {
+    title: "🔴 BROKEN (진입 금지 / 파기)",
+    color: "#ef4444",
+    desc: "최근 3개월간 급락했거나 올해 펀더멘털 악화/실적 쇼크로 계절성 룰이 깨진 종목",
+    criteria: "3개월 수익률 -15% 이하 및 퀀트 종합점수 48점 미만",
+    action: "🚫 신규 매수 절대 금지 및 보유 시 즉시 리스크 관리(손절)",
+    actionColor: "#f87171",
+  },
+};
+
+function showStatusPopover(statusKey, evt) {
+  const popover = $("#status-hover-popover");
+  if (!popover) return;
+  const data = STATUS_HOVER_GUIDE_DATA[statusKey] || STATUS_HOVER_GUIDE_DATA.ACTIVE;
+
+  $("#status-popover-title").textContent = data.title;
+  $("#status-popover-title").style.color = data.color;
+  $("#status-popover-desc").textContent = data.desc;
+  $("#status-popover-criteria").textContent = data.criteria;
+  $("#status-popover-action").textContent = data.action;
+  $("#status-popover-action").style.color = data.actionColor;
+  $("#status-popover-action-lbl").style.color = data.actionColor;
+  popover.style.borderColor = `${data.color}88`;
+
+  // Position popover near mouse
+  const x = Math.min(window.innerWidth - 360, evt.clientX + 12);
+  const y = Math.min(window.innerHeight - 200, evt.clientY + 12);
+  popover.style.left = `${x}px`;
+  popover.style.top = `${y}px`;
+
+  popover.classList.remove("hidden");
+}
+
+function hideStatusPopover() {
+  const popover = $("#status-hover-popover");
+  if (popover) popover.classList.add("hidden");
+}
+
 function openStatusGuideModal() {
   const modal = $("#status-guide-modal");
   if (!modal) return;
@@ -6776,7 +6848,7 @@ async function loadDiscoveryRanked() {
       <tr data-index="${idx}" class="clickable-row">
         <td>${idx + 1}</td>
         <td><span class="stage-pill ${stageCls}">${escapeHtml(r.entry_stage_label || '⚡ 진입')}</span></td>
-        <td><span class="status-pill ${statusCls}">${statusKo}</span></td>
+        <td><span class="status-pill ${statusCls}" data-status="${escapeHtml(r.current_status || 'ACTIVE')}">${statusKo}</span></td>
         <td><span class="grade-badge ${gradeCls}">${escapeHtml(r.grade)}</span></td>
         <td>
           <div style="font-size:13.5px; font-weight:800; color:#fff;">${escapeHtml(r.company || r.ticker)}</div>
@@ -6810,6 +6882,21 @@ async function loadDiscoveryRanked() {
       </tr>
     `;
   }).join("");
+
+  // Bind hover on status pills
+  tbody.querySelectorAll(".status-pill").forEach((pill) => {
+    pill.addEventListener("mouseenter", (e) => {
+      const st = pill.dataset.status || "ACTIVE";
+      showStatusPopover(st, e);
+    });
+    pill.addEventListener("mousemove", (e) => {
+      const st = pill.dataset.status || "ACTIVE";
+      showStatusPopover(st, e);
+    });
+    pill.addEventListener("mouseleave", () => {
+      hideStatusPopover();
+    });
+  });
 
   // Bind clicks to open rich Playbook Detail Modal
   tbody.querySelectorAll("tr.clickable-row").forEach((tr) => {
@@ -7066,6 +7153,21 @@ async function loadInstitutionalRanked() {
       </tr>
     `;
   }).join("");
+
+  // Bind hover on status pills
+  tbody.querySelectorAll(".status-pill").forEach((pill) => {
+    pill.addEventListener("mouseenter", (e) => {
+      const st = pill.dataset.status || "ACTIVE";
+      showStatusPopover(st, e);
+    });
+    pill.addEventListener("mousemove", (e) => {
+      const st = pill.dataset.status || "ACTIVE";
+      showStatusPopover(st, e);
+    });
+    pill.addEventListener("mouseleave", () => {
+      hideStatusPopover();
+    });
+  });
 
   // Bind clicks to open rich Playbook Detail Modal
   tbody.querySelectorAll("tr.clickable-row").forEach((tr) => {
@@ -7331,6 +7433,21 @@ function renderSeasonalityTable() {
       </tr>
     `;
   }).join("");
+
+  // Bind hover on status pills
+  tbody.querySelectorAll(".status-pill").forEach((pill) => {
+    pill.addEventListener("mouseenter", (e) => {
+      const st = pill.dataset.status || "ACTIVE";
+      showStatusPopover(st, e);
+    });
+    pill.addEventListener("mousemove", (e) => {
+      const st = pill.dataset.status || "ACTIVE";
+      showStatusPopover(st, e);
+    });
+    pill.addEventListener("mouseleave", () => {
+      hideStatusPopover();
+    });
+  });
 
   // Bind clicks to open rich Playbook Detail Modal
   tbody.querySelectorAll("tr.clickable-row").forEach((tr) => {

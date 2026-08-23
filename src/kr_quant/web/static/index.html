@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.12.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.13.0" />
 </head>
 <body>
   <aside class="nav">
@@ -1039,7 +1039,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.12.0"></script>
+  <script src="/static/app.js?v=2.13.0"></script>
 
     <!-- Discovery Candidate Detail Modal (Mobile Dashboard Integration) -->
     <div id="discovery-detail-modal" class="discovery-modal-overlay hidden">
@@ -1258,6 +1258,20 @@
         <div style="margin-top:18px; display:flex; justify-content:flex-end;">
           <button type="button" class="btn" id="status-guide-confirm-btn" style="background:#38bdf8; color:#0f172a; font-weight:800; width:100%;">확인 완료</button>
         </div>
+      </div>
+    </div>
+
+
+    <!-- Floating Status Hover Popover -->
+    <div id="status-hover-popover" class="status-hover-popover hidden">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;">
+        <b id="status-popover-title" style="font-size:13px;">—</b>
+        <span style="font-size:10px; color:#94a3b8;">상태 가이드</span>
+      </div>
+      <p id="status-popover-desc" style="margin:0 0 8px; font-size:11.5px; color:#cbd5e1; line-height:1.45;">—</p>
+      <div style="background:rgba(0,0,0,0.35); padding:6px 8px; border-radius:6px; font-size:11px; line-height:1.4;">
+        <div style="color:#94a3b8;"><b style="color:#cbd5e1;">판정:</b> <span id="status-popover-criteria">—</span></div>
+        <div style="margin-top:3px;"><b id="status-popover-action-lbl" style="color:#38bdf8;">대응:</b> <span id="status-popover-action" style="color:#38bdf8;">—</span></div>
       </div>
     </div>
 
