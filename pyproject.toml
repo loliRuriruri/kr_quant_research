@@ -23,6 +23,7 @@ dependencies = [
   "rich>=13",
   "fastapi>=0.115",
   "uvicorn>=0.30",
+  "pysocks>=1.7.1",
 ]
 
 [project.optional-dependencies]

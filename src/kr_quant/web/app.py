@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import sys
+import warnings
+
+# Suppress harmless urllib3 SOCKS proxy dependency warning when Windows system proxy or socks env is present
+warnings.filterwarnings("ignore", message=".*SOCKS support in urllib3.*")
 
 # Suppress harmless Windows asyncio ProactorBasePipeTransport WinError 10022 socket shutdown warning
 if sys.platform == "win32":
