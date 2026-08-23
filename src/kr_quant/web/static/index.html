@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.11.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.12.0" />
 </head>
 <body>
   <aside class="nav">
@@ -478,14 +478,13 @@
                   <th>진입 타이밍</th>
                   <th>상태</th>
                   <th>등급</th>
-                  <th>종목명 (코드)</th>
-                  <th>반복 상승구간</th>
+                  <th style="min-width:140px;">종목명 (코드)</th>
+                  <th style="min-width:160px;">반복 상승구간 (진입 ➔ 엑시트)</th>
                   <th class="sortable" data-sort="seasonality_score">종합 스코어</th>
                   <th>과거 승률</th>
-                  <th>평균 수익률</th>
-                  <th>중간값 Alpha</th>
-                  <th>AI 공통 상승 원인</th>
-                  <th>연도별 트랙 레코드</th>
+                  <th>기대 수익률</th>
+                  <th>초과 Alpha</th>
+                  <th style="min-width:240px;">연도별 실측 트랙 레코드</th>
                   <th>상세</th>
                 </tr>
               </thead>
@@ -1040,7 +1039,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.11.0"></script>
+  <script src="/static/app.js?v=2.12.0"></script>
 
     <!-- Discovery Candidate Detail Modal (Mobile Dashboard Integration) -->
     <div id="discovery-detail-modal" class="discovery-modal-overlay hidden">

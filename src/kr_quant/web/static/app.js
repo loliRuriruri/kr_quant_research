@@ -6779,15 +6779,20 @@ async function loadDiscoveryRanked() {
         <td><span class="status-pill ${statusCls}">${statusKo}</span></td>
         <td><span class="grade-badge ${gradeCls}">${escapeHtml(r.grade)}</span></td>
         <td>
-          <b>${escapeHtml(r.company || r.ticker)}</b>
-          <span class="meta">${escapeHtml(r.ticker)}</span>
+          <div style="font-size:13.5px; font-weight:800; color:#fff;">${escapeHtml(r.company || r.ticker)}</div>
+          <div style="display:flex; align-items:center; gap:4px; margin-top:2px;">
+            <span class="meta" style="font-family:monospace;">${escapeHtml(r.ticker)}</span>
+            <span class="chip" style="font-size:10px; padding:1px 5px; background:#1e293b; color:#94a3b8;">${escapeHtml(r.market || 'KOSPI')}</span>
+          </div>
         </td>
         <td>
-          <b style="color:#38bdf8; font-size:13px;">${escapeHtml(r.window_name)}</b>
-          <span style="font-size:11px; color:#94a3b8; margin-left:4px;">(${r.sample_count}개년)</span>
-          <div style="margin-top:2px; font-size:11px; line-height:1.3;">
-            <span style="color:#38bdf8; font-weight:700;">진입: ${escapeHtml(r.entry_window_str || '—')}</span><br/>
-            <span style="color:#fbbf24; font-weight:700;">엑시트: ${escapeHtml(r.exit_window_str || '—')}</span>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <b style="color:#38bdf8; font-size:13.5px; font-weight:800;">${escapeHtml(r.window_name)}</b>
+            <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(56,189,248,0.15); color:#38bdf8;">${r.sample_count}개년 검증</span>
+          </div>
+          <div style="margin-top:4px; font-size:11.5px; line-height:1.4;">
+            <span style="color:#38bdf8; font-weight:700;">📈 진입: ${escapeHtml(r.entry_window_str || '—')}</span><br/>
+            <span style="color:#fbbf24; font-weight:700;">➔ 엑시트: ${escapeHtml(r.exit_window_str || '—')}</span>
           </div>
         </td>
         <td>
@@ -6796,16 +6801,11 @@ async function loadDiscoveryRanked() {
         <td class="font-bold">${wr}%</td>
         <td class="${r.median_return > 0 ? 'up font-bold' : 'down'}">${r.median_return > 0 ? '+' : ''}${avgRet}%</td>
         <td class="font-bold text-emerald-400">${r.median_alpha > 0 ? '+' : ''}${alpha}%</td>
-        <td style="max-width:200px; font-size:12px; color:#cbd5e1;">
-          <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(r.common_event_cluster)}">
-            ${escapeHtml(r.common_event_cluster)}
-          </div>
+        <td>
+          <div class="year-track-bar" style="flex-wrap:wrap; gap:4px;">${yearsTrackHtml}</div>
         </td>
         <td>
-          <div class="year-track-bar">${yearsTrackHtml}</div>
-        </td>
-        <td>
-          <button type="button" class="ghost small btn-seasonality-ai" data-ticker="${escapeHtml(r.ticker)}" data-company="${escapeHtml(r.company || r.ticker)}">🤖 AI</button>
+          <button type="button" class="btn small btn-seasonality-detail" data-ticker="${escapeHtml(r.ticker)}" style="font-size:11px; padding:2px 8px; background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.35);">🎯 플레이북</button>
         </td>
       </tr>
     `;
