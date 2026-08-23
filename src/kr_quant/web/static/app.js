@@ -791,7 +791,7 @@ const titles = {
   us13f: ["월가 대가 포트폴리오 (13F)", "워런 버핏·마이클 버리 등 글로벌 대가들의 SEC 13F 보유 비중 & 신규 편입 종목"],
   strategy: ["전략·백테스트", "일봉 기반 퀀트 전략 백테스트 및 검증"],
   investor: ["메이저 수급 & 지분", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
-  sunzi: ["손자 五事 · 반대심문", "전장 조건(道天地將法)과 지금 싸울지를 묻는 전략 검토"],
+  sunzi: ["양웬리 참모실", "손자가 센 전장을, 양웬리가 ‘이 싸움이 필요한가’로 해석합니다"],
   nps: ["국민연금 5%", "OpenDART 국민연금 5% 이상 대량보유 공시 추적"],
   seasonality: ["계절성·캘린더 퀀트", "가격 선행형 Discovery · 10대 정량 이벤트 · AI 원인 역추적 스크리너"],
 };
@@ -922,6 +922,9 @@ function switchView(name) {
     } else if (name === "seasonality") {
       modeBadge.className = "top-mode-badge quant-active";
       modeBadge.innerHTML = "📅 <b>계절성 & 캘린더 엔진</b>";
+    } else if (name === "sunzi") {
+      modeBadge.className = "top-mode-badge research-active";
+      modeBadge.innerHTML = "🍵 <b>양웬리가 손자를 읽는 중</b>";
     } else if (name === "run" || name === "settings") {
       modeBadge.className = "top-mode-badge system-active";
       modeBadge.innerHTML = "⚙️ <b>시스템 관리</b>";
@@ -2060,13 +2063,13 @@ function criticCard(panel) {
   ]
     .map(([k, v]) => `${k} ${fmt(v, 0)}`)
     .join(" · ");
-  return `<article class="intro">
-    <h3>전략 검토 ${escapeHtml(panel.posture_ko || panel.posture)} · ${fmt(panel.score, 0)}</h3>
-    <p>${escapeHtml(panel.comment || "")}</p>
+  return `<article class="intro yang-brief">
+    <h3>🍵 양웬리의 해석 · ${escapeHtml(panel.posture_ko || panel.posture)} ${fmt(panel.score, 0)}</h3>
+    <p class="yang-voice">${escapeHtml(panel.comment || "")}</p>
     <p class="meta">${escapeHtml(axisLine)}</p>
-    <p>합의된 이야기: ${escapeHtml(panel.consensus || "")}</p>
-    <p>다른 보기: ${escapeHtml(panel.variant || "")}</p>
-    ${panel.no_action_required ? "<p><b>지금은 움직이지 않는 쪽이 낫습니다.</b></p>" : ""}
+    <p><b>시장이 이미 아는 이야기</b> ${escapeHtml(panel.consensus || "")}</p>
+    <p><b>다른 보기</b> ${escapeHtml(panel.variant || "")}</p>
+    ${panel.no_action_required ? "<p><b>오늘은 움직이지 않는 쪽이 이깁니다.</b></p>" : ""}
     <p class="hint">${escapeHtml(panel.disclaimer || "")}</p>
   </article>`;
 }
@@ -3270,11 +3273,11 @@ function sunziTone(score) {
 function postureMeta(code) {
   const key = String(code || "OBSERVE");
   const map = {
-    ENGAGE: { ko: "착수", cls: "posture-engage", hint: "연구 우선순위가 비교적 높습니다. 매수가 아닙니다." },
-    WAIT: { ko: "대기", cls: "posture-wait", hint: "논리는 남아 있어도 지금 위험을 질 이유는 약합니다." },
-    OBSERVE: { ko: "관찰", cls: "posture-observe", hint: "관심은 가지만 정보가 더 필요합니다." },
-    RETREAT: { ko: "후퇴", cls: "posture-retreat", hint: "보상 대비 위험이 나빠진 쪽으로 읽습니다." },
-    AVOID: { ko: "회피", cls: "posture-avoid", hint: "法 미달이나 구조적 흠이 있어 착수하지 않습니다." },
+    ENGAGE: { ko: "착수", cls: "posture-engage", hint: "조건은 맞습니다. 출진 명령은 아닙니다." },
+    WAIT: { ko: "대기", cls: "posture-wait", hint: "오늘은 싸울 날이 아닙니다." },
+    OBSERVE: { ko: "관찰", cls: "posture-observe", hint: "정보가 부족하면 가만히 있는 쪽이 낫습니다." },
+    RETREAT: { ko: "후퇴", cls: "posture-retreat", hint: "질 이유가 더 잘 보입니다." },
+    AVOID: { ko: "회피", cls: "posture-avoid", hint: "法이 안 되면 그 전쟁은 시작하지 않습니다." },
   };
   return map[key] || map.OBSERVE;
 }
@@ -3288,16 +3291,15 @@ function postureChip(r) {
 async function loadSunzi() {
   const box = $("#sunzi-box");
   if (!box) return;
-  box.innerHTML = "<p>五事 오버레이와 전략 반대심문을 계산하는 중…</p>";
+  box.innerHTML = "<p>손자의 전장을 세고, 양웬리가 해석하는 중입니다…</p>";
   const data = await api("/api/sunzi?n=40");
   if (!data.configured) {
     box.innerHTML = `<p class="hint">${escapeHtml(data.error || "결과가 없습니다. 실행 파이프라인에서 재계산을 먼저 하세요.")}</p>`;
     return;
   }
   const tian = data.tian || {};
-  const legend = (data.legend || [])
-    .map((x) => `<li><b>${escapeHtml(x.han)} ${escapeHtml(x.ko)}</b> — ${escapeHtml(x.where)}</li>`)
-    .join("");
+  const briefing = data.briefing || {};
+  const aspects = data.aspects || [];
   const rows = data.rows || [];
   const postures = data.postures || {};
   const counts = ["ENGAGE", "WAIT", "OBSERVE", "RETREAT", "AVOID"].map((k) => ({
@@ -3307,34 +3309,60 @@ async function loadSunzi() {
   }));
   if (currentView === "sunzi") {
     setPageAsOf(
-      `天 ${tian.regime_ko || "—"} · 재무적격 ${data.fa_pass_n || 0}/${data.n || 0} · 착수 ${postures.ENGAGE || 0}`,
-      "五事와 반대심문은 조사 오버레이입니다. Quant 순위를 바꾸지 않습니다."
+      `天 ${tian.regime_ko || "—"} · 法 통과 ${data.fa_pass_n || 0}/${data.n || 0} · 대기 ${postures.WAIT || 0}`,
+      "손자 전장 조건과 양웬리의 해석은 조사 오버레이입니다. Quant 순위를 바꾸지 않습니다."
     );
   }
+  const aspectCards = aspects
+    .map((a) => {
+      const yang = a.yang || "";
+      const sunzi = a.sunzi || "";
+      return `<div class="five-card sunzi-aspect">
+        <span>${escapeHtml(a.han || "")} ${escapeHtml(a.ko || "")}</span>
+        <b class="${sunziTone(a.score)}">${fmt(a.score, 0)}</b>
+        <p class="sunzi-q">${escapeHtml(sunzi)}</p>
+        <p class="yang-voice">${escapeHtml(yang)}</p>
+        ${a.note ? `<p class="meta">${escapeHtml(a.note)}</p>` : ""}
+      </div>`;
+    })
+    .join("");
   box.innerHTML = `
-    <div class="five-grid">
-      <div class="five-card"><span>天 시장</span><b>${fmt(tian.score, 0)}</b><p>${escapeHtml(tian.regime_ko || "")}</p></div>
-      <div class="five-card"><span>🛡️ 재무적격</span><b>${data.fa_pass_n || 0}</b><p>A-후보 / ${data.n || 0}종목</p></div>
+    <div class="sunzi-concept">
+      <div>
+        <span class="sunzi-concept-k">손자가 센다</span>
+        <p>道 정렬 · 天 시장 · 地 업종 · 將 자본배분 · 法 규율. 지금 전장이 유리한가만 묻습니다.</p>
+      </div>
+      <div>
+        <span class="sunzi-concept-k yang">양웬리가 읽는다</span>
+        <p>그 다섯 숫자를 ‘이 싸움이 필요한가’로 번역합니다. 이기려고 출진하는 참모가 아닙니다.</p>
+      </div>
+    </div>
+    <div class="five-grid sunzi-aspect-grid">${aspectCards}</div>
+    <article class="yang-brief">
+      <h3>🍵 ${escapeHtml(briefing.title || "양웬리의 오늘 브리핑")}</h3>
+      <p class="sunzi-q">${escapeHtml(briefing.sunzi_line || "")}</p>
+      <p class="yang-voice">${escapeHtml(briefing.yang_line || "")}</p>
+      <p class="hint">${escapeHtml(data.disclaimer || briefing.voice || "")}</p>
+    </article>
+    <div class="sunzi-posture-row">
       ${counts.map((c) => `<div class="five-card ${c.cls}"><span>${escapeHtml(c.ko)}</span><b>${c.n}</b><p>${escapeHtml(c.hint)}</p></div>`).join("")}
     </div>
-    <p class="hint">${escapeHtml(data.disclaimer || "")}</p>
-    <ul>${legend}</ul>
     <div class="table-wrap">
       <table data-scope="sunzi">
         <thead>
           <tr>
             <th class="sortable" data-sort="quant_rank">#</th>
             <th class="sortable" data-sort="company">종목</th>
-            <th class="sortable" data-sort="posture_ko">자세</th>
-            <th class="sortable" data-sort="critic_score">반대심문</th>
+            <th class="sortable" data-sort="posture_ko">참모 의견</th>
+            <th class="sortable" data-sort="critic_score">해석</th>
             <th class="sortable" data-sort="quant_score">Quant</th>
             <th class="sortable" data-sort="dao">道</th>
             <th class="sortable" data-sort="tian">天</th>
             <th class="sortable" data-sort="di">地</th>
             <th class="sortable" data-sort="jiang">將</th>
-            <th class="sortable has-tip" data-sort="fa" data-tip="손자병법 法 (재무건전성·리스크 규율 게이트 통과 여부)">法</th>
+            <th class="sortable has-tip" data-sort="fa" data-tip="손자 法 — 데이터·리스크·공시 규율">法</th>
             <th>규율</th>
-            <th>다른 보기</th>
+            <th>양웬리 한줄</th>
           </tr>
         </thead>
         <tbody>
@@ -3352,7 +3380,7 @@ async function loadSunzi() {
             <td class="num ${sunziTone(r.jiang)}">${fmt(r.jiang, 0)}</td>
             <td class="num ${sunziTone(r.fa)}">${fmt(r.fa, 0)}</td>
             <td>${faChip(r)}</td>
-            <td class="meta">${escapeHtml((r.variant || "").slice(0, 48))}</td>
+            <td class="yang-line">${escapeHtml((r.critic_comment || r.variant || "").slice(0, 72))}</td>
           </tr>`
             )
             .join("")}

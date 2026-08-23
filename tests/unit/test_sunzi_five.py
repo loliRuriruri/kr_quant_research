@@ -4,7 +4,7 @@ from kr_quant.ownership.nps import is_nps_holder, parse_majorstock
 import numpy as np
 from fastapi.testclient import TestClient
 
-from kr_quant.sunzi.critic import POSTURE_KO, critic_panel
+from kr_quant.sunzi.critic import POSTURE_KO, compose_yang_briefing, critic_panel
 from kr_quant.sunzi.five import build_sunzi_board, di_panel, five_aspects, tian_panel
 from kr_quant.web.app import app
 from kr_quant.settings import load_settings
@@ -69,6 +69,19 @@ def test_critic_handles_empty_numpy_risk_flags():
     assert panel["used_in_quant"] is False
 
 
+def test_yang_briefing_interprets_risk_off():
+    brief = compose_yang_briefing(
+        {"regime": "RISK_OFF", "regime_ko": "위험회피", "score": 38},
+        {"WAIT": 38, "ENGAGE": 0, "OBSERVE": 0, "RETREAT": 0, "AVOID": 2},
+        40,
+        39,
+        {"dao": 72, "fa": 90},
+    )
+    assert "손자" in brief["sunzi_line"]
+    assert "양웬리" in brief["yang_line"]
+    assert "위험회피" in brief["sunzi_line"]
+
+
 def test_api_sunzi_board_returns_postures():
     client = TestClient(app)
     res = client.get("/api/sunzi?n=12")
@@ -84,9 +97,14 @@ def test_api_sunzi_board_returns_postures():
     assert "dao" in row
     assert row.get("posture") in POSTURE_KO
     assert row.get("critic_score") is not None
+    assert "briefing" in data
+    assert "yang_line" in data["briefing"]
+    assert len(data.get("aspects") or []) == 5
     board = build_sunzi_board(load_settings(), n=8)
     assert board["configured"] is True
     assert board["rows"]
+    assert board["briefing"]["yang_line"]
+    assert {a["id"] for a in board["aspects"]} == {"dao", "tian", "di", "jiang", "fa"}
 
 
 def test_signed_streak_and_turn():

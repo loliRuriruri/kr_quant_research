@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.17.1" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.17.2" />
 </head>
 <body>
   <aside class="nav">
@@ -33,14 +33,14 @@
     <button class="nav-btn" data-view="watch" data-tip="나만의 포트폴리오 팩터 분석 및 발간된 AI 심층 리포트 통합 보관함입니다."><span class="nav-icon">⭐</span><span>관심종목 & AI리포트</span></button>
     <div class="nav-group">🏛️ Global Research</div>
     <button class="nav-btn" data-view="us13f" data-tip="워런 버핏, 마이클 버리 등 글로벌 대가들의 분기별 SEC 13F 보유 지분 및 신규 매수 시각화입니다."><span class="nav-icon">🏛️</span><span>월가 대가 포트폴리오 (13F)</span></button>
-    <button class="nav-btn" data-view="sunzi" data-tip="손자 道天地將法 전장 조건과, 굳이 지금 싸울지를 묻는 전략 반대심문입니다. Quant 순위를 바꾸지 않습니다."><span class="nav-icon">📜</span><span>손자 五事</span></button>
+    <button class="nav-btn" data-view="sunzi" data-tip="손자가 道·天·地·將·法으로 전장을 세면, 양웬리가 ‘이 싸움이 필요한가’로 해석합니다. Quant 순위는 바꾸지 않습니다."><span class="nav-icon">🍵</span><span>양웬리 참모실</span></button>
     <button class="nav-btn hidden" data-view="reports"><span class="nav-icon">📑</span><span>AI 리포트</span></button>
     <button class="nav-btn hidden" data-view="nps">국민연금 5%</button>
     <div class="nav-group">⚙️ System</div>
     <button class="nav-btn" data-view="run" data-tip="데모, 재계산, KRX 시세, 실데이터 수집을 실행합니다."><span class="nav-icon">⚙️</span><span>실행 파이프라인</span></button>
     <button class="nav-btn" data-view="settings" data-tip="API 키는 이 PC의 .env에만 저장됩니다."><span class="nav-icon">🔑</span><span>API 설정</span></button>
     <div class="nav-foot">
-      <p>KR Quant Research<br />v2.17.1 Engine</p>
+      <p>KR Quant Research<br />v2.17.2 Engine</p>
     </div>
   </aside>
 
@@ -261,13 +261,13 @@
     <section id="view-sunzi" class="view hidden">
       <article class="card">
         <div class="card-h">
-          <h2>손자 五事 · 전략 반대심문</h2>
+          <h2>손자를 읽는 양웬리</h2>
           <div class="actions">
-            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">Quant 합산 없음</span>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">Quant 합산 없음 · 착수≠매수</span>
             <button class="ghost" id="sunzi-refresh">새로고침</button>
           </div>
         </div>
-        <p class="hint">손자 道·天·地·將·法은 지금 전장 조건이고, 그 위 반대심문은 “좋아 보여도 지금 위험을 질 이유가 있는가”를 묻습니다. 착수=매수가 아닙니다.</p>
+        <p class="hint">손자는 전장 조건을 셉니다. 양웬리는 그 숫자를 보고, 굳이 오늘 싸울지를 묻습니다.</p>
         <div id="sunzi-box" class="quality"></div>
       </article>
     </section>
@@ -1102,7 +1102,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.17.1"></script>
+  <script src="/static/app.js?v=2.17.2"></script>
 
     <!-- Discovery Candidate Detail Modal (Mobile Dashboard Integration) -->
     <div id="discovery-detail-modal" class="discovery-modal-overlay hidden">

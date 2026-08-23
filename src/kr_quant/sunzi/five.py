@@ -7,7 +7,7 @@ from typing import Any
 
 from kr_quant.settings import Settings
 from kr_quant.sunzi.alignment import dao_panel, jiang_panel
-from kr_quant.sunzi.critic import critic_panel
+from kr_quant.sunzi.critic import ASPECT_YANG, compose_yang_briefing, critic_panel
 from kr_quant.sunzi.fa import annotate_fa, fa_gate
 
 _TIAN_CACHE: dict[str, Any] = {"at": 0.0, "panel": None}
@@ -238,6 +238,8 @@ def build_sunzi_board(settings: Settings, n: int = 40) -> dict[str, Any]:
             "configured": False,
             "error": "스크리닝 결과가 없습니다. 재계산을 먼저 실행하세요.",
             "tian": tian,
+            "aspects": [dict(spec, score=None, note="") for spec in ASPECT_YANG],
+            "briefing": compose_yang_briefing(tian, {}, 0, 0, {}),
             "rows": [],
         }
     df = pd.read_parquet(path)
@@ -288,23 +290,46 @@ def build_sunzi_board(settings: Settings, n: int = 40) -> dict[str, Any]:
     for row in rows:
         key = str(row.get("posture") or "OBSERVE")
         postures[key] = postures.get(key, 0) + 1
+
+    def _avg(key: str) -> float | None:
+        vals = [float(r[key]) for r in rows if r.get(key) is not None]
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    aspect_scores = {
+        "dao": _avg("dao"),
+        "tian": tian.get("score"),
+        "di": _avg("di"),
+        "jiang": _avg("jiang"),
+        "fa": _avg("fa"),
+    }
+    aspects = []
+    for spec in ASPECT_YANG:
+        item = dict(spec)
+        item["score"] = aspect_scores.get(spec["id"])
+        if spec["id"] == "fa":
+            item["note"] = f"적격 {passed}/{len(rows)}"
+        elif spec["id"] == "tian":
+            item["note"] = str(tian.get("regime_ko") or "")
+        else:
+            item["note"] = "상위 후보 평균"
+        aspects.append(item)
+    briefing = compose_yang_briefing(tian, postures, len(rows), passed, aspect_scores)
     return {
         "used_in_quant": False,
         "configured": True,
         "n": len(rows),
         "fa_pass_n": passed,
         "tian": tian,
+        "aspects": aspects,
+        "briefing": briefing,
         "postures": postures,
         "rows": rows,
         "legend": [
-            {"id": "dao", "han": "道", "ko": "정렬", "where": "성장·현금·희석이 같은 방향인지"},
-            {"id": "tian", "han": "天", "ko": "시장", "where": "시장 국면 페이지와 동일. 종목 공통"},
-            {"id": "di", "han": "地", "ko": "업종", "where": "업종 페이지 상대강도. 종목 업종에 붙임"},
-            {"id": "jiang", "han": "將", "ko": "자본배분", "where": "ROIC·FCF·희석 규율"},
-            {"id": "fa", "han": "法", "ko": "재무규율", "where": "재무건전성·리스크 안전 게이트"},
+            {"id": spec["id"], "han": spec["han"], "ko": spec["ko"], "where": spec["sunzi"], "yang": spec["yang"]}
+            for spec in ASPECT_YANG
         ],
         "disclaimer": (
-            "손자 五事는 전장 조건이고, 전략 검토는 굳이 지금 싸울지 묻는 반대심문입니다. "
-            "은하영웅전설 대사를 쓰지 않으며 착수=매수가 아닙니다."
+            "손자가 道·天·地·將·法으로 전장을 세면, 양웬리는 그걸 ‘이 싸움이 필요한가’로 읽습니다. "
+            "원작 대사를 복제하지 않으며 착수=매수가 아니고 Quant와 합산하지 않습니다."
         ),
     }
