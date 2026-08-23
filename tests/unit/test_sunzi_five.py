@@ -4,7 +4,7 @@ from kr_quant.ownership.nps import is_nps_holder, parse_majorstock
 import numpy as np
 from fastapi.testclient import TestClient
 
-from kr_quant.sunzi.critic import POSTURE_KO, compose_yang_briefing, critic_panel
+from kr_quant.sunzi.critic import PERSONA_BANNED, POSTURE_KO, compose_yang_briefing, critic_panel
 from kr_quant.sunzi.five import build_sunzi_board, di_panel, five_aspects, tian_panel
 from kr_quant.web.app import app
 from kr_quant.settings import load_settings
@@ -44,6 +44,10 @@ def test_five_aspects_are_overlays():
     assert "Quant" in five["comment"]
     assert five["critic"]["posture"] in POSTURE_KO
     assert five["critic"]["used_in_quant"] is False
+    assert five["critic"]["persona_version"] == "yang_interpreter_v1"
+    assert five["critic"]["one_line_judgment"]
+    assert set(five["critic"]["sunzi_interpretation"]) == {"dao", "tian", "di", "jiang", "fa"}
+    assert five["critic"]["persona_failure_flags"] == []
 
 
 def test_critic_handles_empty_numpy_risk_flags():
@@ -77,9 +81,12 @@ def test_yang_briefing_interprets_risk_off():
         39,
         {"dao": 72, "fa": 90},
     )
-    assert "손자" in brief["sunzi_line"]
-    assert "양웬리" in brief["yang_line"]
+    assert "天" in brief["sunzi_line"]
     assert "위험회피" in brief["sunzi_line"]
+    blob = brief["sunzi_line"] + brief["yang_line"]
+    for banned in PERSONA_BANNED:
+        assert banned not in blob
+    assert brief.get("persona_failure_flags") == []
 
 
 def test_api_sunzi_board_returns_postures():

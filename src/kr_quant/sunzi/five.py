@@ -356,8 +356,12 @@ def _compact_row(rec: dict[str, Any], five: dict[str, Any]) -> dict[str, Any]:
         "posture_ko": critic.get("posture_ko"),
         "critic_score": critic.get("score"),
         "critic_comment": critic.get("comment"),
+        "one_line_judgment": critic.get("one_line_judgment"),
+        "sunzi_interpretation": critic.get("sunzi_interpretation") or {},
         "no_action_required": critic.get("no_action_required"),
         "variant": critic.get("variant"),
+        "waiting_test": critic.get("waiting_test") or {},
+        "strongest_bear_evidence": critic.get("strongest_bear_evidence") or [],
         "consensus": critic.get("consensus"),
         "fa_comment": rec.get("fa_comment") or five["parts"]["fa"].get("comment"),
         "fa_reasons_ko": rec.get("fa_reasons_ko") or [],
@@ -466,7 +470,6 @@ def build_sunzi_board(
             for spec in ASPECT_YANG
         ],
         "disclaimer": (
-            "손자가 道·天·地·將·法으로 전장을 세면, 양웬리는 그걸 ‘이 싸움이 필요한가’로 읽습니다. "
-            "원작 대사를 복제하지 않으며 착수=매수가 아니고 Quant와 합산하지 않습니다."
+            "이 판단은 Quant와 합산하지 않아. 착수는 매수가 아니고, 내 판단도 틀릴 수 있어."
         ),
     }
