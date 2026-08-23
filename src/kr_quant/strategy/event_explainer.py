@@ -204,4 +204,13 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         },
         "pre_pricing_flag": pre_pricing,
         "invalidating_conditions": invalidation,
+        # Mobile Dashboard Playbook & Timing additions
+        "entry_stage": getattr(pattern, "entry_stage", "WATCH"),
+        "entry_stage_label": getattr(pattern, "entry_stage_label", "⚡ 진입 유효"),
+        "entry_window_str": getattr(pattern, "entry_window_str", ""),
+        "exit_window_str": getattr(pattern, "exit_window_str", ""),
+        "expected_p50": getattr(pattern, "expected_p50", pattern.median_return),
+        "expected_p90": getattr(pattern, "expected_p90", pattern.median_return * 1.8),
+        "profit_factor": getattr(pattern, "profit_factor", 3.5),
+        "playbook": getattr(pattern, "playbook", {}),
     }

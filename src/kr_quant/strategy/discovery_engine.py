@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 import numpy as np
@@ -35,6 +36,15 @@ class SeasonalityPattern:
     years_track: list[dict[str, Any]]
     failed_years: list[dict[str, Any]]
     pattern_confidence: str  # HIGH, MEDIUM, LOW
+    # Playbook & Timing fields (Mobile dashboard integration)
+    entry_stage: str
+    entry_stage_label: str
+    entry_window_str: str
+    exit_window_str: str
+    expected_p50: float
+    expected_p90: float
+    profit_factor: float
+    playbook: dict[str, str]
 
 
 def pattern_from_month_stat(
@@ -43,8 +53,9 @@ def pattern_from_month_stat(
     market: str,
     m_stat: dict[str, Any],
     lookback_years: int | None = None,
+    as_of_date: str | None = None,
 ) -> SeasonalityPattern | None:
-    """Constructs SeasonalityPattern dynamically for a chosen lookback period (e.g. 3, 5, 8 years)."""
+    """Constructs SeasonalityPattern dynamically with Pre-Entry Playbook & Timing calculations."""
     month = int(m_stat.get("month", 1))
     hist_recs = m_stat.get("history_records", [])
     history = m_stat.get("history", [])
@@ -128,6 +139,60 @@ def pattern_from_month_stat(
     best_y = max(years_track, key=lambda x: x["return"]) if years_track else {"year": cur_year, "return": 0.0}
     worst_y = min(years_track, key=lambda x: x["return"]) if years_track else {"year": cur_year, "return": 0.0}
 
+    # Expected Return Quantiles & Profit Factor
+    p50_ret = round(float(np.percentile(rets, 50)), 4) if rets else med_ret
+    p90_ret = round(float(np.percentile(rets, 90)), 4) if len(rets) >= 3 else round(max(rets, default=med_ret), 4)
+    pos_rets = sum([r for r in rets if r > 0])
+    neg_rets = abs(sum([r for r in rets if r < 0]))
+    profit_factor = round(pos_rets / neg_rets, 1) if neg_rets > 0.0001 else (9.9 if pos_rets > 0 else 1.0)
+
+    # Calculate Entry Timing Stage and Windows based on current calendar date
+    ref_dt = pd.to_datetime(as_of_date).date() if as_of_date else date.today()
+    cur_m = ref_dt.month
+    cur_d = ref_dt.day
+
+    # Target seasonality window: month M (01 ~ 28)
+    # Entry Window: 15~20 days before target month start
+    # Exit Window: middle/end of target month or following month
+    entry_m = month - 1 if month > 1 else 12
+    entry_window_str = f"{entry_m:02d}/15 ~ {month:02d}/05"
+    exit_window_str = f"{month:02d}/20 ~ {(month % 12) + 1:02d}/10"
+
+    # Compute D-Day from ref_dt to target month start
+    target_year = ref_dt.year if month >= cur_m else ref_dt.year + 1
+    target_dt = date(target_year, month, 1)
+    d_days = (target_dt - ref_dt).days
+
+    if cur_m == month:
+        entry_stage = "TODAY_ENTRY"
+        entry_stage_label = "🔥 오늘 진입 (D-0)"
+    elif 0 < d_days <= 15:
+        entry_stage = "PRE_ENTRY_15"
+        entry_stage_label = f"⚡ 선취매 적기 (D-{d_days})"
+    elif 15 < d_days <= 35:
+        entry_stage = "PRE_ENTRY_30"
+        entry_stage_label = f"⚡ 선취매 구간 (D-{d_days})"
+    elif 35 < d_days <= 65:
+        entry_stage = "ACCUMULATE_60"
+        entry_stage_label = f"🎯 매집 윈도우 (D-{d_days})"
+    elif d_days < 0 and abs(d_days) <= 25:
+        entry_stage = "EXIT_PEAK"
+        entry_stage_label = "💰 피크 엑시트/매도"
+    else:
+        entry_stage = "WATCH"
+        entry_stage_label = f"👀 관찰 (D-{d_days})"
+
+    # Playbook rules
+    target_alpha_str = f"+{med_alpha * 100:.1f}%" if med_alpha > 0 else "+10.0%"
+    mdd_stop_str = f"-{avg_mdd * 100:.1f}%" if avg_mdd > 0 else "-5.0%"
+
+    playbook = {
+        "entry_timing": f"권장 선취매 타이밍: 피크 구간({month:02d}/01) 도달 D-30일 ~ D-15일 전 분할 매수",
+        "exit_timing": f"목표 엑시트 시기: 계절성 피크({month:02d}/25) 도달 시점 또는 목표 알파({target_alpha_str}) 달성 시 분할 매도",
+        "stop_loss": f"리스크 방어 기준: 평균 MDD({mdd_stop_str}) 초과 하락 또는 외국인/기관 대규모 순매도 전환 시 손절",
+        "recommendation": f"반복 상승 Window({entry_window_str}) 진입 시 분할 매수 및 계절성 목표가 대응 유효",
+    }
+
     return SeasonalityPattern(
         pattern_id=f"{ticker}_M{month:02d}_L{lookback_years or 0}",
         ticker=ticker,
@@ -154,4 +219,12 @@ def pattern_from_month_stat(
         years_track=years_track,
         failed_years=fails,
         pattern_confidence=conf,
+        entry_stage=entry_stage,
+        entry_stage_label=entry_stage_label,
+        entry_window_str=entry_window_str,
+        exit_window_str=exit_window_str,
+        expected_p50=p50_ret,
+        expected_p90=p90_ret,
+        profit_factor=profit_factor,
+        playbook=playbook,
     )

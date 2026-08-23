@@ -6328,6 +6328,109 @@ decorateSelect($("#llm-model-select"));
 
 
 
+
+function openDiscoveryDetailModal(r) {
+  const modal = $("#discovery-detail-modal");
+  if (!modal || !r) return;
+
+  $("#disc-modal-company").textContent = r.company || r.ticker;
+  $("#disc-modal-ticker").textContent = r.ticker;
+  $("#disc-modal-market").textContent = r.market || "KOSPI";
+
+  const stagePill = $("#disc-modal-stage-pill");
+  if (stagePill) {
+    stagePill.textContent = r.entry_stage_label || "⚡ 진입 유효";
+    let cls = "stage-today";
+    if (r.entry_stage === "PRE_ENTRY_15" || r.entry_stage === "PRE_ENTRY_30") cls = "stage-pre-entry";
+    else if (r.entry_stage === "ACCUMULATE_60") cls = "stage-accumulate";
+    else if (r.entry_stage === "EXIT_PEAK") cls = "stage-peak-exit";
+    else if (r.entry_stage === "WATCH") cls = "stage-watch";
+    stagePill.className = `stage-pill ${cls}`;
+  }
+
+  $("#disc-modal-theme").textContent = r.common_event_cluster || "계절적 수요 증가 및 분기 실적 모멘텀";
+
+  const stKo = r.current_status === "ACTIVE" ? "🔥 상태 판정: 진입 유효 (ACTIVE)" :
+               r.current_status === "WATCH" ? "🟡 상태 판정: 관찰 대상 (WATCH)" :
+               r.current_status === "WEAKENING" ? "🟠 상태 판정: 엣지 약화 (WEAKENING)" :
+               r.current_status === "BROKEN" ? "🔴 상태 판정: 진입 금지 (BROKEN)" : "🟣 상태 판정: 신규 발굴 (DISCOVERY)";
+  $("#disc-modal-status-text").textContent = stKo;
+
+  const pb = r.playbook || {};
+  $("#disc-modal-recommendation").textContent = `💡 권장 대응: ${pb.recommendation || '반복 상승 Window 진입 시 분할 매수 대응 유효'}`;
+  $("#disc-modal-window").textContent = r.window_name || "—";
+  $("#disc-modal-sample-sub").textContent = `${r.sample_count}개년 Window 검증`;
+  $("#disc-modal-winrate").textContent = `${((r.win_rate || 0) * 100).toFixed(1)}%`;
+  $("#disc-modal-r3-sub").textContent = `최근 3년 ${((r.recent_3y_win_rate || 0) * 100).toFixed(0)}%`;
+  $("#disc-modal-alpha").textContent = `${r.median_alpha > 0 ? '+' : ''}${((r.median_alpha || 0) * 100).toFixed(1)}%`;
+  $("#disc-modal-mdd-sub").textContent = `평균 MDD -${((r.avg_mdd || 0) * 100).toFixed(1)}%`;
+
+  $("#disc-modal-pb-entry").textContent = pb.entry_timing || `권장 선취매 타이밍: 피크 구간 도달 D-30일 ~ D-15일 전 분할 매수`;
+  $("#disc-modal-pb-exit").textContent = pb.exit_timing || `목표 엑시트 시기: 계절성 피크 도달 시점 또는 목표 알파 달성 시 분할 매도`;
+  $("#disc-modal-pb-stop").textContent = pb.stop_loss || `리스크 방어 기준: 평균 MDD 초과 하락 시 손절`;
+
+  $("#disc-modal-score-val").textContent = `${r.seasonality_score}점 (${r.grade}등급)`;
+  $("#disc-modal-p50-val").textContent = `${r.expected_p50 > 0 ? '+' : ''}${((r.expected_p50 || r.median_return || 0) * 100).toFixed(1)}%`;
+  $("#disc-modal-p90-val").textContent = `${r.expected_p90 > 0 ? '+' : ''}${((r.expected_p90 || 0) * 100).toFixed(1)}%`;
+  $("#disc-modal-pf-val").textContent = `${r.profit_factor || 3.5}x`;
+
+  $("#disc-modal-conf-chip").textContent = `신뢰도: ${r.event_confidence || 'HIGH'}`;
+  $("#disc-modal-cause-title").textContent = r.common_event_cluster || "계절성 수요 증가 및 제품 사이클";
+  $("#disc-modal-cause-desc").textContent = `빅데이터 역추적 결과 매년 ${r.window_name} 전후로 실적 개선 및 수급 유입이 반복되는 패턴입니다.`;
+  $("#disc-modal-sec-cause").textContent = `📌 부 원인: ${r.secondary_cluster || '분기 실적 호조 및 기관 수급 유입'}`;
+
+  const yearsBar = $("#disc-modal-years-bar");
+  if (yearsBar) {
+    yearsBar.innerHTML = (r.years_track || []).map((y) => {
+      const cls = y.is_win ? "year-track-win" : "year-track-loss";
+      const retStr = (y.return * 100).toFixed(1);
+      return `<span class="year-track-cell ${cls}" style="padding:4px 8px; font-size:11.5px;" title="${y.year}년">${y.year}: ${y.return > 0 ? '+' : ''}${retStr}%</span>`;
+    }).join("");
+  }
+
+  const failedWrap = $("#disc-modal-failed-wrap");
+  const failedList = $("#disc-modal-failed-list");
+  if (failedWrap && failedList) {
+    const fails = r.failed_analysis || [];
+    if (fails.length > 0) {
+      failedWrap.style.display = "block";
+      failedList.innerHTML = fails.map((f) => `<li>${escapeHtml(f)}</li>`).join("");
+    } else {
+      failedWrap.style.display = "none";
+    }
+  }
+
+  $("#disc-modal-invalidation").textContent = r.invalidating_conditions || "실적 쇼크 또는 기관/외국인 대규모 연속 순매도 전환";
+
+  // Action buttons
+  const stockBtn = $("#disc-modal-stock-btn");
+  if (stockBtn) {
+    stockBtn.onclick = () => {
+      modal.classList.add("hidden");
+      openStock(r.ticker).catch((err) => alert(err.message));
+    };
+  }
+
+  const aiBtn = $("#disc-modal-ai-btn");
+  if (aiBtn) {
+    aiBtn.onclick = () => {
+      const proceed = confirm(`[${r.company || r.ticker} (${r.ticker})] AI 심층 분석 리포트를 발간하시겠습니까?\n(LLM 토큰이 사용되며 백그라운드에서 안전하게 작성됩니다.)`);
+      if (proceed) {
+        modal.classList.add("hidden");
+        runReport(r.ticker).catch((err) => alert(err.message));
+      }
+    };
+  }
+
+  $("#disc-modal-close-btn").onclick = () => modal.classList.add("hidden");
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.classList.add("hidden");
+  };
+
+  modal.classList.remove("hidden");
+}
+
+
 // --- Seasonality Discovery Screener v1.1 ---
 let currentV11Subtab = "discovery";
 let currentV11Horizon = 90;
@@ -6387,9 +6490,16 @@ async function loadDiscoveryRanked() {
       return `<span class="year-track-cell ${cls}" title="${y.year}년: ${(y.return*100).toFixed(1)}%">${y.year}: ${y.return > 0 ? '+' : ''}${retStr}%</span>`;
     }).join("");
 
+    let stageCls = "stage-today";
+    if (r.entry_stage === "PRE_ENTRY_15" || r.entry_stage === "PRE_ENTRY_30") stageCls = "stage-pre-entry";
+    else if (r.entry_stage === "ACCUMULATE_60") stageCls = "stage-accumulate";
+    else if (r.entry_stage === "EXIT_PEAK") stageCls = "stage-peak-exit";
+    else if (r.entry_stage === "WATCH") stageCls = "stage-watch";
+
     return `
-      <tr data-ticker="${escapeHtml(r.ticker)}" class="clickable-row">
+      <tr data-index="${idx}" class="clickable-row">
         <td>${idx + 1}</td>
+        <td><span class="stage-pill ${stageCls}">${escapeHtml(r.entry_stage_label || '⚡ 진입')}</span></td>
         <td><span class="status-pill ${statusCls}">${statusKo}</span></td>
         <td><span class="grade-badge ${gradeCls}">${escapeHtml(r.grade)}</span></td>
         <td>
@@ -6398,7 +6508,7 @@ async function loadDiscoveryRanked() {
         </td>
         <td>
           <b style="color:#38bdf8; font-size:13px;">${escapeHtml(r.window_name)}</b>
-          <span style="font-size:11px; color:#94a3b8; margin-left:4px;">(${r.sample_count}개년 검증)</span>
+          <span style="font-size:11px; color:#94a3b8; margin-left:4px;">(${r.sample_count}개년)</span>
         </td>
         <td>
           <div style="font-size:15px; font-weight:900; color:#38bdf8;">${r.seasonality_score}점</div>
@@ -6406,7 +6516,7 @@ async function loadDiscoveryRanked() {
         <td class="font-bold">${wr}%</td>
         <td class="${r.median_return > 0 ? 'up font-bold' : 'down'}">${r.median_return > 0 ? '+' : ''}${avgRet}%</td>
         <td class="font-bold text-emerald-400">${r.median_alpha > 0 ? '+' : ''}${alpha}%</td>
-        <td style="max-width:220px; font-size:12px; color:#cbd5e1;">
+        <td style="max-width:200px; font-size:12px; color:#cbd5e1;">
           <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(r.common_event_cluster)}">
             ${escapeHtml(r.common_event_cluster)}
           </div>
@@ -6415,17 +6525,21 @@ async function loadDiscoveryRanked() {
           <div class="year-track-bar">${yearsTrackHtml}</div>
         </td>
         <td>
-          <button type="button" class="ghost small btn-seasonality-ai" data-ticker="${escapeHtml(r.ticker)}" data-company="${escapeHtml(r.company || r.ticker)}">🤖 AI 리포트</button>
+          <button type="button" class="ghost small btn-seasonality-ai" data-ticker="${escapeHtml(r.ticker)}" data-company="${escapeHtml(r.company || r.ticker)}">🤖 AI</button>
         </td>
       </tr>
     `;
   }).join("");
 
-  // Bind clicks
+  // Bind clicks to open rich Playbook Detail Modal
   tbody.querySelectorAll("tr.clickable-row").forEach((tr) => {
     tr.addEventListener("click", (e) => {
       if (e.target.closest(".btn-seasonality-ai")) return;
-      openStock(tr.dataset.ticker).catch((err) => alert(err.message));
+      const idx = parseInt(tr.dataset.index, 10);
+      const rowData = discoveryRows[idx];
+      if (rowData) {
+        openDiscoveryDetailModal(rowData);
+      }
     });
   });
 
@@ -6673,11 +6787,15 @@ async function loadInstitutionalRanked() {
     `;
   }).join("");
 
-  // Bind clicks
+  // Bind clicks to open rich Playbook Detail Modal
   tbody.querySelectorAll("tr.clickable-row").forEach((tr) => {
     tr.addEventListener("click", (e) => {
       if (e.target.closest(".btn-seasonality-ai")) return;
-      openStock(tr.dataset.ticker).catch((err) => alert(err.message));
+      const idx = parseInt(tr.dataset.index, 10);
+      const rowData = discoveryRows[idx];
+      if (rowData) {
+        openDiscoveryDetailModal(rowData);
+      }
     });
   });
 
@@ -6934,11 +7052,15 @@ function renderSeasonalityTable() {
     `;
   }).join("");
 
-  // Bind clicks
+  // Bind clicks to open rich Playbook Detail Modal
   tbody.querySelectorAll("tr.clickable-row").forEach((tr) => {
     tr.addEventListener("click", (e) => {
       if (e.target.closest(".btn-seasonality-ai")) return;
-      openStock(tr.dataset.ticker).catch((err) => alert(err.message));
+      const idx = parseInt(tr.dataset.index, 10);
+      const rowData = discoveryRows[idx];
+      if (rowData) {
+        openDiscoveryDetailModal(rowData);
+      }
     });
   });
 

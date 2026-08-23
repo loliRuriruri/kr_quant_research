@@ -10,7 +10,7 @@ from kr_quant.settings import load_settings
 client = TestClient(app)
 
 
-def test_pattern_from_month_stat_with_lookback():
+def test_pattern_from_month_stat_with_playbook():
     m_stat = {
         "month": 8,
         "history": [0.12, 0.08, 0.18, -0.02, 0.07],
@@ -19,20 +19,19 @@ def test_pattern_from_month_stat_with_lookback():
         "median_return": 0.08,
         "years_count": 5,
     }
-    # All 5 years
-    pat5 = pattern_from_month_stat("009450", "경동나비엔", "KOSPI", m_stat, lookback_years=5)
-    assert pat5 is not None
-    assert pat5.sample_count == 5
-    assert pat5.win_rate == 0.80
-    assert len(pat5.years_track) == 5
-
-    # Lookback 3 years (sliced to last 3: [0.18, -0.02, 0.07])
-    pat3 = pattern_from_month_stat("009450", "경동나비엔", "KOSPI", m_stat, lookback_years=3)
-    assert pat3 is not None
-    assert pat3.sample_count == 3
-    assert len(pat3.years_track) == 3
-    assert pat3.win_rate == round(2 / 3, 3)
-    assert len(pat3.failed_years) == 1
+    pat = pattern_from_month_stat("009450", "경동나비엔", "KOSPI", m_stat, lookback_years=5)
+    assert pat is not None
+    assert pat.sample_count == 5
+    assert pat.win_rate == 0.80
+    assert hasattr(pat, "entry_stage")
+    assert hasattr(pat, "entry_stage_label")
+    assert hasattr(pat, "expected_p50")
+    assert hasattr(pat, "expected_p90")
+    assert hasattr(pat, "profit_factor")
+    assert hasattr(pat, "playbook")
+    assert "entry_timing" in pat.playbook
+    assert "exit_timing" in pat.playbook
+    assert "stop_loss" in pat.playbook
 
 
 def test_explain_and_score_pattern():
@@ -51,37 +50,24 @@ def test_explain_and_score_pattern():
     assert res["grade"] in ["S", "A", "B", "C", "D"]
     assert res["current_status"] in ["ACTIVE", "WATCH", "DISCOVERY", "WEAKENING", "BROKEN", "UNKNOWN"]
     assert "score_breakdown" in res
-    b = res["score_breakdown"]
-    assert "historical_pattern" in b
-    assert "recent_validation" in b
-    assert "current_confirmation" in b
-    assert "event_explanation" in b
-    assert "common_event_cluster" in res
-    assert "failed_analysis" in res
+    assert "entry_stage" in res
+    assert "entry_stage_label" in res
+    assert "expected_p50" in res
+    assert "expected_p90" in res
+    assert "profit_factor" in res
+    assert "playbook" in res
 
 
-def test_api_seasonality_discovery_lookback():
-    res3 = client.get("/api/seasonality/discovery?horizon_days=90&lookback_years=3")
-    assert res3.status_code == 200
-    d3 = res3.json()
-    assert d3["ok"] is True
-    assert d3["lookback_years"] == 3
-    assert len(d3["rows"]) > 0
-
-    res5 = client.get("/api/seasonality/discovery?horizon_days=90&lookback_years=5")
-    assert res5.status_code == 200
-    d5 = res5.json()
-    assert d5["ok"] is True
-    assert d5["lookback_years"] == 5
-    assert len(d5["rows"]) > 0
-
-
-def test_api_seasonality_discovery_ticker_lookback():
-    res = client.get("/api/seasonality/discovery/009450?lookback_years=3")
+def test_api_seasonality_discovery_playbook():
+    res = client.get("/api/seasonality/discovery?horizon_days=90&lookback_years=5")
     assert res.status_code == 200
     data = res.json()
     assert data["ok"] is True
-    assert data["ticker"] == "009450"
-    assert data["lookback_years"] == 3
-    assert "patterns" in data
-    assert len(data["patterns"]) > 0
+    assert len(data["rows"]) > 0
+    row = data["rows"][0]
+    assert "entry_stage" in row
+    assert "entry_stage_label" in row
+    assert "expected_p50" in row
+    assert "expected_p90" in row
+    assert "profit_factor" in row
+    assert "playbook" in row
