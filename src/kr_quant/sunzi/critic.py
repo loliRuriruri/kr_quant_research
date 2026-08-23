@@ -103,6 +103,74 @@ def persona_failure_flags(*texts: str) -> list[str]:
     return [p for p in PERSONA_BANNED if p in blob]
 
 
+def get_industry_tactical_lens(industry: str) -> dict[str, str]:
+    """Returns industry-specific military metaphors and key business dynamics."""
+    ind = industry.lower() if industry else ""
+    if any(k in ind for k in ("반도체", "전자부품", "it", "디스플레이")):
+        return {
+            "type": "semiconductor",
+            "asset": "최첨단 미세공정과 HBM 주포",
+            "cycle": "글로벌 테크 사이클의 보급로",
+            "threat": "재고 축적과 사이클 다운턴이라는 역풍",
+        }
+    elif any(k in ind for k in ("바이오", "제약", "의약품", "헬스케어")):
+        return {
+            "type": "biotech",
+            "asset": "신약 파이프라인과 글로벌 기술수출(L/O) 잠재력",
+            "cycle": "임상 성공과 규제 승인의 긴 항해",
+            "threat": "임상 지연과 R&D 보급선(현금) 고갈",
+        }
+    elif any(k in ind for k in ("2차전지", "배터리", "화학", "에너지")):
+        return {
+            "type": "battery_chem",
+            "asset": "전기차 캐즘을 돌파할 차세대 배터리·소재 설비",
+            "cycle": "소재 원가와 대규모 증설(CAPEX) 전선",
+            "threat": "수요 둔화와 판가 하락이라는 암초",
+        }
+    elif any(k in ind for k in ("자동차", "운송장비", "모빌리티")):
+        return {
+            "type": "auto",
+            "asset": "글로벌 완성차 수출 함대와 환율 우호 화력",
+            "cycle": "하이브리드·전동화 기동 전술",
+            "threat": "관세 장벽과 글로벌 소비 둔화",
+        }
+    elif any(k in ind for k in ("방산", "기계", "조선", "우주항공", "해운")):
+        return {
+            "type": "defense_heavy",
+            "asset": "수년간 가득 찬 수주잔고와 든든한 방어 장갑",
+            "cycle": "지정학적 안보 긴장과 글로벌 납기 전선",
+            "threat": "원자재 후판가 상승과 납기 지연 리스크",
+        }
+    elif any(k in ind for k in ("금융", "은행", "보험", "증권", "지주")):
+        return {
+            "type": "finance",
+            "asset": "풍부한 자본여력과 밸류업 주주환원(자사주 소각·배당) 요새",
+            "cycle": "금리 사이클과 순이자마진(NIM) 참호전",
+            "threat": "부실 채권 충당금과 부동산 PF 부실 암초",
+        }
+    elif any(k in ind for k in ("가스", "전력", "유틸리티", "에너지")):
+        return {
+            "type": "utility",
+            "asset": "국가 기간망 독점권과 안정적인 현금 보급선",
+            "cycle": "계절성 수요(동절기 난방/하절기 냉방) 주기",
+            "threat": "정부 요금 규제와 연료비 원가 부담",
+        }
+    elif any(k in ind for k in ("게임", "소프트웨어", "인터넷", "엔터", "미디어")):
+        return {
+            "type": "game_media",
+            "asset": "글로벌 히트 IP와 플랫폼 네트워크 파급력",
+            "cycle": "신작 론칭과 콘텐트 흥행 모멘텀",
+            "threat": "신작 흥행 부진과 개발비 출혈",
+        }
+    else:
+        return {
+            "type": "general",
+            "asset": "업종 내 확고한 본업 경쟁력과 사업 장벽",
+            "cycle": "경기 변동과 업황 사이클",
+            "threat": "경쟁 심화와 원가 상승 압박",
+        }
+
+
 def _interp_dao(dao: dict[str, Any], row: dict[str, Any]) -> str:
     s = _num(dao.get("score")) or 50.0
     fcf = _num(row.get("fcf_yield"))
@@ -212,11 +280,13 @@ def _interp_fa(fa: dict[str, Any], conf: float | None) -> str:
 
 def generate_yang_tactical_intelligence(row: dict[str, Any], parts: dict[str, Any]) -> dict[str, Any]:
     """
-    Generates rich, stock-specific 3-tier tactical intelligence in Yang Wen-li's authentic voice.
+    Generates rich, hyper-diverse, stock-specific 3-tier tactical intelligence in Yang Wen-li's authentic voice.
     Adheres strictly to the Yang Persona Lock (1st person, realistic, skeptical, tea-loving, anti-heroic).
     """
-    comp = row.get("company") or row.get("ticker") or "이 종목"
-    ind = str(row.get("industry") or row.get("sector") or "해당 섹터")
+    comp = str(row.get("company") or row.get("ticker") or "이 종목")
+    ticker = str(row.get("ticker") or "").zfill(6)
+    ind_name = str(row.get("industry") or row.get("sector") or "미분류")
+    lens = get_industry_tactical_lens(ind_name)
 
     dao = _part(parts, "dao")
     tian = _part(parts, "tian")
@@ -226,11 +296,15 @@ def generate_yang_tactical_intelligence(row: dict[str, Any], parts: dict[str, An
 
     q_score = _num(row.get("quant_score")) or 50.0
     v_score = _num(row.get("value_score")) or 15.0
+    qual_score = _num(row.get("quality_score")) or 12.5
     g_score = _num(row.get("growth_score")) or 12.5
+    m_score = _num(row.get("momentum_score")) or 5.0
     f_score = _num(row.get("financial_score")) or 5.0
 
     fcf = _num(row.get("fcf_yield"))
     roe = _num(row.get("roe"))
+    per = _num(row.get("per"))
+    pbr = _num(row.get("pbr"))
     m_3m = _num(row.get("return_3m"))
     high_dist = _num(row.get("high_52w_distance"))
 
@@ -240,16 +314,14 @@ def generate_yang_tactical_intelligence(row: dict[str, Any], parts: dict[str, An
     jiang_s = _num(jiang.get("score")) or 50.0
     fa_pass = fa.get("fa_gate_pass")
     if fa_pass is None:
-        fa_pass = row.get("fa_gate_pass")
-    if fa_pass is None:
-        fa_pass = True
+        fa_pass = row.get("fa_gate_pass", True)
 
     flags = _flags(row.get("risk_flags"))
     contrary_n = len(dao.get("contrary") or []) + len(jiang.get("contrary") or [])
     regime = str(tian.get("regime") or "")
     di_state = str(di.get("state_ko") or "")
 
-    # Posture Evaluation
+    # Posture & Strategy Tag
     if fa_pass is False or "LEVERAGE_STRESS" in flags or "NEGATIVE_EQUITY" in flags:
         posture = "AVOID"
         strategy_tag = "避實擊虛 (피실격허)"
@@ -258,97 +330,136 @@ def generate_yang_tactical_intelligence(row: dict[str, Any], parts: dict[str, An
         strategy_tag = "全軍退路 (전군퇴로)"
     elif regime == "RISK_OFF" or di_state in {"부진", "약화"} or tian_s < 45 or (m_3m is not None and m_3m > 0.45):
         posture = "WAIT"
-        strategy_tag = "以逸待勞 (이일대로)"
+        if m_3m is not None and m_3m > 0.25:
+            strategy_tag = "以逸待勞 (이일대로)"
+        elif v_score >= 23:
+            strategy_tag = "待時而動 (대시이동)"
+        elif fcf is not None and fcf > 0.05:
+            strategy_tag = "高築累積 (고축누적)"
+        elif lens["type"] == "semiconductor":
+            strategy_tag = "守株待兔 (수주대토)"
+        else:
+            strategy_tag = "風林火山 (풍림화산·靜)"
     elif fa_pass is True and dao_s >= 65 and jiang_s >= 55 and q_score >= 65 and regime != "RISK_OFF":
         posture = "ENGAGE"
-        strategy_tag = "先勝求戰 (선승구전)"
+        if v_score >= 22:
+            strategy_tag = "先勝求戰 (선승구전)"
+        elif m_score >= 8:
+            strategy_tag = "兵貴神速 (병귀신속)"
+        else:
+            strategy_tag = "先勝求戰 (선승구전)"
     else:
         posture = "OBSERVE"
-        strategy_tag = "風林火山 (풍림화산·靜)"
+        strategy_tag = "知彼知己 (지피지기)"
 
-    # 1. Tier 1: Tactical Briefing (전황 분석 & 회사의 실체)
-    brief_lines = []
+    # --- 1. TACTICAL BRIEFING (전황 분석 & 회사의 실체) ---
+    b_parts = []
+    b_parts.append(f"‘{comp}’은(는) {ind_name} 전선에서 {lens['asset']}을(를) 주력 화력으로 삼는 함대야.")
+    
+    if fcf is not None and fcf > 0.05:
+        b_parts.append(f"장부를 뜯어보니 잉여현금흐름(FCF 수익률 {fcf*100:.1f}%)이라는 마르지 않는 보급선(道 {dao_s:.0f}점)이 후방을 든든하게 받치고 있군.")
+    elif roe is not None and roe > 0.15:
+        b_parts.append(f"투입된 자본 대비 자기자본이익률(ROE {roe*100:.1f}%)로 승리를 입증해온 지휘관(將 {jiang_s:.0f}점)의 역량이 돋보이네.")
+    elif pbr is not None and pbr < 0.7:
+        b_parts.append(f"순자산가치 대비 PBR {pbr:.2f}배로, 주가 자체가 두터운 요새 장갑(가치 {v_score:.1f}/30점)에 둘러싸여 하방 경직성을 확보하고 있어.")
+    elif per is not None and per > 25:
+        b_parts.append(f"현재 PER {per:.1f}배로 시장의 높은 성장 기대감이 선반영되어 있어 작은 보급 차질에도 흔들릴 수 있는 고평가 진지일세.")
+    else:
+        b_parts.append(f"재무 5대 팩터 종합 {q_score:.1f}점으로 공수 양면에서 기본 체급을 단단하게 유지하고 있군.")
+
+    if m_3m is not None and m_3m > 0.25:
+        b_parts.append(f"다만 최근 3개월간 주가가 +{m_3m*100:.1f}%나 급진격하면서 주포의 열기가 과열되어 있어 적의 역습(차익실현)에 노출되기 쉬운 위치야.")
+    elif m_3m is not None and m_3m < -0.12:
+        b_parts.append(f"최근 3개월간 {m_3m*100:.1f}% 조정을 받으며 {lens['threat']}에 맞서 참호 속에서 진열을 재정비하고 있는 국면이네.")
+    elif tian_s < 45:
+        b_parts.append(f"거시 시장(天 {tian_s:.0f}점) 전체에 짙은 안개와 역풍이 불고 있어 개별 함대의 역량만으로 정면 돌파하기엔 저항이 커.")
+    else:
+        b_parts.append(f"{lens['cycle']}의 흐름 속에서 아군 함대의 수급 지원 여부를 가늠하는 중일세.")
+
+    tactical_briefing = " ".join(b_parts)
+
+    # --- 2. MANEUVER & ENTRY (양 웬리의 기책 & 진입/대기 타점) ---
+    m_parts = []
     if posture == "ENGAGE":
-        brief_lines.append(f"‘{comp}’의 장부를 펼쳐보니, 말과 돈의 궤적이 꽤 정직하게 일치하고 있어(道 {dao_s:.0f}점).")
-        if fcf and fcf > 0.04:
-            brief_lines.append(f"잉여현금흐름(FCF 수익률 {fcf*100:.1f}%)이라는 든든한 보급선이 함대 후방을 든든하게 받치고 있군.")
-        elif roe and roe > 0.12:
-            brief_lines.append(f"자기자본이익률(ROE {roe*100:.1f}%)로 증명하듯 투입한 자본을 놀리지 않고 전선에서 승리로 바꿔내는 지휘관(將 {jiang_s:.0f}점)이야.")
+        if strategy_tag.startswith("先勝"):
+            m_parts.append("손자는 ‘이겨놓고 싸우는 자가 승리한다’고 했지. 방어선이 탄탄한 곳에서 실리만 챙기는 작전이야.")
+            m_parts.append(f"{v_score:.1f}점의 가치 지지선을 방패 삼아 분할 매집으로 조용히 닻을 내리세.")
         else:
-            brief_lines.append(f"재무 5대 팩터(종합 {q_score:.1f}점) 전반에 걸쳐 균형 잡힌 전열을 유지하고 있네.")
+            m_parts.append("전열이 완벽하게 정렬되었으니 기회를 놓치지 말되, 전군 돌격이 아닌 분할 정찰대로 진입하는 게 현명해.")
     elif posture == "WAIT":
-        brief_lines.append(f"‘{comp}’ 자체는 나쁜 전함이 아니야. {ind} 분야에서 본연의 체급을 유지하고 있지.")
-        if m_3m is not None and m_3m > 0.30:
-            brief_lines.append(f"하지만 최근 3개월간 주가가 {m_3m*100:+.1f}% 급격히 진격하면서 이미 시장의 환호가 가격에 선반영되어 있어.")
-        elif tian_s < 45:
-            brief_lines.append("문제는 전장의 기상(天)이야. 시장 전체에 짙은 안개와 역풍이 불고 있는데 굳이 깃발을 앞세우고 돌격할 이유는 없지.")
+        if m_3m is not None and m_3m > 0.25:
+            m_parts.append("‘이일대로(以逸待勞)’—우리는 가만히 쉬면서 적이 지치기를 기다린다.")
+            m_parts.append("남들이 흥분해서 추격할 때, 우리는 홍차에 브랜디를 한 방울 타서 마시며 건강한 눌림목 지지선까지 가격이 내려오길 기다리면 되네.")
+        elif v_score >= 23:
+            m_parts.append("‘대시이동(待時而動)’—가치 점수 23점 이상의 두터운 방어 장갑을 갖추었으니 하방으로 무너질 위험은 적어.")
+            m_parts.append("지금은 굳이 먼저 화력을 낭비하지 말고, 시장의 수급이 이 저평가 언덕으로 방향을 틀 때까지 차분히 때를 기다리자고.")
+        elif fcf is not None and fcf > 0.05:
+            m_parts.append("‘고축누적(高築累積)’—잉여현금이라는 막강한 식량 창고가 후방에 있으니 시간은 온전히 우리 편이야.")
+            m_parts.append("시장의 공포가 잦아들고 아군 본대의 탄약이 충전될 때까지는 여유롭게 관망하는 것이 상책일세.")
+        elif lens["type"] == "semiconductor":
+            m_parts.append("‘수주대토(守株待兔)’—반도체 사이클의 대형 주포는 건재하지만, 궂은 날씨에 함부로 나아갈 필요는 없어.")
+            m_parts.append("외인·기관의 수급 주포가 다시 장전되는 타점을 포착할 때까지 전열을 정비하고 기다리세.")
         else:
-            brief_lines.append(f"{ind} 지형(地 {di_s:.0f}점)의 전열 정비가 아직 끝나지 않아 아군 함대의 지원 화력이 부족한 상황일세.")
+            m_parts.append("‘풍림화산(風林火山)·靜’—움직이지 않을 때는 숲처럼 고요해야 해.")
+            m_parts.append("시장의 역풍이 잦아들고 20일 지지선이 확고해질 때까지는 정찰기만 띄워두고 관측 태세를 유지하게.")
     elif posture == "OBSERVE":
-        brief_lines.append(f"‘{comp}’에 대한 시장의 찬사는 화려하지만, 내 책상 위의 정량 데이터에는 아직 몇 군데 빈칸이 보여.")
+        m_parts.append("‘지피지기(知彼知己)’—적과 아군을 온전히 알지 못하면 백 번 싸워 백 번 위태로워져.")
+        m_parts.append(f"외인·기관 주포의 방향성이 명확해지고 {lens['threat']}이 해소될 때까지는 정찰기만 띄워두고 관찰 태세를 유지하게.")
+    elif posture == "RETREAT":
+        m_parts.append("‘전략적 철수’는 패배가 아니라 다음 승리를 위한 자본 보존 기술이야.")
+        m_parts.append("미련을 버리고 현금을 확보하여 퇴로를 여는 것이 참모로서 내리는 가장 냉철한 지시일세.")
+    else: # AVOID
+        m_parts.append("해도가 찢어지고 암초가 가득한 바다야. 이런 전장에는 애초에 출병 결재를 하지 않는 게 최선이지.")
+
+    maneuver_entry = " ".join(m_parts)
+
+    # --- 3. ESCAPE ROUTE & INVALIDATION (퇴로 확보 & 무효화 조건) ---
+    e_parts = []
+    if posture == "ENGAGE":
+        e_parts.append(f"진입하더라도 {lens['threat']}이 본격화되거나 분기 실적에서 FCF가 급격히 악화되면 즉시 닻을 올리고 퇴각할 걸세.")
+        e_parts.append("‘도망칠 때는 뒤도 돌아보지 않는다’는 철칙을 잊지 말게.")
+    elif posture == "WAIT":
+        e_parts.append(f"기다리는 동안 {ind_name} 업종 전반에 추가 악재가 터지거나 주요 지지선이 무너지면, 물타기 대신 대기 목록에서 과감히 지워버릴 걸세.")
+    elif posture == "OBSERVE":
+        e_parts.append("불확실한 소문에 휘둘려 섣부른 선제 타격을 감행하는 순간 퇴로가 좁아지니, 확인 전 진입을 엄격히 금하네.")
+    elif posture == "RETREAT":
+        e_parts.append("충성심이나 미련으로 방어선을 고집하다간 함대 전체가 궤멸당해. 빠른 현금화만이 유일한 퇴로야.")
+    else:
+        e_parts.append("살아남아야 다음 전장에서 따뜻한 홍차를 마실 수 있네. 자본 보존이 제1원칙이야.")
+
+    escape_route = " ".join(e_parts)
+
+    # --- 4. ONE LINE JUDGMENT (한 줄 참모 전술 총평 - Stock Specific & Highly Nuanced) ---
+    if posture == "ENGAGE":
+        if v_score >= 22:
+            one_line = f"가치 방어력({v_score:.1f}점)과 보급선이 검증된 드문 후보야. 훈장은 사양하고 실리만 챙기세."
+        elif fcf and fcf > 0.05:
+            one_line = f"장부(道 {dao_s:.0f}점)와 잉여현금 보급이 완벽히 일치해. 분할 진입으로 조용히 진지를 구축하자."
+        else:
+            one_line = f"{ind_name}의 탄탄한 진지일세. 이겨놓고 싸우는 선승구전의 타점을 잡자고."
+    elif posture == "WAIT":
+        if m_3m is not None and m_3m > 0.25:
+            one_line = f"최근 +{m_3m*100:.1f}%나 내달려 주포의 열기가 뜨거워. 오늘은 홍차나 마시며 눌림목을 기다리자."
+        elif fcf is not None and fcf > 0.05:
+            one_line = f"{comp}의 잉여현금(FCF {fcf*100:.1f}%) 보급선은 든든해. 시간은 우리 편이니 시장 역풍이 잦아들길 기다리세."
+        elif pbr is not None and pbr < 0.6:
+            one_line = f"순자산(PBR {pbr:.2f}배)의 방어력은 이제르론 요새급이야. 조급해하지 말고 수급의 방향 전환을 기다리자."
+        elif lens["type"] == "semiconductor":
+            one_line = f"반도체 주포의 화력은 검증되었으나 날씨(天)가 궂어. 차분하게 다음 분기 장부를 확인하고 움직이세."
+        else:
+            one_line = f"{comp}의 체급({q_score:.1f}점)은 훌륭하나 기상이 험난해. 굳이 먼저 화력을 낭비하지 말고 참호에서 대기하게."
+    elif posture == "OBSERVE":
         if high_dist is not None and high_dist < -0.30:
-            brief_lines.append(f"52주 최고가 대비 {high_dist*100:.1f}% 하락한 지점에서 바닥을 다지는 중이나, 진짜 반격 신호인지 단순한 표류인지 관측이 더 필요해.")
+            one_line = f"바닥을 다지는 듯하나 반격 신호인지 표류인지 관측이 더 필요해. 망원경 배율만 올려두겠네."
         else:
-            brief_lines.append("이야기는 그럴듯하나 숫자가 그 이야기를 100% 보증하지 못할 땐, 망원경 배율을 높이고 기다리는 게 역사학도의 기본 자세지.")
+            one_line = f"이야기는 화려하나 {lens['threat']}에 대한 숫자가 덜 채워졌어. 정찰 상태를 유지하자."
     elif posture == "RETREAT":
-        brief_lines.append(f"‘{comp}’의 전열에서 균열이 감지되고 있어. 지휘관의 자본 배분이나 보급선(將 {jiang_s:.0f}점)에 이상 신호가 떴네.")
         if any("CB_BW" in f or "DILUTION" in f for f in flags):
-            brief_lines.append("전방의 병사들에게 급료를 주는 대신 미래의 지분을 희석해 빚을 메우는 식의 출혈이 반복되고 있군.")
+            one_line = "CB/신주 희석으로 장병들의 식량을 축내고 있어. 영웅 흉내 내지 말고 뒤도 돌아보지 말고 철수하게."
         else:
-            brief_lines.append("처음 세웠던 긍정적 전제들이 하나둘 무너지고 있는데, 여기에 충성심이나 미련을 덧붙이는 건 가장 어리석은 전술이야.")
-    else:  # AVOID
-        brief_lines.append(f"‘{comp}’는 규율(法)과 건전성 면에서 최소한의 방어선조차 구축하지 못한 위험한 전장이야.")
-        brief_lines.append("틀린 해도(지도)를 쥐고 폭풍우 속으로 출항하는 것은 용기가 아니라 만용이자 조난 사고일 뿐이지.")
-
-    tactical_briefing = " ".join(brief_lines)
-
-    # 2. Tier 2: Maneuver & Entry Point (양 웬리의 기책 & 진입/대기 타점)
-    maneuver_lines = []
-    if posture == "ENGAGE":
-        maneuver_lines.append("손자는 ‘선승구전(先勝求戰)’이라 했지. 이겨놓고 싸우는 전장이 바로 이런 곳이야.")
-        maneuver_lines.append("영웅처럼 전재산을 한 번에 던질 생각은 추호도 말게. 철저히 분할하여 조용히 진지를 구축하고,")
-        maneuver_lines.append(f"가치 점수({v_score:.1f}/30점)의 하방 지지력을 믿되, 연구 우선순위를 최상위로 두고 진입 타점을 잡세나.")
-    elif posture == "WAIT":
-        maneuver_lines.append("‘이일대로(以逸待勞)’—우리는 가만히 쉬면서 적이 지치기를 기다린다.")
-        maneuver_lines.append("지금은 홍차에 브랜디를 한 방울 떨어뜨려 느긋하게 마시며, 과열된 주가가 건강한 지지선까지 눌림목을 줄 때까지 관망하는 게 최선의 기책이야.")
-        maneuver_lines.append("남들이 조급하게 추격 매수할 때, 우리는 책상에 다리를 얹고 다음 분기 실적 장부를 기다리면 되네.")
-    elif posture == "OBSERVE":
-        maneuver_lines.append("‘지피지기(知彼知己)’의 원칙이야. 적과 아군의 상태를 절반만 안 채로 출병하면 백 번 싸워 백 번 위태로워져.")
-        maneuver_lines.append("외인·기관의 수급 주포가 본격적으로 포문을 열고 방향을 틀 때까지는 정찰기만 띄워두고 관찰 태세를 유지하게.")
-    elif posture == "RETREAT":
-        maneuver_lines.append("‘도망칠 때는 뒤도 돌아보지 않는다’는 격언을 기억하나? 전략적 철수는 부끄러운 게 아니라 자본을 지키는 숭고한 기술이야.")
-        maneuver_lines.append("미련을 버리고 현금을 확보하여 후일을 도모하는 것이 훗날 더 큰 승리를 거두는 유일한 길일세.")
-    else:  # AVOID
-        maneuver_lines.append("세상에는 이겨도 손해인 싸움이 부지기수야. 이 종목이 딱 그런 전장이지.")
-        maneuver_lines.append("참모로서 나의 판단은 명확하네. 출병 명령서에 결재하지 않고 서류를 서랍 깊숙이 묻어두겠네.")
-
-    maneuver_entry = " ".join(maneuver_lines)
-
-    # 3. Tier 3: Escape Route & Invalidation (퇴로 확보 & 무효화 조건)
-    escape_lines = []
-    if posture == "ENGAGE":
-        escape_lines.append(f"진입하더라도 퇴로는 언제나 열어두어야 해. {ind} 업종의 모멘텀이 급격히 꺾이거나,")
-        escape_lines.append("분기 FCF가 마이너스로 전환되며 공시에서 대규모 전환사채(CB) 발행 소식이 들리면 미련 없이 닻을 올리고 철수할 걸세.")
-    elif posture == "WAIT":
-        escape_lines.append("지지선 이탈 시 굳이 물타기로 방어선을 지키려 하지 말게. 추세가 완전히 회복되기 전까지는 추가 자금을 투입하지 않는 것이 철칙이야.")
-    elif posture == "OBSERVE":
-        escape_lines.append("확인되지 않은 루머나 뉴스에 속아 섣불리 선제 타격을 감행했다간 退路가 막힐 수 있으니, 데이터 확정 전 진입을 엄격히 금하네.")
-    else:
-        escape_lines.append("자본 보존이 최우선이야. 살아남아야 다음 전투에서 따뜻한 홍차를 마실 수 있으니까.")
-
-    escape_route = " ".join(escape_lines)
-
-    # 4. One Line Judgment
-    if posture == "ENGAGE":
-        one_line = f"장부(道)와 보급선(將)이 일치하는 드문 전장이야. 훈장은 사양하고 실리만 챙기세."
-    elif posture == "WAIT":
-        one_line = f"전함은 훌륭하나 날씨(天)가 궂거나 너무 달렸어. 오늘은 홍차나 마시며 눌림목을 기다리자."
-    elif posture == "OBSERVE":
-        one_line = f"이야기는 화려하나 장부의 빈칸이 아직 남아 있어. 망원경 배율만 올려두겠네."
-    elif posture == "RETREAT":
-        one_line = f"보급선에 이상이 생겼어. 영웅 흉내 내지 말고 뒤도 돌아보지 말고 철수하게."
-    else:
-        one_line = f"해도가 틀린 위험한 바다야. 출병 도장은 찍지 않겠네."
+            one_line = "전제 조건이 무너졌는데 미련을 두는 건 최악의 전술이야. 현금을 확보하고 전선을 물리세."
+    else: # AVOID
+        one_line = "해도가 찢어진 위험한 바다야. 출병 서류는 서랍 깊숙이 묻어두겠네."
 
     return {
         "posture": posture,
@@ -410,7 +521,7 @@ def critic_panel(row: dict[str, Any], parts: dict[str, Any] | None = None) -> di
     }
     score = round(sum(axes.values()) / 6.0, 1)
 
-    # Rich Stock-Specific Tactical Intelligence
+    # Rich Hyper-Diverse Stock-Specific Tactical Intelligence
     intel = generate_yang_tactical_intelligence(row, parts or {})
     posture = intel["posture"]
     strategy_tag = intel["strategy_tag"]
