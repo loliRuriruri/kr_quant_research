@@ -3399,13 +3399,19 @@ function openYangTacticalModal(r) {
   `;
 
   modal.classList.remove("hidden");
+  modal.style.display = "flex";
+
+  function closeYangModal() {
+    modal.classList.add("hidden");
+    modal.style.display = "none";
+  }
 
   const closeBtn = $("#btn-close-yang-modal");
   const closeAction = $("#btn-modal-close-action");
-  if (closeBtn) closeBtn.onclick = () => modal.classList.add("hidden");
-  if (closeAction) closeAction.onclick = () => modal.classList.add("hidden");
+  if (closeBtn) closeBtn.onclick = closeYangModal;
+  if (closeAction) closeAction.onclick = closeYangModal;
   modal.onclick = (e) => {
-    if (e.target === modal) modal.classList.add("hidden");
+    if (e.target === modal) closeYangModal();
   };
 }
 

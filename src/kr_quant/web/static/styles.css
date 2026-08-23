@@ -4374,6 +4374,9 @@ body.modal-open { overflow: hidden; }
   z-index: 9999;
   padding: 20px;
 }
+.yang-modal-overlay.hidden {
+  display: none !important;
+}
 
 .yang-modal-dialog {
   width: 100%;
