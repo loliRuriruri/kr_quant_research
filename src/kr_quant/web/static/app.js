@@ -956,6 +956,13 @@ function switchView(name) {
   }
   if (name === "watch") loadWatch().catch((err) => alert(err.message));
   if (name === "reports") loadReportArchive().catch(() => {});
+  if (name === "seasonality") {
+    if (currentV11Subtab === "pre-entry") loadPreEntryView().catch(() => {});
+    else if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
+    else if (currentV11Subtab === "explanation") loadAIExplanations().catch(() => {});
+    else if (currentV11Subtab === "calendar") loadInstitutionalCalendar().catch(() => {});
+    else loadSeasonality().catch(() => {});
+  }
   if (name === "run") stampRunAsOf();
   if (name === "settings") setPageAsOf("이 PC의 .env · 시장 데이터 시점이 아닙니다.", "키 저장 화면입니다. 시세·수급 시점과 무관합니다.");
 }
@@ -6611,13 +6618,15 @@ async function loadPreEntryView() {
 
 function renderThemeDonutAndRanking(themes) {
   const svg = $("#theme-donut-svg");
-  const rankList = $("#theme-ranking-cards-list");
-  if (!svg || !rankList || !themes.length) return;
+  const rankList = $("#theme-ranking-list");
+  if (!svg || !rankList || !themes || !themes.length) return;
 
   // Center title
   const top1 = themes[0];
-  if ($("#donut-center-name")) $("#donut-center-name").textContent = top1.theme_name;
-  if ($("#donut-center-val")) $("#donut-center-val").textContent = `${top1.weight_share_pct}%`;
+  const centerThemeEl = $("#donut-center-theme") || $("#donut-center-name");
+  const centerPctEl = $("#donut-center-pct") || $("#donut-center-val");
+  if (centerThemeEl) centerThemeEl.textContent = top1.theme_name;
+  if (centerPctEl) centerPctEl.textContent = `${top1.weight_share_pct}%`;
 
   // Draw SVG Donut
   const cx = 100, cy = 100, rOuter = 85, rInner = 55;
@@ -7686,7 +7695,8 @@ function reloadCurrentView() {
   else if (name === "screens") p.push(loadScreens());
   else if (name === "strategy") p.push(loadStrategy());
   else if (name === "seasonality") {
-    if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
+    if (currentV11Subtab === "pre-entry") loadPreEntryView().catch(() => {});
+    else if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
     else if (currentV11Subtab === "explanation") loadAIExplanations().catch(() => {});
     else if (currentInstSubtab === "calendar") loadInstitutionalCalendar().catch(() => {});
     else loadSeasonality().catch(() => {});
