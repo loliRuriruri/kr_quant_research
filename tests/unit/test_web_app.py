@@ -27,9 +27,10 @@ def test_index_and_status():
     assert home.status_code == 200
     assert "KR Quant" in home.text
     assert "Research" in home.text
-    assert "styles.css?v=2.17.6" in home.text
-    assert "app.js?v=2.17.6" in home.text
-    assert "v2.17.6 Engine" in home.text
+    assert "styles.css?v=2.17.7" in home.text
+    assert "app.js?v=2.17.7" in home.text
+    assert "v2.17.7 Engine" in home.text
+    assert "disc-modal-deep" in home.text
     assert "sunzi-q" in home.text
     assert "명부 전체" in home.text
     assert 'data-view="sunzi"' in home.text
@@ -40,6 +41,8 @@ def test_index_and_status():
     assert "criticCard((data.sunzi || {}).critic)" in js
     assert "function loadGlanceTop3" in js
     assert "function openHeatmapPlaybook" in js
+    assert "function renderDiscDeepPlaybook" in js
+    assert "function computeTrackStats" in js
     assert "seasonalityRows[idx]" in js
     assert 'id="dash-seasonality-banner"' in home.text
     assert "KOSPI/KOSDAQ 전종목 검색" in home.text

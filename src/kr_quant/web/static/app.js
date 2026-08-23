@@ -6596,7 +6596,198 @@ decorateSelect($("#llm-model-select"));
 
 
 
-function openDiscoveryDetailModal(r) {
+function pbPct(x, digits = 1) {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return "—";
+  return `${n > 0 ? "+" : ""}${(n * (Math.abs(n) <= 2 ? 100 : 1)).toFixed(digits)}%`;
+}
+
+function pbNum(x, digits = 1) {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return "—";
+  return n.toFixed(digits);
+}
+
+function computeTrackStats(track) {
+  const rets = (track || []).map((y) => Number(y.return)).filter((n) => Number.isFinite(n));
+  if (!rets.length) return null;
+  const n = rets.length;
+  const mean = rets.reduce((a, b) => a + b, 0) / n;
+  const sorted = [...rets].sort((a, b) => a - b);
+  const median = n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
+  const stdev = Math.sqrt(rets.reduce((a, r) => a + (r - mean) ** 2, 0) / n);
+  const downs = rets.filter((r) => r < 0);
+  const semi = Math.sqrt(rets.filter((r) => r < 0).reduce((a, r) => a + r * r, 0) / n);
+  const ups = rets.filter((r) => r > 0);
+  const upVol = Math.sqrt(ups.reduce((a, r) => a + r * r, 0) / n);
+  const winRate = ups.length / n;
+  const best = Math.max(...rets);
+  const worst = Math.min(...rets);
+  const q1 = sorted[Math.floor((n - 1) * 0.25)];
+  const q3 = sorted[Math.floor((n - 1) * 0.75)];
+  const var95 = sorted[Math.max(0, Math.floor(n * 0.05))];
+  const tail = sorted.slice(0, Math.max(1, Math.ceil(n * 0.05)));
+  const cvar = tail.reduce((a, b) => a + b, 0) / tail.length;
+  const sharpe = stdev > 1e-9 ? mean / stdev : 0;
+  const sortino = semi > 1e-9 ? mean / semi : 0;
+  const totalAbs = upVol + semi;
+  const upShare = totalAbs > 0 ? upVol / totalAbs : 0.5;
+  const skew = semi > 1e-9 ? upVol / semi : 99;
+  const survive = (cut) => rets.filter((r) => r > cut).length / n;
+  return {
+    n, mean, median, stdev, semi, upVol, winRate, best, worst, iqr: q3 - q1,
+    var95, cvar, sharpe, sortino, upShare, skew,
+    survive0: survive(-0.05),
+    survive50: survive(-0.08),
+    survive100: survive(-0.12),
+  };
+}
+
+function splitInvalidation(text) {
+  return String(text || "")
+    .split(/[/·;|\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s && s !== "—");
+}
+
+function renderDiscDeepPlaybook(r, months) {
+  const box = $("#disc-modal-deep");
+  if (!box) return;
+  const stats = computeTrackStats(r.years_track);
+  const nowM = new Date().getMonth() + 1;
+  const targetM = Number(r.target_month || String(r.window_name || "").replace("월", "")) || nowM;
+  const monthCells = (months && months.length === 12 ? months : []).map((m) => {
+    const ret = Number(m.avg_return || 0);
+    const wr = ((m.win_rate || 0) * 100).toFixed(0);
+    const cls = m.month === targetM ? "on" : "";
+    const col = ret > 0.02 ? "#34d399" : ret < -0.02 ? "#f87171" : "#94a3b8";
+    return `<div class="pb-month-cell ${cls}"><span>${m.month}월</span><b style="color:${col}">${ret > 0 ? "+" : ""}${(ret * 100).toFixed(0)}</b><small style="color:#64748b">${wr}%</small></div>`;
+  }).join("");
+
+  const years = (r.years_track || []).map((y) => {
+    const ret = Number(y.return || 0);
+    const loss = !y.is_win;
+    const fail = (r.failed_analysis || []).find((f) => String(f).includes(String(y.year)));
+    return `<div class="pb-year-row ${loss ? "loss" : ""}">
+      <div><b>${y.year}년</b> <span class="meta">${escapeHtml(r.entry_window_str || r.window_name || "")}</span>
+        ${fail ? `<div style="color:#fca5a5;font-size:11px;margin-top:2px;">실패 원인: ${escapeHtml(fail)}</div>` : ""}
+      </div>
+      <b style="color:${loss ? "#f87171" : "#34d399"}">${ret > 0 ? "+" : ""}${(ret * 100).toFixed(1)}%</b>
+    </div>`;
+  }).join("");
+
+  const inv = splitInvalidation(r.invalidating_conditions);
+  const invHtml = inv.length
+    ? `<ul style="margin:6px 0 0 18px;padding:0;">${inv.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
+    : `<p class="meta" style="margin:6px 0 0;">${escapeHtml(r.invalidating_conditions || "실적 쇼크 또는 대규모 순매도 전환")}</p>`;
+
+  let statsHtml = "";
+  let lolli = "";
+  let dual = "";
+  let stress = "";
+  let ai = "";
+  if (stats) {
+    const cells = [
+      ["평균 수익률 (μ)", pbPct(stats.mean), "#34d399"],
+      ["중앙값 수익률", pbPct(stats.median), "#67e8f9"],
+      ["표준편차 (σ)", `±${(stats.stdev * 100).toFixed(1)}%`, "#cbd5e1"],
+      ["하방 변동성", `${(stats.semi * 100).toFixed(1)}%`, "#f87171"],
+      ["최대 낙폭", pbPct(stats.worst), "#f87171"],
+      ["역사적 승률", `${(stats.winRate * 100).toFixed(1)}%`, "#34d399"],
+      ["샤프 비율", pbNum(stats.sharpe), "#e2e8f0"],
+      ["소티노 비율", pbNum(stats.sortino), "#34d399"],
+      ["95% VaR", pbPct(stats.var95), "#f87171"],
+      ["조건부 CVaR", pbPct(stats.cvar), "#fb7185"],
+      ["사분위 범위", `${(stats.iqr * 100).toFixed(1)}%`, "#94a3b8"],
+      ["최대 수익", pbPct(stats.best), "#34d399"],
+    ];
+    statsHtml = `<div class="pb-stat-grid">${cells.map(([k, v, c]) => `<div class="pb-stat-cell"><span>${k}</span><b style="color:${c}">${v}</b></div>`).join("")}</div>`;
+    const maxAbs = Math.max(...(r.years_track || []).map((y) => Math.abs(Number(y.return) || 0)), 0.01);
+    lolli = `<div class="pb-lollipop">${(r.years_track || []).map((y) => {
+      const ret = Number(y.return) || 0;
+      const h = Math.max(6, Math.round((Math.abs(ret) / maxAbs) * 110));
+      return `<i><span style="font-size:10px;color:${ret < 0 ? "#f87171" : "#67e8f9"}">${(ret * 100).toFixed(1)}%</span><em class="${ret < 0 ? "loss" : ""}" style="height:${h}px"></em><small>'${String(y.year).slice(-2)}</small></i>`;
+    }).join("")}</div>`;
+    const upPct = (stats.upShare * 100).toFixed(0);
+    dual = `<div class="pb-bar-dual"><div style="width:${upPct}%;background:#34d399"></div><div style="width:${100 - upPct}%;background:#f87171"></div></div>
+      <div class="meta" style="margin-top:4px;">상방 ${(stats.upVol * 100).toFixed(1)}% (${upPct}%) · 하방 ${(stats.semi * 100).toFixed(1)}% · 비대칭 ${stats.skew.toFixed(2)}x</div>`;
+    const exp1 = stats.mean;
+    const exp2 = stats.mean * 0.7;
+    const exp3 = Math.max(stats.mean * 0.05, stats.worst * 0.2);
+    const w1 = Math.min(-0.01, stats.worst);
+    const w2 = Math.min(-0.02, stats.mean - stats.stdev * 1.5);
+    const w3 = Math.min(-0.05, stats.mean - stats.stdev * 2.2);
+    stress = `
+      <div class="pb-stress" style="border:1px solid rgba(56,189,248,0.35);">
+        <b style="color:#67e8f9;">● 정상 시장 (Baseline)</b>
+        <div class="meta">조건: 역사적 계절성 패턴 정상 실현 (σ × 1.0)</div>
+        <div>예상 수익 ${pbPct(exp1)} · 스트레스 σ ${(stats.stdev * 100).toFixed(1)}% · <span style="color:#f87171">최악 ${pbPct(w1)}</span> · 생존 ${(stats.survive0 * 100).toFixed(1)}%</div>
+        <div style="color:#67e8f9;margin-top:4px;">방어: 계절성 윈도우 시작 시점 표준 분할 진입</div>
+      </div>
+      <div class="pb-stress" style="border:1px solid rgba(234,179,8,0.4);">
+        <b style="color:#fbbf24;">● 매크로 변동성 확대 (+50%)</b>
+        <div class="meta">조건: 지수 변동성 및 환율/금리 충격 가중 (σ × 1.5)</div>
+        <div>예상 수익 ${pbPct(exp2)} · 스트레스 σ ${(stats.stdev * 1.5 * 100).toFixed(1)}% · <span style="color:#f87171">최악 ${pbPct(w2)}</span> · 생존 ${(stats.survive50 * 100).toFixed(1)}%</div>
+        <div style="color:#fbbf24;margin-top:4px;">방어: 포지션 비중 축소 및 손절선 엄격 준수</div>
+      </div>
+      <div class="pb-stress" style="border:1px solid rgba(248,113,113,0.45);">
+        <b style="color:#f87171;">● 블랙스완 & 산업 쇼크 (+100%)</b>
+        <div class="meta">조건: 원자재/물류 급변 또는 실적 급랭 (σ × 2.0)</div>
+        <div>예상 수익 ${pbPct(exp3)} · 스트레스 σ ${(stats.stdev * 2 * 100).toFixed(1)}% · <span style="color:#f87171">최악 ${pbPct(w3)}</span> · 생존 ${(stats.survive100 * 100).toFixed(1)}%</div>
+        <div style="color:#f87171;margin-top:4px;">방어: 무효화 조건 발동 시 전량 청산 및 해지</div>
+      </div>`;
+    const failTxt = (r.failed_analysis || [])[0] || "실패 연도는 원자재·환율 충격 등 외부 변수와 겹친 경우가 많음";
+    ai = `<p style="margin:0;font-size:13px;line-height:1.6;color:#cbd5e1;">
+      ${escapeHtml(r.company || r.ticker)}(${escapeHtml(r.ticker)})은 ${escapeHtml(r.window_name || "해당")} 윈도우에서
+      평균 ${pbPct(stats.mean)}, 표준편차 ${(stats.stdev * 100).toFixed(1)}%입니다.
+      상방 변동성이 하방 대비 ${stats.skew.toFixed(2)}배로
+      ${stats.skew >= 2 ? "비대칭 계절성 알파 구조" : "대칭에 가까운 구조"}입니다.
+      ${escapeHtml(failTxt)}.
+      권장 비중은 과하지 않게 두고, 아래 무효화 조건이 뜨면 미련 없이 접는 편이 낫습니다.
+    </p>`;
+  }
+
+  const st = r.current_status || "DISCOVERY";
+  box.innerHTML = `
+    <div style="margin-top:14px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.25);border-radius:12px;padding:14px 16px;">
+      <b style="color:#34d399;">올해 유효성 확인 지표 (가용 데이터)</b>
+      <div class="pb-confirm-grid" style="margin-top:10px;">
+        <div class="pb-confirm-cell"><span>역사적 승률</span><b>${((r.win_rate || 0) * 100).toFixed(1)}%</b></div>
+        <div class="pb-confirm-cell"><span>초과 알파</span><b>${pbPct(r.median_alpha)}</b></div>
+        <div class="pb-confirm-cell"><span>표본</span><b>${r.sample_count || 0}개년</b></div>
+        <div class="pb-confirm-cell"><span>상태</span><b>${escapeHtml(st)}</b></div>
+      </div>
+      <p class="meta" style="margin:8px 0 0;">PC는 모바일의 RS60·EPS Revision 실시간 칸까지는 아직 안 붙입니다. 있는 지표만 정직하게 표시합니다.</p>
+    </div>
+    ${monthCells ? `<div style="margin-top:14px;background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px 16px;">
+      <div style="display:flex;justify-content:space-between;"><b>12개월 기간별 수익 변동성 히트맵</b><span class="meta">셀 = 평균수익 / 승률</span></div>
+      <div class="pb-month-heat" style="margin-top:10px;">${monthCells}</div>
+    </div>` : ""}
+    ${years ? `<div style="margin-top:14px;background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px 16px;">
+      <b>연도별 계절성 수익률 & 실패 연도 분석</b>${years}
+    </div>` : ""}
+    <div style="margin-top:14px;border:1px solid rgba(248,113,113,0.35);border-radius:12px;padding:14px 16px;">
+      <b style="color:#f87171;">전략 무효화 조건 (Invalidating Conditions)</b>
+      ${invHtml}
+    </div>
+    ${stats ? `<div style="margin-top:14px;background:rgba(15,23,42,0.6);border:1px solid rgba(56,189,248,0.25);border-radius:12px;padding:14px 16px;">
+      <b style="color:#67e8f9;">기간별 수익 변동성 분석 리포트</b>
+      <p class="meta">현재 패턴 윈도우 실측 (1M/6M/12M을 임의로 만들지 않습니다)</p>
+      <div style="margin-top:12px;"><b style="font-size:12.5px;">역사적 연도별 실측 수익률 산포도</b>${lolli}</div>
+      <div style="margin-top:12px;"><b style="font-size:12.5px;">상방 수익 기여 vs 하방 손실 변동성</b>${dual}</div>
+      <div style="margin-top:12px;"><b style="font-size:12.5px;">핵심 정량 통계</b><div style="margin-top:8px;">${statsHtml}</div></div>
+      <div style="margin-top:14px;"><b>변동성 스트레스 테스트 (시장 충격 시나리오)</b>${stress}</div>
+      <div style="margin-top:14px;border:1px solid rgba(56,189,248,0.3);border-radius:10px;padding:12px;">
+        <b style="color:#67e8f9;">정밀 변동성 진단 및 운용 가이드</b>
+        ${ai}
+        <div style="margin-top:8px;color:#fbbf24;font-size:12px;">전략 무효화 & 손절 감시 트리거</div>
+        ${invHtml}
+      </div>
+    </div>` : ""}
+  `;
+}
+
+async function openDiscoveryDetailModal(r) {
   const modal = $("#discovery-detail-modal");
   if (!modal || !r) return;
 
@@ -6697,7 +6888,19 @@ function openDiscoveryDetailModal(r) {
     if (e.target === modal) modal.classList.add("hidden");
   };
 
+  const deep = $("#disc-modal-deep");
+  if (deep) deep.innerHTML = `<p class="hint">12개월 히트맵과 변동성 리포트를 붙이는 중…</p>`;
   modal.classList.remove("hidden");
+  let months = r.all_months || [];
+  if (!months.length && r.ticker) {
+    try {
+      const data = await api(`/api/seasonality/ticker/${encodeURIComponent(r.ticker)}`);
+      months = (data.stock && data.stock.months) || [];
+    } catch (_) {
+      months = [];
+    }
+  }
+  renderDiscDeepPlaybook(r, months);
 }
 
 
@@ -6860,9 +7063,18 @@ async function loadPreEntryView() {
     `;
   }).join("");
 
-  // Bind Buttons
+  container.querySelectorAll(".pre-entry-card").forEach((card) => {
+    card.style.cursor = "pointer";
+    card.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      const code = card.querySelector("[data-ticker]")?.dataset.ticker;
+      const row = allRows.find((x) => x.ticker === code);
+      if (row) openDiscoveryDetailModal(row);
+    });
+  });
   container.querySelectorAll(".btn-pre-entry-detail").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
       const code = btn.dataset.ticker;
       const row = allRows.find((r) => r.ticker === code);
       if (row) openDiscoveryDetailModal(row);
@@ -6870,7 +7082,8 @@ async function loadPreEntryView() {
   });
 
   container.querySelectorAll(".btn-pre-entry-stock").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
       openStock(btn.dataset.ticker).catch((err) => alert(err.message));
     });
   });
