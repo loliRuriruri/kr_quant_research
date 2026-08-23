@@ -6154,7 +6154,6 @@ if ($("#sunzi-refresh")) {
   $("#sunzi-refresh").addEventListener("click", () => loadSunzi().catch((err) => alert(err.message)));
 }
 setupSunziControls();
-}
 if ($("#nps-refresh")) {
   $("#nps-refresh").addEventListener("click", () => loadNps().catch((err) => alert(err.message)));
 }
