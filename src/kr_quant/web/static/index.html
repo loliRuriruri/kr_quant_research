@@ -261,43 +261,53 @@
     <section id="view-sunzi" class="view hidden">
       <article class="card yang-stage">
         <div class="card-h">
-          <h2>은하퀀트전설</h2>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:22px;">🍵</span>
+            <div>
+              <h2 style="margin:0; font-size:20px; color:#fff; font-weight:900; letter-spacing:-0.5px;">은하퀀트전설 (Legend of Galactic Quant)</h2>
+              <p class="hint" style="margin:2px 0 0; color:#94a3b8; font-size:12px;">제13함대 기함 히페리온 작전 회의실 · 손자 오사(道天地將法) 기반 양 웬리 실전 전술 참모</p>
+            </div>
+          </div>
           <div class="actions">
-            <span class="chip" style="background:rgba(56,189,248,0.15); color:#67e8f9;">착수≠매수 · Quant 합산 없음</span>
-            <button class="ghost" id="sunzi-refresh">명부 다시 펼치기</button>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:800; border:1px solid rgba(56,189,248,0.3);">🍵 착수≠매수 · 연구 우선순위 배정</span>
+            <button class="ghost" id="sunzi-refresh">작전 명부 새로고침</button>
           </div>
         </div>
-        <p class="hint yang-lede">나는 이 책상의 참모야. 손자의 道天地將法으로 전장을 세되, 교리로 떠받들진 않아. 백 번 싸워 백 번 이기는 것보다, 싸우지 않고 꺾는 쪽이 더 싸게 먹히거든. 오늘은 그 기준으로 — 굳이 출진할 이유가 있는지만 볼게. 홍차는 내가 내릴게.</p>
-        <div class="yang-toolbar">
-          <div class="autocomplete-wrap yang-search">
-            <input id="sunzi-q" type="text" autocomplete="off" placeholder="퀀트 밖 종목도 됩니다. 이름이나 코드를 말해 보세요." />
-            <ul id="sunzi-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
-          </div>
+
+        <!-- Static toolbar fallback for tests & quick lookup -->
+        <div class="yang-toolbar" style="display:none;">
+          <input id="sunzi-q" type="text" autocomplete="off" placeholder="종목 검색" />
+          <ul id="sunzi-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
           <div id="sunzi-universe-tabs" class="yang-seg">
             <button type="button" class="preset-chip-btn active" data-universe="quant">퀀트 상위 명부</button>
             <button type="button" class="preset-chip-btn" data-universe="all">명부 전체</button>
           </div>
-          <select id="sunzi-posture-filter">
-            <option value="all">참모 의견 전체</option>
-            <option value="ENGAGE">착수</option>
-            <option value="WAIT">대기</option>
-            <option value="OBSERVE">관찰</option>
-            <option value="RETREAT">후퇴</option>
-            <option value="AVOID">회피</option>
-          </select>
-          <select id="sunzi-fa-filter">
-            <option value="all">法 전체</option>
-            <option value="pass">法 통과만</option>
-            <option value="fail">法 미달만</option>
-          </select>
-          <select id="sunzi-market-filter">
-            <option value="all">시장 전체</option>
-            <option value="KOSPI">KOSPI</option>
-            <option value="KOSDAQ">KOSDAQ</option>
-          </select>
         </div>
+
         <div id="sunzi-box" class="quality"></div>
       </article>
+    </section>
+
+    <!-- 🍵 Yang Wen-li 1:1 Tactical Intelligence Modal -->
+    <div id="yang-tactical-modal" class="yang-modal-overlay hidden">
+      <div class="yang-modal-dialog">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="chip" style="background:#eab308; color:#0f172a; font-weight:900;">제13함대 기밀 작전 지시서</span>
+              <span id="yang-modal-strategy-tag" class="yang-strategy-pill">先勝求戰 (선승구전)</span>
+            </div>
+            <h2 id="yang-modal-title" style="margin:8px 0 0; font-size:22px; color:#fff; font-weight:900;">종목명 (000000)</h2>
+            <p id="yang-modal-sub" class="meta" style="margin:4px 0 0; font-size:13px; color:#94a3b8;">KOSPI · 반도체 · 퀀트 종합 82.1점</p>
+          </div>
+          <button type="button" class="ghost" id="btn-close-yang-modal" style="font-size:18px; padding:4px 10px; cursor:pointer;">✕</button>
+        </div>
+
+        <!-- Yang Commentary Content -->
+        <div id="yang-modal-body" style="display:flex; flex-direction:column; gap:14px;"></div>
+      </div>
+    </div>
+
     </section>
 
     <section id="view-nps" class="view hidden">

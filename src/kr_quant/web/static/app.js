@@ -3313,10 +3313,113 @@ function sunziMiniBars(r) {
   }).join("")}</div>`;
 }
 
+let sunziAllRows = [];
+
+function openYangTacticalModal(r) {
+  const modal = $("#yang-tactical-modal");
+  if (!modal) return;
+
+  $("#yang-modal-strategy-tag").textContent = r.strategy_tag || "知彼知己 (지피지기)";
+  $("#yang-modal-title").textContent = `${r.company || r.ticker} (${r.ticker})`;
+  $("#yang-modal-sub").textContent = `${r.market || 'KOSPI'} · ${r.industry || '미분류'} · 퀀트 점수 ${r.quant_score ?? '—'}점 · 참모 점수 ${r.critic_score ?? '—'}점`;
+
+  const sunziInterp = r.sunzi_interpretation || {};
+  const bearListHtml = (r.strongest_bear_evidence || []).map((b) => `<li style="color:#fca5a5; font-size:12.5px; margin-bottom:4px;">${escapeHtml(b)}</li>`).join("");
+  const waitTest = r.waiting_test || {};
+
+  $("#yang-modal-body").innerHTML = `
+    <!-- 1. Top Quote Bar -->
+    <div style="background:linear-gradient(90deg, rgba(56,189,248,0.15), rgba(234,179,8,0.1)); padding:12px 16px; border-radius:12px; border-left:4px solid #38bdf8;">
+      <b style="color:#fff; font-size:14px;">🍵 양 웬리 제독의 실전 총평:</b>
+      <p style="margin:6px 0 0; color:#38bdf8; font-size:14px; font-weight:700; line-height:1.5;">“${escapeHtml(r.one_line_judgment || r.critic_comment || '')}”</p>
+    </div>
+
+    <!-- 2. 3-Tier Tactical Intelligence -->
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <div class="yang-tier-box briefing">
+        <b style="font-size:13px; color:#38bdf8;">🔭 1단계: 전황 분석 & 회사의 실체</b>
+        <p style="margin:6px 0 0; color:#e2e8f0;">${escapeHtml(r.tactical_briefing || r.critic_comment || '분석 데이터 집계 중...')}</p>
+      </div>
+
+      ${r.maneuver_entry ? `
+      <div class="yang-tier-box maneuver">
+        <b style="font-size:13px; color:#fbbf24;">💡 2단계: 양 웬리의 기책 & 진입/대기 타점</b>
+        <p style="margin:6px 0 0; color:#fef08a;">${escapeHtml(r.maneuver_entry)}</p>
+      </div>` : ''}
+
+      ${r.escape_route ? `
+      <div class="yang-tier-box escape">
+        <b style="font-size:13px; color:#f43f5e;">🚪 3단계: 퇴로 확보 & 작전 무효화 조건 (손절 원칙)</b>
+        <p style="margin:6px 0 0; color:#fda4af;">${escapeHtml(r.escape_route)}</p>
+      </div>` : ''}
+    </div>
+
+    <!-- 3. Sun Tzu 5 Aspects Detailed Table -->
+    <div style="margin-top:4px;">
+      <b style="color:#fff; font-size:13.5px; margin-bottom:8px; display:block;">📜 손자 五事 (道天地將法) 정밀 점검표</b>
+      <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;">
+        <div class="five-card" style="padding:8px 10px; text-align:center;">
+          <span style="font-size:11px;">道 (정렬)</span>
+          <b class="${sunziTone(r.dao)}" style="font-size:16px;">${fmt(r.dao, 0)}</b>
+        </div>
+        <div class="five-card" style="padding:8px 10px; text-align:center;">
+          <span style="font-size:11px;">天 (시장)</span>
+          <b class="${sunziTone(r.tian)}" style="font-size:16px;">${fmt(r.tian, 0)}</b>
+        </div>
+        <div class="five-card" style="padding:8px 10px; text-align:center;">
+          <span style="font-size:11px;">地 (업종)</span>
+          <b class="${sunziTone(r.di)}" style="font-size:16px;">${fmt(r.di, 0)}</b>
+        </div>
+        <div class="five-card" style="padding:8px 10px; text-align:center;">
+          <span style="font-size:11px;">將 (지휘관)</span>
+          <b class="${sunziTone(r.jiang)}" style="font-size:16px;">${fmt(r.jiang, 0)}</b>
+        </div>
+        <div class="five-card" style="padding:8px 10px; text-align:center;">
+          <span style="font-size:11px;">法 (규율)</span>
+          <b class="${sunziTone(r.fa)}" style="font-size:16px;">${fmt(r.fa, 0)}</b>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Adversarial Skepticism & Waiting Benefit -->
+    <div style="background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px 14px;">
+      <b style="color:#f87171; font-size:12.5px;">⚠️ 참모가 의심하는 가장 강력한 반대 논리:</b>
+      <ul style="margin:6px 0 8px 18px; padding:0;">${bearListHtml || '<li style="color:#94a3b8; font-size:12px;">특이 반대 징후 없음</li>'}</ul>
+      <div style="margin-top:6px; font-size:12px; color:#94a3b8; border-top:1px solid rgba(255,255,255,0.06); padding-top:6px; display:flex; justify-content:space-between;">
+        <span>⏳ <b>기다림의 득:</b> ${escapeHtml(waitTest.benefit_of_waiting || '—')}</span>
+        <span>⌛ <b>기다림의 실:</b> ${escapeHtml(waitTest.cost_of_waiting || '—')}</span>
+      </div>
+    </div>
+
+    <!-- Action Footer -->
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+      <button type="button" class="ghost small" onclick="openStock('${escapeHtml(r.ticker)}')">📊 종목 전체 퀀트 분석 →</button>
+      <button type="button" class="primary small" id="btn-modal-close-action" style="background:#38bdf8; color:#0f172a; font-weight:800;">확인 완료</button>
+    </div>
+  `;
+
+  modal.classList.remove("hidden");
+
+  const closeBtn = $("#btn-close-yang-modal");
+  const closeAction = $("#btn-modal-close-action");
+  if (closeBtn) closeBtn.onclick = () => modal.classList.add("hidden");
+  if (closeAction) closeAction.onclick = () => modal.classList.add("hidden");
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.classList.add("hidden");
+  };
+}
+
 async function loadSunzi() {
   const box = $("#sunzi-box");
   if (!box) return;
-  box.innerHTML = "<p>명부를 펼치는 중입니다. 차는 아직 따뜻해요…</p>";
+  box.innerHTML = `
+    <div style="text-align:center; padding:40px; color:#94a3b8;">
+      <div style="font-size:32px; margin-bottom:12px;">🍵</div>
+      <b>제13함대 작전 테이블을 펼치는 중입니다...</b>
+      <p style="font-size:12px; margin-top:4px;">차는 아직 따뜻합니다. 손자의 오사로 전황을 측정하고 있습니다.</p>
+    </div>
+  `;
+
   const params = new URLSearchParams({
     n: currentSunziUniverse === "all" ? "60" : "40",
     universe: currentSunziUniverse,
@@ -3325,91 +3428,186 @@ async function loadSunzi() {
   if (currentSunziPosture && currentSunziPosture !== "all") params.set("posture", currentSunziPosture);
   if (currentSunziFa && currentSunziFa !== "all") params.set("fa", currentSunziFa);
   if (currentSunziMarket && currentSunziMarket !== "all") params.set("market", currentSunziMarket);
+
   const data = await api(`/api/sunzi?${params.toString()}`);
   if (!data.configured) {
     box.innerHTML = `<p class="hint">${escapeHtml(data.error || "결과가 없습니다. 실행 파이프라인에서 재계산을 먼저 하세요.")}</p>`;
     return;
   }
+
   const tian = data.tian || {};
   const briefing = data.briefing || {};
   const aspects = data.aspects || [];
-  const rows = data.rows || [];
+  sunziAllRows = data.rows || [];
   const postures = data.postures || {};
-  const counts = ["ENGAGE", "WAIT", "OBSERVE", "RETREAT", "AVOID"].map((k) => ({
-    key: k,
-    n: postures[k] || 0,
-    ...postureMeta(k),
-  }));
+
+  const counts = [
+    { key: "ENGAGE", label: "🟢 착수", hint: "유리한 전장 착수", n: postures.ENGAGE || 0 },
+    { key: "WAIT", label: "🟡 대기", hint: "이일대로·홍차 관망", n: postures.WAIT || 0 },
+    { key: "OBSERVE", label: "🟣 관찰", hint: "지피지기·정찰 유지", n: postures.OBSERVE || 0 },
+    { key: "RETREAT", label: "🟠 후퇴", hint: "퇴로 확보·전선 후퇴", n: postures.RETREAT || 0 },
+    { key: "AVOID", label: "🔴 회피", hint: "해도 결함·출병 거부", n: postures.AVOID || 0 },
+  ];
+
   if (currentView === "sunzi") {
     setPageAsOf(
       `天 ${tian.regime_ko || "—"} · 法 통과 ${data.fa_pass_n || 0}/${data.n || 0} · 대기 ${postures.WAIT || 0}`,
       "이 판단은 Quant와 합산하지 않아. 착수는 매수가 아니야."
     );
   }
-  const aspectCards = aspects
-    .map((a) => {
-      const yang = a.yang || "";
-      const sunzi = a.sunzi || "";
-      return `<div class="five-card sunzi-aspect">
-        <span>${escapeHtml(a.han || "")} ${escapeHtml(a.ko || "")}</span>
-        <b class="${sunziTone(a.score)}">${fmt(a.score, 0)}</b>
-        <p class="sunzi-q">${escapeHtml(sunzi)}</p>
-        <p class="yang-voice">${escapeHtml(yang)}</p>
-        ${a.note ? `<p class="meta">${escapeHtml(a.note)}</p>` : ""}
-      </div>`;
-    })
-    .join("");
-  const staff = rows.slice(0, 6);
-  const staffCards = staff.map((r) => `
-    <div class="yang-staff-card" data-ticker="${escapeHtml(r.ticker || "")}">
-      <div class="yang-staff-top">
+
+  // 5 Aspects Radar Gauges
+  const aspectCards = aspects.map((a) => `
+    <div class="five-card sunzi-aspect" style="padding:14px 16px; border-radius:14px; background:linear-gradient(180deg, rgba(15,23,42,0.8), rgba(8,47,73,0.4)); border:1px solid rgba(56,189,248,0.25);">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:13.5px; font-weight:800; color:#38bdf8;">${escapeHtml(a.han || "")} ${escapeHtml(a.ko || "")}</span>
+        <b class="${sunziTone(a.score)}" style="font-size:20px; font-weight:900;">${fmt(a.score, 0)}</b>
+      </div>
+      <p class="sunzi-q" style="font-size:11.5px; color:#94a3b8; margin:6px 0 8px;">${escapeHtml(a.sunzi || "")}</p>
+      <p class="yang-voice" style="font-size:12.5px; line-height:1.5; color:#e2e8f0;">${escapeHtml(a.yang || "")}</p>
+      ${a.note ? `<div class="meta" style="margin-top:8px; font-size:11px; color:#67e8f9;">📌 ${escapeHtml(a.note)}</div>` : ""}
+    </div>
+  `).join("");
+
+  // Top 6 Staff Hero Cards
+  const staff = sunziAllRows.slice(0, 6);
+  const staffCards = staff.map((r, idx) => `
+    <div class="yang-tactical-card" data-ticker="${escapeHtml(r.ticker || "")}" data-index="${idx}">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
         <div>
-          <b style="color:#fff;font-size:15px;">${escapeHtml(r.company || r.ticker || "")}</b>
-          <div class="meta">${escapeHtml(r.market || "")} ${escapeHtml(r.ticker || "")} · ${escapeHtml(r.industry || "")}${r.universe_eligible ? "" : " · 퀀트 명부 밖"}</div>
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span class="yang-strategy-pill">${escapeHtml(r.strategy_tag || '知彼知己')}</span>
+            <b style="color:#fff; font-size:17px; font-weight:900;">${escapeHtml(r.company || r.ticker || "")}</b>
+            <span class="chip" style="background:#1e293b; color:#94a3b8; font-family:monospace; font-size:11px;">${escapeHtml(r.market || "")} ${escapeHtml(r.ticker || "")}</span>
+          </div>
+          <div class="meta" style="margin-top:4px;">${escapeHtml(r.industry || "미분류")} · 퀀트 점수 <b>${fmt(r.quant_score, 1)}점</b> · 참모 점수 <b class="${sunziTone(r.critic_score)}">${fmt(r.critic_score, 0)}점</b></div>
         </div>
         ${postureChip(r)}
       </div>
+
+      <!-- Mini 5 Aspects Bar -->
       ${sunziMiniBars(r)}
-      <p class="yang-voice">${escapeHtml(r.critic_comment || r.one_line_judgment || r.variant || "")}</p>
+
+      <!-- 3-Tier Tactical Commentary Box -->
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+        <div class="yang-tier-box briefing">
+          <b style="font-size:12px; color:#38bdf8;">🔭 전황 분석:</b> ${escapeHtml(r.tactical_briefing || r.critic_comment || '')}
+        </div>
+        ${r.maneuver_entry ? `
+        <div class="yang-tier-box maneuver">
+          <b style="font-size:12px; color:#fbbf24;">💡 양 웬리의 기책:</b> ${escapeHtml(r.maneuver_entry)}
+        </div>` : ''}
+      </div>
+
+      <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid rgba(255,255,255,0.08); padding-top:8px;">
+        <span style="font-size:12px; color:#67e8f9; font-weight:700;">“${escapeHtml((r.one_line_judgment || '').slice(0, 36))}...”</span>
+        <button type="button" class="ghost small btn-open-yang-brief" data-index="${idx}" style="color:#38bdf8; border:1px solid rgba(56,189,248,0.35);">📜 1:1 작전 지시서 ➔</button>
+      </div>
     </div>
   `).join("");
+
   box.innerHTML = `
-    <div class="yang-hero">
-      <div class="yang-portrait">
-        <div class="yang-avatar">🍵</div>
-        <b>양 웬리</b>
-        <span>은하퀀트전설 참모<br/>훈장보다 홍차가 나아</span>
+    <!-- Top War Room HUD Banner -->
+    <div class="yang-war-room-header">
+      <div class="yang-portrait-card">
+        <div class="yang-avatar-hud">🍵</div>
+        <b style="font-size:18px; color:#fff; font-weight:900;">양 웬리 제독</b>
+        <span style="color:#94a3b8; font-size:12px; display:block; margin-top:2px;">제13함대 사령관 · 실전 퀀트 참모</span>
+        <div class="yang-tea-badge">🍵 홍차 브리핑 준비 완료</div>
+        <p style="margin:12px 0 0; font-size:11.5px; color:#cbd5e1; line-height:1.45; font-style:italic;">
+          “전쟁에서 가장 중요한 건 이기는 게 아니라, 지지 않는 거라네.”
+        </p>
       </div>
-      <article class="yang-brief">
-        <h3>🍵 ${escapeHtml(briefing.title || "오늘 전장")}</h3>
-        <p class="sunzi-q">${escapeHtml(briefing.sunzi_line || "")}</p>
-        <p class="yang-voice">${escapeHtml(briefing.yang_line || "")}</p>
-        <p class="hint">${escapeHtml(data.disclaimer || briefing.voice || "")}</p>
+
+      <article class="yang-briefing-hud">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0; font-size:17px; color:#38bdf8; font-weight:900;">📜 ${escapeHtml(briefing.title || "제13함대 히페리온 작전 회의록")}</h3>
+          <span class="chip" style="background:rgba(234,179,8,0.2); color:#fde047; font-size:11.5px; font-weight:800;">孫子 五事 評點</span>
+        </div>
+        <p style="font-size:12px; color:#94a3b8; margin:0 0 8px; line-height:1.4;">${escapeHtml(briefing.sunzi_line || "")}</p>
+        <p style="font-size:14px; color:#f1f5f9; font-weight:500; line-height:1.65; margin:0 0 10px; padding:10px 14px; background:rgba(15,23,42,0.6); border-radius:10px; border-left:3px solid #38bdf8;">
+          ${escapeHtml(briefing.yang_line || "")}
+        </p>
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:11.5px; color:#64748b;">
+          <span>💡 ${escapeHtml(data.disclaimer || briefing.voice || "")}</span>
+          <span style="color:#38bdf8;">*착수는 출진 명령이 아니라 연구 우선순위 배정입니다.</span>
+        </div>
       </article>
     </div>
-    <div class="sunzi-concept">
-      <div>
-        <span class="sunzi-concept-k">손자의 근본</span>
-        <p>道·天·地·將·法. 이기고 싶은 마음이 아니라, 전장이 허용하는지를 먼저 셀게. 교리로 떠받들진 않아. 오래 살아남은 점검표일 뿐이야.</p>
+
+    <!-- 5 Aspects Gauge Grid -->
+    <div style="margin-bottom:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <b style="font-size:14px; color:#fff;">📊 손자병법 오사 (道·天·地·將·法) 거시 전황 측정계</b>
+        <span style="font-size:12px; color:#94a3b8;">전체 ${sunziAllRows.length}개 후보 전황 평균</span>
       </div>
-      <div>
-        <span class="sunzi-concept-k yang">내가 묻는 것</span>
-        <p>백 번 이겨도 최고가 아니야. 싸우지 않고 꺾는 쪽이 더 싸게 먹히거든. 오늘은 그 기준으로 출진할 이유만 볼게.</p>
+      <div class="five-grid sunzi-aspect-grid">${aspectCards}</div>
+    </div>
+
+    <!-- Search & Filter Toolbar -->
+    <div class="yang-toolbar">
+      <div class="autocomplete-wrap yang-search">
+        <input id="sunzi-q" type="text" autocomplete="off" placeholder="🔍 퀀트 밖 종목도 분석합니다. 종목명이나 코드를 입력하세요." />
+        <ul id="sunzi-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
       </div>
+      <div id="sunzi-universe-tabs" class="yang-seg">
+        <button type="button" class="preset-chip-btn active" data-universe="quant">👑 퀀트 상위 명부</button>
+        <button type="button" class="preset-chip-btn" data-universe="all">🌐 전 종목 명부</button>
+      </div>
+      <select id="sunzi-fa-filter">
+        <option value="all">法 전체</option>
+        <option value="pass">法 규율 통과만</option>
+        <option value="fail">法 미달만</option>
+      </select>
+      <select id="sunzi-market-filter">
+        <option value="all">시장 전체</option>
+        <option value="KOSPI">KOSPI</option>
+        <option value="KOSDAQ">KOSDAQ</option>
+      </select>
     </div>
-    <div class="five-grid sunzi-aspect-grid">${aspectCards}</div>
-    <div class="sunzi-posture-row">
-      ${counts.map((c) => `<div class="five-card ${c.cls}"><span>${escapeHtml(c.ko)}</span><b>${c.n}</b><p>${escapeHtml(c.hint)}</p></div>`).join("")}
+
+    <!-- 5 Postures Filter Bar -->
+    <div class="yang-posture-filter-bar">
+      ${counts.map((c) => {
+        const isActive = (currentSunziPosture || 'all') === c.key ? 'active' : '';
+        return `
+          <button type="button" class="yang-posture-btn ${isActive}" data-posture="${c.key}">
+            <div style="font-size:13px; font-weight:800; display:flex; justify-content:space-between; align-items:center;">
+              <span>${c.label}</span>
+              <b style="font-size:15px; color:#fff;">${c.n}</b>
+            </div>
+            <div style="font-size:11px; margin-top:2px; opacity:0.8;">${c.hint}</div>
+          </button>
+        `;
+      }).join("")}
+      <button type="button" class="yang-posture-btn ${(!currentSunziPosture || currentSunziPosture === 'all') ? 'active' : ''}" data-posture="all">
+        <div style="font-size:13px; font-weight:800; display:flex; justify-content:space-between; align-items:center;">
+          <span>🌐 전체 보기</span>
+          <b style="font-size:15px; color:#fff;">${sunziAllRows.length}</b>
+        </div>
+        <div style="font-size:11px; margin-top:2px; opacity:0.8;">전체 태세 명부</div>
+      </button>
     </div>
-    ${staffCards ? `<div class="yang-staff-grid">${staffCards}</div>` : ""}
+
+    <!-- Staff Hero Cards (Top 6) -->
+    <div style="margin-bottom:18px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <b style="font-size:14.5px; color:#fde047;">⚔️ 양 웬리의 정밀 전술 분석 후보 TOP 6</b>
+        <span style="font-size:11.5px; color:#94a3b8;">카드를 클릭하면 1:1 심층 작전 지시서가 열립니다.</span>
+      </div>
+      <div class="yang-staff-grid">${staffCards}</div>
+    </div>
+
+    <!-- Full Data Table -->
     <div class="table-wrap">
       <table data-scope="sunzi">
         <thead>
           <tr>
             <th class="sortable" data-sort="quant_rank">#</th>
             <th class="sortable" data-sort="company">종목</th>
-            <th class="sortable" data-sort="posture_ko">참모 의견</th>
-            <th class="sortable" data-sort="critic_score">해석</th>
+            <th class="sortable" data-sort="posture_ko">참모 태세</th>
+            <th>손자 전략</th>
+            <th class="sortable" data-sort="critic_score">참모 점수</th>
             <th class="sortable" data-sort="quant_score">Quant</th>
             <th class="sortable" data-sort="dao">道</th>
             <th class="sortable" data-sort="tian">天</th>
@@ -3417,37 +3615,72 @@ async function loadSunzi() {
             <th class="sortable" data-sort="jiang">將</th>
             <th class="sortable has-tip" data-sort="fa" data-tip="손자 法 — 데이터·리스크·공시 규율">法</th>
             <th>규율</th>
-            <th>한 줄 판단</th>
+            <th>양 웬리 전술 총평</th>
+            <th>지시서</th>
           </tr>
         </thead>
         <tbody>
-          ${sortedCopy(rows, "sunzi", "quant_rank", "asc")
-            .map(
-              (r) => `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
-            <td class="num">${r.quant_rank ?? "—"}</td>
-            <td><b>${escapeHtml(r.company || "")}</b><div class="meta">${escapeHtml(r.ticker)} · ${escapeHtml(r.industry || "")}</div></td>
-            <td>${postureChip(r)}</td>
-            <td class="num ${sunziTone(r.critic_score)}">${fmt(r.critic_score, 0)}</td>
-            <td class="num">${fmt(r.quant_score, 1)}</td>
-            <td class="num ${sunziTone(r.dao)}">${fmt(r.dao, 0)}</td>
-            <td class="num ${sunziTone(r.tian)}">${fmt(r.tian, 0)}</td>
-            <td class="num ${sunziTone(r.di)}">${fmt(r.di, 0)}</td>
-            <td class="num ${sunziTone(r.jiang)}">${fmt(r.jiang, 0)}</td>
-            <td class="num ${sunziTone(r.fa)}">${fmt(r.fa, 0)}</td>
-            <td>${faChip(r)}</td>
-            <td class="yang-line">${escapeHtml((r.one_line_judgment || r.critic_comment || r.variant || "").slice(0, 72))}</td>
-          </tr>`
-            )
-            .join("")}
+          ${sortedCopy(sunziAllRows, "sunzi", "quant_rank", "asc")
+            .map((r, idx) => `
+              <tr class="clickable" data-ticker="${escapeHtml(r.ticker)}" data-index="${idx}">
+                <td class="num">${r.quant_rank ?? "—"}</td>
+                <td>
+                  <b>${escapeHtml(r.company || "")}</b>
+                  <div class="meta">${escapeHtml(r.ticker)} · ${escapeHtml(r.industry || "")}</div>
+                </td>
+                <td>${postureChip(r)}</td>
+                <td><span class="yang-strategy-pill" style="font-size:10.5px;">${escapeHtml(r.strategy_tag || '知彼知己')}</span></td>
+                <td class="num ${sunziTone(r.critic_score)}">${fmt(r.critic_score, 0)}</td>
+                <td class="num">${fmt(r.quant_score, 1)}</td>
+                <td class="num ${sunziTone(r.dao)}">${fmt(r.dao, 0)}</td>
+                <td class="num ${sunziTone(r.tian)}">${fmt(r.tian, 0)}</td>
+                <td class="num ${sunziTone(r.di)}">${fmt(r.di, 0)}</td>
+                <td class="num ${sunziTone(r.jiang)}">${fmt(r.jiang, 0)}</td>
+                <td class="num ${sunziTone(r.fa)}">${fmt(r.fa, 0)}</td>
+                <td>${faChip(r)}</td>
+                <td class="yang-line">${escapeHtml(r.one_line_judgment || r.critic_comment || "")}</td>
+                <td>
+                  <button type="button" class="ghost small btn-table-open-brief" data-index="${idx}" style="font-size:11px; padding:2px 8px; color:#38bdf8; border:1px solid rgba(56,189,248,0.3);">지시서 ➔</button>
+                </td>
+              </tr>
+            `).join("")}
         </tbody>
       </table>
     </div>
   `;
+
   paintSortHeaders("sunzi");
-  box.querySelectorAll("tr.clickable[data-ticker], .yang-staff-card[data-ticker]").forEach((el) =>
-    el.addEventListener("click", () => openStock(el.dataset.ticker).catch((err) => alert(err.message)))
-  );
+
+  // Bind Posture Filter buttons
+  box.querySelectorAll(".yang-posture-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      currentSunziPosture = btn.dataset.posture;
+      loadSunzi().catch(() => {});
+    });
+  });
+
+  // Bind Clicks to open Yang Tactical Modal
+  box.querySelectorAll(".yang-tactical-card, .btn-open-yang-brief, .btn-table-open-brief").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const idx = parseInt(el.dataset.index, 10);
+      const row = sunziAllRows[idx];
+      if (row) openYangTacticalModal(row);
+    });
+  });
+
+  box.querySelectorAll("tr.clickable[data-ticker]").forEach((tr) => {
+    tr.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      const idx = parseInt(tr.dataset.index, 10);
+      const row = sunziAllRows[idx];
+      if (row) openYangTacticalModal(row);
+    });
+  });
+
+  setupSunziControls();
 }
+
 
 function setupSunziControls() {
   const qInput = $("#sunzi-q");
