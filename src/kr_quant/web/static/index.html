@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.10.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.11.0" />
 </head>
 <body>
   <aside class="nav">
@@ -1040,7 +1040,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.10.0"></script>
+  <script src="/static/app.js?v=2.11.0"></script>
 
     <!-- Discovery Candidate Detail Modal (Mobile Dashboard Integration) -->
     <div id="discovery-detail-modal" class="discovery-modal-overlay hidden">
@@ -1160,6 +1160,104 @@
         <div style="margin-top:18px; display:flex; justify-content:flex-end; gap:8px;">
           <button type="button" class="ghost" id="disc-modal-stock-btn">📊 종목 퀀트 팝업 →</button>
           <button type="button" class="btn" id="disc-modal-ai-btn" style="background:#38bdf8; color:#0f172a; font-weight:800;">🤖 AI 심층 리포트 발간</button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- Status Guide Modal (Mobile Dashboard Integration) -->
+    <div id="status-guide-modal" class="status-guide-overlay hidden">
+      <div class="status-guide-container">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:12px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:20px;">ℹ️</span>
+              <h3 style="margin:0; font-size:18px; font-weight:800; color:#fff;">계절성 상태(Status) 분류 가이드</h3>
+            </div>
+            <p style="margin:4px 0 0; font-size:12px; color:#94a3b8;">과거 5~10년 반복 통계 + 올해 실시간 검증 3단계 판정 체계</p>
+          </div>
+          <button type="button" class="ghost" id="status-guide-close-btn" style="font-size:18px; padding:2px 8px; line-height:1;">✕</button>
+        </div>
+
+        <!-- 3-Step Principle Box -->
+        <div style="margin-top:14px; background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.3); border-radius:10px; padding:12px 14px; font-size:12px; line-height:1.6; color:#cbd5e1;">
+          <b style="color:#38bdf8; font-size:12.5px; display:block; margin-bottom:2px;">💡 상태(Status)는 어떻게 판정되나요?</b>
+          단순히 과거 주가 상승 통계만 보는 것이 아니라, <b>①과거 반복 통계(승률/알파)</b>, <b>②올해 이벤트 인과성</b>, <b>③실적(EPS Revision) 및 기관/외인 수급</b> 3중 검증을 통해 실시간으로 상태를 부여합니다.
+        </div>
+
+        <!-- Status 1: ACTIVE -->
+        <div class="status-explanation-card" style="border-color:rgba(16,185,129,0.4); background:rgba(16,185,129,0.05);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="status-pill status-active" style="font-size:12px; padding:4px 10px;">🟢 ACTIVE (진입 유효 / 강력 추천)</span>
+          </div>
+          <p style="margin:8px 0 0; font-size:12.5px; color:#fff; line-height:1.5;">
+            과거 5~10년 계절성 패턴과 올해 실적(EPS)/수급/상대강도(RS) 3중 검증이 모두 완료된 <b>최우선 매수 공략 종목</b>입니다.
+          </p>
+          <div style="margin-top:8px; background:rgba(15,23,42,0.6); padding:8px 10px; border-radius:6px; font-size:11.5px; line-height:1.5;">
+            <div style="color:#94a3b8;">• <b>판정 조건:</b> 계절성 점수 78점 이상 + 과거 승률 70% 이상 + 최근 3개월 수익률 양호</div>
+            <div style="color:#34d399; margin-top:2px;">• <b>대응 가이드:</b> 권장 선취매 Window 진입 시 분할 매수 및 목표 엑시트 대응 유효</div>
+          </div>
+        </div>
+
+        <!-- Status 2: WATCH -->
+        <div class="status-explanation-card" style="border-color:rgba(234,179,8,0.4); background:rgba(234,179,8,0.05);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="status-pill status-watch" style="font-size:12px; padding:4px 10px;">🟡 WATCH (관찰 / 대기)</span>
+          </div>
+          <p style="margin:8px 0 0; font-size:12.5px; color:#fff; line-height:1.5;">
+            과거 계절성 패턴은 우수하나, 올해 수급 유입이나 이벤트 촉매 발생을 <b>확인 대기 중인 상태</b>입니다.
+          </p>
+          <div style="margin-top:8px; background:rgba(15,23,42,0.6); padding:8px 10px; border-radius:6px; font-size:11.5px; line-height:1.5;">
+            <div style="color:#94a3b8;">• <b>판정 조건:</b> 계절성 점수 68점 이상 또는 최근 3개년 승률 60% 이상</div>
+            <div style="color:#fde047; margin-top:2px;">• <b>대응 가이드:</b> 목표 D-Day 도달 시 거래량 급증 및 외인/기관 순매수 전환 확인 후 진입</div>
+          </div>
+        </div>
+
+        <!-- Status 3: DISCOVERY -->
+        <div class="status-explanation-card" style="border-color:rgba(168,85,247,0.4); background:rgba(168,85,247,0.05);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="status-pill status-disc" style="font-size:12px; padding:4px 10px;">🟣 DISCOVERY (신규 발굴)</span>
+          </div>
+          <p style="margin:8px 0 0; font-size:12.5px; color:#fff; line-height:1.5;">
+            최근 3~5년간 새롭게 계절성 상승 패턴이 형성된 <b>신규 발굴 후보주</b>입니다.
+          </p>
+          <div style="margin-top:8px; background:rgba(15,23,42,0.6); padding:8px 10px; border-radius:6px; font-size:11.5px; line-height:1.5;">
+            <div style="color:#94a3b8;">• <b>판정 조건:</b> 표본수 3년 이상 + 승률 67% 이상 + AI 원인 역추적 진행</div>
+            <div style="color:#c084fc; margin-top:2px;">• <b>대응 가이드:</b> 소액 분할 매수 또는 AI 리포트 분석 후 진입 권장</div>
+          </div>
+        </div>
+
+        <!-- Status 4: WEAKENING -->
+        <div class="status-explanation-card" style="border-color:rgba(249,115,22,0.4); background:rgba(249,115,22,0.05);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="status-pill status-weak" style="font-size:12px; padding:4px 10px;">🟠 WEAKENING (엣지 약화)</span>
+          </div>
+          <p style="margin:8px 0 0; font-size:12.5px; color:#fff; line-height:1.5;">
+            과거에는 강했으나 최근 3년간 승률이나 초과수익이 하락하여 <b>계절성 모멘텀이 둔화된 상태</b>입니다.
+          </p>
+          <div style="margin-top:8px; background:rgba(15,23,42,0.6); padding:8px 10px; border-radius:6px; font-size:11.5px; line-height:1.5;">
+            <div style="color:#94a3b8;">• <b>판정 조건:</b> 최근 3개년 승률 50% 미만</div>
+            <div style="color:#fb923c; margin-top:2px;">• <b>대응 가이드:</b> 비중 축소 또는 다른 ACTIVE 종목으로 교체 매매 권장</div>
+          </div>
+        </div>
+
+        <!-- Status 5: BROKEN -->
+        <div class="status-explanation-card" style="border-color:rgba(239,68,68,0.4); background:rgba(239,68,68,0.05);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="status-pill status-broken" style="font-size:12px; padding:4px 10px;">🔴 BROKEN (진입 금지 / 파기)</span>
+          </div>
+          <p style="margin:8px 0 0; font-size:12.5px; color:#fff; line-height:1.5;">
+            최근 3개월간 급락했거나 올해 펀더멘털 악화/실적 쇼크로 <b>계절성 룰이 깨진 종목</b>입니다.
+          </p>
+          <div style="margin-top:8px; background:rgba(15,23,42,0.6); padding:8px 10px; border-radius:6px; font-size:11.5px; line-height:1.5;">
+            <div style="color:#94a3b8;">• <b>판정 조건:</b> 3개월 수익률 -15% 이하 및 퀀트 종합점수 48점 미만</div>
+            <div style="color:#f87171; margin-top:2px;">• <b>대응 가이드:</b> <b>신규 매수 절대 금지</b> 및 보유 시 즉시 리스크 관리(손절)</div>
+          </div>
+        </div>
+
+        <!-- Footer Button -->
+        <div style="margin-top:18px; display:flex; justify-content:flex-end;">
+          <button type="button" class="btn" id="status-guide-confirm-btn" style="background:#38bdf8; color:#0f172a; font-weight:800; width:100%;">확인 완료</button>
         </div>
       </div>
     </div>

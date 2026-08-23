@@ -6692,6 +6692,21 @@ function renderThemeDonutAndRanking(themes) {
 }
 
 
+
+function openStatusGuideModal() {
+  const modal = $("#status-guide-modal");
+  if (!modal) return;
+
+  $("#status-guide-close-btn").onclick = () => modal.classList.add("hidden");
+  $("#status-guide-confirm-btn").onclick = () => modal.classList.add("hidden");
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.classList.add("hidden");
+  };
+
+  modal.classList.remove("hidden");
+}
+
+
 // --- Seasonality Discovery Screener v1.1 ---
 let currentV11Subtab = "discovery";
 let currentV11Horizon = 90;
