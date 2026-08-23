@@ -552,6 +552,7 @@ def scan_seasonality_discovery(
     status_filter: str | None = None,
     query: str | None = None,
     lookback_years: int = 5,
+    exclude_expired: bool = False,
 ) -> list[dict[str, Any]]:
     """Price-First Seasonality Discovery & AI Explanation Engine (Specification v1.1) with Lookback selection."""
     cache_dir = settings.data_dir / "cache"
@@ -634,6 +635,9 @@ def scan_seasonality_discovery(
             continue
 
         if status_filter and status_filter != "all" and item.get("current_status") != status_filter:
+            continue
+
+        if exclude_expired and item.get("entry_stage") in ["SEASON_END"]:
             continue
 
         if query:

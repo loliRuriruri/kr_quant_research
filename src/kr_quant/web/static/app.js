@@ -6458,8 +6458,8 @@ async function loadPreEntryView() {
   // Render Donut Chart and Theme Ranking Cards
   renderThemeDonutAndRanking(preEntryThemeData);
 
-  // Filter and Sort Candidates: Prioritize active forward pre-entry candidates over already expired exit stocks
-  let filtered = allRows;
+  // Filter and Sort Candidates: Filter out SEASON_END stocks automatically so only active forward opportunities show
+  let filtered = allRows.filter((r) => r.entry_stage !== "SEASON_END");
   if (currentPreEntryMarket !== "all") {
     filtered = filtered.filter((r) => r.market === currentPreEntryMarket);
   }

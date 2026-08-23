@@ -1244,6 +1244,7 @@ def api_seasonality_discovery_get(
     status: str | None = None,
     query: str | None = None,
     lookback_years: int = 5,
+    exclude_expired: bool = False,
 ) -> dict[str, Any]:
     from kr_quant.strategy.seasonality import scan_seasonality_discovery
 
@@ -1255,6 +1256,7 @@ def api_seasonality_discovery_get(
         status_filter=status,
         query=query,
         lookback_years=lookback_years,
+        exclude_expired=exclude_expired,
     )
     return {
         "ok": True,
