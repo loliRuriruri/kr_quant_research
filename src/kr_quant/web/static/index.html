@@ -328,27 +328,51 @@
     <section id="view-flow" class="view hidden">
       <article class="card">
         <div class="card-h">
-          <h2>기관·외인·사모 수급</h2>
-          <div class="actions">
-            <label>기간
-              <select id="flow-days">
-                <option value="5" selected>5거래일</option>
-                <option value="10">10거래일</option>
-                <option value="20">20거래일</option>
-              </select>
-            </label>
-            <label>최소 추정금액
-              <select id="flow-min-krw">
-                <option value="0" selected>전체</option>
-                <option value="1000000000">10억 이상</option>
-                <option value="5000000000">50억 이상</option>
-                <option value="10000000000">100억 이상</option>
-              </select>
-            </label>
-            <button class="ghost" id="flow-refresh">다시 스캔</button>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h2 style="margin:0;">🌊 메이저 스마트머니 수급 레이더</h2>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">외인·기관 동반 쌍끌이 &amp; 사모펀드 집중 매집 추적</span>
           </div>
         </div>
-        <p class="hint">쌍끌이의 기관은 토스 <b>기관합계</b>입니다. 연기금·국민연금이 아닙니다. 기관 안 연기금은 별도 탭입니다.</p>
+        <p class="hint" style="margin-bottom:14px;">외국인과 기관의 동반 순매수(쌍끌이), 스마트머니 사모펀드 연속 매집, 개인 투자자 이탈(손바뀜) 종목을 실시간 스캔합니다.</p>
+
+        <!-- Modern Unified Flow Filter Toolbar -->
+        <div class="trade-toolbar-container">
+          <div class="trade-filter-bar">
+            <!-- Search Box Group -->
+            <div class="trade-search-wrap">
+              <div class="autocomplete-wrap">
+                <input id="flow-q" type="text" autocomplete="off" placeholder="종목명 또는 6자리 코드 검색" />
+                <ul id="flow-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
+              </div>
+              <button type="button" id="btn-flow-search" class="primary search-btn" style="height:38px; padding:0 14px; font-size:12.5px; font-weight:700; white-space:nowrap; border-radius:8px;">🔍 검색</button>
+            </div>
+
+            <!-- Filter Controls Group -->
+            <div class="trade-filter-group">
+              <label class="trade-filter-label">
+                <span class="filter-tag">누적 기간</span>
+                <select id="flow-days" class="trade-select">
+                  <option value="5" selected>📅 최근 5거래일</option>
+                  <option value="10">📅 최근 10거래일</option>
+                  <option value="20">📅 최근 20거래일</option>
+                </select>
+              </label>
+
+              <label class="trade-filter-label">
+                <span class="filter-tag">최소 추정금액</span>
+                <select id="flow-min-krw" class="trade-select">
+                  <option value="0" selected>전체 금액</option>
+                  <option value="1000000000">💰 10억 이상</option>
+                  <option value="5000000000">💰 50억 이상</option>
+                  <option value="10000000000">💰 100억 이상</option>
+                </select>
+              </label>
+
+              <button type="button" class="trade-refresh-btn" id="flow-refresh">🔄 수급 다시 스캔</button>
+            </div>
+          </div>
+        </div>
+
         <div id="flow-box" class="quality"></div>
       </article>
     </section>

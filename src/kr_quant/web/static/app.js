@@ -2930,41 +2930,69 @@ function quoteCell(r) {
 
 function flowTable(title, rows, amountKey, tabId) {
   const scope = tabId || (amountKey === "pe_krw" ? "flowPe" : "flowDual");
-  if (!rows.length) {
-    return `<div class="rank-card"><h3>${escapeHtml(title)}</h3><p class="hint">조건에 맞는 종목이 없습니다.</p></div>`;
+  const q = ($("#flow-q")?.value || "").trim().toLowerCase();
+  let filteredRows = rows;
+  if (q) {
+    filteredRows = rows.filter((r) => {
+      const comp = String(r.company || "").toLowerCase();
+      const code = String(r.ticker || "").toLowerCase();
+      return comp.includes(q) || code.includes(q);
+    });
   }
-  const ordered = sortedCopy(rows, scope, amountKey, "desc");
+
+  if (!filteredRows.length) {
+    return `<div class="rank-card"><div class="card-h"><h3 style="margin:0;">${escapeHtml(title)}</h3></div><p class="hint" style="text-align:center; padding:30px;">조건에 부합하는 수급 포착 종목이 없습니다.</p></div>`;
+  }
+  const ordered = sortedCopy(filteredRows, scope, amountKey, "desc");
   const vis = flowLimit[scope] || FLOW_FIRST;
   const shown = ordered.slice(0, vis);
   const left = ordered.length - shown.length;
   const body = shown
     .map((r, i) => `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
-      <td class="num">${i + 1}</td>
-      <td class="name-cell"><b>${escapeHtml(r.company || "")}</b><div class="meta">${escapeHtml(r.ticker || "")}</div>${rowNote(amountKey === "pe_krw" ? (r.comment_pe_short || r.comment_pe) : (r.comment_flow_short || r.comment_flow))}</td>
+      <td class="num font-bold">${i + 1}</td>
+      <td class="name-cell">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b>
+          <span class="meta">${escapeHtml(r.ticker || "")}</span>
+        </div>
+        ${rowNote(amountKey === "pe_krw" ? (r.comment_pe_short || r.comment_pe) : (r.comment_flow_short || r.comment_flow))}
+      </td>
       <td class="num">${quoteCell(r)}</td>
-      <td class="num">${signedInt(r.foreign_net)}</td>
-      <td class="num">${signedInt(r.institution_net)}</td>
-      <td class="num">${signedInt(r.pe_net)}</td>
-      <td class="num">${escapeHtml(krw(r[amountKey]))}</td>
-      <td class="num">${pctCell(r.ret_5d)}</td>
-      <td class="num">${pctCell(r.ret_20d)}</td>
+      <td class="num ${r.foreign_net > 0 ? 'text-emerald-400 font-bold' : r.foreign_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.foreign_net)}</td>
+      <td class="num ${r.institution_net > 0 ? 'text-emerald-400 font-bold' : r.institution_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.institution_net)}</td>
+      <td class="num ${r.pe_net > 0 ? 'text-purple-400 font-bold' : r.pe_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.pe_net)}</td>
+      <td class="num font-bold text-accent-cyan">${escapeHtml(krw(r[amountKey]))}</td>
+      <td class="num font-bold">${pctCell(r.ret_5d)}</td>
+      <td class="num font-bold">${pctCell(r.ret_20d)}</td>
     </tr>`)
     .join("");
   const more = left > 0
-    ? `<p class="more-line"><button type="button" class="ghost" data-flow-more="${escapeHtml(scope)}">더보기 ${Math.min(FLOW_STEP, left)}종목 (${shown.length}/${ordered.length})</button></p>`
-    : `<p class="hint">${ordered.length}종목 전부입니다.</p>`;
-  return `<div class="rank-card"><h3>${escapeHtml(title)} ${ordered.length}</h3>
-    <table class="rank-table" data-scope="${scope}"><thead><tr>
-      <th>#</th>
-      <th class="sortable" data-sort="company">종목</th>
-      <th class="sortable" data-sort="last">최근가</th>
-      <th class="sortable" data-sort="foreign_net">외인(주)</th>
-      <th class="sortable" data-sort="institution_net">기관(주)</th>
-      <th class="sortable" data-sort="pe_net">사모(주)</th>
-      <th class="sortable" data-sort="${amountKey}">추정금액</th>
-      <th class="sortable" data-sort="ret_5d">이후 5일</th>
-      <th class="sortable" data-sort="ret_20d">이후 20일</th>
-    </tr></thead><tbody>${body}</tbody></table>${more}</div>`;
+    ? `<p class="more-line" style="margin-top:12px; text-align:center;"><button type="button" class="ghost" data-flow-more="${escapeHtml(scope)}" style="padding:6px 18px; border-radius:8px;">더보기 ${Math.min(FLOW_STEP, left)}종목 (${shown.length}/${ordered.length})</button></p>`
+    : `<p class="hint" style="text-align:center; margin-top:12px;">${ordered.length}개 종목 전부 표시됨</p>`;
+  return `<div class="rank-card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="margin:0; font-size:15px; color:#f8fafc;">${escapeHtml(title)} <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11.5px; font-weight:700;">${ordered.length}개 종목</span></h3>
+    </div>
+    <div class="table-wrap">
+      <table class="rank-table" data-scope="${scope}">
+        <thead>
+          <tr>
+            <th style="width:40px;">#</th>
+            <th class="sortable" data-sort="company" style="min-width:140px;">종목명</th>
+            <th class="sortable" data-sort="last">최근가</th>
+            <th class="sortable" data-sort="foreign_net">외인(주)</th>
+            <th class="sortable" data-sort="institution_net">기관(주)</th>
+            <th class="sortable" data-sort="pe_net">사모(주)</th>
+            <th class="sortable" data-sort="${amountKey}">추정금액</th>
+            <th class="sortable" data-sort="ret_5d">이후 5일</th>
+            <th class="sortable" data-sort="ret_20d">이후 20일</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+    ${more}
+  </div>`;
 }
 
 function renderFlow(data) {
@@ -2978,13 +3006,13 @@ function renderFlow(data) {
   const dualRows = filterAmount(data.dual || [], "dual_krw", minKrw);
   const peRows = filterAmount(data.private_equity || [], "pe_krw", minKrw);
   const tabs = [
-    { id: "dual", name: "쌍끌이", rows: dualRows, key: "dual_krw", title: "쌍끌이 (외인·기관 동시 순매수)" },
-    { id: "pe", name: "사모", rows: peRows, key: "pe_krw", title: "사모펀드 순매수" },
-    { id: "dual_pe", name: "쌍끌이+사모", rows: filterAmount(data.dual_pe || [], "dual_krw", minKrw), key: "dual_krw", title: "쌍끌이+사모" },
-    { id: "dual_pe_retail", name: "+개인이탈", rows: filterAmount(data.dual_pe_retail || [], "dual_krw", minKrw), key: "dual_krw", title: "쌍끌이+사모+개인이탈" },
-    { id: "other_corp", name: "기타법인", rows: data.other_corp || [], key: "other_corp_krw", title: "기타법인 순매수" },
-    { id: "pension", name: "기금 가세", rows: data.pension || [], key: "pension_krw", title: "기금 가세 (쌍끌이·사모와 겹침)" },
-    { id: "summary", name: "요약", rows: [], key: "", title: "금액구간 히트율" },
+    { id: "dual", name: "💎 쌍끌이", rows: dualRows, key: "dual_krw", title: "외인·기관 동시 순매수 (쌍끌이)" },
+    { id: "pe", name: "💼 사모펀드", rows: peRows, key: "pe_krw", title: "스마트머니 사모펀드 순매수" },
+    { id: "dual_pe", name: "🔥 쌍끌이+사모", rows: filterAmount(data.dual_pe || [], "dual_krw", minKrw), key: "dual_krw", title: "외인·기관·사모 3대 메이저 집중 매집" },
+    { id: "dual_pe_retail", name: "🚀 +개인이탈", rows: filterAmount(data.dual_pe_retail || [], "dual_krw", minKrw), key: "dual_krw", title: "메이저 싹쓸이 + 개인이탈 (손바뀜 완료)" },
+    { id: "other_corp", name: "🏢 기타법인", rows: data.other_corp || [], key: "other_corp_krw", title: "기타법인 대량 순매수" },
+    { id: "pension", name: "🏛️ 기금 가세", rows: data.pension || [], key: "pension_krw", title: "연기금 동반 가세 수급" },
+    { id: "summary", name: "📊 통계 요약", rows: [], key: "", title: "금액구간별 히트율" },
   ];
   if (!tabs.some((t) => t.id === flowTab)) flowTab = "dual";
   const dual = analyzeHit(dualRows, "ret_5d");
@@ -2995,46 +3023,47 @@ function renderFlow(data) {
   const when = fmtWhen(data.fetched_at);
   const asof = when ? `토스 수급 스캔 ${when} · ${data.days || 5}거래일` : `수급 스캔 시점 없음 · ${data.days || 5}거래일`;
   if (currentView === "flow") setPageAsOf(asof, "토스 투자자 매매를 받은 시각입니다. 다시 스캔하면 갱신됩니다. KRX 종가 칩과는 다릅니다.");
+
   const tabBtns = tabs
     .map(
       (t) =>
-        `<button type="button" class="${t.id === flowTab ? "on" : ""}" data-flow-tab="${t.id}">${escapeHtml(t.name)}${t.id === "summary" ? "" : ` ${t.rows.length}`}</button>`
+        `<button type="button" class="${t.id === flowTab ? "on" : ""}" data-flow-tab="${t.id}">${escapeHtml(t.name)}${t.id === "summary" ? "" : ` <span style="opacity:0.8; font-size:11px;">(${t.rows.length})</span>`}</button>`
     )
     .join("");
   const active = tabs.find((t) => t.id === flowTab) || tabs[0];
   let panel = "";
   if (active.id === "summary") {
     panel = `<div class="rank-grid">${bucketTable("쌍끌이 금액구간 히트율", data.dual || [], "dual_krw")}${bucketTable("사모 금액구간 히트율", data.private_equity || [], "pe_krw")}</div>
-      <p>${hitLine("쌍끌이", dual)} · 20일 평균 ${pctCell(dual20.avg)}</p>
+      <p style="margin-top:12px;">${hitLine("쌍끌이", dual)} · 20일 평균 ${pctCell(dual20.avg)}</p>
       <p>${hitLine("사모", pe)} · 20일 평균 ${pctCell(pe20.avg)}</p>`;
   } else if (active.id === "other_corp" && !active.rows.length) {
-    panel = `<p class="hint">토스 응답에 기타법인 항목이 없거나 순매수가 없습니다. 키가 있으면 이 탭에 붙습니다.</p>`;
+    panel = `<p class="hint" style="text-align:center; padding:30px;">토스 응답에 기타법인 항목이 없거나 순매수가 없습니다. 키가 있으면 이 탭에 붙습니다.</p>`;
   } else {
     panel = flowTable(active.title, active.rows, active.key, `flow-${active.id}`);
   }
+
   box.innerHTML = `
-    ${asofBanner(asof)}
-    <div class="kpis" style="grid-template-columns:repeat(6,1fr);margin:8px 0 16px">
+    <div class="kpis" style="grid-template-columns:repeat(6,1fr); margin:0 0 16px;">
       <div class="kpi clickable-kpi has-tip" data-flow-tab="dual"
            data-tip-title="⚡ 외인·기관 쌍끌이 순매수 (Dual Buy)"
            data-tip="외국인과 기관이 동시에 순매수한 핵심 수급 주도주입니다. 시장에서 가장 신뢰도가 높은 단기 주가 상승 모멘텀 신호입니다."
            data-tip-hint="외인과 기관의 쌍끌이 매집은 대형주 및 주도 섹터 랠리의 필수 조건입니다."
            tabindex="0">
-        <span>쌍끌이</span><b style="color:#38bdf8;">${dual.n}</b>
+        <span>쌍끌이</span><b style="color:#00e5ff;">${dual.n}</b>
       </div>
       <div class="kpi has-tip"
            data-tip-title="🎯 쌍끌이 5일 승률 (Hit Rate)"
            data-tip="쌍끌이 수급 발생 후 5거래일 동안 주가가 플러스(+) 수익을 기록한 종목 비율입니다."
            data-tip-hint="60% 이상이면 수급 추종 매매 전략의 유효성이 매우 높습니다."
            tabindex="0">
-        <span>쌍끌이 5일 승률</span><b style="color:#34d399;">${dual.hit == null ? "—" : `${(dual.hit * 100).toFixed(0)}%`}</b>
+        <span>5일 승률</span><b style="color:#34d399;">${dual.hit == null ? "—" : `${(dual.hit * 100).toFixed(0)}%`}</b>
       </div>
       <div class="kpi clickable-kpi has-tip" data-flow-tab="pe"
            data-tip-title="🕵️ 사모펀드 순매수 (PE Buy)"
            data-tip="시장의 스마트 머니로 통하는 사모펀드가 최근 공격적으로 순매수한 종목군입니다."
            data-tip-hint="사모펀드 수급 유입은 단기 재료 및 실적 턴어라운드 선취매 가능성을 내포합니다."
            tabindex="0">
-        <span>사모 순매수</span><b>${pe.n}</b>
+        <span>사모 순매수</span><b style="color:#c084fc;">${pe.n}</b>
       </div>
       <div class="kpi clickable-kpi has-tip" data-flow-tab="dual_pe"
            data-tip-title="💎 쌍끌이 + 사모펀드 동시 매집"
@@ -3055,14 +3084,18 @@ function renderFlow(data) {
            data-tip="자사주 매입, 최대주주 우호지분 매집, 경영권 분쟁 또는 전략적 투자(SI) 법인의 대량 순매수 종목입니다."
            data-tip-hint="주가 하방 지지력이 매우 탄탄합니다."
            tabindex="0">
-        <span>기타법인</span><b>${(data.other_corp || []).length}</b>
+        <span>기타법인</span><b style="color:#60a5fa;">${(data.other_corp || []).length}</b>
       </div>
     </div>
-    <p class="hint">${escapeHtml(data.selection || "토스 순매수(주수) 합산입니다. 쌍끌이의 기관은 기관합계이며 연기금이 아닙니다.")}</p>
-    <p>스캔 ${data.scanned || 0}종목 · ${data.days || 5}거래일 순매수 합산${minKrw ? ` · ${krw(minKrw)} 이상만 표시` : ""} · 탭마다 처음 12종목, 더보기는 10종목씩입니다.</p>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+      <span class="chip" style="background:rgba(56,189,248,0.12); color:#38bdf8;">스캔 ${data.scanned || 0}종목 · ${data.days || 5}거래일 순매수 합산${minKrw ? ` · ${krw(minKrw)} 이상만 표시` : ""}</span>
+      <span class="hint" style="margin:0;">※ 쌍끌이 기관은 토스 기관합계(금융투자+보험+투신+사모 등) 기준입니다.</span>
+    </div>
+
     <div class="h-tabs">${tabBtns}</div>
     <div class="flow-panel">${panel}</div>
-    <p class="hint">${escapeHtml(data.disclaimer || "")} ${escapeHtml(data.quote_note || "최근가는 토스, 수급은 일별입니다.")} 추정금액·기술은 KRX 종가 기준입니다.${sameHorizon ? " 가격 이력이 짧으면 이후 20일이 5일과 같아 보일 수 있습니다." : ""} 열 이름을 누르면 오름/내림 정렬합니다.</p>
+    <p class="hint" style="margin-top:12px;">💡 최근가는 토스, 수급 데이터는 일별 합산입니다. 열 이름을 클릭하면 최근가, 외인/기관 순매수량, 추정금액으로 정렬할 수 있습니다.</p>
   `;
   paintSortHeaders(`flow-${active.id}`);
 }
@@ -6257,6 +6290,18 @@ async function startJob(kind) {
 }
 
 $$(".nav-btn").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
+if ($("#flow-q")) {
+  $("#flow-q").addEventListener("input", () => { if (flowCache) renderFlow(flowCache); });
+  $("#flow-q").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (flowCache) renderFlow(flowCache);
+    }
+  });
+}
+if ($("#btn-flow-search")) {
+  $("#btn-flow-search").addEventListener("click", () => { if (flowCache) renderFlow(flowCache); });
+}
 if ($("#flow-refresh")) {
   $("#flow-refresh").addEventListener("click", () => loadFlow(true).catch((err) => alert(err.message)));
 }
