@@ -1243,6 +1243,7 @@ def api_seasonality_discovery_get(
     min_grade: str | None = None,
     status: str | None = None,
     query: str | None = None,
+    lookback_years: int = 5,
 ) -> dict[str, Any]:
     from kr_quant.strategy.seasonality import scan_seasonality_discovery
 
@@ -1253,26 +1254,28 @@ def api_seasonality_discovery_get(
         min_grade=min_grade,
         status_filter=status,
         query=query,
+        lookback_years=lookback_years,
     )
     return {
         "ok": True,
         "horizon_days": horizon_days,
+        "lookback_years": lookback_years,
         "count": len(rows),
         "rows": rows,
     }
 
 
 @app.get("/api/seasonality/discovery/{ticker}")
-def api_seasonality_discovery_ticker_get(ticker: str) -> dict[str, Any]:
+def api_seasonality_discovery_ticker_get(ticker: str, lookback_years: int = 5) -> dict[str, Any]:
     from kr_quant.strategy.seasonality import scan_seasonality_discovery
 
     s = load_settings()
     code = str(ticker).zfill(6)
-    rows = scan_seasonality_discovery(s, horizon_days=365, query=code)
+    rows = scan_seasonality_discovery(s, horizon_days=365, query=code, lookback_years=lookback_years)
     match = [r for r in rows if r["ticker"] == code]
     if not match:
         raise HTTPException(status_code=404, detail=f"No seasonality discovery pattern for {code}")
-    return {"ok": True, "ticker": code, "patterns": match}
+    return {"ok": True, "ticker": code, "lookback_years": lookback_years, "patterns": match}
 
 
 @app.get("/api/seasonality/ranked")

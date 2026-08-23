@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.3.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.4.0" />
 </head>
 <body>
   <aside class="nav">
@@ -430,12 +430,29 @@
 
         <!-- PANE 1: v1.1 Price Discovery Ranked Candidates -->
         <div id="pane-v11-discovery">
-          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-            <div style="display:flex; gap:4px;" id="discovery-horizon-tabs">
-              <button type="button" class="preset-chip-btn active" data-horizon="90">🌐 전체 90일</button>
-              <button type="button" class="preset-chip-btn" data-horizon="7">⚡ 7일 이내 (임박)</button>
-              <button type="button" class="preset-chip-btn" data-horizon="30">🚀 30일 이내 (선취매 적기)</button>
+          <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:12px; background:rgba(15,23,42,0.4); padding:8px 12px; border-radius:8px;">
+            <!-- Lookback Period Tabs -->
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:12px; font-weight:700; color:#38bdf8;">분석 기간:</span>
+              <div id="discovery-lookback-tabs" style="display:flex; gap:4px;">
+                <button type="button" class="preset-chip-btn" data-lookback="3">⚡ 최근 3개년 (단기)</button>
+                <button type="button" class="preset-chip-btn active" data-lookback="5">⭐ 최근 5개년 (균형형)</button>
+                <button type="button" class="preset-chip-btn" data-lookback="8">👑 장기 8개년 (고신뢰)</button>
+                <button type="button" class="preset-chip-btn" data-lookback="0">🌐 전체 기간</button>
+              </div>
             </div>
+
+            <!-- Horizon Tabs -->
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:12px; font-weight:700; color:#94a3b8;">진입 윈도우:</span>
+              <div id="discovery-horizon-tabs" style="display:flex; gap:4px;">
+                <button type="button" class="preset-chip-btn active" data-horizon="90">🌐 전체 90일</button>
+                <button type="button" class="preset-chip-btn" data-horizon="7">⚡ 7일 (임박)</button>
+                <button type="button" class="preset-chip-btn" data-horizon="30">🚀 30일 (선취매)</button>
+              </div>
+            </div>
+
+            <!-- Dropdown Filters -->
             <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
               <select id="discovery-grade-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12px;">
                 <option value="">전체 등급 (S ~ D)</option>
@@ -1012,6 +1029,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.3.0"></script>
+  <script src="/static/app.js?v=2.4.0"></script>
 </body>
 </html>

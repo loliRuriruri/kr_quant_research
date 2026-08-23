@@ -551,11 +551,12 @@ def scan_seasonality_discovery(
     min_grade: str | None = None,
     status_filter: str | None = None,
     query: str | None = None,
+    lookback_years: int = 5,
 ) -> list[dict[str, Any]]:
-    """Price-First Seasonality Discovery & AI Explanation Engine (Specification v1.1)."""
+    """Price-First Seasonality Discovery & AI Explanation Engine (Specification v1.1) with Lookback selection."""
     cache_dir = settings.data_dir / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_file = cache_dir / "discovery_cache.json"
+    cache_file = cache_dir / f"discovery_cache_lb_{lookback_years}.json"
     cached_list: list[dict[str, Any]] = []
 
     if cache_file.exists():
@@ -594,7 +595,7 @@ def scan_seasonality_discovery(
             sc_row = scored_map.get(ticker, {})
 
             for m_stat in months:
-                pat = pattern_from_month_stat(ticker, company, market, m_stat)
+                pat = pattern_from_month_stat(ticker, company, market, m_stat, lookback_years=lookback_years)
                 if pat and pat.win_rate >= 0.50 and pat.sample_count >= 2:
                     exp_res = explain_and_score_pattern(pat, sc_row)
                     all_patterns.append(exp_res)

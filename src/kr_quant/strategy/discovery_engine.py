@@ -21,6 +21,7 @@ class SeasonalityPattern:
     target_end_month: int
     target_end_day: int
     sample_count: int
+    lookback_years: int | None
     win_rate: float
     mean_return: float
     median_return: float
@@ -36,19 +37,34 @@ class SeasonalityPattern:
     pattern_confidence: str  # HIGH, MEDIUM, LOW
 
 
-def pattern_from_month_stat(ticker: str, company: str, market: str, m_stat: dict[str, Any]) -> SeasonalityPattern | None:
-    """Constructs SeasonalityPattern instantly from calculated month statistics."""
+def pattern_from_month_stat(
+    ticker: str,
+    company: str,
+    market: str,
+    m_stat: dict[str, Any],
+    lookback_years: int | None = None,
+) -> SeasonalityPattern | None:
+    """Constructs SeasonalityPattern dynamically for a chosen lookback period (e.g. 3, 5, 8 years)."""
     month = int(m_stat.get("month", 1))
     history = m_stat.get("history", [])
     if not history:
         return None
 
-    years_count = len(history)
+    # Slice history if lookback_years is specified (0 or None means all)
+    if lookback_years and lookback_years > 0:
+        history_slice = history[-lookback_years:]
+    else:
+        history_slice = history
+
+    years_count = len(history_slice)
+    if years_count == 0:
+        return None
+
     cur_year = pd.Timestamp.now().year
-    # Reconstruct yearly tracking array
     start_year = cur_year - years_count
+
     years_track = []
-    for i, ret in enumerate(history):
+    for i, ret in enumerate(history_slice):
         y = start_year + i
         r = float(ret)
         years_track.append({
@@ -76,7 +92,10 @@ def pattern_from_month_stat(ticker: str, company: str, market: str, m_stat: dict
     recent_5y = years_track[-5:] if len(years_track) >= 5 else years_track
     r5_wr = len([r for r in recent_5y if r["is_win"]]) / len(recent_5y) if recent_5y else wr
 
-    if years_count >= 3 and wr >= 0.70 and med_alpha >= 0.03:
+    # Pattern Confidence
+    if years_count >= 5 and wr >= 0.75 and med_alpha >= 0.03:
+        conf = "HIGH"
+    elif years_count >= 3 and wr >= 0.67:
         conf = "HIGH"
     elif years_count >= 2 and wr >= 0.60:
         conf = "MEDIUM"
@@ -87,7 +106,7 @@ def pattern_from_month_stat(ticker: str, company: str, market: str, m_stat: dict
     worst_y = min(years_track, key=lambda x: x["return"]) if years_track else {"year": cur_year, "return": 0.0}
 
     return SeasonalityPattern(
-        pattern_id=f"{ticker}_M{month:02d}",
+        pattern_id=f"{ticker}_M{month:02d}_L{lookback_years or 0}",
         ticker=ticker,
         company=company,
         market=market,
@@ -98,6 +117,7 @@ def pattern_from_month_stat(ticker: str, company: str, market: str, m_stat: dict
         target_end_month=month,
         target_end_day=28,
         sample_count=years_count,
+        lookback_years=lookback_years,
         win_rate=round(wr, 3),
         mean_return=round(float(np.mean(rets)), 4),
         median_return=round(med_ret, 4),

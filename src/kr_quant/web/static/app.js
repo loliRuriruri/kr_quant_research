@@ -6331,6 +6331,7 @@ decorateSelect($("#llm-model-select"));
 // --- Seasonality Discovery Screener v1.1 ---
 let currentV11Subtab = "discovery";
 let currentV11Horizon = 90;
+let currentV11Lookback = 5;
 let discoveryRows = [];
 
 async function loadDiscoveryRanked() {
@@ -6341,7 +6342,7 @@ async function loadDiscoveryRanked() {
   const statusFilter = $("#discovery-status-filter") ? $("#discovery-status-filter").value : "all";
   const q = $("#seasonality-q") ? $("#seasonality-q").value.trim() : "";
 
-  const params = new URLSearchParams({ horizon_days: currentV11Horizon });
+  const params = new URLSearchParams({ horizon_days: currentV11Horizon, lookback_years: currentV11Lookback });
   if (minGrade) params.set("min_grade", minGrade);
   if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
   if (q) params.set("query", q);
@@ -6445,7 +6446,7 @@ async function loadAIExplanations() {
   const container = $("#explanation-cards-list");
   if (!container) return;
 
-  const res = await api(`/api/seasonality/discovery?horizon_days=${currentV11Horizon}`);
+  const res = await api(`/api/seasonality/discovery?horizon_days=${currentV11Horizon}&lookback_years=${currentV11Lookback}`);
   const rows = res.rows || [];
 
   if (!rows.length) {
@@ -6533,6 +6534,20 @@ function setupV11SeasonalityUI() {
   tabExpl?.addEventListener("click", () => switchV11Subtab("explanation"));
   tabCal?.addEventListener("click", () => switchV11Subtab("calendar"));
   tabHeat?.addEventListener("click", () => switchV11Subtab("heatmap"));
+
+  // Lookback Period Filter Chips
+  const lookbackContainer = $("#discovery-lookback-tabs");
+  if (lookbackContainer) {
+    lookbackContainer.querySelectorAll(".preset-chip-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        lookbackContainer.querySelectorAll(".preset-chip-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentV11Lookback = parseInt(btn.dataset.lookback, 10);
+        if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
+        else if (currentV11Subtab === "explanation") loadAIExplanations().catch(() => {});
+      });
+    });
+  }
 
   // Horizon Filter Chips
   const horizonContainer = $("#discovery-horizon-tabs");
