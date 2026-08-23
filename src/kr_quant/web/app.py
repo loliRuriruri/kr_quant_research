@@ -1313,6 +1313,23 @@ def api_seasonality_events_get(horizon_days: int = 180) -> dict[str, Any]:
     return {"ok": True, "horizon_days": horizon_days, "count": len(events), "events": events}
 
 
+@app.get("/api/seasonality/themes")
+def api_seasonality_themes_get(horizon_days: int = 90, lookback_years: int = 5) -> dict[str, Any]:
+    from kr_quant.strategy.seasonality import scan_seasonality_discovery
+    from kr_quant.strategy.theme_engine import calculate_theme_seasonality
+
+    s = load_settings()
+    rows = scan_seasonality_discovery(s, horizon_days=horizon_days, lookback_years=lookback_years)
+    themes = calculate_theme_seasonality(rows)
+    return {
+        "ok": True,
+        "horizon_days": horizon_days,
+        "lookback_years": lookback_years,
+        "theme_count": len(themes),
+        "themes": themes,
+    }
+
+
 @app.get("/api/seasonality/highlights")
 def api_seasonality_highlights_get() -> dict[str, Any]:
     from kr_quant.strategy.seasonality import get_seasonality_highlights

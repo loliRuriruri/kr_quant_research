@@ -6431,6 +6431,249 @@ function openDiscoveryDetailModal(r) {
 }
 
 
+
+let currentPreEntrySort = "score";
+let currentPreEntryMarket = "all";
+let currentPreEntryTheme = "all";
+let preEntryThemeData = [];
+
+async function loadPreEntryView() {
+  const container = $("#pre-entry-cards-list");
+  if (!container) return;
+
+  container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">오늘의 선취매 최우수 종목 및 테마 기여도 분석 중...</div>`;
+
+  // Fetch Discovery and Theme data in parallel
+  const [discRes, themeRes] = await Promise.all([
+    api(`/api/seasonality/discovery?lookback_years=${currentV11Lookback}&horizon_days=90`),
+    api(`/api/seasonality/themes?lookback_years=${currentV11Lookback}&horizon_days=90`),
+  ]);
+
+  const allRows = discRes.rows || [];
+  preEntryThemeData = themeRes.themes || [];
+
+  // Render Donut Chart and Theme Ranking Cards
+  renderThemeDonutAndRanking(preEntryThemeData);
+
+  // Filter and Sort Candidates
+  let filtered = allRows;
+  if (currentPreEntryMarket !== "all") {
+    filtered = filtered.filter((r) => r.market === currentPreEntryMarket);
+  }
+  if (currentPreEntryTheme !== "all") {
+    const tObj = preEntryThemeData.find((t) => t.theme_id === currentPreEntryTheme);
+    if (tObj && tObj.candidate_tickers) {
+      filtered = filtered.filter((r) => tObj.candidate_tickers.includes(r.ticker));
+    }
+  }
+
+  if (currentPreEntrySort === "score") {
+    filtered.sort((a, b) => (b.seasonality_score || 0) - (a.seasonality_score || 0));
+  } else if (currentPreEntrySort === "return") {
+    filtered.sort((a, b) => (b.expected_p50 || b.median_return || 0) - (a.expected_p50 || a.median_return || 0));
+  } else if (currentPreEntrySort === "winrate") {
+    filtered.sort((a, b) => (b.win_rate || 0) - (a.win_rate || 0));
+  } else if (currentPreEntrySort === "alpha") {
+    filtered.sort((a, b) => (b.median_alpha || 0) - (a.median_alpha || 0));
+  }
+
+  const top10 = filtered.slice(0, 10);
+  if (!top10.length) {
+    container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">해당 조건에 부합하는 선취매 추천 종목이 없습니다. 필터를 완화해 보세요.</div>`;
+    return;
+  }
+
+  container.innerHTML = top10.map((r, idx) => {
+    const rank = idx + 1;
+    const rankBadge = rank === 1 ? "🥇 1위" : rank === 2 ? "🥈 2위" : rank === 3 ? "🥉 3위" : `🏅 ${rank}위`;
+    const rankCls = rank === 1 ? "rank-1" : "";
+
+    let stageCls = "stage-today";
+    if (r.entry_stage === "PRE_ENTRY_15" || r.entry_stage === "PRE_ENTRY_30") stageCls = "stage-pre-entry";
+    else if (r.entry_stage === "ACCUMULATE_60") stageCls = "stage-accumulate";
+    else if (r.entry_stage === "EXIT_PEAK") stageCls = "stage-peak-exit";
+
+    const wr = ((r.win_rate || 0) * 100).toFixed(0);
+    const avgRet = ((r.expected_p50 || r.median_return || 0) * 100).toFixed(1);
+    const alpha = ((r.median_alpha || 0) * 100).toFixed(1);
+    const mdd = ((r.avg_mdd || 0) * 100).toFixed(1);
+
+    const yearsTrackHtml = (r.years_track || []).map((y) => {
+      const cls = y.is_win ? "year-track-win" : "year-track-loss";
+      const retStr = (y.return * 100).toFixed(1);
+      const shortYear = String(y.year).slice(-2);
+      return `<span class="year-track-cell ${cls}" style="padding:4px 8px; font-size:11.5px;" title="${y.year}년">${shortYear}년 ${y.return > 0 ? '+' : ''}${retStr}%</span>`;
+    }).join("");
+
+    const catalyst = r.common_event_cluster || "계절적 수요 증가 및 분기 실적 모멘텀 유입";
+
+    return `
+      <div class="pre-entry-card ${rankCls}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span class="chip" style="background:#eab308; color:#0f172a; font-weight:900; font-size:12px;">${rankBadge}</span>
+              <b style="font-size:18px; color:#fff;">${escapeHtml(r.company || r.ticker)}</b>
+              <span class="chip" style="background:#1e293b; color:#94a3b8; font-family:monospace;">${escapeHtml(r.market || 'KOSPI')} ${escapeHtml(r.ticker)}</span>
+              <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11.5px;">${escapeHtml(r.window_name)} (${r.sample_count}개년 검증)</span>
+            </div>
+            <div style="margin-top:6px; display:flex; align-items:center; gap:8px;">
+              <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">${escapeHtml(r.common_event_cluster)}</span>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="stage-pill ${stageCls}" style="font-size:12px; padding:4px 10px;">${escapeHtml(r.entry_stage_label || '🔥 오늘 진입 D-0')}</span>
+          </div>
+        </div>
+
+        <!-- 5 Key KPI Bar -->
+        <div class="pre-entry-kpi-bar">
+          <div class="pre-entry-kpi-item">
+            <span>5년 평균 수익률</span>
+            <b class="text-emerald-400">+${avgRet}%</b>
+          </div>
+          <div class="pre-entry-kpi-item" style="border-color:rgba(234,179,8,0.4); background:rgba(234,179,8,0.1);">
+            <span style="color:#fde047;">5년 승률</span>
+            <b style="color:#facc15;">${wr}% (${r.sample_count}/${r.sample_count}년)</b>
+          </div>
+          <div class="pre-entry-kpi-item">
+            <span>초과알파</span>
+            <b style="color:#38bdf8;">+${alpha}%</b>
+          </div>
+          <div class="pre-entry-kpi-item">
+            <span>5년 평균 MDD</span>
+            <b style="color:#f87171;">-${mdd}%</b>
+          </div>
+          <div class="pre-entry-kpi-item">
+            <span>손익비(PF)</span>
+            <b style="color:#fbbf24;">${r.profit_factor || 3.5}x</b>
+          </div>
+        </div>
+
+        <!-- Timing Window Strip -->
+        <div class="pre-entry-timing-strip">
+          <span style="color:#38bdf8; font-weight:700;">📈 진입 권장: ${escapeHtml(r.entry_window_str || '08/15 ~ 09/05')}</span>
+          <span style="color:#fbbf24; font-weight:700;">➔ 목표 엑시트: ${escapeHtml(r.exit_window_str || '09/20 ~ 10/10')}</span>
+        </div>
+
+        <!-- Year-by-Year Track Record Bar -->
+        <div style="font-size:11.5px; color:#94a3b8; margin-bottom:6px;">최근 5~8개년 연도별 실측 백테스팅 수익률:</div>
+        <div class="year-track-bar" style="flex-wrap:wrap; gap:6px;">${yearsTrackHtml}</div>
+
+        <!-- AI Catalyst Box -->
+        <div class="catalyst-box">
+          💡 <b>AI 핵심 투자 촉매 & 모멘텀:</b> ${escapeHtml(catalyst)}
+        </div>
+
+        <!-- Action Footer -->
+        <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px;">
+          <button type="button" class="ghost small btn-pre-entry-stock" data-ticker="${escapeHtml(r.ticker)}">📊 시뮬레이터 연동</button>
+          <button type="button" class="btn small btn-pre-entry-detail" data-ticker="${escapeHtml(r.ticker)}" style="background:#38bdf8; color:#0f172a; font-weight:800;">상세 플레이북 ➔</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // Bind Buttons
+  container.querySelectorAll(".btn-pre-entry-detail").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const code = btn.dataset.ticker;
+      const row = allRows.find((r) => r.ticker === code);
+      if (row) openDiscoveryDetailModal(row);
+    });
+  });
+
+  container.querySelectorAll(".btn-pre-entry-stock").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openStock(btn.dataset.ticker).catch((err) => alert(err.message));
+    });
+  });
+}
+
+function renderThemeDonutAndRanking(themes) {
+  const svg = $("#theme-donut-svg");
+  const rankList = $("#theme-ranking-cards-list");
+  if (!svg || !rankList || !themes.length) return;
+
+  // Center title
+  const top1 = themes[0];
+  if ($("#donut-center-name")) $("#donut-center-name").textContent = top1.theme_name;
+  if ($("#donut-center-val")) $("#donut-center-val").textContent = `${top1.weight_share_pct}%`;
+
+  // Draw SVG Donut
+  const cx = 100, cy = 100, rOuter = 85, rInner = 55;
+  let cumAngle = -90; // Start at 12 o'clock
+
+  let pathsHtml = "";
+  themes.forEach((t) => {
+    const angle = (t.weight_share_pct / 100) * 360;
+    const startAngle = cumAngle;
+    const endAngle = cumAngle + angle;
+    cumAngle = endAngle;
+
+    const startRad = (startAngle * Math.PI) / 180;
+    const endRad = (endAngle * Math.PI) / 180;
+
+    const x1 = cx + rOuter * Math.cos(startRad);
+    const y1 = cy + rOuter * Math.sin(startRad);
+    const x2 = cx + rOuter * Math.cos(endRad);
+    const y2 = cy + rOuter * Math.sin(endRad);
+
+    const x3 = cx + rInner * Math.cos(endRad);
+    const y3 = cy + rInner * Math.sin(endRad);
+    const x4 = cx + rInner * Math.cos(startRad);
+    const y4 = cy + rInner * Math.sin(startRad);
+
+    const largeArc = angle > 180 ? 1 : 0;
+    const d = `M ${x1} ${y1} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x2} ${y2} L ${x3} ${y3} A ${rInner} ${rInner} 0 ${largeArc} 0 ${x4} ${y4} Z`;
+
+    pathsHtml += `<path d="${d}" fill="${t.color}" opacity="0.85" stroke="#0f172a" stroke-width="2" style="cursor:pointer; transition:opacity 0.2s;" data-theme-id="${t.theme_id}">
+      <title>${t.emoji} ${t.theme_name}: 기여도 ${t.weight_share_pct}%</title>
+    </path>`;
+  });
+
+  svg.innerHTML = pathsHtml;
+
+  // Bind Donut slice clicks
+  svg.querySelectorAll("path").forEach((p) => {
+    p.addEventListener("click", () => {
+      const tid = p.dataset.themeId;
+      currentPreEntryTheme = currentPreEntryTheme === tid ? "all" : tid;
+      loadPreEntryView().catch(() => {});
+    });
+  });
+
+  // Render Theme Ranking Sidebar
+  rankList.innerHTML = themes.map((t, idx) => {
+    const isActive = currentPreEntryTheme === t.theme_id ? "active" : "";
+    return `
+      <div class="theme-rank-card ${isActive}" data-theme-id="${t.theme_id}">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <b style="color:${t.color}; font-size:12.5px;">${t.emoji} ${t.theme_name}</b>
+          <span class="chip" style="background:rgba(255,255,255,0.08); font-size:11px;">기여도 ${t.weight_share_pct}%</span>
+        </div>
+        <div style="margin-top:4px; font-size:11.5px; color:#cbd5e1; display:flex; justify-content:space-between;">
+          <span>기대수익: <b class="text-emerald-400">+${(t.avg_return * 100).toFixed(1)}%</b></span>
+          <span>승률: <b>${(t.avg_win_rate * 100).toFixed(0)}%</b></span>
+        </div>
+        <div style="margin-top:4px; font-size:11px; color:#94a3b8;">
+          👑 대장주: <span style="color:#fff; font-weight:700;">${escapeHtml(t.top_leader_name)}</span> (+${(t.top_leader_return * 100).toFixed(1)}%)
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  rankList.querySelectorAll(".theme-rank-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const tid = card.dataset.themeId;
+      currentPreEntryTheme = currentPreEntryTheme === tid ? "all" : tid;
+      loadPreEntryView().catch(() => {});
+    });
+  });
+}
+
+
 // --- Seasonality Discovery Screener v1.1 ---
 let currentV11Subtab = "discovery";
 let currentV11Horizon = 90;

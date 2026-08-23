@@ -3678,3 +3678,116 @@ body.modal-open { overflow: hidden; }
   margin-top: 2px;
   display: block;
 }
+
+
+/* Pre-Entry Top 10 Hero Cards & Theme Donut Widget */
+.pre-entry-card {
+  background: #0f172a;
+  border: 1.5px solid rgba(56, 189, 248, 0.35);
+  border-radius: 18px;
+  padding: 20px;
+  position: relative;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+.pre-entry-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.7);
+  box-shadow: 0 8px 30px rgba(56, 189, 248, 0.15);
+}
+.pre-entry-card.rank-1 {
+  border: 1.5px solid #eab308;
+  background: linear-gradient(180deg, rgba(234, 179, 8, 0.05) 0%, rgba(15, 23, 42, 1) 100%);
+}
+.pre-entry-kpi-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+.pre-entry-kpi-item {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pre-entry-kpi-item b {
+  color: #fff;
+  font-weight: 800;
+}
+.pre-entry-timing-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  margin-bottom: 12px;
+}
+.catalyst-box {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: #cbd5e1;
+  line-height: 1.5;
+  margin-top: 12px;
+}
+.theme-donut-container {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+  background: #0f172a;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 18px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+@media (max-width: 900px) {
+  .theme-donut-container {
+    grid-template-columns: 1fr;
+  }
+}
+.donut-chart-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.donut-center-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+.theme-ranking-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.theme-rank-card {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.theme-rank-card:hover, .theme-rank-card.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+}
