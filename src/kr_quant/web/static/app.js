@@ -6365,6 +6365,9 @@ function openDiscoveryDetailModal(r) {
   $("#disc-modal-alpha").textContent = `${r.median_alpha > 0 ? '+' : ''}${((r.median_alpha || 0) * 100).toFixed(1)}%`;
   $("#disc-modal-mdd-sub").textContent = `평균 MDD -${((r.avg_mdd || 0) * 100).toFixed(1)}%`;
 
+  if ($("#disc-modal-entry-win")) $("#disc-modal-entry-win").textContent = `📈 진입 권장: ${r.entry_window_str || '—'}`;
+  if ($("#disc-modal-exit-win")) $("#disc-modal-exit-win").textContent = `➔ 목표 엑시트: ${r.exit_window_str || '—'}`;
+
   $("#disc-modal-pb-entry").textContent = pb.entry_timing || `권장 선취매 타이밍: 피크 구간 도달 D-30일 ~ D-15일 전 분할 매수`;
   $("#disc-modal-pb-exit").textContent = pb.exit_timing || `목표 엑시트 시기: 계절성 피크 도달 시점 또는 목표 알파 달성 시 분할 매도`;
   $("#disc-modal-pb-stop").textContent = pb.stop_loss || `리스크 방어 기준: 평균 MDD 초과 하락 시 손절`;
@@ -6767,6 +6770,10 @@ async function loadDiscoveryRanked() {
         <td>
           <b style="color:#38bdf8; font-size:13px;">${escapeHtml(r.window_name)}</b>
           <span style="font-size:11px; color:#94a3b8; margin-left:4px;">(${r.sample_count}개년)</span>
+          <div style="margin-top:2px; font-size:11px; line-height:1.3;">
+            <span style="color:#38bdf8; font-weight:700;">진입: ${escapeHtml(r.entry_window_str || '—')}</span><br/>
+            <span style="color:#fbbf24; font-weight:700;">엑시트: ${escapeHtml(r.exit_window_str || '—')}</span>
+          </div>
         </td>
         <td>
           <div style="font-size:15px; font-weight:900; color:#38bdf8;">${r.seasonality_score}점</div>

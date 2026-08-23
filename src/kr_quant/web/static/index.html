@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.8.1" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.9.0" />
 </head>
 <body>
   <aside class="nav">
@@ -1040,7 +1040,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.8.1"></script>
+  <script src="/static/app.js?v=2.9.0"></script>
 
     <!-- Discovery Candidate Detail Modal (Mobile Dashboard Integration) -->
     <div id="discovery-detail-modal" class="discovery-modal-overlay hidden">
@@ -1069,6 +1069,12 @@
           <div id="disc-modal-recommendation" style="margin-top:6px; font-size:12px; color:#38bdf8; font-weight:700;">
             💡 권장 대응: 반복 상승 Window 진입 시 분할 매수 및 계절성 목표가 대응 유효
           </div>
+        </div>
+
+        <!-- 📈 진입 권장 vs ➔ 목표 엑시트 타이밍 바 (Mobile Dashboard Style) -->
+        <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.9); border:1.5px solid rgba(56,189,248,0.35); border-radius:10px; padding:10px 16px;">
+          <span id="disc-modal-entry-win" style="color:#38bdf8; font-weight:800; font-size:13.5px;">📈 진입 권장: —</span>
+          <span id="disc-modal-exit-win" style="color:#fbbf24; font-weight:800; font-size:13.5px;">➔ 목표 엑시트: —</span>
         </div>
 
         <!-- 3 Metrics KPI Grid -->
