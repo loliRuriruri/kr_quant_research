@@ -4126,53 +4126,103 @@ function renderTrade(data) {
   const hit = analyzeHit(rows, "ret_5d");
   const taBull = all.filter((r) => !r.in_quant && taMatch(r, "ta_bull")).length;
   const confluence = all.filter((r) => !r.in_quant && taMatch(r, "confluence")).length;
+
+  const renderStochCell = (r) => {
+    if (!r.ta || r.ta.stoch_k == null) return '<span class="hint">—</span>';
+    const k = Number(r.ta.stoch_k);
+    const d = r.ta.stoch_d != null ? Number(r.ta.stoch_d) : null;
+    let badge = "";
+    if (k <= 20) {
+      badge = `<span class="chip" style="background:rgba(16,185,129,0.15); color:#34d399; font-weight:700; font-size:11px;">🟢 과매도 ${fmt(k, 1)}</span>`;
+    } else if (k >= 80) {
+      badge = `<span class="chip" style="background:rgba(239,68,68,0.15); color:#f87171; font-weight:700; font-size:11px;">🔴 과매수 ${fmt(k, 1)}</span>`;
+    } else {
+      badge = `<span style="font-weight:700; color:#e2e8f0;">${fmt(k, 1)}</span>`;
+    }
+    return `<div>${badge}${d != null ? `<div class="meta" style="font-size:11px; margin-top:2px;">%D ${fmt(d, 1)}</div>` : ""}</div>`;
+  };
+
+  const renderTechBadges = (r) => {
+    const tags = [];
+    if (taMatch(r, "confluence")) tags.push('<span class="chip" style="background:rgba(16,185,129,0.2); color:#4ade80; font-weight:800; border:1px solid rgba(74,222,128,0.4);">🔥 수급+기술</span>');
+    else if (taMatch(r, "ta_bull")) tags.push('<span class="chip" style="background:rgba(250,204,21,0.15); color:#facc15; font-weight:700;">⚡ 기술강세</span>');
+    if (taMatch(r, "stoch_golden")) tags.push('<span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">✨ 골든크로스</span>');
+    if (taMatch(r, "ichi_above")) tags.push('<span class="chip" style="background:rgba(168,85,247,0.15); color:#c084fc; font-weight:700;">☁️ 구름위</span>');
+    else if (taMatch(r, "ichi_tk")) tags.push('<span class="chip" style="background:rgba(59,130,246,0.15); color:#60a5fa; font-weight:700;">📈 전환&gt;기준</span>');
+
+    const baseTags = taTags(r);
+    return tags.length ? tags.join(" ") : (baseTags || '<span class="hint">—</span>');
+  };
+
   const body = rows
     .map(
       (r, i) => `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
-      <td class="num">${i + 1}</td>
-      <td class="name-cell"><b>${escapeHtml(r.company || "")}</b>
-        <div class="meta">${escapeHtml(r.ticker || "")} ${setupTags(r)}
-          ${r.in_quant ? `<span class="tag">Q${r.quant_rank ?? ""}</span>` : tipTag("퀀트 밖", "hot", SETUP_TIPS)}</div>${rowNote(r.comment_trade_short || r.comment_trade)}</td>
+      <td class="num font-bold">${i + 1}</td>
+      <td class="name-cell">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b>
+          <span class="meta">${escapeHtml(r.ticker || "")}</span>
+        </div>
+        <div class="meta" style="margin-top:2px;">${setupTags(r)}
+          ${r.in_quant ? `<span class="tag">Q${r.quant_rank ?? ""}</span>` : tipTag("퀀트 밖", "hot", SETUP_TIPS)}
+        </div>
+        ${rowNote(r.comment_trade_short || r.comment_trade)}
+      </td>
       <td class="num">${quoteCell(r)}</td>
-      <td class="num">${r.ta && r.ta.stoch_k != null ? fmt(r.ta.stoch_k, 1) : "—"}
-        <div class="meta">${r.ta && r.ta.stoch_d != null ? "D " + fmt(r.ta.stoch_d, 1) : ""}</div></td>
-      <td>${taTags(r) || '<span class="hint">—</span>'}</td>
-      <td class="num">${signedInt(r.foreign_net)}</td>
-      <td class="num">${signedInt(r.institution_net)}</td>
-      <td class="num">${signedInt(r.pe_net)}${r.pe_streak ? `<div class="meta">${r.pe_streak}일</div>` : ""}</td>
-      <td class="num">${escapeHtml(krw(setupNotional(r)))}</td>
-      <td class="num">${pctCell(r.ret_5d)}</td>
+      <td class="num">${renderStochCell(r)}</td>
+      <td>${renderTechBadges(r)}</td>
+      <td class="num ${r.foreign_net > 0 ? 'text-emerald-400 font-bold' : r.foreign_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.foreign_net)}</td>
+      <td class="num ${r.institution_net > 0 ? 'text-emerald-400 font-bold' : r.institution_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.institution_net)}</td>
+      <td class="num ${r.pe_net > 0 ? 'text-purple-400 font-bold' : r.pe_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.pe_net)}${r.pe_streak ? `<div class="meta" style="color:#c084fc;">${r.pe_streak}일 연속</div>` : ""}</td>
+      <td class="num font-bold text-accent-cyan">${escapeHtml(krw(setupNotional(r)))}</td>
+      <td class="num font-bold">${pctCell(r.ret_5d)}</td>
     </tr>`
     )
     .join("");
+
   const when = fmtWhen(data.fetched_at);
   const px = lastStatus?.freshness?.price_max_date;
   const asof = [when ? `수급 스캔 ${when}` : "", px ? `KRX 일봉 ${px} (스토·일목)` : ""]
     .filter(Boolean)
     .join(" · ") || "트레이딩 데이터 시점 없음";
+
   if (currentView === "trade") {
     setPageAsOf(asof, "수급은 토스, 스토캐스틱·일목은 KRX 일봉입니다. 다시 스캔하면 수급이 갱신됩니다.");
   }
+
   box.innerHTML = `
-    ${asofBanner(asof)}
-    <div class="kpis" style="grid-template-columns:repeat(5,1fr);margin:8px 0 16px">
-      <div class="kpi"><span>스캔</span><b>${data.scanned || 0}</b></div>
-      <div class="kpi"><span>퀀트 밖 쌍끌이</span><b>${dualN}</b></div>
-      <div class="kpi"><span>퀀트 밖 사모</span><b>${peN}</b></div>
-      <div class="kpi"><span>기술 강세</span><b>${taBull}</b></div>
-      <div class="kpi"><span>수급+기술</span><b>${confluence}</b></div>
+    <div class="kpis" style="grid-template-columns:repeat(5,1fr); margin:0 0 16px;">
+      <div class="kpi has-tip" data-tip-title="🎯 수급 스캔 모수" data-tip="거래대금 상위 및 랭킹 모니터링 대상 종목 총 수입니다." tabindex="0">
+        <span>스캔 종목</span><b>${data.scanned || 0}</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="💎 퀀트 밖 외인·기관 쌍끌이" data-tip="메인 퀀트 TOP100에 속하지 않는 숨은 외인+기관 동반 순매수 종목입니다." tabindex="0">
+        <span>퀀트 밖 쌍끌이</span><b style="color:#00e5ff;">${dualN}</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="💼 퀀트 밖 사모펀드 매집" data-tip="단기 스마트머니인 사모펀드가 연속 순매집 중인 종목입니다." tabindex="0">
+        <span>퀀트 밖 사모</span><b style="color:#c084fc;">${peN}</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="⚡ 기술적 강세 셋업" data-tip="스토캐스틱 과매도 탈출 또는 일목균형표 호전 등 기술적 진입 타점 종목입니다." tabindex="0">
+        <span>기술 강세</span><b style="color:#facc15;">${taBull}</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="🔥 수급 + 기술 Confluence" data-tip="강력한 스마트머니 수급 유입과 기술적 상승 신호가 동시에 일치하는 최고 확률 타점입니다." tabindex="0">
+        <span>수급+기술 중첩</span><b style="color:#4ade80;">${confluence}</b>
+      </div>
     </div>
-    <p class="hint">${escapeHtml(data.selection_trade || "수급 셋업에 일봉 스토캐스틱·일목 기술 지표를 결합한 스캔입니다.")}</p>
-    <p>거래대금·토스 랭킹 위주 ${data.scanned || 0}종목 · ${data.days || 5}거래일 · 빈집 ${emptyN} · ${hitLine("선택 집합", hit)}</p>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+      <span class="chip" style="background:rgba(56,189,248,0.12); color:#38bdf8;">거래대금·토스 랭킹 위주 ${data.scanned || 0}종목 · ${data.days || 5}거래일 · 빈집 ${emptyN}개</span>
+      <span class="meta">${hitLine("선택 집합", hit)}</span>
+    </div>
+
     <div class="table-wrap tall">
       <table data-scope="trade">
         <thead>
           <tr>
-            <th>#</th>
-            <th class="sortable" data-sort="company">종목 · 셋업</th>
+            <th style="width:40px;">#</th>
+            <th class="sortable" data-sort="company" style="min-width:160px;">종목 · 셋업</th>
             <th class="sortable" data-sort="last">최근가</th>
-            <th class="sortable has-tip" data-sort="stoch_k" data-tip="${escapeHtml("스토캐스틱 %K입니다. 최근 5일 고저 대비 종가 위치(0~100)를 3일 평활합니다. 20 아래는 과매도, 80 위는 과매수.")}" tabindex="0">스토 %K</th>
-            <th class="has-tip" data-tip="${escapeHtml("KRX 일봉 스토캐스틱 5,3,3과 일목 9-26-52 기술적 분석 태그입니다.")}" tabindex="0">기술</th>
+            <th class="sortable has-tip" data-sort="stoch_k" data-tip="${escapeHtml("스토캐스틱 %K입니다. 최근 5일 고저 대비 종가 위치(0~100)를 3일 평활합니다. 20 아래는 과매도, 80 위는 과매수.")}" tabindex="0">스토 %K (%D)</th>
+            <th class="has-tip" data-tip="${escapeHtml("KRX 일봉 스토캐스틱 5,3,3과 일목 9-26-52 기술적 분석 태그입니다.")}" tabindex="0">기술적 신호</th>
             <th class="sortable" data-sort="foreign_net">외인(주)</th>
             <th class="sortable" data-sort="institution_net">기관(주)</th>
             <th class="sortable" data-sort="pe_net">사모(주)</th>
@@ -4180,10 +4230,10 @@ function renderTrade(data) {
             <th class="sortable" data-sort="ret_5d">이후 5일</th>
           </tr>
         </thead>
-        <tbody>${body || `<tr><td colspan="10" class="hint">조건에 맞는 종목이 없습니다. 퀀트 제외를 끄거나 셋업·기술을 바꿔 보세요.</td></tr>`}</tbody>
+        <tbody>${body || `<tr><td colspan="10" class="hint" style="text-align:center; padding:30px;">조건에 맞는 종목이 없습니다. 퀀트 제외를 끄거나 셋업·기술을 바꿔 보세요.</td></tr>`}</tbody>
       </table>
     </div>
-    <p class="hint">${escapeHtml(data.quote_note || "최근가는 토스, 수급·기술은 일봉입니다.")} 스토캐스틱 5,3,3 · 일목 9-26-52. 열 이름을 누르면 최근가·수급 금액으로 정렬할 수 있습니다.</p>
+    <p class="hint" style="margin-top:10px;">💡 최근가는 토스, 수급·기술은 KRX 일봉 기준입니다. 열 제목을 클릭하면 최근가, 수급 금액, 스토캐스틱 순으로 정렬할 수 있습니다.</p>
   `;
   tradeCache = data;
   paintSortHeaders("trade");
@@ -6237,6 +6287,15 @@ if ($("#trade-refresh")) {
 });
 if ($("#trade-q")) {
   $("#trade-q").addEventListener("input", () => { if (flowCache) renderTrade(flowCache); });
+  $("#trade-q").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (flowCache) renderTrade(flowCache);
+    }
+  });
+}
+if ($("#btn-trade-search")) {
+  $("#btn-trade-search").addEventListener("click", () => { if (flowCache) renderTrade(flowCache); });
 }
 
 let floatTipEl = null;

@@ -395,51 +395,77 @@
     <section id="view-trade" class="view hidden">
       <article class="card">
         <div class="card-h">
-          <h2>수급 트레이딩 서치</h2>
-          <div class="actions">
-            <div class="search-input-group" style="display:flex; align-items:center; gap:4px;"><div class="autocomplete-wrap" style="min-width: 190px;"><input id="trade-q" type="text" autocomplete="off" placeholder="종목명 또는 코드 검색" /><ul id="trade-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul></div><button type="button" id="btn-trade-search" class="primary" style="height:36px; padding:0 12px; font-size:12.5px; white-space:nowrap;">검색</button></div>
-            <label>셋업
-              <select id="trade-mode">
-                <option value="setup" selected>셋업 전체</option>
-                <option value="dual">쌍끌이</option>
-                <option value="pe">사모 매집</option>
-                <option value="empty">빈집</option>
-                <option value="comeback">빈집 복귀</option>
-                <option value="dual_pe">쌍끌이+사모</option>
-                <option value="dual_pe_retail">쌍끌이+사모+개인이탈</option>
-                <option value="other_corp">기타법인 순매수</option>
-                <option value="pension">연기금 가세</option>
-              </select>
-            </label>
-            <label>최소 추정금액
-              <select id="trade-min-krw">
-                <option value="0" selected>전체</option>
-                <option value="1000000000">10억 이상</option>
-                <option value="5000000000">50억 이상</option>
-                <option value="10000000000">100억 이상</option>
-              </select>
-            </label>
-            <label>기술적
-              <select id="trade-ta">
-                <option value="" selected>기술적 전체</option>
-                <option value="stoch_os">스토 과매도</option>
-                <option value="stoch_golden">스토 골든</option>
-                <option value="stoch_ob">스토 과매수</option>
-                <option value="ichi_above">일목 구름 위</option>
-                <option value="ichi_below">일목 구름 아래</option>
-                <option value="ichi_tk">전환>기준</option>
-                <option value="ta_bull">기술 강세</option>
-                <option value="confluence">수급+기술</option>
-              </select>
-            </label>
-            <label class="chk">
-              <input type="checkbox" id="trade-ex-quant" checked />
-              퀀트 TOP100 제외
-            </label>
-            <button class="ghost" id="trade-refresh">다시 스캔</button>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h2 style="margin:0;">⚡ 수급 트레이딩 & 기술적 타점 랩</h2>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">토스 기관/외인 수급 × KRX 일봉 스토캐스틱·일목균형표</span>
           </div>
         </div>
-        <p class="hint">수급(쌍끌이·사모·빈집)에 KRX 일봉 스토캐스틱(5,3,3)과 일목균형표(9-26-52)를 결합하여 수급 턴어라운드와 기술적 최적 진입 타점을 분석합니다.</p>
+        <p class="hint" style="margin-bottom:14px;">스마트머니 수급(쌍끌이·사모펀드·빈집)에 KRX 일봉 스토캐스틱(5,3,3)과 일목균형표(9-26-52)를 결합하여 최적의 단기 턴어라운드 진입 타점을 분석합니다.</p>
+
+        <!-- Modern Unified Filter Toolbar -->
+        <div class="trade-toolbar-container">
+          <div class="trade-filter-bar">
+            <!-- Search Box Group -->
+            <div class="trade-search-wrap">
+              <div class="autocomplete-wrap">
+                <input id="trade-q" type="text" autocomplete="off" placeholder="종목명 또는 6자리 코드 검색" />
+                <ul id="trade-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
+              </div>
+              <button type="button" id="btn-trade-search" class="primary search-btn" style="height:38px; padding:0 14px; font-size:12.5px; font-weight:700; white-space:nowrap; border-radius:8px;">🔍 검색</button>
+            </div>
+
+            <!-- Filter Controls Group -->
+            <div class="trade-filter-group">
+              <label class="trade-filter-label">
+                <span class="filter-tag">수급 셋업</span>
+                <select id="trade-mode" class="trade-select">
+                  <option value="setup" selected>전체 셋업</option>
+                  <option value="dual">💎 외인·기관 쌍끌이</option>
+                  <option value="pe">💼 사모펀드 매집</option>
+                  <option value="empty">🚪 빈집 이탈</option>
+                  <option value="comeback">🔄 빈집 복귀</option>
+                  <option value="dual_pe">🔥 쌍끌이 + 사모</option>
+                  <option value="dual_pe_retail">🚀 쌍끌이+사모+개인이탈</option>
+                  <option value="other_corp">🏢 기타법인 순매수</option>
+                  <option value="pension">🏛️ 연기금 가세</option>
+                </select>
+              </label>
+
+              <label class="trade-filter-label">
+                <span class="filter-tag">최소 추정금액</span>
+                <select id="trade-min-krw" class="trade-select">
+                  <option value="0" selected>전체 금액</option>
+                  <option value="1000000000">10억 이상</option>
+                  <option value="5000000000">50억 이상</option>
+                  <option value="10000000000">100억 이상</option>
+                </select>
+              </label>
+
+              <label class="trade-filter-label">
+                <span class="filter-tag">기술적 타점</span>
+                <select id="trade-ta" class="trade-select">
+                  <option value="" selected>기술적 전체</option>
+                  <option value="stoch_os">🟢 스토 과매도 (%K &lt; 20)</option>
+                  <option value="stoch_golden">✨ 스토 골든크로스</option>
+                  <option value="stoch_ob">🔴 스토 과매수 (%K &gt; 80)</option>
+                  <option value="ichi_above">☁️ 일목 구름대 위</option>
+                  <option value="ichi_below">🌧️ 일목 구름대 아래</option>
+                  <option value="ichi_tk">📈 전환선 &gt; 기준선</option>
+                  <option value="ta_bull">⚡ 기술적 강세 셋업</option>
+                  <option value="confluence">🎯 수급 + 기술 Confluence</option>
+                </select>
+              </label>
+
+              <label class="trade-chk-label">
+                <input type="checkbox" id="trade-ex-quant" checked />
+                <span>퀀트 TOP100 제외</span>
+              </label>
+
+              <button type="button" class="trade-refresh-btn" id="trade-refresh">🔄 다시 스캔</button>
+            </div>
+          </div>
+        </div>
+
         <div id="trade-box" class="quality"></div>
       </article>
     </section>
