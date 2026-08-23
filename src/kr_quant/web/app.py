@@ -1,5 +1,24 @@
 from __future__ import annotations
 
+import sys
+
+# Suppress harmless Windows asyncio ProactorBasePipeTransport WinError 10022 socket shutdown warning
+if sys.platform == "win32":
+    try:
+        from asyncio.proactor_events import _ProactorBasePipeTransport
+
+        _orig_call_conn_lost = _ProactorBasePipeTransport._call_connection_lost
+
+        def _safe_call_connection_lost(self, exc):
+            try:
+                _orig_call_conn_lost(self, exc)
+            except OSError:
+                pass
+
+        _ProactorBasePipeTransport._call_connection_lost = _safe_call_connection_lost
+    except Exception:
+        pass
+
 import json
 import math
 import os
