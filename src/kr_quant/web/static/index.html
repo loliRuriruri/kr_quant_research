@@ -206,7 +206,7 @@
     </section>
 
     <section id="view-investor" class="view hidden">
-      <div class="subtabs-bar">
+      <div class="subtabs-bar" style="margin-bottom:16px;">
         <button type="button" class="subtab-btn active" id="subtab-investor-flow" data-subtab="flow">📊 기관·외국인 수급 추적 (KIS)</button>
         <button type="button" class="subtab-btn" id="subtab-investor-nps" data-subtab="nps">🏢 국민연금 5% 대량보유 (DART)</button>
       </div>
@@ -214,27 +214,35 @@
       <div id="investor-subtab-flow-pane">
         <article class="card">
           <div class="card-h">
-            <h2>공식 투자자 수급 (KIS)</h2>
-            <div class="actions">
-              <button class="ghost" id="investor-refresh">상태 새로고침</button>
-              <button class="primary" id="investor-collect" data-tip="관심종목과 거래대금 상위만 받습니다. 전 종목 순위가 아닙니다.">관심·고유동성 수집</button>
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <h2 style="margin:0;">🏛️ 공식 투자자 수급 추적 (KIS)</h2>
+              <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">증권사 HTS 공식 외인·기관·개인·기금 일별 순매수</span>
+            </div>
+            <div class="actions" style="margin:0;">
+              <button type="button" class="ghost small" id="investor-refresh">🔄 상태 새로고침</button>
+              <button type="button" class="primary small" id="investor-collect" data-tip="관심종목과 거래대금 상위만 받습니다. 전 종목 순위가 아닙니다." style="font-weight:700;">⚡ 관심·고유동성 수집</button>
             </div>
           </div>
-          <p class="hint">한국투자증권 Open API 기반 일별 투자자(외국인·기관·기금 등) 순매수 동향입니다.</p>
+          <p class="hint">한국투자증권 Open API 기반 일별 투자자(외국인·기관·기금 등) 공식 순매수 동향 및 외인 지분율을 추적합니다.</p>
           <div id="investor-box" class="quality"></div>
         </article>
-        <article class="card" style="margin-top:14px">
+
+        <article class="card" style="margin-top:16px">
           <div class="card-h">
-            <h2>연속 · 동반 · 방향전환</h2>
-            <div class="actions">
-              <label>전환 기준
-                <select id="investor-turn">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <h2 style="margin:0;">🔥 연속 · 동반 · 방향전환 수급 포착</h2>
+              <span class="chip" style="background:rgba(250,204,21,0.15); color:#facc15; font-weight:700;">수급 지속성(Streak) 및 추세 반전 감지</span>
+            </div>
+            <div class="trade-filter-group" style="margin:0;">
+              <label class="trade-filter-label" style="height:36px; padding:2px 4px 2px 10px;">
+                <span class="filter-tag">⏱️ 전환 기준</span>
+                <select id="investor-turn" class="trade-select" style="height:28px;">
                   <option value="3">3일</option>
-                  <option value="5" selected>5일</option>
+                  <option value="5" selected>5일 (기본값)</option>
                   <option value="10">10일</option>
                 </select>
               </label>
-              <button class="ghost" id="investor-events-refresh">표 새로고침</button>
+              <button type="button" class="ghost small" id="investor-events-refresh" style="height:36px;">🔄 표 새로고침</button>
             </div>
           </div>
           <p class="hint">외국인·기관의 연속 순매수 일수(Streak), 동반 매수(Double Buy), 방향 전환(Reversal) 감지 목록입니다.</p>
@@ -245,11 +253,13 @@
       <div id="investor-subtab-nps-pane" class="hidden">
         <article class="card">
           <div class="card-h">
-            <h2>국민연금 5% 이상 대량보유</h2>
-            <div class="actions">
-              <span class="chip">OpenDART</span>
-              <button class="ghost" id="nps-sub-refresh">목록 새로고침</button>
-              <button class="primary" id="nps-sub-collect" data-tip="최근 대량보유 공시에서 제출인이 국민연금인 건만 받습니다.">공시 수집</button>
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <h2 style="margin:0;">🏢 국민연금 5% 이상 대량보유</h2>
+              <span class="chip" style="background:rgba(16,185,129,0.15); color:#34d399; font-weight:700;">OpenDART 공식 지분 공시</span>
+            </div>
+            <div class="actions" style="margin:0;">
+              <button type="button" class="ghost small" id="nps-sub-refresh">🔄 목록 새로고침</button>
+              <button type="button" class="primary small" id="nps-sub-collect" data-tip="최근 대량보유 공시에서 제출인이 국민연금인 건만 받습니다." style="font-weight:700;">⚡ 공시 수집</button>
             </div>
           </div>
           <p class="hint">OpenDART 대량보유상황보고(5% 이상 지분 보유/변동) 공식 공시 내역입니다.</p>

@@ -3198,79 +3198,100 @@ function renderInvestorEvents(data) {
   const src = pick === "official" ? official : toss;
   const reb = data.rebalance || {};
   const tabs = [
-    ["consecutive", `연속 ${ (src.consecutive || []).length }`],
-    ["paired", `동반 ${ (src.paired || []).length }`],
-    ["turns", `방향전환 ${ (src.turns || []).length }`],
-    ["cum5", `5일 ${ (src.cum5 || []).length }`],
-    ["cum20", `20일 ${ (src.cum20 || []).length }`],
-    ["cum60", `60일 ${ (src.cum60 || []).length }`],
+    ["consecutive", `🔥 연속 순매수 (${ (src.consecutive || []).length })`],
+    ["paired", `💎 동반 매수 (${ (src.paired || []).length })`],
+    ["turns", `🔄 방향전환 (${ (src.turns || []).length })`],
+    ["cum5", `📅 5일 누적 (${ (src.cum5 || []).length })`],
+    ["cum20", `📅 20일 누적 (${ (src.cum20 || []).length })`],
+    ["cum60", `📅 60일 누적 (${ (src.cum60 || []).length })`],
   ];
   const rows = src[investorEventTab] || [];
   const isCum = String(investorEventTab).startsWith("cum");
   const cumKey = investorEventTab === "cum60" ? "w60" : investorEventTab === "cum5" ? "w5" : "w20";
+
+  const renderDirBadge = (d) => {
+    if (d === "BUY") return '<span class="chip" style="background:rgba(16,185,129,0.15); color:#34d399; font-weight:800;">🔴 순매수</span>';
+    if (d === "SELL") return '<span class="chip" style="background:rgba(239,68,68,0.15); color:#f87171; font-weight:800;">🔵 순매도</span>';
+    return '<span class="chip" style="background:rgba(148,163,184,0.15); color:#94a3b8;">중립</span>';
+  };
+
+  const renderAmtBadge = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n === 0) return "—";
+    const str = fmtAmt(n);
+    if (n > 0) return `<b class="text-emerald-400">+${str}</b>`;
+    if (n < 0) return `<b class="text-rose-400">${str}</b>`;
+    return str;
+  };
+
   const head =
     investorEventTab === "turns"
-      ? `<th>종목</th><th>전환</th><th>이전연속</th><th>오늘</th><th>출처</th>`
+      ? `<th>종목명</th><th>전환 방향</th><th>이전 연속</th><th>오늘 순매수</th><th>출처</th>`
       : investorEventTab === "paired"
-        ? `<th>종목</th><th>방향</th><th>${escapeHtml(src.pair || "동반")}</th><th>외인</th><th>출처</th>`
+        ? `<th>종목명</th><th>방향</th><th>${escapeHtml(src.pair || "기관")}</th><th>외국인</th><th>출처</th>`
         : isCum
-          ? `<th>종목</th><th>누적</th><th>일수</th><th>절단</th><th>출처</th>`
-        : `<th>종목</th><th>방향</th><th>연속일</th><th>누적</th><th>절단</th><th>출처</th>`;
+          ? `<th>종목명</th><th>누적 순매수</th><th>일수</th><th>이력 상태</th><th>출처</th>`
+        : `<th>종목명</th><th>방향</th><th>연속 일수</th><th>누적 수급</th><th>이력 상태</th><th>출처</th>`;
+
   const body = rows
     .slice(0, 40)
     .map((r) => {
+      const srcChip = `<span class="chip" style="background:rgba(255,255,255,0.06); color:#cbd5e1; font-size:11px;">${escapeHtml(r.source || (pick === "official" ? "KIS" : "토스"))}</span>`;
       if (isCum) {
-        return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}"><td><b>${escapeHtml(r.company || "")}</b><div class="meta">${escapeHtml(r.ticker)}</div></td>
-          <td class="num">${fmtAmt(r[cumKey])}</td>
-          <td class="num">${r[cumKey + "_n"] || "—"}</td>
-          <td>${r[cumKey + "_capped"] ? "이력 짧음" : "—"}</td>
-          <td>${escapeHtml(r.source || "")}</td></tr>`;
+        return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
+          <td><div style="display:flex; align-items:center; gap:6px;"><b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b><span class="meta">${escapeHtml(r.ticker)}</span></div></td>
+          <td class="num">${renderAmtBadge(r[cumKey])}</td>
+          <td class="num">${r[cumKey + "_n"] ? `<b style="color:#38bdf8;">${r[cumKey + "_n"]}일</b>` : "—"}</td>
+          <td>${r[cumKey + "_capped"] ? '<span class="chip" style="background:rgba(245,158,11,0.15); color:#f59e0b; font-size:11px;">이력 짧음</span>' : "정상"}</td>
+          <td>${srcChip}</td></tr>`;
       }
       if (investorEventTab === "turns") {
         const t = r.turn || r;
-        return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}"><td><b>${escapeHtml(r.company || "")}</b><div class="meta">${escapeHtml(r.ticker)}</div></td>
-          <td>${dirKo(t.from || r.turn_from)} → ${dirKo(t.to || r.turn_to)}</td>
-          <td class="num">${t.prior_days || r.turn_prior_days || "—"}일</td>
-          <td class="num">${fmtAmt(t.today || r.today_a)}</td>
-          <td>${escapeHtml(r.source || "")}</td></tr>`;
+        const turnBadge = `<span class="chip" style="background:rgba(250,204,21,0.15); color:#facc15; font-weight:700;">🔄 ${dirKo(t.from || r.turn_from)} ➔ ${dirKo(t.to || r.turn_to)}</span>`;
+        return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
+          <td><div style="display:flex; align-items:center; gap:6px;"><b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b><span class="meta">${escapeHtml(r.ticker)}</span></div></td>
+          <td>${turnBadge}</td>
+          <td class="num">${t.prior_days || r.turn_prior_days ? `<b style="color:#94a3b8;">${t.prior_days || r.turn_prior_days}일</b>` : "—"}</td>
+          <td class="num">${renderAmtBadge(t.today || r.today_a)}</td>
+          <td>${srcChip}</td></tr>`;
       }
       if (investorEventTab === "paired") {
-        return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}"><td><b>${escapeHtml(r.company || "")}</b><div class="meta">${escapeHtml(r.ticker)}</div></td>
-          <td>${dirKo(r.paired_direction)}</td>
-          <td class="num">${fmtAmt(r.today_a)}</td>
-          <td class="num">${fmtAmt(r.today_b)}</td>
-          <td>${escapeHtml(r.source || "")}</td></tr>`;
+        return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
+          <td><div style="display:flex; align-items:center; gap:6px;"><b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b><span class="meta">${escapeHtml(r.ticker)}</span></div></td>
+          <td>${renderDirBadge(r.paired_direction)}</td>
+          <td class="num">${renderAmtBadge(r.today_a)}</td>
+          <td class="num">${renderAmtBadge(r.today_b)}</td>
+          <td>${srcChip}</td></tr>`;
       }
-      return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}"><td><b>${escapeHtml(r.company || "")}</b><div class="meta">${escapeHtml(r.ticker)}</div></td>
-        <td>${dirKo(r.direction)}</td>
-        <td class="num">${r.days || 0}일</td>
-        <td class="num">${fmtAmt(r.cumulative)}</td>
-        <td>${r.capped ? "이력 시작" : "—"}</td>
-        <td>${escapeHtml(r.source || "")}</td></tr>`;
+      return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
+        <td><div style="display:flex; align-items:center; gap:6px;"><b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b><span class="meta">${escapeHtml(r.ticker)}</span></div></td>
+        <td>${renderDirBadge(r.direction)}</td>
+        <td class="num"><b style="color:#38bdf8;">${r.days || 0}일 연속</b></td>
+        <td class="num">${renderAmtBadge(r.cumulative)}</td>
+        <td>${r.capped ? '<span class="chip" style="background:rgba(245,158,11,0.15); color:#f59e0b; font-size:11px;">이력 시작</span>' : "정상"}</td>
+        <td>${srcChip}</td></tr>`;
     })
     .join("");
+
   const srcBadge = pick === "official"
-    ? '<span class="tag tone-우호">🏛️ 한국투자증권(KIS) 공식 수급 기준</span>'
-    : '<span class="tag tone-중립">⚡ 토스증권 수급 캐시 기준 (자동 백업 엔진)</span>';
+    ? '<span class="chip" style="background:rgba(56,189,248,0.18); color:#38bdf8; font-weight:800; border:1px solid rgba(56,189,248,0.4);">🏛️ 한국투자증권(KIS) 공식 수급 기준</span>'
+    : '<span class="chip" style="background:rgba(168,85,247,0.18); color:#c084fc; font-weight:800; border:1px solid rgba(168,85,247,0.4);">⚡ 토스증권 수급 캐시 기준 (자동 백업 엔진)</span>';
 
   box.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
-      <div class="h-tabs" style="margin:0;">
-        <button class="${pick === "official" ? "on" : ""}" data-inv-src="official">공식 KIS (${official.tickers || 0}종목)</button>
-        <button class="${pick === "toss" ? "on" : ""}" data-inv-src="toss">토스 캐시 (${toss.tickers || 0}종목)</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+      <div class="h-tabs" style="margin:0; padding:0; border:none;">
+        <button type="button" class="${pick === "official" ? "on" : ""}" data-inv-src="official">🏛️ 공식 KIS (${official.tickers || 0}종목)</button>
+        <button type="button" class="${pick === "toss" ? "on" : ""}" data-inv-src="toss">⚡ 토스 캐시 (${toss.tickers || 0}종목)</button>
       </div>
       <div>${srcBadge}</div>
     </div>
-    <p class="hint" style="margin:4px 0 10px;">${escapeHtml(src.pair_note || "외국인·기관의 연속 매수 일수(Streak), 동반 매수(Double Buy), 방향 전환(Reversal) 감지 목록입니다.")}</p>
-    ${src.empty_reason ? `<p class="hint warn">${escapeHtml(src.empty_reason)}</p>` : ""}
-    ${reb.note ? `<p class="hint">${escapeHtml(reb.note)} · 표본 ${reb.n || 0}종목 · 매수 ${reb.buy_n || 0} · 매도 ${reb.sell_n || 0} · 합계 ${fmtAmt(reb.net_sum)}</p>` : ""}
-    <div class="h-tabs" style="margin-bottom:8px;">
-      ${tabs.map(([id, label]) => `<button class="${investorEventTab === id ? "on" : ""}" data-inv-tab="${id}">${label}</button>`).join("")}
+    <div class="h-tabs" style="margin-bottom:12px;">
+      ${tabs.map(([id, label]) => `<button type="button" class="${investorEventTab === id ? "on" : ""}" data-inv-tab="${id}">${label}</button>`).join("")}
     </div>
     <div class="table-wrap">
       <table>
         <thead><tr>${head}</tr></thead>
-        <tbody>${body || `<tr><td colspan="6">해당 조건의 수급 포착 종목이 없습니다.</td></tr>`}</tbody>
+        <tbody>${body || `<tr><td colspan="6" class="hint" style="text-align:center; padding:30px;">해당 조건의 수급 포착 종목이 없습니다.</td></tr>`}</tbody>
       </table>
     </div>
   `;
