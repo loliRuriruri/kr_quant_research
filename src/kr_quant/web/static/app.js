@@ -8192,8 +8192,8 @@ function renderMonthHeatmapBar(months, targetMonth) {
 }
 
 async function loadSeasonality() {
-  const minWr = parseFloat($("#seasonality-min-wr") ? $("#seasonality-min-wr").value : "0.67");
-  const minRet = parseFloat($("#seasonality-min-ret") ? $("#seasonality-min-ret").value : "0.03");
+  const minWr = parseFloat($("#seasonality-min-wr") ? $("#seasonality-min-wr").value : "0.80");
+  const minRet = parseFloat($("#seasonality-min-ret") ? $("#seasonality-min-ret").value : "0.05");
   const q = $("#seasonality-q") ? $("#seasonality-q").value.trim() : "";
 
   const params = new URLSearchParams({
@@ -8236,14 +8236,45 @@ function renderSeasonalityTable() {
     const retCls = avgRet > 0 ? "up font-bold" : "down";
     const medRet = (r.median_return || 0) * 100;
 
-    const tagBadges = (r.tags || []).map((t) => {
-      if (t === "winter_heater") return `<span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">❄️ 난방/보일러</span>`;
-      if (t === "summer_heat") return `<span class="chip" style="background:rgba(245,158,11,0.15); color:#f59e0b;">☀️ 폭염/냉방</span>`;
-      if (t === "galaxy_phone") return `<span class="chip" style="background:rgba(168,85,247,0.15); color:#c084fc;">📱 갤럭시</span>`;
-      if (t === "dividend_play") return `<span class="chip" style="background:rgba(16,185,129,0.15); color:#34d399;">💰 연말배당</span>`;
-      if (t === "shopping_frenzy") return `<span class="chip" style="background:rgba(244,63,94,0.15); color:#fb7185;">🛍️ 쇼핑/콘텐츠</span>`;
-      return "";
-    }).join(" ");
+    // Robust 8-Theme Auto Matching for Heatmap Screener
+    function getThemeBadges(row) {
+      const comp = (row.company || "").toLowerCase();
+      const ind = (row.industry || "").toLowerCase();
+      const tags = row.tags || [];
+      const badges = [];
+
+      if (tags.includes("winter_heater") || comp.includes("나비엔") || comp.includes("파세코") || comp.includes("신일") || comp.includes("가스") || comp.includes("난방")) {
+        badges.push(`<span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">❄️ 난방·보일러</span>`);
+      }
+      if (tags.includes("summer_heat") || comp.includes("에어컨") || comp.includes("빙그레") || comp.includes("위닉스") || comp.includes("창문형")) {
+        badges.push(`<span class="chip" style="background:rgba(245,158,11,0.15); color:#f59e0b; font-weight:700;">☀️ 폭염·냉방</span>`);
+      }
+      if (tags.includes("galaxy_phone") || comp.includes("이노텍") || comp.includes("비에이치") || comp.includes("파인엠텍") || comp.includes("바텍") || ind.includes("전자부품")) {
+        badges.push(`<span class="chip" style="background:rgba(179,136,255,0.15); color:#b388ff; font-weight:700;">📱 IT·스마트폰</span>`);
+      }
+      if (tags.includes("dividend_play") || comp.includes("금융") || comp.includes("은행") || comp.includes("지주") || comp.includes("증권") || comp.includes("보험") || comp.includes("통신")) {
+        badges.push(`<span class="chip" style="background:rgba(16,185,129,0.15); color:#34d399; font-weight:700;">💰 밸류업·배당</span>`);
+      }
+      if (comp.includes("게임") || comp.includes("소프트") || comp.includes("펄어비스") || comp.includes("크래프톤") || comp.includes("엔터") || comp.includes("웹툰") || ind.includes("소프트웨어") || ind.includes("게임")) {
+        badges.push(`<span class="chip" style="background:rgba(255,179,0,0.15); color:#ffb300; font-weight:700;">🎮 게임·콘텐츠</span>`);
+      }
+      if (comp.includes("바이오") || comp.includes("제약") || comp.includes("약품") || comp.includes("생명") || comp.includes("헬스") || ind.includes("의약품") || ind.includes("바이오")) {
+        badges.push(`<span class="chip" style="background:rgba(255,82,82,0.15); color:#ff5252; font-weight:700;">🧬 제약·바이오</span>`);
+      }
+      if (comp.includes("반도체") || comp.includes("하이닉스") || comp.includes("전자") || comp.includes("칩") || comp.includes("본더") || comp.includes("소부장")) {
+        badges.push(`<span class="chip" style="background:rgba(0,229,255,0.15); color:#00e5ff; font-weight:700;">⚡ 반도체·AI</span>`);
+      }
+      if (tags.includes("shopping_frenzy") || comp.includes("코스맥스") || comp.includes("에이피알") || comp.includes("화장품") || comp.includes("패션") || comp.includes("의류")) {
+        badges.push(`<span class="chip" style="background:rgba(255,128,171,0.15); color:#ff80ab; font-weight:700;">💄 K-뷰티·소비재</span>`);
+      }
+      if (comp.includes("보안") || comp.includes("로봇") || comp.includes("모니터랩") || comp.includes("엑스게이트") || comp.includes("로보틱스")) {
+        badges.push(`<span class="chip" style="background:rgba(105,240,174,0.15); color:#69f0ae; font-weight:700;">🤖 보안·로봇·AI</span>`);
+      }
+
+      return badges.length ? badges.slice(0, 2).join(" ") : `<span class="chip" style="background:rgba(148,163,184,0.1); color:#94a3b8;">🌐 일반 계절성</span>`;
+    }
+
+    const tagBadges = getThemeBadges(r);
 
     return `
       <tr data-ticker="${escapeHtml(r.ticker)}" data-index="${idx}" class="clickable-row">

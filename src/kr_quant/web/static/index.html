@@ -625,26 +625,27 @@
             <button type="button" class="preset-chip-btn" data-preset="dividend_play">💰 연말 고배당 선취매 (9~11월)</button>
             <button type="button" class="preset-chip-btn" data-preset="shopping_frenzy">🛍️ 광군제/블프/콘텐츠</button>
           </div>
-          <div class="filters" style="margin-bottom: 16px; background: rgba(15, 23, 42, 0.5); padding: 10px 14px; border-radius: 8px;">
-            <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1;">
-              최소 승률:
-              <select id="seasonality-min-wr" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:4px; padding:2px 6px;">
+          <div class="filters" style="margin-bottom: 16px; background: rgba(15, 23, 42, 0.6); padding: 10px 16px; border-radius: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; border: 1px solid rgba(255,255,255,0.08);">
+            <label style="display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:#cbd5e1; white-space:nowrap; margin:0;">
+              <span style="font-weight:700; color:#94a3b8; white-space:nowrap;">최소 승률:</span>
+              <select id="seasonality-min-wr" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12.5px;">
                 <option value="0.5">50% 이상</option>
-                <option value="0.67" selected>67% 이상 (3년 중 2년+)</option>
+                <option value="0.67">67% 이상 (3년 중 2년+)</option>
                 <option value="0.75">75% 이상</option>
+                <option value="0.80" selected>80% 이상 (5년 중 4년+ · 기본값)</option>
                 <option value="1.0">100% (전승)</option>
               </select>
             </label>
-            <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1;">
-              최소 평균수익률:
-              <select id="seasonality-min-ret" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:4px; padding:2px 6px;">
+            <label style="display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:#cbd5e1; white-space:nowrap; margin:0;">
+              <span style="font-weight:700; color:#94a3b8; white-space:nowrap;">최소 평균수익률:</span>
+              <select id="seasonality-min-ret" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12.5px;">
                 <option value="0.0">0% 이상</option>
-                <option value="0.03" selected>+3% 이상</option>
-                <option value="0.05">+5% 이상</option>
+                <option value="0.03">+3% 이상</option>
+                <option value="0.05" selected>+5% 이상 (기본값)</option>
                 <option value="0.10">+10% 이상 (급등주)</option>
               </select>
             </label>
-            <span id="seasonality-count-badge" class="chip" style="margin-left:auto;">검색 중…</span>
+            <span id="seasonality-count-badge" class="chip" style="margin-left:auto; font-weight:700; background:rgba(56,189,248,0.15); color:#38bdf8;">검색 중…</span>
           </div>
           <div class="table-wrap">
             <table data-scope="seasonality">
