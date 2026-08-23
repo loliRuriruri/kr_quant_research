@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.17.2" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.17.3" />
 </head>
 <body>
   <aside class="nav">
@@ -40,7 +40,7 @@
     <button class="nav-btn" data-view="run" data-tip="데모, 재계산, KRX 시세, 실데이터 수집을 실행합니다."><span class="nav-icon">⚙️</span><span>실행 파이프라인</span></button>
     <button class="nav-btn" data-view="settings" data-tip="API 키는 이 PC의 .env에만 저장됩니다."><span class="nav-icon">🔑</span><span>API 설정</span></button>
     <div class="nav-foot">
-      <p>KR Quant Research<br />v2.17.2 Engine</p>
+      <p>KR Quant Research<br />v2.17.3 Engine</p>
     </div>
   </aside>
 
@@ -259,15 +259,43 @@
     </section>
 
     <section id="view-sunzi" class="view hidden">
-      <article class="card">
+      <article class="card yang-stage">
         <div class="card-h">
           <h2>손자를 읽는 양웬리</h2>
           <div class="actions">
-            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">Quant 합산 없음 · 착수≠매수</span>
-            <button class="ghost" id="sunzi-refresh">새로고침</button>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#67e8f9;">착수≠매수 · Quant 합산 없음</span>
+            <button class="ghost" id="sunzi-refresh">명부 다시 펼치기</button>
           </div>
         </div>
-        <p class="hint">손자는 전장 조건을 셉니다. 양웬리는 그 숫자를 보고, 굳이 오늘 싸울지를 묻습니다.</p>
+        <p class="hint yang-lede">손자가 전장의 근본을 세면, 저는 그 숫자로 ‘이 싸움이 필요한가’만 묻습니다. 유명해서 보는 게 아니에요.</p>
+        <div class="yang-toolbar">
+          <div class="autocomplete-wrap yang-search">
+            <input id="sunzi-q" type="text" autocomplete="off" placeholder="퀀트 밖 종목도 됩니다. 이름이나 코드를 말해 보세요." />
+            <ul id="sunzi-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
+          </div>
+          <div id="sunzi-universe-tabs" class="yang-seg">
+            <button type="button" class="preset-chip-btn active" data-universe="quant">퀀트 상위 명부</button>
+            <button type="button" class="preset-chip-btn" data-universe="all">명부 전체</button>
+          </div>
+          <select id="sunzi-posture-filter">
+            <option value="all">참모 의견 전체</option>
+            <option value="ENGAGE">착수</option>
+            <option value="WAIT">대기</option>
+            <option value="OBSERVE">관찰</option>
+            <option value="RETREAT">후퇴</option>
+            <option value="AVOID">회피</option>
+          </select>
+          <select id="sunzi-fa-filter">
+            <option value="all">法 전체</option>
+            <option value="pass">法 통과만</option>
+            <option value="fail">法 미달만</option>
+          </select>
+          <select id="sunzi-market-filter">
+            <option value="all">시장 전체</option>
+            <option value="KOSPI">KOSPI</option>
+            <option value="KOSDAQ">KOSDAQ</option>
+          </select>
+        </div>
         <div id="sunzi-box" class="quality"></div>
       </article>
     </section>
@@ -1102,7 +1130,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.17.2"></script>
+  <script src="/static/app.js?v=2.17.3"></script>
 
     <!-- Discovery Candidate Detail Modal (Mobile Dashboard Integration) -->
     <div id="discovery-detail-modal" class="discovery-modal-overlay hidden">

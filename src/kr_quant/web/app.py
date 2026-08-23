@@ -1066,10 +1066,25 @@ def api_investor_ticker(ticker: str) -> dict[str, Any]:
 
 
 @app.get("/api/sunzi")
-def api_sunzi(n: int = 40) -> dict[str, Any]:
+def api_sunzi(
+    n: int = 40,
+    query: str | None = None,
+    universe: str = "quant",
+    posture: str | None = None,
+    fa: str | None = None,
+    market: str | None = None,
+) -> dict[str, Any]:
     from kr_quant.sunzi.five import build_sunzi_board
 
-    return build_sunzi_board(load_settings(), n=max(10, min(int(n), 80)))
+    return build_sunzi_board(
+        load_settings(),
+        n=max(8, min(int(n), 80)),
+        query=query,
+        universe="all" if str(universe or "").lower() == "all" else "quant",
+        posture=posture,
+        fa_filter=fa,
+        market=market,
+    )
 
 
 @app.get("/api/nps")

@@ -107,6 +107,30 @@ def test_api_sunzi_board_returns_postures():
     assert {a["id"] for a in board["aspects"]} == {"dao", "tian", "di", "jiang", "fa"}
 
 
+def test_sunzi_query_can_leave_quant_top_slice():
+    import pandas as pd
+
+    s = load_settings()
+    top = build_sunzi_board(s, n=8, universe="quant")
+    if not top.get("configured"):
+        return
+    top_tickers = {r["ticker"] for r in top["rows"]}
+    path = s.output_dir / "latest_all_stocks.parquet"
+    if not path.exists():
+        return
+    df = pd.read_parquet(path)
+    df["ticker"] = df["ticker"].astype(str).str.zfill(6)
+    outside = df[~df["ticker"].isin(top_tickers)]
+    if outside.empty:
+        return
+    rec = outside.iloc[0]
+    found = build_sunzi_board(s, n=12, query=str(rec["ticker"]))
+    assert found["configured"] is True
+    assert str(rec["ticker"]).zfill(6) in {r["ticker"] for r in found["rows"]}
+    all_board = build_sunzi_board(s, n=12, universe="all")
+    assert all_board["universe"] == "all"
+
+
 def test_signed_streak_and_turn():
     buy = [10, 8, 4, 2, -3]
     streak = signed_streak(buy)

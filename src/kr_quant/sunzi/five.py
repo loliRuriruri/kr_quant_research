@@ -226,28 +226,170 @@ def _sector_lookup(settings: Settings) -> dict[str, dict[str, Any]]:
     return out
 
 
-def build_sunzi_board(settings: Settings, n: int = 40) -> dict[str, Any]:
+def _empty_board(tian: dict[str, Any], error: str | None = None) -> dict[str, Any]:
+    return {
+        "used_in_quant": False,
+        "configured": not bool(error),
+        "error": error,
+        "tian": tian,
+        "aspects": [dict(spec, score=None, note="") for spec in ASPECT_YANG],
+        "briefing": compose_yang_briefing(tian, {}, 0, 0, {}),
+        "rows": [],
+        "n": 0,
+        "fa_pass_n": 0,
+        "postures": {},
+        "legend": [
+            {"id": spec["id"], "han": spec["han"], "ko": spec["ko"], "where": spec["sunzi"], "yang": spec["yang"]}
+            for spec in ASPECT_YANG
+        ],
+    }
+
+
+def _load_scored_frame(settings: Settings):
     import pandas as pd
 
-    tian = tian_panel(settings)
-    sectors = _sector_lookup(settings)
     path = settings.output_dir / "latest_all_stocks.parquet"
     if not path.exists():
-        return {
-            "used_in_quant": False,
-            "configured": False,
-            "error": "스크리닝 결과가 없습니다. 재계산을 먼저 실행하세요.",
-            "tian": tian,
-            "aspects": [dict(spec, score=None, note="") for spec in ASPECT_YANG],
-            "briefing": compose_yang_briefing(tian, {}, 0, 0, {}),
-            "rows": [],
-        }
-    df = pd.read_parquet(path)
-    if "universe_eligible" in df.columns:
-        df = df[df["universe_eligible"] == True]  # noqa: E712
-    if "quant_rank" in df.columns:
-        df = df.sort_values("quant_rank", na_position="last")
-    records = df.head(max(10, min(int(n), 100))).to_dict("records")
+        return None
+    try:
+        df = pd.read_parquet(path)
+    except Exception:
+        return None
+    if df is None or getattr(df, "empty", True):
+        return None
+    df = df.copy()
+    if "ticker" in df.columns:
+        df["ticker"] = df["ticker"].astype(str).str.replace(r"\.0$", "", regex=True).str.zfill(6)
+    return df
+
+
+def _prices_name_records(settings: Settings, query: str, limit: int = 20) -> list[dict[str, Any]]:
+    from kr_quant.strategy.run import _prices
+
+    prices = _prices(settings)
+    if prices is None or getattr(prices, "empty", True) or "ticker" not in prices.columns:
+        return []
+    q = query.strip()
+    df = prices.copy()
+    df["ticker"] = df["ticker"].astype(str).str.zfill(6)
+    company = df["company"].astype(str) if "company" in df.columns else None
+    if q.isdigit():
+        hit = df[df["ticker"].str.contains(q, regex=False)]
+    else:
+        upper = q.upper()
+        mask = df["ticker"].str.contains(q, case=False, regex=False)
+        if company is not None:
+            mask = mask | company.str.contains(q, case=False, regex=False) | company.str.upper().str.contains(upper, regex=False)
+        hit = df[mask]
+    if hit.empty:
+        return []
+    cols = [c for c in ("ticker", "company", "market") if c in hit.columns]
+    uniq = hit[cols].drop_duplicates(subset=["ticker"]).head(limit)
+    out: list[dict[str, Any]] = []
+    for rec in uniq.to_dict("records"):
+        out.append({
+            "ticker": str(rec.get("ticker") or "").zfill(6),
+            "company": rec.get("company") or rec.get("ticker"),
+            "market": rec.get("market") or "KOSPI",
+            "industry": rec.get("industry") or rec.get("sector") or "미분류",
+        })
+    return out
+
+
+def _select_records(
+    df,
+    *,
+    query: str | None,
+    universe: str,
+    market: str | None,
+    n: int,
+) -> list[dict[str, Any]]:
+    work = df
+    if market and market not in {"", "all"} and "market" in work.columns:
+        work = work[work["market"].astype(str).str.upper() == str(market).upper()]
+    q = (query or "").strip()
+    if q:
+        ticker = work["ticker"].astype(str) if "ticker" in work.columns else None
+        company = work["company"].astype(str) if "company" in work.columns else None
+        mask = None
+        if ticker is not None:
+            mask = ticker.str.contains(q, case=False, regex=False)
+        if company is not None:
+            cm = company.str.contains(q, case=False, regex=False)
+            mask = cm if mask is None else (mask | cm)
+        if mask is not None:
+            work = work[mask]
+    elif universe != "all" and "universe_eligible" in work.columns:
+        work = work[work["universe_eligible"] == True]  # noqa: E712
+    if "quant_rank" in work.columns:
+        work = work.sort_values("quant_rank", na_position="last")
+    elif "quant_score" in work.columns:
+        work = work.sort_values("quant_score", ascending=False, na_position="last")
+    return work.head(max(1, min(int(n), 120))).to_dict("records")
+
+
+def _compact_row(rec: dict[str, Any], five: dict[str, Any]) -> dict[str, Any]:
+    critic = five.get("critic") or {}
+    industry = str(rec.get("industry") or rec.get("sector") or "미분류")
+    return {
+        "ticker": str(rec.get("ticker") or "").zfill(6),
+        "company": rec.get("company"),
+        "market": rec.get("market") or "",
+        "industry": industry,
+        "quant_score": None if rec.get("quant_score") is None else round(float(rec["quant_score"]), 1) if _num(rec.get("quant_score")) is not None else None,
+        "quant_rank": rec.get("quant_rank"),
+        "universe_eligible": bool(rec.get("universe_eligible")),
+        "overlay_mean": five["overlay_mean"],
+        "fa_gate_pass": five["fa_gate_pass"],
+        "dao": five["parts"]["dao"]["score"],
+        "tian": five["parts"]["tian"]["score"],
+        "di": five["parts"]["di"]["score"],
+        "jiang": five["parts"]["jiang"]["score"],
+        "fa": five["parts"]["fa"]["score"],
+        "di_state": five["parts"]["di"].get("state_ko"),
+        "tian_regime": five["parts"]["tian"].get("regime_ko"),
+        "fa_label": five["parts"]["fa"]["label"],
+        "dao_comment": five["parts"]["dao"].get("comment"),
+        "jiang_comment": five["parts"]["jiang"].get("comment"),
+        "di_comment": five["parts"]["di"].get("comment"),
+        "posture": critic.get("posture"),
+        "posture_ko": critic.get("posture_ko"),
+        "critic_score": critic.get("score"),
+        "critic_comment": critic.get("comment"),
+        "no_action_required": critic.get("no_action_required"),
+        "variant": critic.get("variant"),
+        "consensus": critic.get("consensus"),
+        "fa_comment": rec.get("fa_comment") or five["parts"]["fa"].get("comment"),
+        "fa_reasons_ko": rec.get("fa_reasons_ko") or [],
+    }
+
+
+def build_sunzi_board(
+    settings: Settings,
+    n: int = 40,
+    query: str | None = None,
+    universe: str = "quant",
+    posture: str | None = None,
+    fa_filter: str | None = None,
+    market: str | None = None,
+) -> dict[str, Any]:
+    tian = tian_panel(settings)
+    sectors = _sector_lookup(settings)
+    df = _load_scored_frame(settings)
+    q = (query or "").strip()
+    if df is None:
+        if q:
+            records = _prices_name_records(settings, q, limit=max(1, min(int(n), 40)))
+            if not records:
+                return _empty_board(tian, "그 이름으로는 전장 명부를 못 찾았습니다. 재계산을 먼저 하거나 종목코드를 넣어 보세요.")
+        else:
+            return _empty_board(tian, "스크리닝 결과가 없습니다. 재계산을 먼저 실행하세요.")
+    else:
+        records = _select_records(df, query=q or None, universe=universe, market=market, n=n)
+        if q and not records:
+            records = _prices_name_records(settings, q, limit=max(1, min(int(n), 40)))
+        if not records:
+            return _empty_board(tian, "조건에 맞는 종목이 없습니다. 필터를 풀어 보시죠.")
     annotate_fa(records)
     rows: list[dict[str, Any]] = []
     for rec in records:
@@ -256,35 +398,15 @@ def build_sunzi_board(settings: Settings, n: int = 40) -> dict[str, Any]:
             five = five_aspects(rec, tian=tian, sector=sectors.get(industry))
         except Exception:
             continue
-        compact = {
-            "ticker": str(rec.get("ticker") or "").zfill(6),
-            "company": rec.get("company"),
-            "industry": industry,
-            "quant_score": None if rec.get("quant_score") is None else round(float(rec["quant_score"]), 1),
-            "quant_rank": rec.get("quant_rank"),
-            "overlay_mean": five["overlay_mean"],
-            "fa_gate_pass": five["fa_gate_pass"],
-            "dao": five["parts"]["dao"]["score"],
-            "tian": five["parts"]["tian"]["score"],
-            "di": five["parts"]["di"]["score"],
-            "jiang": five["parts"]["jiang"]["score"],
-            "fa": five["parts"]["fa"]["score"],
-            "di_state": five["parts"]["di"].get("state_ko"),
-            "tian_regime": five["parts"]["tian"].get("regime_ko"),
-            "fa_label": five["parts"]["fa"]["label"],
-            "dao_comment": five["parts"]["dao"].get("comment"),
-            "jiang_comment": five["parts"]["jiang"].get("comment"),
-            "di_comment": five["parts"]["di"].get("comment"),
-            "posture": (five.get("critic") or {}).get("posture"),
-            "posture_ko": (five.get("critic") or {}).get("posture_ko"),
-            "critic_score": (five.get("critic") or {}).get("score"),
-            "critic_comment": (five.get("critic") or {}).get("comment"),
-            "no_action_required": (five.get("critic") or {}).get("no_action_required"),
-            "variant": (five.get("critic") or {}).get("variant"),
-            "fa_comment": rec.get("fa_comment") or five["parts"]["fa"].get("comment"),
-            "fa_reasons_ko": rec.get("fa_reasons_ko") or [],
-        }
-        rows.append(compact)
+        rows.append(_compact_row(rec, five))
+    want_posture = (posture or "").strip().upper()
+    if want_posture and want_posture not in {"", "ALL"}:
+        rows = [r for r in rows if str(r.get("posture") or "").upper() == want_posture]
+    fa_want = (fa_filter or "").strip().lower()
+    if fa_want == "pass":
+        rows = [r for r in rows if r.get("fa_gate_pass") is True]
+    elif fa_want == "fail":
+        rows = [r for r in rows if r.get("fa_gate_pass") is False]
     passed = sum(1 for r in rows if r.get("fa_gate_pass"))
     postures: dict[str, int] = {}
     for row in rows:
@@ -311,14 +433,29 @@ def build_sunzi_board(settings: Settings, n: int = 40) -> dict[str, Any]:
         elif spec["id"] == "tian":
             item["note"] = str(tian.get("regime_ko") or "")
         else:
-            item["note"] = "상위 후보 평균"
+            item["note"] = "이 명단의 평균"
         aspects.append(item)
-    briefing = compose_yang_briefing(tian, postures, len(rows), passed, aspect_scores)
+    focus_name = None
+    if q and len(rows) == 1:
+        focus_name = str(rows[0].get("company") or rows[0].get("ticker") or q)
+    elif q:
+        focus_name = q
+    briefing = compose_yang_briefing(
+        tian,
+        postures,
+        len(rows),
+        passed,
+        aspect_scores,
+        focus_name=focus_name,
+        scope="all" if (q or universe == "all") else "quant",
+    )
     return {
         "used_in_quant": False,
         "configured": True,
         "n": len(rows),
         "fa_pass_n": passed,
+        "query": q or None,
+        "universe": "all" if (q or universe == "all") else "quant",
         "tian": tian,
         "aspects": aspects,
         "briefing": briefing,

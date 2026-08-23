@@ -791,7 +791,7 @@ const titles = {
   us13f: ["월가 대가 포트폴리오 (13F)", "워런 버핏·마이클 버리 등 글로벌 대가들의 SEC 13F 보유 비중 & 신규 편입 종목"],
   strategy: ["전략·백테스트", "일봉 기반 퀀트 전략 백테스트 및 검증"],
   investor: ["메이저 수급 & 지분", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
-  sunzi: ["양웬리 참모실", "손자가 센 전장을, 양웬리가 ‘이 싸움이 필요한가’로 해석합니다"],
+  sunzi: ["양웬리 참모실", "손자가 전장의 근본을 세면, 양웬리가 굳이 싸울지를 판단합니다"],
   nps: ["국민연금 5%", "OpenDART 국민연금 5% 이상 대량보유 공시 추적"],
   seasonality: ["계절성·캘린더 퀀트", "가격 선행형 Discovery · 10대 정량 이벤트 · AI 원인 역추적 스크리너"],
 };
@@ -3262,6 +3262,12 @@ async function loadInvestorEvents() {
   renderInvestorEvents(data);
 }
 
+let currentSunziUniverse = "quant";
+let currentSunziQuery = "";
+let currentSunziPosture = "all";
+let currentSunziFa = "all";
+let currentSunziMarket = "all";
+
 function sunziTone(score) {
   const n = Number(score);
   if (!Number.isFinite(n)) return "";
@@ -3288,11 +3294,33 @@ function postureChip(r) {
   return `<span class="posture-chip ${meta.cls} has-tip" data-tip="${escapeHtml(r.critic_comment || meta.hint)}">${escapeHtml(label)}</span>`;
 }
 
+function sunziMiniBars(r) {
+  const bits = [
+    ["道", r.dao],
+    ["天", r.tian],
+    ["地", r.di],
+    ["將", r.jiang],
+    ["法", r.fa],
+  ];
+  return `<div class="yang-mini-bars">${bits.map(([k, v]) => {
+    const pct = Math.max(4, Math.min(100, Number(v) || 0));
+    return `<div class="yang-mini-col"><i><em style="height:${pct}%"></em></i><span>${k}</span></div>`;
+  }).join("")}</div>`;
+}
+
 async function loadSunzi() {
   const box = $("#sunzi-box");
   if (!box) return;
-  box.innerHTML = "<p>손자의 전장을 세고, 양웬리가 해석하는 중입니다…</p>";
-  const data = await api("/api/sunzi?n=40");
+  box.innerHTML = "<p>명부를 펼치는 중입니다. 차는 아직 따뜻해요…</p>";
+  const params = new URLSearchParams({
+    n: currentSunziUniverse === "all" ? "60" : "40",
+    universe: currentSunziUniverse,
+  });
+  if (currentSunziQuery) params.set("query", currentSunziQuery);
+  if (currentSunziPosture && currentSunziPosture !== "all") params.set("posture", currentSunziPosture);
+  if (currentSunziFa && currentSunziFa !== "all") params.set("fa", currentSunziFa);
+  if (currentSunziMarket && currentSunziMarket !== "all") params.set("market", currentSunziMarket);
+  const data = await api(`/api/sunzi?${params.toString()}`);
   if (!data.configured) {
     box.innerHTML = `<p class="hint">${escapeHtml(data.error || "결과가 없습니다. 실행 파이프라인에서 재계산을 먼저 하세요.")}</p>`;
     return;
@@ -3326,27 +3354,49 @@ async function loadSunzi() {
       </div>`;
     })
     .join("");
+  const staff = rows.slice(0, 6);
+  const staffCards = staff.map((r) => `
+    <div class="yang-staff-card" data-ticker="${escapeHtml(r.ticker || "")}">
+      <div class="yang-staff-top">
+        <div>
+          <b style="color:#fff;font-size:15px;">${escapeHtml(r.company || r.ticker || "")}</b>
+          <div class="meta">${escapeHtml(r.market || "")} ${escapeHtml(r.ticker || "")} · ${escapeHtml(r.industry || "")}${r.universe_eligible ? "" : " · 퀀트 명부 밖"}</div>
+        </div>
+        ${postureChip(r)}
+      </div>
+      ${sunziMiniBars(r)}
+      <p class="yang-voice">${escapeHtml(r.critic_comment || r.variant || "")}</p>
+    </div>
+  `).join("");
   box.innerHTML = `
+    <div class="yang-hero">
+      <div class="yang-portrait">
+        <div class="yang-avatar">🍵</div>
+        <b>양웬리</b>
+        <span>손자를 읽는 참모<br/>이기려고 출진하는 타입은 아닙니다</span>
+      </div>
+      <article class="yang-brief">
+        <h3>🍵 ${escapeHtml(briefing.title || "양웬리의 오늘 브리핑")}</h3>
+        <p class="sunzi-q">${escapeHtml(briefing.sunzi_line || "")}</p>
+        <p class="yang-voice">${escapeHtml(briefing.yang_line || "")}</p>
+        <p class="hint">${escapeHtml(data.disclaimer || briefing.voice || "")}</p>
+      </article>
+    </div>
     <div class="sunzi-concept">
       <div>
-        <span class="sunzi-concept-k">손자가 센다</span>
-        <p>道 정렬 · 天 시장 · 地 업종 · 將 자본배분 · 法 규율. 지금 전장이 유리한가만 묻습니다.</p>
+        <span class="sunzi-concept-k">손자의 근본</span>
+        <p>道·天·地·將·法. 이기고 싶은 마음이 아니라, 전장이 허용하는지를 먼저 셉니다.</p>
       </div>
       <div>
-        <span class="sunzi-concept-k yang">양웬리가 읽는다</span>
-        <p>그 다섯 숫자를 ‘이 싸움이 필요한가’로 번역합니다. 이기려고 출진하는 참모가 아닙니다.</p>
+        <span class="sunzi-concept-k yang">양웬리의 판단</span>
+        <p>그 다섯 숫자를 ‘이 싸움이 필요한가’로 번역합니다. 안 싸워도 되는 싸움이 제일 비싼 싸움이거든요.</p>
       </div>
     </div>
     <div class="five-grid sunzi-aspect-grid">${aspectCards}</div>
-    <article class="yang-brief">
-      <h3>🍵 ${escapeHtml(briefing.title || "양웬리의 오늘 브리핑")}</h3>
-      <p class="sunzi-q">${escapeHtml(briefing.sunzi_line || "")}</p>
-      <p class="yang-voice">${escapeHtml(briefing.yang_line || "")}</p>
-      <p class="hint">${escapeHtml(data.disclaimer || briefing.voice || "")}</p>
-    </article>
     <div class="sunzi-posture-row">
       ${counts.map((c) => `<div class="five-card ${c.cls}"><span>${escapeHtml(c.ko)}</span><b>${c.n}</b><p>${escapeHtml(c.hint)}</p></div>`).join("")}
     </div>
+    ${staffCards ? `<div class="yang-staff-grid">${staffCards}</div>` : ""}
     <div class="table-wrap">
       <table data-scope="sunzi">
         <thead>
@@ -3389,9 +3439,55 @@ async function loadSunzi() {
     </div>
   `;
   paintSortHeaders("sunzi");
-  box.querySelectorAll("tr.clickable[data-ticker]").forEach((tr) =>
-    tr.addEventListener("click", () => openStock(tr.dataset.ticker).catch((err) => alert(err.message)))
+  box.querySelectorAll("tr.clickable[data-ticker], .yang-staff-card[data-ticker]").forEach((el) =>
+    el.addEventListener("click", () => openStock(el.dataset.ticker).catch((err) => alert(err.message)))
   );
+}
+
+function setupSunziControls() {
+  const qInput = $("#sunzi-q");
+  const qMenu = $("#sunzi-q-menu");
+  if (qInput && qMenu) {
+    setupStockAutocomplete(qInput, qMenu, (selected) => {
+      currentSunziQuery = selected.ticker || selected.company || "";
+      qInput.value = `${selected.company || ""} ${selected.ticker || ""}`.trim();
+      loadSunzi().catch((err) => alert(err.message));
+    });
+    qInput.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      currentSunziQuery = qInput.value.trim();
+      loadSunzi().catch((err) => alert(err.message));
+    });
+    qInput.addEventListener("input", () => {
+      if (!qInput.value.trim()) {
+        currentSunziQuery = "";
+        loadSunzi().catch(() => {});
+      }
+    });
+  }
+  const uni = $("#sunzi-universe-tabs");
+  if (uni) {
+    uni.querySelectorAll("[data-universe]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        uni.querySelectorAll("[data-universe]").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentSunziUniverse = btn.dataset.universe || "quant";
+        loadSunzi().catch((err) => alert(err.message));
+      });
+    });
+  }
+  $("#sunzi-posture-filter")?.addEventListener("change", (e) => {
+    currentSunziPosture = e.target.value || "all";
+    loadSunzi().catch((err) => alert(err.message));
+  });
+  $("#sunzi-fa-filter")?.addEventListener("change", (e) => {
+    currentSunziFa = e.target.value || "all";
+    loadSunzi().catch((err) => alert(err.message));
+  });
+  $("#sunzi-market-filter")?.addEventListener("change", (e) => {
+    currentSunziMarket = e.target.value || "all";
+    loadSunzi().catch((err) => alert(err.message));
+  });
 }
 
 async function loadNps() {
@@ -6056,6 +6152,8 @@ if ($("#investor-turn")) {
 }
 if ($("#sunzi-refresh")) {
   $("#sunzi-refresh").addEventListener("click", () => loadSunzi().catch((err) => alert(err.message)));
+}
+setupSunziControls();
 }
 if ($("#nps-refresh")) {
   $("#nps-refresh").addEventListener("click", () => loadNps().catch((err) => alert(err.message)));
