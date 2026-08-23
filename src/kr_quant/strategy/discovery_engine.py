@@ -46,34 +46,56 @@ def pattern_from_month_stat(
 ) -> SeasonalityPattern | None:
     """Constructs SeasonalityPattern dynamically for a chosen lookback period (e.g. 3, 5, 8 years)."""
     month = int(m_stat.get("month", 1))
+    hist_recs = m_stat.get("history_records", [])
     history = m_stat.get("history", [])
-    if not history:
+
+    if not hist_recs and not history:
         return None
-
-    # Slice history if lookback_years is specified (0 or None means all)
-    if lookback_years and lookback_years > 0:
-        history_slice = history[-lookback_years:]
-    else:
-        history_slice = history
-
-    years_count = len(history_slice)
-    if years_count == 0:
-        return None
-
-    cur_year = pd.Timestamp.now().year
-    start_year = cur_year - years_count
 
     years_track = []
-    for i, ret in enumerate(history_slice):
-        y = start_year + i
-        r = float(ret)
-        years_track.append({
-            "year": y,
-            "return": round(r, 4),
-            "is_win": bool(r > 0),
-            "market_alpha": round(r - 0.005, 4),
-            "mdd": round(abs(min(r, 0.0) * 0.8), 4),
-        })
+    if hist_recs:
+        if lookback_years and lookback_years > 0:
+            hist_slice = hist_recs[-lookback_years:]
+        else:
+            hist_slice = hist_recs
+
+        for hr in hist_slice:
+            y = int(hr.get("year", 2024))
+            r = float(hr.get("return", 0.0))
+            years_track.append({
+                "year": y,
+                "return": round(r, 4),
+                "is_win": bool(r > 0),
+                "market_alpha": round(r - 0.005, 4),
+                "mdd": round(abs(min(r, 0.0) * 0.8), 4),
+            })
+    else:
+        if lookback_years and lookback_years > 0:
+            history_slice = history[-lookback_years:]
+        else:
+            history_slice = history
+
+        years_count = len(history_slice)
+        if years_count == 0:
+            return None
+
+        cur_year = pd.Timestamp.now().year
+        start_year = cur_year - years_count
+
+        for i, ret in enumerate(history_slice):
+            y = start_year + i
+            r = float(ret)
+            years_track.append({
+                "year": y,
+                "return": round(r, 4),
+                "is_win": bool(r > 0),
+                "market_alpha": round(r - 0.005, 4),
+                "mdd": round(abs(min(r, 0.0) * 0.8), 4),
+            })
+
+    years_count = len(years_track)
+    if years_count == 0:
+        return None
 
     rets = [r["return"] for r in years_track]
     alphas = [r["market_alpha"] for r in years_track]
@@ -102,6 +124,7 @@ def pattern_from_month_stat(
     else:
         conf = "LOW"
 
+    cur_year = pd.Timestamp.now().year
     best_y = max(years_track, key=lambda x: x["return"]) if years_track else {"year": cur_year, "return": 0.0}
     worst_y = min(years_track, key=lambda x: x["return"]) if years_track else {"year": cur_year, "return": 0.0}
 
