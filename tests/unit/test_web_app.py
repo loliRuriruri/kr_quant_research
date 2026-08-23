@@ -27,13 +27,13 @@ def test_index_and_status():
     assert home.status_code == 200
     assert "KR Quant" in home.text
     assert "Research" in home.text
-    assert "styles.css?v=2.17.5" in home.text
-    assert "app.js?v=2.17.5" in home.text
-    assert "v2.17.5 Engine" in home.text
+    assert "styles.css?v=2.17.6" in home.text
+    assert "app.js?v=2.17.6" in home.text
+    assert "v2.17.6 Engine" in home.text
     assert "sunzi-q" in home.text
     assert "명부 전체" in home.text
     assert 'data-view="sunzi"' in home.text
-    assert "양 웬리식 전략검토" in home.text
+    assert "은하퀀트전설" in home.text
     js = client.get("/static/app.js").text
     assert "function loadSunzi" in js
     assert "function postureChip" in js
@@ -110,7 +110,7 @@ def test_research_reports_list_endpoint():
     assert 'data-view="investor"' in html
     assert "공식 수급" in html
     assert 'data-view="sunzi"' in html
-    assert "양 웬리식 전략검토" in html
+    assert "은하퀀트전설" in html
     assert 'data-view="nps"' in html
     assert "국민연금 5%" in html
     assert "investor-events-box" in html
