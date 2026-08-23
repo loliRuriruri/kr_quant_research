@@ -791,7 +791,7 @@ const titles = {
   us13f: ["월가 대가 포트폴리오 (13F)", "워런 버핏·마이클 버리 등 글로벌 대가들의 SEC 13F 보유 비중 & 신규 편입 종목"],
   strategy: ["전략·백테스트", "일봉 기반 퀀트 전략 백테스트 및 검증"],
   investor: ["메이저 수급 & 지분", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
-  sunzi: ["은하퀀트전설", "내 책상이야. 손자로 전장을 세고, 싸우지 않고 꺾을 수 있으면 그걸 고를게"],
+  sunzi: ["은하퀀트전설 (Legend of Galactic Quant)", "제13함대 기함 히페리온 작전 회의실 · 손자 오사(道天地將法) 기반 실전 전술 참모"],
   nps: ["국민연금 5%", "OpenDART 국민연금 5% 이상 대량보유 공시 추적"],
   seasonality: ["계절성·캘린더 퀀트", "가격 선행형 Discovery · 10대 정량 이벤트 · AI 원인 역추적 스크리너"],
 };
@@ -3458,7 +3458,7 @@ async function loadSunzi() {
   if (currentView === "sunzi") {
     setPageAsOf(
       `天 ${tian.regime_ko || "—"} · 法 통과 ${data.fa_pass_n || 0}/${data.n || 0} · 대기 ${postures.WAIT || 0}`,
-      "이 판단은 Quant와 합산하지 않아. 착수는 매수가 아니야."
+      "손자병법 오사(道天地將法) 기반 거시 전황 점검"
     );
   }
 
