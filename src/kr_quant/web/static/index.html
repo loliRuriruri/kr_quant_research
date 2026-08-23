@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.6.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.7.0" />
 </head>
 <body>
   <aside class="nav">
@@ -501,6 +501,16 @@
 
         <!-- PANE 3: 10-Event Master Calendar -->
         <div id="pane-v11-calendar" class="hidden">
+          <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:14px; background:rgba(15,23,42,0.4); padding:8px 12px; border-radius:8px;">
+            <span style="font-size:12px; font-weight:700; color:#38bdf8;">조회 기간:</span>
+            <div id="calendar-horizon-tabs" style="display:flex; gap:4px;">
+              <button type="button" class="preset-chip-btn active" data-cal-horizon="180">🌐 연말·연초 전체 (180일)</button>
+              <button type="button" class="preset-chip-btn" data-cal-horizon="30">⚡ 30일 이내 (임박)</button>
+              <button type="button" class="preset-chip-btn" data-cal-horizon="90">🚀 90일 이내 (3분기)</button>
+              <button type="button" class="preset-chip-btn" data-cal-horizon="365">👑 연간 전체 (365일)</button>
+            </div>
+            <span class="chip" style="margin-left:auto; background:rgba(56,189,248,0.15); color:#38bdf8;">10대 이벤트 · 연말 배당 · 산타 · CES · JPMHC</span>
+          </div>
           <div id="seasonality-calendar-list" style="display:flex; flex-direction:column; gap:12px;"></div>
         </div>
 
@@ -1030,7 +1040,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.6.0"></script>
+  <script src="/static/app.js?v=2.7.0"></script>
 
     <!-- Discovery Candidate Detail Modal (Mobile Dashboard Integration) -->
     <div id="discovery-detail-modal" class="discovery-modal-overlay hidden">

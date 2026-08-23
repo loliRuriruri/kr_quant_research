@@ -27,7 +27,7 @@ class CalendarEvent:
     invalidating_rule: str
 
 
-# 10 Major Event Categories & 15 MVP Institutional Event Strategies
+# 10 Major Event Categories & 20 Comprehensive Institutional Event Strategies (through Q4 & Year-End/New Year)
 EVENT_CATALOG: list[dict[str, Any]] = [
     # 01. Market Calendar
     {
@@ -72,6 +72,46 @@ EVENT_CATALOG: list[dict[str, Any]] = [
         "default_entry_window": "D-5 ~ D-2",
         "default_exit_window": "D+3 ~ D+5",
         "invalidating_rule": "글로벌 매크로 급변 및 환율 급등",
+    },
+    {
+        "event_id": "major_shareholder_tax_2026",
+        "group_id": "01_market_cal",
+        "group_name": "Market Calendar",
+        "strategy_name": "대주주 양도세 회피 매도 & 12월 말 저점 반등",
+        "title": "대주주 양도세 회피 매물 출회 및 연말 저점 반등 랠리",
+        "target_date_2026": "2026-12-24",
+        "date_certainty": 1.0,
+        "binary_risk": "MEDIUM",
+        "description": "12월 중순 대주주 요건 회피 개인 큰손 매물 출회 후 12월 24~28일 저점 강력 반등",
+        "beneficiary_sectors": ["개인 비중 높은 코스닥 성장주", "2차전지/로봇/AI", "낙폭과대 바이오"],
+        "beneficiary_stocks": [
+            {"ticker": "247540", "company": "에코프로비엠", "role": "연말 개인 양도세 매물 출회 후 12월 말 저가 반등"},
+            {"ticker": "086520", "company": "에코프로", "role": "개인 수급 집중주 연말 반등 랠리"},
+            {"ticker": "277810", "company": "레인보우로보틱스", "role": "코스닥 로봇 성장주 연말 수급 복귀"}
+        ],
+        "default_entry_window": "D-5 ~ D-1 (12월 20일 ~ 24일)",
+        "default_exit_window": "D+5 ~ D+15 (1월 초)",
+        "invalidating_rule": "세법 개정안 변경 또는 거시경제 급변",
+    },
+    {
+        "event_id": "santa_january_effect",
+        "group_id": "01_market_cal",
+        "group_name": "Market Calendar",
+        "strategy_name": "연말 산타랠리 & 1월 효과 (January Effect)",
+        "title": "연말 산타랠리 & 1월 효과 코스닥 중소형주 랠리",
+        "target_date_2026": "2027-01-05",
+        "date_certainty": 0.9,
+        "binary_risk": "LOW",
+        "description": "연말 배당락 이후 기관/외국인 신규 북클로징 자금 집행 및 코스닥 1월 효과",
+        "beneficiary_sectors": ["코스닥 중소형 성장주", "연초 정부 정책 수혜주", "신규 수급 유입주"],
+        "beneficiary_stocks": [
+            {"ticker": "035420", "company": "NAVER", "role": "연초 신규 자금 유입 성장주"},
+            {"ticker": "356680", "company": "엑스게이트", "role": "보안/AI 연초 정책 수혜 중소형주"},
+            {"ticker": "168360", "company": "펨트론", "role": "반도체 검사장비 코스닥 1월 랠리"}
+        ],
+        "default_entry_window": "D-10 ~ D-3 (12월 26일 ~ 30일)",
+        "default_exit_window": "D+10 ~ D+15 (1월 중순)",
+        "invalidating_rule": "연초 글로벌 금리 급등 및 환율 불안",
     },
     # 02. Passive Flow
     {
@@ -189,34 +229,13 @@ EVENT_CATALOG: list[dict[str, Any]] = [
         "beneficiary_sectors": ["콘덴싱 보일러 / 온수기", "공기열 히트펌프(HVAC)", "석유/캠핑 난로", "도시가스/LNG", "단열재"],
         "beneficiary_stocks": [
             {"ticker": "009450", "company": "경동나비엔", "role": "북미 보일러/온수기 1위 및 7~9월 선취매 챔피언"},
-            {"ticker": "037070", "company": "파세코", "role": "석유/심지식 난로 북미/중동 수출 성수기"},
+            {"ticker": "037070", "company": "파세코", "role": "석유/심지식 난로 북미/중동 수출 성수기 (10월 승률 75%)"},
             {"ticker": "002700", "company": "신일전자", "role": "동절기 난방 가전 (히터/팬히터) 라인업"},
             {"ticker": "017390", "company": "서울가스", "role": "겨울철 도시가스 난방 사용량 급증"}
         ],
         "default_entry_window": "D-75 ~ D-40 (7월 하순 ~ 9월 초)",
         "default_exit_window": "D-5 ~ D+10",
         "invalidating_rule": "이상 고온(Warm Winter) 예보 또는 3분기 실적 역성장",
-    },
-    {
-        "event_id": "summer_heatwave",
-        "group_id": "05_weather",
-        "group_name": "Weather & Power Demand",
-        "strategy_name": "여름 폭염 · 냉방 · 전력 피크",
-        "title": "여름 폭염 & 냉방/제습기 선취매 랠리",
-        "target_date_2026": "2026-07-01",
-        "date_certainty": 0.85,
-        "binary_risk": "LOW",
-        "description": "본격 폭염 시작 전 4~6월 선반영 급등 및 전력망 부하 수혜",
-        "beneficiary_sectors": ["창문형/이동식 에어컨", "제습기/선풍기", "빙과/음료", "전력기기/변압기"],
-        "beneficiary_stocks": [
-            {"ticker": "037070", "company": "파세코", "role": "창문형 에어컨 국내 1위 5~6월 급등주"},
-            {"ticker": "044340", "company": "위닉스", "role": "여름 장마/폭염 제습기 매출 특수"},
-            {"ticker": "002700", "company": "신일전자", "role": "선풍기/서큘레이터 국내 점유율 1위"},
-            {"ticker": "267260", "company": "HD현대일렉트릭", "role": "여름철 전력망 피크 부하 및 변압기 수혜"}
-        ],
-        "default_entry_window": "D-60 ~ D-20 (4월 ~ 5월)",
-        "default_exit_window": "D-5 ~ D0 (7월 초)",
-        "invalidating_rule": "초여름 저온 현상 및 장기 장마",
     },
     # 06. Tech Product Cycle
     {
@@ -241,19 +260,40 @@ EVENT_CATALOG: list[dict[str, Any]] = [
         "invalidating_rule": "초도 물량 감산 보도 또는 수율 이슈",
     },
     {
+        "event_id": "ces_2027_tech",
+        "group_id": "06_tech_cycle",
+        "group_name": "Tech Product Cycle",
+        "strategy_name": "CES 2027 세계 최대 가전/AI/로봇 쇼케이스",
+        "title": "CES 2027 세계 최대 IT 전시회 (온디바이스 AI / 로봇 / 자율주행)",
+        "target_date_2026": "2027-01-06",
+        "date_certainty": 1.0,
+        "binary_risk": "LOW",
+        "description": "연말(11~12월)부터 유입되는 글로벌 빅테크 혁신 기술 및 로봇/AI 테마 랠리",
+        "beneficiary_sectors": ["온디바이스 AI", "휴머노이드/협동 로봇", "자율주행/전장", "스마트홈 가전"],
+        "beneficiary_stocks": [
+            {"ticker": "277810", "company": "레인보우로보틱스", "role": "삼성전자 연계 휴머노이드 로봇 신제품 공개"},
+            {"ticker": "005930", "company": "삼성전자", "role": "차세대 온디바이스 AI 가전 쇼케이스"},
+            {"ticker": "066570", "company": "LG전자", "role": "스마트 라이프 솔루션 및 전장/AI 홈"},
+            {"ticker": "042700", "company": "한미반도체", "role": "차세대 HBM 본더 및 AI 반도체 장비"}
+        ],
+        "default_entry_window": "D-45 ~ D-15 (11월 중순 ~ 12월)",
+        "default_exit_window": "D-1 ~ D+2 (개막 직전/당일)",
+        "invalidating_rule": "빅테크 AI 투자 감축 보도 또는 행사 취소",
+    },
+    {
         "event_id": "galaxy_s27_cycle",
         "group_id": "06_tech_cycle",
         "group_name": "Tech Product Cycle",
         "strategy_name": "갤럭시 S / Z폴드 부품 공급망",
-        "title": "삼성 갤럭시 차세대 플래그십 언팩 사이클",
+        "title": "삼성 갤럭시 S27 플래그십 언팩 사이클",
         "target_date_2026": "2027-01-20",
         "date_certainty": 0.85,
         "binary_risk": "LOW",
         "description": "연말(11~12월) 부품 공급 시작에 맞춘 선취매 랠리",
         "beneficiary_sectors": ["폴더블 힌지(Hinge)", "초박막강화유리(UTG)", "FPCB", "AI 스마트폰 부품"],
         "beneficiary_stocks": [
-            {"ticker": "441270", "company": "파인엠텍", "role": "삼성 폴더블폰 내장 힌지 독점 공급"},
-            {"ticker": "060250", "company": "KH바텍", "role": "폴더블 외장 힌지 전통 공급사"},
+            {"ticker": "441270", "company": "파인엠텍", "role": "삼성 내장 힌지 독점 공급"},
+            {"ticker": "060250", "company": "KH바텍", "role": "외장 힌지 전통 공급사"},
             {"ticker": "085370", "company": "뉴프렉스", "role": "스마트폰 카메라 FPCB 공급"},
             {"ticker": "005930", "company": "삼성전자", "role": "MX 사업부 플래그십 론칭 주체"}
         ],
@@ -281,6 +321,26 @@ EVENT_CATALOG: list[dict[str, Any]] = [
         "default_entry_window": "D-50 ~ D-20 (8월 말 ~ 9월)",
         "default_exit_window": "D-5 ~ D-1 (학회 개막 직전 매도)",
         "invalidating_rule": "임상 유효성 지표 미달 또는 기술수출 계약 결렬",
+    },
+    {
+        "event_id": "jpmhc_2027",
+        "group_id": "07_bio_catalyst",
+        "group_name": "Bio / Healthcare Catalyst",
+        "strategy_name": "JP모건 헬스케어 컨퍼런스 (JPMHC)",
+        "title": "JP모건 헬스케어 컨퍼런스 2027 (글로벌 빅파마 기술수출)",
+        "target_date_2026": "2027-01-11",
+        "date_certainty": 1.0,
+        "binary_risk": "HIGH",
+        "description": "11~12월부터 공식 초청 발표 및 글로벌 파트너링 미팅 기대감 선취매",
+        "beneficiary_sectors": ["빅파마 초청 K-바이오", "글로벌 기술수출 유력사", "CDMO/바이오시밀러"],
+        "beneficiary_stocks": [
+            {"ticker": "196170", "company": "알테오젠", "role": "메인트랙 공식 발표 및 신규 제약사 계약 미팅"},
+            {"ticker": "206650", "company": "유바이오로직스", "role": "글로벌 백신 공급 및 신규 파이프라인"},
+            {"ticker": "310210", "company": "보로노이", "role": "표적치료제 글로벌 L/O 파트너십 논의"}
+        ],
+        "default_entry_window": "D-50 ~ D-20 (11월 중순 ~ 12월 초)",
+        "default_exit_window": "D-3 ~ D0 (행사 개막 직전)",
+        "invalidating_rule": "임상 중단 공시 또는 글로벌 기술수출 협상 결렬",
     },
     # 08. Game / Content / Entertainment
     {
@@ -349,8 +409,8 @@ EVENT_CATALOG: list[dict[str, Any]] = [
 ]
 
 
-def get_upcoming_events(as_of_date: str | None = None, horizon_days: int = 90) -> list[dict[str, Any]]:
-    """Calculates D-Days and filters events within the forward horizon_days window."""
+def get_upcoming_events(as_of_date: str | None = None, horizon_days: int = 180) -> list[dict[str, Any]]:
+    """Calculates D-Days and filters events within the forward horizon_days window (default 180 days for full year-end coverage)."""
     ref_dt = pd.to_datetime(as_of_date).date() if as_of_date else date.today()
 
     results: list[dict[str, Any]] = []
@@ -376,8 +436,10 @@ def get_upcoming_events(as_of_date: str | None = None, horizon_days: int = 90) -
             horizon_tag = "upcoming_7d"
         elif d_day <= 30:
             horizon_tag = "upcoming_30d"
-        else:
+        elif d_day <= 90:
             horizon_tag = "upcoming_90d"
+        else:
+            horizon_tag = "upcoming_180d"
 
         results.append({
             "event_id": ev["event_id"],

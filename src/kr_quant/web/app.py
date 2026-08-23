@@ -1306,7 +1306,7 @@ def api_seasonality_ranked_get(
 
 
 @app.get("/api/seasonality/events")
-def api_seasonality_events_get(horizon_days: int = 90) -> dict[str, Any]:
+def api_seasonality_events_get(horizon_days: int = 180) -> dict[str, Any]:
     from kr_quant.strategy.event_calendar import get_upcoming_events
 
     events = get_upcoming_events(horizon_days=horizon_days)
