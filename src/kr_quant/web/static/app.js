@@ -6780,9 +6780,10 @@ function openStatusGuideModal() {
 
 
 // --- Seasonality Discovery Screener v1.1 ---
-let currentV11Subtab = "discovery";
+let currentV11Subtab = "pre-entry";
 let currentV11Horizon = 90;
 let currentV11Lookback = 5;
+let currentV11ExcludeExpired = true;
 let discoveryRows = [];
 
 async function loadDiscoveryRanked() {
@@ -6793,7 +6794,11 @@ async function loadDiscoveryRanked() {
   const statusFilter = $("#discovery-status-filter") ? $("#discovery-status-filter").value : "all";
   const q = $("#seasonality-q") ? $("#seasonality-q").value.trim() : "";
 
-  const params = new URLSearchParams({ horizon_days: currentV11Horizon, lookback_years: currentV11Lookback });
+  const params = new URLSearchParams({
+    horizon_days: currentV11Horizon,
+    lookback_years: currentV11Lookback,
+    exclude_expired: currentV11ExcludeExpired,
+  });
   if (minGrade) params.set("min_grade", minGrade);
   if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
   if (q) params.set("query", q);
@@ -6927,7 +6932,7 @@ async function loadAIExplanations() {
   const container = $("#explanation-cards-list");
   if (!container) return;
 
-  const res = await api(`/api/seasonality/discovery?horizon_days=${currentV11Horizon}&lookback_years=${currentV11Lookback}`);
+  const res = await api(`/api/seasonality/discovery?horizon_days=${currentV11Horizon}&lookback_years=${currentV11Lookback}&exclude_expired=${currentV11ExcludeExpired}`);
   const rows = res.rows || [];
 
   if (!rows.length) {
@@ -6977,11 +6982,13 @@ async function loadAIExplanations() {
 }
 
 function setupV11SeasonalityUI() {
+  const tabPre = $("#tab-v11-pre-entry");
   const tabDisc = $("#tab-v11-discovery");
   const tabExpl = $("#tab-v11-explanation");
   const tabCal = $("#tab-v11-calendar");
   const tabHeat = $("#tab-v11-heatmap");
 
+  const panePre = $("#pane-v11-pre-entry");
   const paneDisc = $("#pane-v11-discovery");
   const paneExpl = $("#pane-v11-explanation");
   const paneCal = $("#pane-v11-calendar");
@@ -6989,10 +6996,14 @@ function setupV11SeasonalityUI() {
 
   function switchV11Subtab(subtab) {
     currentV11Subtab = subtab;
-    [tabDisc, tabExpl, tabCal, tabHeat].forEach((t) => t?.classList.remove("active"));
-    [paneDisc, paneExpl, paneCal, paneHeat].forEach((p) => p?.classList.add("hidden"));
+    [tabPre, tabDisc, tabExpl, tabCal, tabHeat].forEach((t) => t?.classList.remove("active"));
+    [panePre, paneDisc, paneExpl, paneCal, paneHeat].forEach((p) => p?.classList.add("hidden"));
 
-    if (subtab === "discovery") {
+    if (subtab === "pre-entry") {
+      tabPre?.classList.add("active");
+      panePre?.classList.remove("hidden");
+      loadPreEntryView().catch(() => {});
+    } else if (subtab === "discovery") {
       tabDisc?.classList.add("active");
       paneDisc?.classList.remove("hidden");
       loadDiscoveryRanked().catch(() => {});
@@ -7011,6 +7022,7 @@ function setupV11SeasonalityUI() {
     }
   }
 
+  tabPre?.addEventListener("click", () => switchV11Subtab("pre-entry"));
   tabDisc?.addEventListener("click", () => switchV11Subtab("discovery"));
   tabExpl?.addEventListener("click", () => switchV11Subtab("explanation"));
   tabCal?.addEventListener("click", () => switchV11Subtab("calendar"));
@@ -7042,6 +7054,36 @@ function setupV11SeasonalityUI() {
         else if (currentV11Subtab === "explanation") loadAIExplanations().catch(() => {});
       });
     });
+  }
+
+  // 🌟 Exclude Expired Season Toggle Button
+  const btnToggleExclude = $("#btn-toggle-exclude-expired");
+  if (btnToggleExclude) {
+    btnToggleExclude.onclick = () => {
+      currentV11ExcludeExpired = !currentV11ExcludeExpired;
+      if (currentV11ExcludeExpired) {
+        btnToggleExclude.classList.add("active");
+        btnToggleExclude.style.background = "rgba(56,189,248,0.2)";
+        btnToggleExclude.style.borderColor = "#38bdf8";
+        btnToggleExclude.style.color = "#38bdf8";
+        btnToggleExclude.textContent = "☑️ 시즌 종료 제외 (진입 유효만)";
+      } else {
+        btnToggleExclude.classList.remove("active");
+        btnToggleExclude.style.background = "rgba(30,41,59,0.5)";
+        btnToggleExclude.style.borderColor = "#475569";
+        btnToggleExclude.style.color = "#94a3b8";
+        btnToggleExclude.textContent = "⬜ 전체 보기 (시즌 종료 포함)";
+      }
+      loadDiscoveryRanked().catch(() => {});
+    };
+  }
+
+  // Status Guide Button & Modal
+  const btnStatusGuide = $("#btn-status-guide");
+  if (btnStatusGuide) {
+    btnStatusGuide.onclick = () => openStatusGuideModal();
+    btnStatusGuide.onmouseenter = (e) => showStatusPopover("ACTIVE", e);
+    btnStatusGuide.onmouseleave = () => hideStatusPopover();
   }
 
   $("#discovery-grade-filter")?.addEventListener("change", () => loadDiscoveryRanked().catch(() => {}));
