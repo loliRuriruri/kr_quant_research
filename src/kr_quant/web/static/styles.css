@@ -3915,6 +3915,15 @@ body.modal-open { overflow: hidden; }
 }
 .pb-month-cell.on { border-color: #38bdf8; box-shadow: 0 0 0 1px #38bdf8; }
 .pb-month-cell b { display: block; font-size: 13px; }
+.pb-month-cell small { display: block; color: #94a3b8; }
+.pb-month-cell.heat-up3 { background: rgba(16, 185, 129, 0.88); color: #fff; }
+.pb-month-cell.heat-up3 small { color: rgba(255,255,255,0.8); }
+.pb-month-cell.heat-up2 { background: rgba(52, 211, 153, 0.55); }
+.pb-month-cell.heat-up1 { background: rgba(56, 189, 248, 0.32); }
+.pb-month-cell.heat-flat { background: #111827; }
+.pb-month-cell.heat-dn1 { background: rgba(248, 113, 113, 0.42); }
+.pb-month-cell.heat-dn2 { background: rgba(239, 68, 68, 0.82); color: #fff; }
+.pb-month-cell.heat-dn2 small { color: rgba(255,255,255,0.8); }
 .pb-year-row {
   display: flex;
   justify-content: space-between;
@@ -4027,6 +4036,7 @@ body.modal-open { overflow: hidden; }
   border-radius: 18px;
   padding: 20px;
   position: relative;
+  cursor: pointer;
   transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }

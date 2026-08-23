@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.17.7" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.17.8" />
 </head>
 <body>
   <aside class="nav">
@@ -40,7 +40,7 @@
     <button class="nav-btn" data-view="run" data-tip="데모, 재계산, KRX 시세, 실데이터 수집을 실행합니다."><span class="nav-icon">⚙️</span><span>실행 파이프라인</span></button>
     <button class="nav-btn" data-view="settings" data-tip="API 키는 이 PC의 .env에만 저장됩니다."><span class="nav-icon">🔑</span><span>API 설정</span></button>
     <div class="nav-foot">
-      <p>KR Quant Research<br />v2.17.7 Engine</p>
+      <p>KR Quant Research<br />v2.17.8 Engine</p>
     </div>
   </aside>
 
@@ -1130,9 +1130,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=2.17.7"></script>
-
-    <!-- Discovery Candidate Detail Modal (Mobile Dashboard Integration) -->
+    <!-- Discovery Candidate Detail Modal (mobile playbook order) -->
     <div id="discovery-detail-modal" class="discovery-modal-overlay hidden">
       <div class="discovery-modal-container">
         <div class="discovery-modal-head">
@@ -1148,7 +1146,6 @@
           <button type="button" class="ghost" id="disc-modal-close-btn" style="font-size:18px; padding:4px 10px; line-height:1;">✕</button>
         </div>
 
-        <!-- Status & 3-Step Verification Card -->
         <div style="margin-top:14px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:12px 14px;">
           <div style="display:flex; align-items:center; gap:6px;">
             <b id="disc-modal-status-text" style="color:#10b981; font-size:13.5px;">🔥 상태 판정: 진입 유효 (ACTIVE)</b>
@@ -1161,13 +1158,11 @@
           </div>
         </div>
 
-        <!-- 📈 진입 권장 vs ➔ 목표 엑시트 타이밍 바 (Mobile Dashboard Style) -->
         <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.9); border:1.5px solid rgba(56,189,248,0.35); border-radius:10px; padding:10px 16px;">
           <span id="disc-modal-entry-win" style="color:#38bdf8; font-weight:800; font-size:13.5px;">📈 진입 권장: —</span>
           <span id="disc-modal-exit-win" style="color:#fbbf24; font-weight:800; font-size:13.5px;">➔ 목표 엑시트: —</span>
         </div>
 
-        <!-- 3 Metrics KPI Grid -->
         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:14px;">
           <div class="portfolio-kpi-item" style="background:rgba(30,41,59,0.8); padding:10px 12px; border-radius:8px;">
             <span style="font-size:11px; color:#94a3b8;">반복 상승 구간</span>
@@ -1186,75 +1181,16 @@
           </div>
         </div>
 
-        <!-- 🎯 Pre-Entry Trading Playbook -->
-        <div class="playbook-card">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <b style="color:#38bdf8; font-size:14px;">🎯 선취매(Pre-Entry) 매매 플레이북</b>
-            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11px;">선취매 전략</span>
-          </div>
-          <ul style="margin:8px 0 0 16px; padding:0; font-size:12.5px; color:#cbd5e1; line-height:1.6;">
-            <li id="disc-modal-pb-entry">—</li>
-            <li id="disc-modal-pb-exit">—</li>
-            <li id="disc-modal-pb-stop" style="color:#fca5a5;">—</li>
-          </ul>
-
-          <!-- Expected Return Quantiles Table -->
-          <div style="margin-top:12px;">
-            <span style="font-size:11.5px; font-weight:700; color:#38bdf8;">📊 현시점 매수 시 수익률 기댓값 산출표</span>
-            <div class="expected-kpi-grid">
-              <div class="expected-kpi-item">
-                <span>당월 계절성 지수</span>
-                <b id="disc-modal-score-val" style="color:#38bdf8;">—</b>
-              </div>
-              <div class="expected-kpi-item">
-                <span>기대 수익률(P50)</span>
-                <b id="disc-modal-p50-val" style="color:#34d399;">—</b>
-              </div>
-              <div class="expected-kpi-item">
-                <span>낙관 기대치(P90)</span>
-                <b id="disc-modal-p90-val" style="color:#60a5fa;">—</b>
-              </div>
-              <div class="expected-kpi-item">
-                <span>손익비(PF)</span>
-                <b id="disc-modal-pf-val" style="color:#fbbf24;">—</b>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- AI Common Event Explanation Box -->
-        <div style="margin-top:14px; background:rgba(30,41,59,0.5); border:1px solid rgba(139,92,246,0.3); border-radius:12px; padding:14px 16px;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <b style="color:#c084fc; font-size:13.5px;">🤖 AI 공통 이벤트 역추적 (Event Explanation)</b>
-            <span id="disc-modal-conf-chip" class="chip" style="background:rgba(139,92,246,0.2); color:#c084fc; font-size:11px;">신뢰도: HIGH</span>
-          </div>
-          <div id="disc-modal-cause-title" style="margin-top:8px; font-size:14px; font-weight:800; color:#fff;">—</div>
-          <p id="disc-modal-cause-desc" style="margin:4px 0 0; font-size:12px; color:#cbd5e1; line-height:1.5;">—</p>
-          <div id="disc-modal-sec-cause" style="margin-top:8px; font-size:11.5px; color:#94a3b8;">—</div>
-        </div>
-
-        <!-- Year-by-Year Track Record & Invalidation Rules -->
-        <div style="margin-top:14px; background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:14px 16px;">
-          <b style="font-size:13px; color:#fff;">📊 연도별 실측 백테스팅 트랙 레코드</b>
-          <div id="disc-modal-years-bar" class="year-track-bar" style="margin-top:8px; flex-wrap:wrap; gap:6px;"></div>
-          <div id="disc-modal-failed-wrap" style="margin-top:10px; display:none;">
-            <b style="font-size:11.5px; color:#f87171;">⚠️ 실패 연도 원인 분석:</b>
-            <ul id="disc-modal-failed-list" style="margin:4px 0 0 16px; padding:0; font-size:11.5px; color:#fca5a5;"></ul>
-          </div>
-          <div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.06); font-size:11.5px; color:#94a3b8;">
-            🛑 <b>무효화 조건:</b> <span id="disc-modal-invalidation" style="color:#cbd5e1;">—</span>
-          </div>
-        </div>
-
         <div id="disc-modal-deep"></div>
 
-        <!-- Modal Action Footer -->
         <div style="margin-top:18px; display:flex; justify-content:flex-end; gap:8px;">
           <button type="button" class="ghost" id="disc-modal-stock-btn">📊 종목 퀀트 팝업 →</button>
           <button type="button" class="btn" id="disc-modal-ai-btn" style="background:#38bdf8; color:#0f172a; font-weight:800;">🤖 AI 심층 리포트 발간</button>
         </div>
       </div>
     </div>
+
+  <script src="/static/app.js?v=2.17.8"></script>
 
 
     <!-- Status Guide Modal (Mobile Dashboard Integration) -->

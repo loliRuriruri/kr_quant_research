@@ -27,9 +27,9 @@ def test_index_and_status():
     assert home.status_code == 200
     assert "KR Quant" in home.text
     assert "Research" in home.text
-    assert "styles.css?v=2.17.7" in home.text
-    assert "app.js?v=2.17.7" in home.text
-    assert "v2.17.7 Engine" in home.text
+    assert "styles.css?v=2.17.8" in home.text
+    assert "app.js?v=2.17.8" in home.text
+    assert "v2.17.8 Engine" in home.text
     assert "disc-modal-deep" in home.text
     assert "sunzi-q" in home.text
     assert "명부 전체" in home.text
@@ -43,6 +43,12 @@ def test_index_and_status():
     assert "function openHeatmapPlaybook" in js
     assert "function renderDiscDeepPlaybook" in js
     assert "function computeTrackStats" in js
+    assert "function bindPreEntryClicks" in js
+    assert "function renderPbMonthHeat" in js
+    assert "function playbookRowFromScan" in js
+    assert 'data-ticker="${escapeHtml(r.ticker)}" data-index="${idx}"' in js
+    assert "올해 유효성 확인 지표 (Current Confirmation)" in js
+    assert "12개월 기간별 수익 변동성 히트맵" in js
     assert "seasonalityRows[idx]" in js
     assert 'id="dash-seasonality-banner"' in home.text
     assert "KOSPI/KOSDAQ 전종목 검색" in home.text

@@ -51,6 +51,7 @@ def cache_path(settings: Settings) -> Path:
 
 
 _TICKER_META_CACHE: dict[str, Any] = {"ts": 0.0, "map": {}}
+_SEASONALITY_DB_MEM: dict[str, Any] = {"ts": 0.0, "db": None}
 PRE_ENTRY_STAGE_WEIGHT: dict[str, int] = {
     "TODAY_ENTRY": 100,
     "PRE_ENTRY_15": 80,
@@ -291,6 +292,18 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
     return payload
 
 
+def get_seasonality_database(settings: Settings) -> dict[str, Any]:
+    """In-process cache so ticker heatmap lookups do not re-parse the 40MB JSON."""
+    now = time.time()
+    cached = _SEASONALITY_DB_MEM.get("db")
+    if cached and now - float(_SEASONALITY_DB_MEM.get("ts") or 0) < 3600:
+        return cached
+    db = build_seasonality_database(settings)
+    _SEASONALITY_DB_MEM["db"] = db
+    _SEASONALITY_DB_MEM["ts"] = now
+    return db
+
+
 def scan_seasonality(
     settings: Settings,
     target_month: int | None = None,
@@ -300,7 +313,7 @@ def scan_seasonality(
     query: str | None = None,
 ) -> list[dict[str, Any]]:
     """Filters and ranks stocks by seasonality criteria."""
-    db = build_seasonality_database(settings)
+    db = get_seasonality_database(settings)
     stocks = list(db.get("stocks", {}).values())
 
     t_month = target_month if target_month and 1 <= target_month <= 12 else pd.Timestamp.now().month

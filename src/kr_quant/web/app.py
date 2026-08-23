@@ -1410,10 +1410,10 @@ def api_seasonality_scan_get(
 
 @app.get("/api/seasonality/ticker/{ticker}")
 def api_seasonality_ticker_get(ticker: str) -> dict[str, Any]:
-    from kr_quant.strategy.seasonality import build_seasonality_database
+    from kr_quant.strategy.seasonality import get_seasonality_database
 
     s = load_settings()
-    db = build_seasonality_database(s)
+    db = get_seasonality_database(s)
     code = str(ticker).zfill(6)
     stock = db.get("stocks", {}).get(code)
     if not stock:
