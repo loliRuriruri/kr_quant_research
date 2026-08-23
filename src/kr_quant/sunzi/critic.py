@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from kr_quant.context.explain import clean_reason_list
+
 POSTURE_KO = {
     "ENGAGE": "착수",
     "WAIT": "대기",
@@ -38,10 +40,7 @@ def _clip(value: float) -> float:
 
 
 def _flags(raw: Any) -> list[str]:
-    if isinstance(raw, list):
-        return [str(x) for x in raw if x]
-    text = str(raw or "")
-    return [p for p in text.replace("|", ",").split(",") if p and p not in {"[]", "None"}]
+    return [str(x) for x in clean_reason_list(raw) if x]
 
 
 def _part(parts: dict[str, Any] | None, key: str) -> dict[str, Any]:

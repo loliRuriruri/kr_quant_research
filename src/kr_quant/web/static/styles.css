@@ -957,6 +957,25 @@ body.modal-open { overflow: hidden; }
 .five-card p { margin: 0; font-size: 12px; color: #c5d0e4; }
 .five-card.pass b { color: var(--good); }
 .five-card.fail b { color: var(--warn); }
+.five-card.posture-engage b { color: #34d399; }
+.five-card.posture-wait b { color: #fbbf24; }
+.five-card.posture-observe b { color: #38bdf8; }
+.five-card.posture-retreat b { color: #fb7185; }
+.five-card.posture-avoid b { color: #f87171; }
+.posture-chip {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 800;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.2px;
+}
+.posture-chip.posture-engage { background: rgba(16, 185, 129, 0.18); color: #34d399; }
+.posture-chip.posture-wait { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+.posture-chip.posture-observe { background: rgba(56, 189, 248, 0.18); color: #38bdf8; }
+.posture-chip.posture-retreat { background: rgba(244, 63, 94, 0.18); color: #fb7185; }
+.posture-chip.posture-avoid { background: rgba(239, 68, 68, 0.22); color: #fca5a5; }
 @media (max-width: 1100px) {
   .five-grid { grid-template-columns: 1fr 1fr; }
 }

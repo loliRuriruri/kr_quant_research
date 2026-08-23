@@ -4,8 +4,8 @@
 * **저장소 (GitHub)**: `https://github.com/loliRuriruri/kr_quant_research.git`
 * **작업 폴더**: `C:\Users\a4jud\kr_quant_research`
 * **기준 태그**: **`v2.16.2-stable`** (Commit `2df84ed`) — Windows WinError 10022 패치까지 배포된 안정본
-* **이번 세션 작업**: 인수인계 문서 정합 + 계절성 검수 수정 + 안드로이드 Glance Top 3 / 전종목 시장 구분 이식 (`v2.17.0`)
-* **테스트 상태**: **169개** 단위 테스트 100% 통과 (`pytest`)
+* **이번 세션 작업**: 인수인계 문서 정합 + 계절성 검수 수정 + 안드로이드 Glance Top 3 / 전종목 시장 구분 이식 (`v2.17.0`) → 손자 五事·반대심문 탭 복구 (`v2.17.1`)
+* **테스트 상태**: 단위 테스트 100% 통과 (`pytest`)
 * **실행 환경**: Python 3.12 (Virtualenv: `.venv`), FastAPI Backend, Vanilla Modern JS (ES6+) Frontend
 * **태그 이력**: `v2.16.0-stable` (`04a5b35`) → `v2.16.1-stable` (`bfc1f18`) → `v2.16.2-stable` (`2df84ed`) → **`v2.17.0`**
 

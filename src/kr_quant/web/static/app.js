@@ -791,7 +791,7 @@ const titles = {
   us13f: ["월가 대가 포트폴리오 (13F)", "워런 버핏·마이클 버리 등 글로벌 대가들의 SEC 13F 보유 비중 & 신규 편입 종목"],
   strategy: ["전략·백테스트", "일봉 기반 퀀트 전략 백테스트 및 검증"],
   investor: ["메이저 수급 & 지분", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
-  sunzi: ["손자 五事", "道·天·地·將·法 다각도 심층 기업 분석"],
+  sunzi: ["손자 五事 · 반대심문", "전장 조건(道天地將法)과 지금 싸울지를 묻는 전략 검토"],
   nps: ["국민연금 5%", "OpenDART 국민연금 5% 이상 대량보유 공시 추적"],
   seasonality: ["계절성·캘린더 퀀트", "가격 선행형 Discovery · 10대 정량 이벤트 · AI 원인 역추적 스크리너"],
 };
@@ -1883,6 +1883,8 @@ async function openStock(ticker) {
           ${timingBlock}
           ${flow90Block(data.flow90)}
           ${eventsBlock(data.events)}
+          ${fiveStrip({ dao: data.dao, tian: data.tian, di: data.di, jiang: data.jiang, fa: data.fa })}
+          ${criticCard((data.sunzi || {}).critic)}
           ${taBlock}
           ${tossBlock}
           ${yahooBlock}
@@ -3265,13 +3267,31 @@ function sunziTone(score) {
   return "bad";
 }
 
+function postureMeta(code) {
+  const key = String(code || "OBSERVE");
+  const map = {
+    ENGAGE: { ko: "착수", cls: "posture-engage", hint: "연구 우선순위가 비교적 높습니다. 매수가 아닙니다." },
+    WAIT: { ko: "대기", cls: "posture-wait", hint: "논리는 남아 있어도 지금 위험을 질 이유는 약합니다." },
+    OBSERVE: { ko: "관찰", cls: "posture-observe", hint: "관심은 가지만 정보가 더 필요합니다." },
+    RETREAT: { ko: "후퇴", cls: "posture-retreat", hint: "보상 대비 위험이 나빠진 쪽으로 읽습니다." },
+    AVOID: { ko: "회피", cls: "posture-avoid", hint: "法 미달이나 구조적 흠이 있어 착수하지 않습니다." },
+  };
+  return map[key] || map.OBSERVE;
+}
+
+function postureChip(r) {
+  const meta = postureMeta(r.posture);
+  const label = r.posture_ko || meta.ko;
+  return `<span class="posture-chip ${meta.cls} has-tip" data-tip="${escapeHtml(r.critic_comment || meta.hint)}">${escapeHtml(label)}</span>`;
+}
+
 async function loadSunzi() {
   const box = $("#sunzi-box");
   if (!box) return;
-  box.innerHTML = "<p>五事 오버레이를 계산하는 중…</p>";
+  box.innerHTML = "<p>五事 오버레이와 전략 반대심문을 계산하는 중…</p>";
   const data = await api("/api/sunzi?n=40");
   if (!data.configured) {
-    box.innerHTML = `<p class="hint">${escapeHtml(data.error || "결과가 없습니다.")}</p>`;
+    box.innerHTML = `<p class="hint">${escapeHtml(data.error || "결과가 없습니다. 실행 파이프라인에서 재계산을 먼저 하세요.")}</p>`;
     return;
   }
   const tian = data.tian || {};
@@ -3279,17 +3299,23 @@ async function loadSunzi() {
     .map((x) => `<li><b>${escapeHtml(x.han)} ${escapeHtml(x.ko)}</b> — ${escapeHtml(x.where)}</li>`)
     .join("");
   const rows = data.rows || [];
+  const postures = data.postures || {};
+  const counts = ["ENGAGE", "WAIT", "OBSERVE", "RETREAT", "AVOID"].map((k) => ({
+    key: k,
+    n: postures[k] || 0,
+    ...postureMeta(k),
+  }));
   if (currentView === "sunzi") {
     setPageAsOf(
-      `天 ${tian.regime_ko || "—"} · 🛡️ 재무적격 ${data.fa_pass_n || 0}/${data.n || 0}종목`,
-      "五事는 조사 오버레이입니다. Quant 순위를 바꾸지 않습니다."
+      `天 ${tian.regime_ko || "—"} · 재무적격 ${data.fa_pass_n || 0}/${data.n || 0} · 착수 ${postures.ENGAGE || 0}`,
+      "五事와 반대심문은 조사 오버레이입니다. Quant 순위를 바꾸지 않습니다."
     );
   }
   box.innerHTML = `
     <div class="five-grid">
       <div class="five-card"><span>天 시장</span><b>${fmt(tian.score, 0)}</b><p>${escapeHtml(tian.regime_ko || "")}</p></div>
       <div class="five-card"><span>🛡️ 재무적격</span><b>${data.fa_pass_n || 0}</b><p>A-후보 / ${data.n || 0}종목</p></div>
-      <div class="five-card"><span>조사 종목</span><b>${data.n || 0}</b><p>Quant 순위 상위</p></div>
+      ${counts.map((c) => `<div class="five-card ${c.cls}"><span>${escapeHtml(c.ko)}</span><b>${c.n}</b><p>${escapeHtml(c.hint)}</p></div>`).join("")}
     </div>
     <p class="hint">${escapeHtml(data.disclaimer || "")}</p>
     <ul>${legend}</ul>
@@ -3299,13 +3325,16 @@ async function loadSunzi() {
           <tr>
             <th class="sortable" data-sort="quant_rank">#</th>
             <th class="sortable" data-sort="company">종목</th>
+            <th class="sortable" data-sort="posture_ko">자세</th>
+            <th class="sortable" data-sort="critic_score">반대심문</th>
             <th class="sortable" data-sort="quant_score">Quant</th>
             <th class="sortable" data-sort="dao">道</th>
             <th class="sortable" data-sort="tian">天</th>
             <th class="sortable" data-sort="di">地</th>
             <th class="sortable" data-sort="jiang">將</th>
-            <th class="sortable has-tip" data-sort="fa" data-tip="손자병법 法 (재무건전성·리스크 규율 게이트 통과 여부)">🛡️ 재무규율</th>
-            <th>법</th>
+            <th class="sortable has-tip" data-sort="fa" data-tip="손자병법 法 (재무건전성·리스크 규율 게이트 통과 여부)">法</th>
+            <th>규율</th>
+            <th>다른 보기</th>
           </tr>
         </thead>
         <tbody>
@@ -3314,6 +3343,8 @@ async function loadSunzi() {
               (r) => `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
             <td class="num">${r.quant_rank ?? "—"}</td>
             <td><b>${escapeHtml(r.company || "")}</b><div class="meta">${escapeHtml(r.ticker)} · ${escapeHtml(r.industry || "")}</div></td>
+            <td>${postureChip(r)}</td>
+            <td class="num ${sunziTone(r.critic_score)}">${fmt(r.critic_score, 0)}</td>
             <td class="num">${fmt(r.quant_score, 1)}</td>
             <td class="num ${sunziTone(r.dao)}">${fmt(r.dao, 0)}</td>
             <td class="num ${sunziTone(r.tian)}">${fmt(r.tian, 0)}</td>
@@ -3321,6 +3352,7 @@ async function loadSunzi() {
             <td class="num ${sunziTone(r.jiang)}">${fmt(r.jiang, 0)}</td>
             <td class="num ${sunziTone(r.fa)}">${fmt(r.fa, 0)}</td>
             <td>${faChip(r)}</td>
+            <td class="meta">${escapeHtml((r.variant || "").slice(0, 48))}</td>
           </tr>`
             )
             .join("")}

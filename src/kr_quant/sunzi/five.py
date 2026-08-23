@@ -250,7 +250,10 @@ def build_sunzi_board(settings: Settings, n: int = 40) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     for rec in records:
         industry = str(rec.get("industry") or rec.get("sector") or "미분류")
-        five = five_aspects(rec, tian=tian, sector=sectors.get(industry))
+        try:
+            five = five_aspects(rec, tian=tian, sector=sectors.get(industry))
+        except Exception:
+            continue
         compact = {
             "ticker": str(rec.get("ticker") or "").zfill(6),
             "company": rec.get("company"),
@@ -273,8 +276,11 @@ def build_sunzi_board(settings: Settings, n: int = 40) -> dict[str, Any]:
             "posture": (five.get("critic") or {}).get("posture"),
             "posture_ko": (five.get("critic") or {}).get("posture_ko"),
             "critic_score": (five.get("critic") or {}).get("score"),
+            "critic_comment": (five.get("critic") or {}).get("comment"),
             "no_action_required": (five.get("critic") or {}).get("no_action_required"),
             "variant": (five.get("critic") or {}).get("variant"),
+            "fa_comment": rec.get("fa_comment") or five["parts"]["fa"].get("comment"),
+            "fa_reasons_ko": rec.get("fa_reasons_ko") or [],
         }
         rows.append(compact)
     passed = sum(1 for r in rows if r.get("fa_gate_pass"))

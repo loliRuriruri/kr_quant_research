@@ -1,7 +1,13 @@
 from kr_quant.events.classify import classify_report, classify_row
 from kr_quant.flow.events import direction_turn, from_official_rows, from_toss_cache_rows, sample_rebalance, signed_streak, window_sums
 from kr_quant.ownership.nps import is_nps_holder, parse_majorstock
-from kr_quant.sunzi.five import di_panel, five_aspects, tian_panel
+import numpy as np
+from fastapi.testclient import TestClient
+
+from kr_quant.sunzi.critic import POSTURE_KO, critic_panel
+from kr_quant.sunzi.five import build_sunzi_board, di_panel, five_aspects, tian_panel
+from kr_quant.web.app import app
+from kr_quant.settings import load_settings
 
 
 def test_five_aspects_are_overlays():
@@ -36,6 +42,51 @@ def test_five_aspects_are_overlays():
     assert five["overlay_mean"] is not None
     assert five["quant_score"] == 77
     assert "Quant" in five["comment"]
+    assert five["critic"]["posture"] in POSTURE_KO
+    assert five["critic"]["used_in_quant"] is False
+
+
+def test_critic_handles_empty_numpy_risk_flags():
+    row = {
+        "ticker": "005930",
+        "financial_score": 8,
+        "value_score": 22,
+        "growth_score": 18,
+        "fcf_yield": 0.05,
+        "data_confidence": 90,
+        "risk_flags": np.array([]),
+        "exclusion_reasons": np.array([]),
+    }
+    parts = {
+        "fa": {"fa_gate_pass": True},
+        "dao": {"score": 72, "contrary": []},
+        "tian": {"score": 62, "regime": "NEUTRAL"},
+        "di": {"score": 71, "state_ko": "선행"},
+        "jiang": {"score": 60, "contrary": []},
+    }
+    panel = critic_panel(row, parts)
+    assert panel["posture"] in POSTURE_KO
+    assert panel["used_in_quant"] is False
+
+
+def test_api_sunzi_board_returns_postures():
+    client = TestClient(app)
+    res = client.get("/api/sunzi?n=12")
+    assert res.status_code == 200
+    data = res.json()
+    assert data.get("used_in_quant") is False
+    if not data.get("configured"):
+        assert "재계산" in (data.get("error") or "")
+        return
+    assert data["n"] > 0
+    assert "postures" in data
+    row = data["rows"][0]
+    assert "dao" in row
+    assert row.get("posture") in POSTURE_KO
+    assert row.get("critic_score") is not None
+    board = build_sunzi_board(load_settings(), n=8)
+    assert board["configured"] is True
+    assert board["rows"]
 
 
 def test_signed_streak_and_turn():
