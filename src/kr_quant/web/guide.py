@@ -90,7 +90,9 @@ def explain_run_status(quality: dict[str, Any] | None, *, status_csv_exists: boo
 
 
 def pad_ticker(ticker: str | int | None) -> str:
-    text = str(ticker or "").replace(".0", "")
+    text = str(ticker or "").replace(".0", "").strip().upper()
+    if 5 <= len(text) <= 6 and text.isalnum() and any(ch.isalpha() for ch in text):
+        return text.zfill(6)
     digits = "".join(ch for ch in text if ch.isdigit())
     return digits.zfill(6) if digits else text
 

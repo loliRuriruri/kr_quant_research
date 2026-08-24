@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from kr_quant.web.app import app, dashboard_is_running, pick_listen_port, port_in_use
 
 client = TestClient(app)
+public_client = TestClient(app, base_url="https://public.example")
 
 
 def test_port_helpers_detect_busy_and_free():
@@ -31,11 +32,17 @@ def test_index_and_status():
     assert "app.js?v=2.17.11" in home.text
     assert "v2.17.11 Engine" in home.text
     assert "disc-modal-deep" in home.text
-    assert "sunzi-q" in home.text
-    assert "명부 전체" in home.text
     assert 'data-view="sunzi"' in home.text
     assert "은하퀀트전설" in home.text
     js = client.get("/static/app.js").text
+    assert 'id="sunzi-q"' in js
+    assert "전 종목 명부" in js
+    assert home.text.count('id="sunzi-q"') == 0
+    assert "function normalizePublicStockItem" in js
+    assert "manifest.stock_details?.base" in js
+    assert "manifest.research_details" in js
+    assert "function runFlowSearch" in js
+    assert "function selectSeasonalityStock" in js
     assert "function loadSunzi" in js
     assert "function postureChip" in js
     assert "criticCard((data.sunzi || {}).critic)" in js
@@ -62,6 +69,45 @@ def test_index_and_status():
     assert "keys" in body
     assert "opendart" in body["keys"]
     assert "masked" in body["keys"]["opendart"]
+    assert body["public_mode"] is False
+
+
+def test_external_web_is_read_only_and_hides_settings():
+    status = public_client.get("/api/status")
+    assert status.status_code == 200
+    assert status.json()["public_mode"] is True
+    assert status.json()["keys"] == {}
+
+    settings = public_client.get("/api/settings")
+    assert settings.status_code == 200
+    assert settings.json() == {"public_mode": True, "locked": True}
+    assert public_client.get("/api/settings/raw").status_code == 403
+
+    assert public_client.post("/api/jobs", json={"kind": "demo"}).status_code == 403
+    assert public_client.post("/api/watchlist", json={"ticker": "005930"}).status_code == 403
+    assert public_client.delete("/api/watchlist/005930").status_code == 403
+
+    js = public_client.get("/static/app.js").text
+    assert 'LOCAL_WEB_HOSTS' in js
+    assert 'has("public-preview")' in js
+    assert 'function lockPublicAdminUi' in js
+    assert "#view-settings" in js
+    assert '"#view-run button"' in js
+    assert "button.disabled = true" in js
+
+
+def test_cloudflare_forwarded_request_is_forced_public():
+    status = client.get("/api/status", headers={"cf-connecting-ip": "203.0.113.10"})
+    assert status.status_code == 200
+    assert status.json()["public_mode"] is True
+    assert status.json()["keys"] == {}
+
+    blocked = client.put(
+        "/api/settings",
+        headers={"cf-connecting-ip": "203.0.113.10"},
+        json={"llm_provider": "xai"},
+    )
+    assert blocked.status_code == 403
 
 
 def test_guide_explains_selection():

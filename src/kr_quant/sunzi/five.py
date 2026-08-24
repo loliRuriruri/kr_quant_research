@@ -325,7 +325,7 @@ def _select_records(
         work = work.sort_values("quant_rank", na_position="last")
     elif "quant_score" in work.columns:
         work = work.sort_values("quant_score", ascending=False, na_position="last")
-    return work.head(max(1, min(int(n), 120))).to_dict("records")
+    return work.head(max(1, min(int(n), 400))).to_dict("records")
 
 
 def _compact_row(rec: dict[str, Any], five: dict[str, Any]) -> dict[str, Any]:

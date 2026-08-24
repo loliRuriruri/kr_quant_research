@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Allowlisted Cloudflare Pages build.
- * Copies only public frontend + generated snapshot JSON.
+ * Copies the local dashboard frontend + generated read-only snapshot JSON.
  * Never copies .env, secrets, logs, raw data, or server code.
  */
 import { spawnSync } from "node:child_process";
@@ -13,16 +13,11 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist-public");
 const publicDir = join(root, "public");
+const staticDir = join(root, "src", "kr_quant", "web", "static");
 const py = join(root, ".venv", "Scripts", "python.exe");
 
-const ALLOW = [
-  "index.html",
-  "styles.css",
-  "app.js",
-  "_headers",
-  "_redirects",
-  "robots.txt",
-];
+const FRONTEND_FILES = ["index.html", "styles.css", "app.js"];
+const PUBLIC_META_FILES = ["_headers", "_redirects", "robots.txt"];
 
 const SECRET_PATTERNS = [
   /sk-[A-Za-z0-9_-]{10,}/,
@@ -54,11 +49,24 @@ function walk(dir, acc = []) {
 
 function copyAllowlisted() {
   mkdirSync(dist, { recursive: true });
-  for (const name of ALLOW) {
-    const src = join(publicDir, name);
-    if (!existsSync(src)) throw new Error(`missing public file: ${name}`);
+  for (const name of FRONTEND_FILES) {
+    const src = join(staticDir, name);
+    if (!existsSync(src)) throw new Error(`missing local frontend file: ${name}`);
     copyFileSync(src, join(dist, name));
   }
+  for (const name of PUBLIC_META_FILES) {
+    const src = join(publicDir, name);
+    if (!existsSync(src)) throw new Error(`missing public metadata file: ${name}`);
+    copyFileSync(src, join(dist, name));
+  }
+
+  const buildId = Date.now().toString(36);
+  const indexPath = join(dist, "index.html");
+  const index = readFileSync(indexPath, "utf-8")
+    .replace("<body>", '<body data-public-build="true">')
+    .replace(/\/static\/styles\.css\?v=[^"']+/, `/styles.css?v=${buildId}`)
+    .replace(/\/static\/app\.js\?v=[^"']+/, `/app.js?v=${buildId}`);
+  writeFileSync(indexPath, index, "utf-8");
 }
 
 function exportSnapshot() {
@@ -74,11 +82,35 @@ function exportSnapshot() {
     throw new Error(`snapshot export failed: ${r.stderr || r.stdout || r.status}`);
   }
   process.stdout.write(r.stdout || "");
+
+  const apiOut = join(out, "api");
+  mkdirSync(apiOut, { recursive: true });
+  const apiResult = spawnSync(bin, [join(root, "scripts", "export_public_ui_api.py"), "--out", apiOut], {
+    cwd: root,
+    encoding: "utf-8",
+    env: { ...process.env, PYTHONUTF8: "1" },
+  });
+  if (apiResult.status !== 0) {
+    throw new Error(`full UI API snapshot export failed: ${apiResult.stderr || apiResult.stdout || apiResult.status}`);
+  }
+  process.stdout.write(apiResult.stdout || "");
+}
+
+function configuredSecrets() {
+  const envPath = join(root, ".env");
+  if (!existsSync(envPath)) return [];
+  return readFileSync(envPath, "utf-8").split(/\r?\n/).flatMap((line) => {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!match || !/(KEY|SECRET|TOKEN|PASSWORD)/i.test(match[1])) return [];
+    const value = match[2].replace(/^(["'])(.*)\1$/, "$2").trim();
+    return value.length >= 8 ? [{ name: match[1], value }] : [];
+  });
 }
 
 function scanSecrets() {
   const files = walk(dist);
   const hits = [];
+  const localSecrets = configuredSecrets();
   for (const file of files) {
     const rel = relative(dist, file).replaceAll("\\", "/");
     const base = rel.split("/").pop();
@@ -89,19 +121,19 @@ function scanSecrets() {
     const buf = readFileSync(file);
     if (buf.includes(0)) continue;
     const text = buf.toString("utf-8");
-    if (/API 설정/.test(text) && /key-opendart|settings\/raw/.test(text)) {
-      hits.push(`settings UI leaked in ${rel}`);
-    }
-    if (rel === "app.js" && /\/api\/settings\/raw|data-view="settings"|btn-toggle-pw/.test(text)) {
-      hits.push(`admin settings UI leaked in ${rel}`);
-    }
     for (const re of SECRET_PATTERNS) {
       if (re.test(text)) hits.push(`secret pattern ${re} in ${rel}`);
+    }
+    for (const secret of localSecrets) {
+      if (text.includes(secret.value)) hits.push(`configured ${secret.name} value in ${rel}`);
     }
   }
   if (!files.some((f) => relative(dist, f).replaceAll("\\", "/").endsWith("index.html"))) {
     hits.push("index.html missing");
   }
+  const publicIndex = readFileSync(join(dist, "index.html"), "utf-8");
+  if (!publicIndex.includes('data-public-build="true"')) hits.push("public build marker missing");
+  if (/\/static\/(?:app\.js|styles\.css)/.test(publicIndex)) hits.push("local static asset path leaked into public index");
   if (hits.length) throw new Error(`public build scan failed:\n- ${hits.join("\n- ")}`);
 }
 
@@ -118,6 +150,8 @@ function writeBuildInfo() {
     generated_at: new Date().toISOString(),
     files,
     bundle_sha256: hash.digest("hex"),
+    full_local_ui: true,
+    read_only: true,
     settings_ui: false,
     ai_run_ui: false,
   };

@@ -3,6 +3,7 @@ from kr_quant.web.guide import WARNING_FIX, explain_run_status, external_links, 
 
 def test_pad_and_naver_link():
     assert pad_ticker(71970) == "071970"
+    assert pad_ticker("00104K") == "00104K"
     links = external_links("5930", "삼성전자")
     urls = {x["label"]: x["url"] for x in links}
     assert "finance.naver.com/item/main.naver?code=005930" in urls["네이버 시세"]

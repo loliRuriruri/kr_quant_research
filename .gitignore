@@ -16,3 +16,5 @@ tools/*.exe
 logs/tunnel.log
 dist-public/
 node_modules/
+.playwright-cli/
+.wrangler/

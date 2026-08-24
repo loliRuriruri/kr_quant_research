@@ -42,20 +42,34 @@ from kr_quant.web.jobs import RUNNER, job_demo, job_krx_history, job_krx_prices,
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-PUBLIC_BLOCKED = {
-    ("GET", "/api/settings/raw"),
-    ("PUT", "/api/settings"),
-    ("POST", "/api/settings/test"),
-    ("POST", "/api/jobs"),
-    ("POST", "/api/scheduler"),
-    ("POST", "/api/llm/grok/connect"),
-    ("GET", "/api/telegram/chats"),
-    ("POST", "/api/telegram/test"),
+PUBLIC_SENSITIVE_GETS = {
+    "/api/settings/raw",
+    "/api/llm/grok",
+    "/api/telegram/chats",
 }
+LOCAL_WEB_HOSTS = {"127.0.0.1", "::1", "localhost", "testserver"}
+LOCAL_CLIENT_HOSTS = {"127.0.0.1", "::1", "testclient"}
 
 
-def public_share_mode() -> bool:
-    return os.environ.get("KR_QUANT_PUBLIC", "").strip().lower() in {"1", "true", "yes", "on"}
+def public_share_mode(request: Request | None = None) -> bool:
+    """Return True for explicit public mode or any non-loopback web request.
+
+    Cloudflare Tunnel reaches the app through a local cloudflared process, so
+    its forwarding headers must take precedence over the loopback client IP.
+    """
+    if os.environ.get("KR_QUANT_PUBLIC", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    if request is None:
+        return False
+
+    if request.headers.get("cf-connecting-ip"):
+        return True
+
+    forwarded_host = request.headers.get("x-forwarded-host", "").split(",", 1)[0].strip()
+    visible_host = forwarded_host or (request.url.hostname or "")
+    visible_host = visible_host.strip("[]").lower()
+    client_host = (request.client.host if request.client else "").strip("[]").lower()
+    return visible_host not in LOCAL_WEB_HOSTS or client_host not in LOCAL_CLIENT_HOSTS
 
 
 def _grok_auth_public() -> dict[str, Any]:
@@ -70,9 +84,10 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.middleware("http")
 async def public_share_guard(request: Request, call_next):
-    if public_share_mode():
+    if public_share_mode(request):
         path = request.url.path.rstrip("/") or "/"
-        if (request.method, path) in PUBLIC_BLOCKED:
+        is_mutation = request.url.path.startswith("/api/") and request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+        if is_mutation or path in PUBLIC_SENSITIVE_GETS:
             return JSONResponse({"detail": "공개 공유 모드에서는 이 기능을 사용할 수 없습니다."}, status_code=403)
     return await call_next(request)
 
@@ -272,7 +287,7 @@ def resolve_status_label(settings) -> str:
 
 
 @app.get("/api/status")
-def api_status() -> dict[str, Any]:
+def api_status(request: Request) -> dict[str, Any]:
     from kr_quant.freshness import freshness_snapshot
     from kr_quant.web.scheduler import scheduler_status
 
@@ -283,6 +298,7 @@ def api_status() -> dict[str, Any]:
     live_prices = s.staged_dir / "live" / "prices.parquet"
     fresh = freshness_snapshot(s, screen_as_of=(quality or {}).get("as_of_date"))
     status_explain = explain_run_status(quality, status_csv_exists=s.status_csv.exists())
+    is_public = public_share_mode(request)
     return {
         "project_root": str(s.root),
         "model_id": s.model_id,
@@ -303,8 +319,8 @@ def api_status() -> dict[str, Any]:
         "llm_provider": s.llm_provider,
         "llm_model": resolve_status_model(s),
         "llm_label": resolve_status_label(s),
-        "public_mode": public_share_mode(),
-        "keys": {} if public_share_mode() else {
+        "public_mode": is_public,
+        "keys": {} if is_public else {
             "opendart": mask_secret(s.opendart_api_key),
             "krx": mask_secret(s.krx_api_key),
             "xai": mask_secret(s.xai_api_key),
@@ -317,8 +333,8 @@ def api_status() -> dict[str, Any]:
 
 
 @app.get("/api/settings")
-def api_settings_get() -> dict[str, Any]:
-    if public_share_mode():
+def api_settings_get(request: Request) -> dict[str, Any]:
+    if public_share_mode(request):
         return {"public_mode": True, "locked": True}
     from kr_quant.research.providers import PROVIDERS, resolve_provider
 
@@ -411,7 +427,7 @@ def api_settings_raw() -> dict[str, Any]:
 
 
 @app.put("/api/settings")
-def api_settings_put(body: SettingsIn) -> dict[str, Any]:
+def api_settings_put(body: SettingsIn, request: Request) -> dict[str, Any]:
     from kr_quant.research.providers import coerce_model, normalize_provider
 
     s = load_settings()
@@ -450,7 +466,7 @@ def api_settings_put(body: SettingsIn) -> dict[str, Any]:
     }
     upsert_env_file(env_path, mapping)
     apply_env_to_process(env_path)
-    return api_settings_get()
+    return api_settings_get(request)
 
 
 @app.post("/api/settings/test")
@@ -1110,7 +1126,7 @@ def api_sunzi(
 
     return build_sunzi_board(
         load_settings(),
-        n=max(8, min(int(n), 80)),
+        n=max(8, min(int(n), 300)),
         query=query,
         universe="all" if str(universe or "").lower() == "all" else "quant",
         posture=posture,

@@ -7,6 +7,7 @@ set ERR=1
 echo.
 echo ==============================================================
 echo  Temporary tunnel. This PC must stay on.
+echo  External visitors are forced into read-only mode.
 echo  Fixed public site: Start-KR-Quant-Public.bat
 echo ==============================================================
 echo.
@@ -26,7 +27,7 @@ start "KR Quant Server" cmd /k "cd /d %~dp0 & .venv\Scripts\python.exe -m kr_qua
 timeout /t 6 /nobreak >nul
 
 :TUNNEL
-echo Opening tunnel. A trycloudflare.com URL will appear.
+echo Opening read-only tunnel. A trycloudflare.com URL will appear.
 echo Closing this window disconnects the tunnel.
 echo.
 tools\cloudflared.exe tunnel --url http://127.0.0.1:8790

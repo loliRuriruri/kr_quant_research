@@ -1,2 +1,1 @@
-/index.html /index.html 200
-/  /index.html 200
+# No SPA rewrite: every public API snapshot is a real static file.

@@ -10,6 +10,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,26 @@ from typing import Any
 import yaml
 
 from kr_quant.settings import load_settings
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+
+def _safe_print(text: str, end: str = "\n", flush: bool = True) -> None:
+    try:
+        print(text, end=end, flush=flush)
+    except Exception:
+        try:
+            enc = sys.stdout.encoding or "utf-8"
+            safe_text = text.encode(enc, errors="replace").decode(enc)
+            print(safe_text, end=end, flush=flush)
+        except Exception:
+            pass
+
 
 _STATE: dict[str, Any] = {
     "last_ok": None,
@@ -73,7 +94,7 @@ def _run(cmd: list[str], cwd: Path, timeout: int) -> subprocess.CompletedProcess
         env["PATH"] = str(node_dir) + os.pathsep + env.get("PATH", "")
     use_shell = os.name == "nt" and cmd and str(cmd[0]).lower().endswith((".cmd", ".bat"))
     printable = " ".join(str(c) for c in cmd)
-    print("  > " + printable, flush=True)
+    _safe_print("  > " + printable, flush=True)
     argv: str | list[str]
     if use_shell:
         argv = " ".join(f'"{c}"' if " " in str(c) else str(c) for c in cmd)
@@ -95,7 +116,7 @@ def _run(cmd: list[str], cwd: Path, timeout: int) -> subprocess.CompletedProcess
         assert proc.stdout is not None
         for line in proc.stdout:
             chunks.append(line)
-            print(line, end="", flush=True)
+            _safe_print(line, end="", flush=True)
         proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         proc.kill()
@@ -114,14 +135,14 @@ def _node() -> str:
 def publish_public_snapshot(*, deploy: bool = True) -> dict[str, Any]:
     cfg = load_publish_config()
     root = _root()
-    print("[1/2] 로컬 스냅샷 생성 중 (1분 안팎 걸릴 수 있습니다)...", flush=True)
+    _safe_print("[1/2] 로컬 스냅샷 생성 중 (1분 안팎 걸릴 수 있습니다)...", flush=True)
     build = _run([_node(), str(root / "scripts" / "build-public.mjs")], root, timeout=300)
     log = (build.stdout or "") + "\n" + (build.stderr or "")
     if build.stdout:
-        print(build.stdout.strip()[-500:], flush=True)
+        _safe_print(build.stdout.strip()[-500:], flush=True)
     if build.returncode != 0:
         err = (build.stderr or build.stdout or "build failed")[-800:]
-        print("[FAIL] 스냅샷 생성 실패\n" + err, flush=True)
+        _safe_print("[FAIL] 스냅샷 생성 실패\n" + err, flush=True)
         _STATE.update({"last_ok": False, "last_at": datetime.now(timezone.utc).isoformat(), "last_error": "build failed", "last_log": log[-4000:]})
         return {"ok": False, "step": "build", "error": err, "cfg": cfg}
 
@@ -129,7 +150,7 @@ def publish_public_snapshot(*, deploy: bool = True) -> dict[str, Any]:
         _STATE.update({"last_ok": True, "last_at": datetime.now(timezone.utc).isoformat(), "last_error": None, "last_log": log[-2000:]})
         return {"ok": True, "step": "build", "deployed": False, "log": log[-400:]}
 
-    print("[2/2] Cloudflare Pages 업로드 중...", flush=True)
+    _safe_print("[2/2] Cloudflare Pages 업로드 중...", flush=True)
     deploy_cmd = [
         _npx(),
         "--yes",
@@ -146,16 +167,16 @@ def publish_public_snapshot(*, deploy: bool = True) -> dict[str, Any]:
     put = _run(deploy_cmd, root, timeout=180)
     log += "\n" + (put.stdout or "") + "\n" + (put.stderr or "")
     if put.stdout:
-        print(put.stdout.strip()[-800:], flush=True)
+        _safe_print(put.stdout.strip()[-800:], flush=True)
     urls = URL_RE.findall(put.stdout or "") + URL_RE.findall(put.stderr or "")
     url = urls[-1] if urls else f"https://{cfg['project']}.pages.dev/"
     ok = put.returncode == 0
     err = None if ok else (put.stderr or put.stdout or "deploy failed")[-500:]
     if ok:
-        print(f"[OK] 공개 사이트 갱신 완료: https://{cfg['project']}.pages.dev/", flush=True)
-        print(f"     이번 배포: {url}", flush=True)
+        _safe_print(f"[OK] 공개 사이트 갱신 완료: https://{cfg['project']}.pages.dev/", flush=True)
+        _safe_print(f"     이번 배포: {url}", flush=True)
     else:
-        print("[FAIL] 업로드 실패\n" + (err or ""), flush=True)
+        _safe_print("[FAIL] 업로드 실패\n" + (err or ""), flush=True)
     _STATE.update({
         "last_ok": ok,
         "last_at": datetime.now(timezone.utc).isoformat(),

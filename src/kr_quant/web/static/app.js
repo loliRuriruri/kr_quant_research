@@ -326,9 +326,9 @@ function setupStockAutocomplete(inputEl, menuEl, onSelect) {
       e.preventDefault();
       activeIndex = (activeIndex - 1 + currentItems.length) % currentItems.length;
       updateActiveItem();
-    } else if (e.key === "Enter" && activeIndex >= 0) {
+    } else if (e.key === "Enter" && currentItems.length) {
       e.preventDefault();
-      const item = currentItems[activeIndex];
+      const item = currentItems[activeIndex >= 0 ? activeIndex : 0];
       menuEl.style.display = "none";
       onSelect(item);
     } else if (e.key === "Escape") {
@@ -939,7 +939,9 @@ function lastCell(r) {
 }
 
 function padTicker(t) {
-  const d = String(t || "").replace(".0", "").replace(/\D/g, "");
+  const raw = String(t || "").replace(".0", "").trim().toUpperCase();
+  if (/^[0-9A-Z]{5,6}$/.test(raw) && /[A-Z]/.test(raw)) return raw.padStart(6, "0");
+  const d = raw.replace(/\D/g, "");
   return d ? d.padStart(6, "0") : String(t || "");
 }
 
@@ -947,7 +949,218 @@ function naverUrl(ticker) {
   return `https://finance.naver.com/item/main.naver?code=${padTicker(ticker)}`;
 }
 
+let publicApiManifestPromise = null;
+const publicApiCache = new Map();
+
+async function publicApiManifest() {
+  if (!publicApiManifestPromise) {
+    publicApiManifestPromise = fetch("/data/api/manifest.json", { cache: "no-store" }).then((res) => {
+      if (!res.ok) throw new Error("공개 데이터 목록을 불러오지 못했습니다.");
+      return res.json();
+    });
+  }
+  return publicApiManifestPromise;
+}
+
+async function publicRouteFile(filename) {
+  if (!filename) throw new Error("이 화면의 공개 스냅샷이 없습니다.");
+  if (!publicApiCache.has(filename)) {
+    const safePath = String(filename).split("/").map((part) => encodeURIComponent(part)).join("/");
+    publicApiCache.set(filename, fetch(`/data/api/${safePath}`, { cache: "no-store" }).then((res) => {
+      if (!res.ok) throw new Error("공개 스냅샷 파일을 불러오지 못했습니다.");
+      return res.json();
+    }));
+  }
+  return publicApiCache.get(filename);
+}
+
+function publicStockPayload(row, ticker) {
+  const code = padTicker((row || {}).ticker || ticker);
+  const r = row || { ticker: code, company: code };
+  const facts = [
+    ["최근가", r.last_close ?? r.close], ["PER", r.per], ["PBR", r.pbr],
+    ["ROE", r.roe], ["영업이익률", r.operating_margin], ["데이터 신뢰도", r.data_confidence],
+  ].filter(([, value]) => value !== null && value !== undefined).map(([label, value]) => ({ label, value: String(value) }));
+  return {
+    row: r,
+    as_of: r.as_of_date || null,
+    profile: {},
+    brief: { facts },
+    scorecard: { factors: [] },
+    dart: {}, location: {}, toss: {}, yahoo: {}, ta: {}, timing: {},
+    fa: {}, dao: {}, jiang: {}, tian: {}, di: {}, sunzi: {},
+    events: { rows: [], used_in_quant: false },
+    flow90: { chart: [], used_in_quant: false },
+    naver: { configured: false, news: [], web: [], encyc: [] },
+    explain: {}, comment: r.comment || "",
+    links: [
+      { label: "네이버 금융", url: naverUrl(code) },
+      { label: "OpenDART", url: "https://opendart.fss.or.kr/" },
+    ],
+    risk_notes: [], data_notes: [],
+    gates: {
+      universe_eligible: Boolean(r.universe_eligible),
+      top100_eligible: Boolean(r.top100_eligible),
+      top20_eligible: Boolean(r.top20_eligible),
+      coverage: r.weighted_metric_coverage,
+      data_confidence: r.data_confidence,
+      exclusion_reasons: [],
+    },
+  };
+}
+
+function filterPublicSunzi(data, url) {
+  let rows = [...(data.rows || [])];
+  const q = (url.searchParams.get("query") || "").trim().toLowerCase();
+  const market = url.searchParams.get("market");
+  const posture = url.searchParams.get("posture");
+  const fa = url.searchParams.get("fa");
+  const universe = url.searchParams.get("universe");
+  if (q) rows = rows.filter((r) => `${r.company || ""} ${r.ticker || ""}`.toLowerCase().includes(q));
+  if (market && market !== "all") rows = rows.filter((r) => r.market === market);
+  if (posture && posture !== "all") rows = rows.filter((r) => r.posture === posture);
+  if (fa && fa !== "all") rows = rows.filter((r) => String(r.fa_status || r.fa || "").toLowerCase().includes(fa.toLowerCase()));
+  if (universe === "quant") rows = rows.filter((r) => r.universe_eligible !== false);
+  const limit = Math.max(1, Number(url.searchParams.get("n") || 80));
+  rows = rows.slice(0, limit);
+  const postures = {};
+  rows.forEach((r) => { if (r.posture) postures[r.posture] = (postures[r.posture] || 0) + 1; });
+  return {
+    ...data,
+    rows,
+    n: rows.length,
+    fa_pass_n: rows.filter((r) => r.fa_gate_pass).length,
+    postures,
+  };
+}
+
+function normalizePublicStockItem(row) {
+  return {
+    ticker: String(row?.ticker || row?.t || "").padStart(6, "0"),
+    company: String(row?.company || row?.c || ""),
+    market: String(row?.market || row?.m || "KOSPI"),
+    sector: String(row?.sector || row?.s || ""),
+    quant_score: row?.quant_score ?? null,
+    quant_rank: row?.quant_rank ?? null,
+  };
+}
+
+function filterPublicRows(data, url) {
+  let rows = [...(data.rows || [])];
+  const q = (url.searchParams.get("query") || "").trim().toLowerCase();
+  if (q) rows = rows.filter((r) => `${r.company || ""} ${r.ticker || ""}`.toLowerCase().includes(q));
+  const minGrade = url.searchParams.get("min_grade");
+  if (minGrade) {
+    const gradeOrder = { "S+": 5, S: 4, "A+": 3, A: 2, B: 1, C: 0 };
+    rows = rows.filter((r) => (gradeOrder[r.grade] ?? 0) >= (gradeOrder[minGrade] ?? 0));
+  }
+  const status = url.searchParams.get("status");
+  if (status && status !== "all") rows = rows.filter((r) => r.current_status === status);
+  const confirmation = url.searchParams.get("confirmation");
+  if (confirmation && confirmation !== "all") rows = rows.filter((r) => r.confirmation_state === confirmation);
+  const group = url.searchParams.get("group_id");
+  if (group && group !== "all") rows = rows.filter((r) => r.event_group_id === group || r.group_id === group);
+  const minWinRate = Number(url.searchParams.get("min_win_rate"));
+  if (Number.isFinite(minWinRate) && url.searchParams.has("min_win_rate")) rows = rows.filter((r) => Number(r.win_rate || 0) >= minWinRate);
+  const minAvgReturn = Number(url.searchParams.get("min_avg_return"));
+  if (Number.isFinite(minAvgReturn) && url.searchParams.has("min_avg_return")) rows = rows.filter((r) => Number(r.avg_return ?? r.median_return ?? 0) >= minAvgReturn);
+  return { ...data, rows, count: rows.length };
+}
+
+async function publicApi(path, opts = {}) {
+  const url = new URL(path, window.location.origin);
+  const route = url.pathname;
+  const method = String(opts.method || "GET").toUpperCase();
+  const cachedRefreshRoutes = new Set(["/api/flow", "/api/strategy", "/api/us13f"]);
+  if (method !== "GET") {
+    if (cachedRefreshRoutes.has(route)) return publicApi(route);
+    throw new Error("공개 웹은 읽기 전용입니다. 수집·저장·AI 실행은 로컬에서 사용하세요.");
+  }
+
+  const manifest = await publicApiManifest();
+  if (route === "/api/stocks/search") {
+    const data = await publicRouteFile(manifest.routes["/api/stocks/all"]);
+    const q = (url.searchParams.get("q") || "").trim().toLowerCase();
+    const limit = Math.max(1, Number(url.searchParams.get("limit") || 12));
+    const items = (data.items || [])
+      .map(normalizePublicStockItem)
+      .filter((r) => !q || `${r.company} ${r.ticker}`.toLowerCase().includes(q))
+      .slice(0, limit);
+    return { items };
+  }
+  if (route === "/api/stocks/all") {
+    const data = await publicRouteFile(manifest.routes[route]);
+    return { ...data, items: (data.items || []).map(normalizePublicStockItem) };
+  }
+  const stockMatch = route.match(/^\/api\/results\/stock\/([0-9A-Z]{1,6})$/i);
+  if (stockMatch) {
+    const code = padTicker(stockMatch[1]);
+    const detailBase = manifest.stock_details?.base;
+    if (detailBase) {
+      try {
+        return await publicRouteFile(`${detailBase}/${code}.json`);
+      } catch (err) {
+        console.warn(`Public stock detail ${code} missing; using summary fallback.`, err);
+      }
+    }
+    const data = await publicRouteFile(manifest.routes["/api/results/all"]);
+    const row = (data.rows || []).find((r) => padTicker(r.ticker) === code);
+    return publicStockPayload(row, code);
+  }
+  const researchReportMatch = route.match(/^\/api\/research\/(\d{1,6})\/report$/);
+  if (researchReportMatch) {
+    const code = padTicker(researchReportMatch[1]);
+    const asOf = url.searchParams.get("as_of") || "";
+    const details = manifest.research_details || {};
+    const filename = details.reports?.[`${code}|${asOf}`] || details.reports_latest?.[code];
+    if (filename) return publicRouteFile(filename);
+    return { exists: false, row: null };
+  }
+  const researchMatch = route.match(/^\/api\/research\/(\d{1,6})$/);
+  if (researchMatch) {
+    const code = padTicker(researchMatch[1]);
+    const asOf = url.searchParams.get("as_of") || "";
+    const details = manifest.research_details || {};
+    const filename = details.analysis?.[`${code}|${asOf}`] || details.analysis_latest?.[code];
+    if (filename) return publicRouteFile(filename);
+    return { exists: false, row: null };
+  }
+  const discoveryTicker = route.match(/^\/api\/seasonality\/discovery\/(\d{1,6})$/);
+  if (discoveryTicker) {
+    const data = await publicRouteFile(manifest.routes["/api/seasonality/discovery"]);
+    const code = padTicker(discoveryTicker[1]);
+    return { ok: true, ticker: code, lookback_years: Number(url.searchParams.get("lookback_years") || 5), patterns: (data.rows || []).filter((r) => padTicker(r.ticker) === code) };
+  }
+  if (/^\/api\/seasonality\/ticker\//.test(route)) return { ok: false, stock: null };
+  const flowTicker = route.match(/^\/api\/flow\/ticker\/(\d{1,6})$/);
+  if (flowTicker) {
+    const data = await publicRouteFile(manifest.routes["/api/flow"]);
+    const code = padTicker(flowTicker[1]);
+    const row = (data.rows || []).find((r) => padTicker(r.ticker) === code);
+    return row ? { ok: true, row } : { ok: false, row: null, error: `종목 ${code}의 공개 수급 스냅샷이 없습니다.` };
+  }
+  if (/^\/api\/investor\/ticker\//.test(route)) return { rows: [], chart: [], used_in_quant: false };
+  if (route === "/api/screens") {
+    const id = url.searchParams.get("id") || "value_growth";
+    return publicRouteFile(manifest.screens[id] || manifest.routes[route]);
+  }
+
+  let data = await publicRouteFile(manifest.routes[route]);
+  if (route === "/api/results/all") {
+    const limit = Math.max(1, Number(url.searchParams.get("limit") || 300));
+    data = { ...data, rows: (data.rows || []).slice(0, limit) };
+  }
+  if (route === "/api/results/top") {
+    const limit = Math.max(1, Number(url.searchParams.get("n") || 20));
+    data = { ...data, rows: (data.rows || []).slice(0, limit) };
+  }
+  if (route === "/api/sunzi") data = filterPublicSunzi(data, url);
+  if (["/api/seasonality/discovery", "/api/seasonality/ranked", "/api/seasonality/scan"].includes(route)) data = filterPublicRows(data, url);
+  return data;
+}
+
 async function api(path, opts = {}) {
+  if (publicShareMode) return publicApi(path, opts);
   const res = await fetch(path, {
     headers: { "Content-Type": "application/json" },
     ...opts,
@@ -980,23 +1193,37 @@ function fmtPct(n, d = 1) {
   return `${(x * 100).toFixed(d)}%`;
 }
 
-let publicShareMode = false;
+const LOCAL_WEB_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+let publicShareMode = document.body.dataset.publicBuild === "true" ||
+  new URLSearchParams(window.location.search).has("public-preview") ||
+  !LOCAL_WEB_HOSTS.has(window.location.hostname.toLowerCase());
+document.body.classList.toggle("public-mode", publicShareMode);
+
+function lockPublicAdminUi() {
+  if (!publicShareMode) return;
+  $$('[data-view="settings"], #view-settings').forEach((el) => el.remove());
+  $$("#view-run button").forEach((button) => {
+    button.disabled = true;
+    button.title = "공개 웹은 읽기 전용입니다. 실행은 로컬에서 사용하세요.";
+  });
+}
 
 async function applyPublicShareMode() {
   try {
     const st = await api("/api/status");
-    publicShareMode = Boolean(st.public_mode);
+    publicShareMode = publicShareMode || Boolean(st.public_mode);
   } catch {
-    publicShareMode = false;
+    // Keep the hostname-derived safe default when the status API is unavailable.
   }
   document.body.classList.toggle("public-mode", publicShareMode);
-  if (publicShareMode && (currentView === "settings" || currentView === "run")) {
+  lockPublicAdminUi();
+  if (publicShareMode && currentView === "settings") {
     switchView("dash");
   }
 }
 
 function switchView(name) {
-  if (publicShareMode && (name === "settings" || name === "run")) name = "dash";
+  if (publicShareMode && name === "settings") name = "dash";
   currentView = name;
   closeDrawer();
   $$(".view").forEach((el) => el.classList.add("hidden"));
@@ -1082,6 +1309,7 @@ function stopLiveSync() {
 }
 function startLiveSync(name) {
   stopLiveSync();
+  if (publicShareMode) return;
   if (name === "market") {
     liveTimer = setInterval(() => {
       loadMarket(true).catch(() => {});
@@ -1841,7 +2069,7 @@ async function openStock(ticker) {
     if (newsItems) {
       newsBlock = `<article class="intro"><h3>네이버 뉴스</h3><ul class="news-list">${newsItems}</ul></article>`;
     } else if (!naver.configured) {
-      newsBlock = `<article class="intro"><h3>네이버 뉴스</h3><p class="hint">설정에서 네이버 Client ID/Secret을 넣으면 최근 뉴스가 나옵니다.</p></article>`;
+      newsBlock = `<article class="intro"><h3>네이버 뉴스</h3><p class="hint">${publicShareMode ? "공개 스냅샷에는 네이버 뉴스가 포함되지 않습니다." : "설정에서 네이버 Client ID/Secret을 넣으면 최근 뉴스가 나옵니다."}</p></article>`;
     } else if (naver.error) {
       newsBlock = `<article class="intro"><h3>네이버 뉴스</h3><p class="hint">${escapeHtml(naver.error)}</p></article>`;
     }
@@ -1966,13 +2194,17 @@ async function openStock(ticker) {
           </article>
           ${encyc ? `<article class="intro"><h3>기업 백과</h3>${encyc}</article>` : ""}
           ${locBlock}
-          <div class="actions">
-            <button id="btn-analyze" data-ticker="${ticker}">간단 검증</button>
-            <button class="primary" id="btn-report" data-ticker="${ticker}">AI 분석 리포트</button>
-            <button id="btn-backtest-stock" data-ticker="${ticker}" style="background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4);">🧪 전략 백테스트</button>
-            <button id="btn-watch" data-ticker="${ticker}" data-company="${escapeHtml(r.company || "")}">관심종목</button>
-          </div>
-          <p class="hint">간단 검증은 핵심 요약 점검이며, AI 분석 리포트는 심층 펀더멘털 분석 리포트를 생성합니다.</p>
+          ${publicShareMode ? `
+            <p class="hint public-readonly-note">공개 웹은 마지막 업로드 스냅샷을 보는 읽기 전용 화면입니다. AI 생성·백테스트 실행·관심종목 저장은 로컬에서 사용할 수 있습니다.</p>
+          ` : `
+            <div class="actions">
+              <button id="btn-analyze" data-ticker="${ticker}">간단 검증</button>
+              <button class="primary" id="btn-report" data-ticker="${ticker}">AI 분석 리포트</button>
+              <button id="btn-backtest-stock" data-ticker="${ticker}" style="background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4);">🧪 전략 백테스트</button>
+              <button id="btn-watch" data-ticker="${ticker}" data-company="${escapeHtml(r.company || "")}">관심종목</button>
+            </div>
+            <p class="hint">간단 검증은 핵심 요약 점검이며, AI 분석 리포트는 심층 펀더멘털 분석 리포트를 생성합니다.</p>
+          `}
           <div id="research-box"><p>저장된 간단 검증을 불러오는 중…</p></div>
           <div id="report-box"><p>저장된 AI 분석 리포트를 불러오는 중…</p></div>
         </div>
@@ -1994,16 +2226,14 @@ async function openStock(ticker) {
       </div>
     `;
 
-    $("#btn-analyze").addEventListener("click", () => runAnalyze(code).catch((err) => alert(err.message)));
-    if ($("#btn-backtest-stock")) {
-      $("#btn-backtest-stock").addEventListener("click", () => {
+    if (!publicShareMode) {
+      $("#btn-analyze")?.addEventListener("click", () => runAnalyze(code).catch((err) => alert(err.message)));
+      $("#btn-backtest-stock")?.addEventListener("click", () => {
         closeDrawerUi();
         openStrategyBacktest(code, r.company || code);
       });
-    }
-    $("#btn-report").addEventListener("click", () => runReport(code).catch((err) => alert(err.message)));
-    if ($("#btn-watch")) {
-      $("#btn-watch").addEventListener("click", () => addWatch(code, r.company || "").catch((err) => alert(err.message)));
+      $("#btn-report")?.addEventListener("click", () => runReport(code).catch((err) => alert(err.message)));
+      $("#btn-watch")?.addEventListener("click", () => addWatch(code, r.company || "").catch((err) => alert(err.message)));
     }
     loadResearch(code).catch(() => {
       $("#research-box").innerHTML = "<p>저장된 간단 검증 없음</p>";
@@ -3707,7 +3937,7 @@ async function loadSunzi() {
     <!-- Search & Filter Toolbar -->
     <div class="yang-toolbar">
       <div class="autocomplete-wrap yang-search">
-        <input id="sunzi-q" type="text" autocomplete="off" placeholder="🔍 퀀트 밖 종목도 분석합니다. 종목명이나 코드를 입력하세요." />
+        <input id="sunzi-q" type="text" autocomplete="off" value="${escapeHtml(currentSunziQuery)}" placeholder="🔍 퀀트 밖 종목도 분석합니다. 종목명이나 코드를 입력하세요." />
         <ul id="sunzi-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
       </div>
       <div id="sunzi-universe-tabs" class="yang-seg">
@@ -3852,7 +4082,7 @@ function setupSunziControls() {
       loadSunzi().catch((err) => alert(err.message));
     });
     qInput.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter") return;
+      if (e.key !== "Enter" || e.defaultPrevented) return;
       currentSunziQuery = qInput.value.trim();
       loadSunzi().catch((err) => alert(err.message));
     });
@@ -3967,6 +4197,20 @@ async function loadFlow(force) {
   if (force) flowLimit = {};
   const data = await ensureFlow(force);
   renderFlow(data);
+}
+
+async function runFlowSearch(query) {
+  const input = $("#flow-q");
+  const raw = String(query ?? input?.value ?? "").trim();
+  if (!raw) {
+    if (flowCache) renderFlow(flowCache);
+    return;
+  }
+  const code = await resolveStockQuery(raw);
+  if (!/^\d{6}$/.test(code)) {
+    throw new Error(`'${raw}'에 해당하는 종목을 찾지 못했습니다.`);
+  }
+  await fetchOnDemandFlow(code, "#flow-box", "flow");
 }
 
 function emptyFilters() {
@@ -6498,16 +6742,17 @@ async function startJob(kind) {
 
 $$(".nav-btn").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
 if ($("#flow-q")) {
-  $("#flow-q").addEventListener("input", () => { if (flowCache) renderFlow(flowCache); });
+  $("#flow-q").addEventListener("input", (e) => {
+    if (!e.target.value.trim() && flowCache) renderFlow(flowCache);
+  });
   $("#flow-q").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (flowCache) renderFlow(flowCache);
-    }
+    if (e.key !== "Enter" || e.isComposing || $("#flow-q-menu")?.style.display === "block") return;
+    e.preventDefault();
+    runFlowSearch().catch((err) => alert(err.message));
   });
 }
 if ($("#btn-flow-search")) {
-  $("#btn-flow-search").addEventListener("click", () => { if (flowCache) renderFlow(flowCache); });
+  $("#btn-flow-search").addEventListener("click", () => runFlowSearch().catch((err) => alert(err.message)));
 }
 if ($("#flow-refresh")) {
   $("#flow-refresh").addEventListener("click", () => loadFlow(true).catch((err) => alert(err.message)));
@@ -6600,6 +6845,7 @@ function bindStockSearchers() {
   if (flowInput && flowMenu) {
     setupStockAutocomplete(flowInput, flowMenu, (selected) => {
       flowInput.value = `${selected.company || ""} ${selected.ticker || ""}`.trim();
+      runFlowSearch(selected.ticker).catch((err) => alert(err.message));
     });
   }
 }
@@ -7602,8 +7848,9 @@ async function loadPreEntryView() {
   container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">오늘의 선취매 최우수 종목 및 테마 기여도 분석 중...</div>`;
 
   // Fetch Discovery and Theme data in parallel
+  const preEntryQuery = currentSeasonalityQuery ? `&query=${encodeURIComponent(currentSeasonalityQuery)}` : "";
   const [discRes, themeRes] = await Promise.all([
-    api(`/api/seasonality/discovery?lookback_years=${currentV11Lookback}&horizon_days=90`),
+    api(`/api/seasonality/discovery?lookback_years=${currentV11Lookback}&horizon_days=90${preEntryQuery}`),
     api(`/api/seasonality/themes?lookback_years=${currentV11Lookback}&horizon_days=90`),
   ]);
 
@@ -7932,6 +8179,30 @@ let currentV11Horizon = 90;
 let currentV11Lookback = 5;
 let currentV11ExcludeExpired = true;
 let discoveryRows = [];
+let currentSeasonalityQuery = "";
+
+function seasonalitySearchQuery() {
+  return currentSeasonalityQuery || ($("#seasonality-q")?.value || "").trim();
+}
+
+function refreshCurrentSeasonalitySearch() {
+  if (currentV11Subtab === "pre-entry") return loadPreEntryView();
+  if (currentV11Subtab === "discovery") return loadDiscoveryRanked();
+  if (currentV11Subtab === "explanation") return loadAIExplanations();
+  if (currentV11Subtab === "calendar") return loadInstitutionalCalendar();
+  return loadSeasonality();
+}
+
+async function selectSeasonalityStock(raw, selected = null) {
+  const code = selected?.ticker ? padTicker(selected.ticker) : await resolveStockQuery(raw);
+  if (!/^\d{6}$/.test(code)) throw new Error(`'${raw}'에 해당하는 종목을 찾지 못했습니다.`);
+  currentSeasonalityQuery = code;
+  const input = $("#seasonality-q");
+  if (input) input.value = selected ? `${selected.company || ""} ${code}`.trim() : code;
+  const discoveryTab = $("#tab-v11-discovery");
+  if (discoveryTab && currentV11Subtab !== "discovery") discoveryTab.click();
+  else await loadDiscoveryRanked();
+}
 
 async function loadDiscoveryRanked() {
   const tbody = $("#discovery-ranked-body");
@@ -7939,7 +8210,7 @@ async function loadDiscoveryRanked() {
 
   const minGrade = $("#discovery-grade-filter") ? $("#discovery-grade-filter").value : "";
   const statusFilter = $("#discovery-status-filter") ? $("#discovery-status-filter").value : "all";
-  const q = $("#seasonality-q") ? $("#seasonality-q").value.trim() : "";
+  const q = seasonalitySearchQuery();
 
   const params = new URLSearchParams({
     horizon_days: currentV11Horizon,
@@ -8079,7 +8350,9 @@ async function loadAIExplanations() {
   const container = $("#explanation-cards-list");
   if (!container) return;
 
-  const res = await api(`/api/seasonality/discovery?horizon_days=${currentV11Horizon}&lookback_years=${currentV11Lookback}&exclude_expired=${currentV11ExcludeExpired}`);
+  const q = seasonalitySearchQuery();
+  const queryParam = q ? `&query=${encodeURIComponent(q)}` : "";
+  const res = await api(`/api/seasonality/discovery?horizon_days=${currentV11Horizon}&lookback_years=${currentV11Lookback}&exclude_expired=${currentV11ExcludeExpired}${queryParam}`);
   const rows = res.rows || [];
 
   const lookbackLabel = currentV11Lookback > 0 ? `최근 ${currentV11Lookback}개년` : "전체 기간";
@@ -8263,7 +8536,7 @@ async function loadInstitutionalRanked() {
   const minGrade = $("#seasonality-grade-filter") ? $("#seasonality-grade-filter").value : "";
   const confFilter = $("#seasonality-conf-filter") ? $("#seasonality-conf-filter").value : "all";
   const groupFilter = $("#seasonality-group-filter") ? $("#seasonality-group-filter").value : "all";
-  const q = $("#seasonality-q") ? $("#seasonality-q").value.trim() : "";
+  const q = seasonalitySearchQuery();
 
   const params = new URLSearchParams({
     horizon_days: currentInstHorizon,
@@ -8566,7 +8839,7 @@ function renderMonthHeatmapBar(months, targetMonth) {
 async function loadSeasonality() {
   const minWr = parseFloat($("#seasonality-min-wr") ? $("#seasonality-min-wr").value : "0.80");
   const minRet = parseFloat($("#seasonality-min-ret") ? $("#seasonality-min-ret").value : "0.05");
-  const q = $("#seasonality-q") ? $("#seasonality-q").value.trim() : "";
+  const q = seasonalitySearchQuery();
 
   const params = new URLSearchParams({
     month: currentSeasonalityMonth,
@@ -8769,11 +9042,17 @@ function setupSeasonalityUI() {
   const qMenu = $("#seasonality-q-menu");
   if (qInput && qMenu) {
     setupStockAutocomplete(qInput, qMenu, (selected) => {
-      qInput.value = selected.company || selected.ticker;
-      loadSeasonality().catch(() => {});
+      selectSeasonalityStock(selected.ticker, selected).catch((err) => alert(err.message));
+    });
+    qInput.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.isComposing || e.defaultPrevented || qMenu.style.display === "block") return;
+      e.preventDefault();
+      selectSeasonalityStock(qInput.value).catch((err) => alert(err.message));
     });
     qInput.addEventListener("input", () => {
-      if (qInput.value === "") loadSeasonality().catch(() => {});
+      if (qInput.value.trim()) return;
+      currentSeasonalityQuery = "";
+      refreshCurrentSeasonalitySearch().catch(() => {});
     });
   }
 }

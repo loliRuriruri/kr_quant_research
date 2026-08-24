@@ -23,10 +23,35 @@ body {
   display: grid;
   grid-template-columns: 220px 1fr;
 }
-body.public-mode .nav-admin,
+body.public-mode [data-view="settings"],
 body.public-mode #view-settings,
-body.public-mode #view-run {
+body.public-mode #btn-krx-now,
+body.public-mode #investor-collect,
+body.public-mode #nps-sub-collect,
+body.public-mode #nps-collect,
+body.public-mode #btn-watch-add,
+body.public-mode #us13f-refresh,
+body.public-mode #strategy-refresh,
+body.public-mode #btn-custom-strategy,
+body.public-mode .btn-ai-mini,
+body.public-mode .btn-seasonality-ai,
+body.public-mode .btn-cal-ai,
+body.public-mode [data-ai-trigger],
+body.public-mode [data-backtest-stock],
+body.public-mode [data-watch-stock],
+body.public-mode [data-unwatch],
+body.public-mode [data-del-report] {
   display: none !important;
+}
+.public-readonly-note {
+  padding: 10px 12px;
+  border: 1px solid rgba(76, 141, 255, 0.35);
+  border-radius: 9px;
+  background: rgba(76, 141, 255, 0.08);
+}
+body.public-mode #view-run button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
 }
 .nav {
   padding: 22px 16px;
