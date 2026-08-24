@@ -1045,6 +1045,35 @@
     </section>
 
     <section id="view-settings" class="view hidden">
+      <!-- Manual Publish Card (Toptoon Tracker Unified Style) -->
+      <article class="card manual-deploy-panel">
+        <div class="card-h">
+          <div>
+            <p class="section-kicker">MANUAL PUBLISH</p>
+            <h2 style="margin:0;">지금 최신 데이터로 공개판 갱신</h2>
+          </div>
+          <span class="evidence-badge tier-b">로컬 전용</span>
+        </div>
+        <p class="hint" style="margin-top:6px;">2,700여 개 전 종목 시세·재무·수급·계절성·기술적 지표를 다시 스냅샷하고 검증과 비밀정보 검사를 통과한 경우에만 Cloudflare 운영판(Pages)을 갱신합니다.</p>
+        <div class="deploy-step-list" aria-label="배포 순서">
+          <span>1 · 퀀트 데이터 스냅샷</span>
+          <span>2 · 교차 검증</span>
+          <span>3 · 안전 빌드</span>
+          <span>4 · Cloudflare 공개 배포</span>
+        </div>
+        <div class="manual-deploy-actions">
+          <button class="primary" type="button" id="run-manual-deploy">다시 갱신·배포</button>
+          <a class="ghost-btn" href="https://korea-quant-research.pages.dev/" target="_blank" rel="noopener noreferrer">공개 사이트 열기</a>
+        </div>
+        <div class="deploy-progress" id="deploy-progress" data-state="idle">
+          <span class="deploy-progress-dot"></span>
+          <div class="deploy-progress-info">
+            <strong id="deploy-status-title">수동 배포 대기</strong>
+            <small id="deploy-status-detail">자동 갱신과 별도로 필요할 때 언제든 실행할 수 있습니다.</small>
+          </div>
+        </div>
+      </article>
+
       <article class="card">
         <div class="card-h">
           <h2>API 키</h2>

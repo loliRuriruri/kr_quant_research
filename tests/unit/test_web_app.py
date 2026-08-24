@@ -351,3 +351,15 @@ def test_settings_raw_endpoint():
     assert "opendart_api_key" in data
     assert "xai_api_key" in data
     assert "kis_app_key" in data
+
+
+def test_deploy_status_and_public_block():
+    resp = client.get('/api/deploy/status')
+    assert resp.status_code == 200
+    data = resp.json()
+    assert 'state' in data
+    assert 'public_url' in data
+
+    # Test blocked in public mode
+    blocked = client.post('/api/deploy/run', headers={'cf-connecting-ip': '203.0.113.10'})
+    assert blocked.status_code == 403

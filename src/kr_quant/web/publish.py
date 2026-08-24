@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,16 @@ _STATE: dict[str, Any] = {
     "last_url": None,
     "last_error": None,
     "last_log": "",
+}
+
+_DEPLOY_LOCK = threading.Lock()
+_DEPLOY_STATUS: dict[str, Any] = {
+    "state": "idle",
+    "message": "수동 배포 대기",
+    "detail": "자동 갱신과 별도로 필요할 때 언제든 실행할 수 있습니다.",
+    "started_at": None,
+    "finished_at": None,
+    "public_url": "https://korea-quant-research.pages.dev/",
 }
 
 URL_RE = re.compile(r"https://[a-z0-9.-]+\.pages\.dev[^\s]*", re.I)
@@ -197,3 +208,83 @@ def maybe_publish_after_job(kind: str) -> dict[str, Any] | None:
     if kind not in cfg["after_jobs"]:
         return None
     return publish_public_snapshot(deploy=True)
+
+
+def get_deploy_status() -> dict[str, Any]:
+    with _DEPLOY_LOCK:
+        status = dict(_DEPLOY_STATUS)
+    if status["state"] == "idle":
+        root = _root()
+        status_path = root / "logs" / "public_publish.json"
+        if status_path.exists():
+            try:
+                saved = json.loads(status_path.read_text(encoding="utf-8"))
+                if saved.get("last_ok") is True:
+                    status["state"] = "success"
+                    status["message"] = "공개판 갱신 완료"
+                    status["detail"] = "공개 사이트에서 최신 버전을 확인할 수 있습니다."
+                    status["finished_at"] = saved.get("last_at")
+                    status["last_url"] = saved.get("last_url")
+                elif saved.get("last_ok") is False:
+                    status["state"] = "failed"
+                    status["message"] = "공개판 갱신 실패"
+                    status["detail"] = saved.get("last_error") or "배포 중 오류가 발생했습니다."
+                    status["finished_at"] = saved.get("last_at")
+            except Exception:
+                pass
+    status["running"] = status["state"] == "running"
+    return status
+
+
+def _deploy_worker() -> None:
+    try:
+        with _DEPLOY_LOCK:
+            _DEPLOY_STATUS.update({
+                "state": "running",
+                "message": "로컬 스냅샷 생성 및 검증 중...",
+                "detail": "2,700여 개 전 종목 및 퀀트 API 스냅샷을 생성하고 있습니다.",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "finished_at": None,
+            })
+        result = publish_public_snapshot(deploy=True)
+        with _DEPLOY_LOCK:
+            if result.get("ok"):
+                _DEPLOY_STATUS.update({
+                    "state": "success",
+                    "message": "공개판 갱신 완료",
+                    "detail": "공개 사이트에서 최신 버전을 확인할 수 있습니다.",
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "last_url": result.get("url"),
+                })
+            else:
+                _DEPLOY_STATUS.update({
+                    "state": "failed",
+                    "message": "공개판 갱신 실패",
+                    "detail": result.get("error") or "배포 과정에서 오류가 발생했습니다.",
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                })
+    except Exception as exc:
+        with _DEPLOY_LOCK:
+            _DEPLOY_STATUS.update({
+                "state": "failed",
+                "message": "공개판 갱신 실패",
+                "detail": str(exc),
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+
+def start_manual_deploy() -> dict[str, Any]:
+    with _DEPLOY_LOCK:
+        if _DEPLOY_STATUS.get("state") == "running":
+            return get_deploy_status()
+        _DEPLOY_STATUS.update({
+            "state": "running",
+            "message": "갱신·배포 작업을 시작합니다...",
+            "detail": "작업이 백그라운드에서 진행됩니다.",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": None,
+        })
+    thread = threading.Thread(target=_deploy_worker, daemon=True)
+    thread.start()
+    return get_deploy_status()
+

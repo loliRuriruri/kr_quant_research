@@ -6539,6 +6539,7 @@ async function loadSettings() {
   if ($("#meta-tavily")) metaLine($("#meta-tavily"), s.tavily_api_key);
   $("#key-kis-url").value = s.kis_base_url || "";
   $("#key-sleep").value = s.opendart_sleep_sec ?? 0.2;
+  refreshDeployStatus().catch(() => {});
 }
 
 function keyOrNull(id) {
@@ -9191,3 +9192,100 @@ function reloadCurrentView() {
   else if (name === "reports") p.push(loadReportArchive());
   return Promise.all(p);
 }
+
+
+// --- Manual Publish & Deploy Handlers (Toptoon Tracker Unified Style) ---
+let deployPollTimer = null;
+
+async function refreshDeployStatus() {
+  const elProgress = document.querySelector("#deploy-progress");
+  const elBtn = document.querySelector("#run-manual-deploy");
+  const elTitle = document.querySelector("#deploy-status-title");
+  const elDetail = document.querySelector("#deploy-status-detail");
+  if (!elProgress || !elBtn) return;
+
+  try {
+    const status = await api("/api/deploy/status");
+    renderDeployStatus(status);
+    if (status.running || status.state === "running") {
+      clearTimeout(deployPollTimer);
+      deployPollTimer = setTimeout(refreshDeployStatus, 2000);
+    }
+  } catch (err) {
+    console.warn("배포 상태 확인 실패:", err);
+  }
+}
+
+function renderDeployStatus(payload) {
+  const elProgress = document.querySelector("#deploy-progress");
+  const elBtn = document.querySelector("#run-manual-deploy");
+  const elTitle = document.querySelector("#deploy-status-title");
+  const elDetail = document.querySelector("#deploy-status-detail");
+  const stepList = document.querySelectorAll(".deploy-step-list span");
+  if (!elProgress || !elBtn) return;
+
+  const state = payload.state || "idle";
+  elProgress.dataset.state = state;
+
+  const stateLabel = {
+    idle: "수동 배포 대기",
+    running: payload.message || "공개판 갱신 및 배포 중...",
+    success: "공개판 갱신 완료",
+    skipped: "중복 배포 건너뜀",
+    failed: "배포 실패",
+  }[state] || payload.message || "상태 확인 완료";
+
+  const timestamp = payload.finished_at || payload.started_at;
+  let formattedTime = "";
+  if (timestamp) {
+    try {
+      const dt = new Date(timestamp);
+      formattedTime = dt.toLocaleDateString("ko-KR", { year: "numeric", month: "numeric", day: "numeric" }) + " " + dt.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "numeric", hour12: true });
+    } catch {
+      formattedTime = String(timestamp);
+    }
+  }
+
+  const detail = state === "success"
+    ? `${formattedTime ? formattedTime + " · " : ""}공개 사이트에서 최신 버전을 확인할 수 있습니다.`
+    : state === "running"
+      ? `${formattedTime ? formattedTime + " · " : ""}스냅샷 생성 및 Cloudflare 업로드가 진행 중입니다 (약 1분 소요).`
+      : payload.detail || payload.message || "자동 갱신과 별도로 필요할 때 언제든 실행할 수 있습니다.";
+
+  if (elTitle) elTitle.textContent = stateLabel;
+  if (elDetail) elDetail.textContent = detail;
+
+  elBtn.disabled = state === "running";
+  elBtn.textContent = state === "running" ? "갱신·배포 진행 중..." : state === "success" ? "다시 갱신·배포" : "지금 갱신·배포";
+
+  stepList.forEach((sp, idx) => {
+    sp.classList.remove("active");
+    if (state === "running") {
+      if (idx <= 1) sp.classList.add("active");
+    } else if (state === "success") {
+      sp.classList.add("active");
+    }
+  });
+}
+
+async function runManualDeploy() {
+  const elBtn = document.querySelector("#run-manual-deploy");
+  if (elBtn) elBtn.disabled = true;
+  renderDeployStatus({ state: "running", message: "배포 요청 중...", started_at: new Date().toISOString(), running: true });
+
+  try {
+    const payload = await api("/api/deploy/run", { method: "POST" });
+    renderDeployStatus(payload);
+    clearTimeout(deployPollTimer);
+    deployPollTimer = setTimeout(refreshDeployStatus, 1500);
+  } catch (err) {
+    renderDeployStatus({ state: "failed", message: "배포 요청 실패", detail: err.message });
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.querySelector("#run-manual-deploy");
+  if (btn) {
+    btn.addEventListener("click", () => runManualDeploy().catch((err) => alert(err.message)));
+  }
+});
