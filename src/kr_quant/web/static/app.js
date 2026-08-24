@@ -538,6 +538,19 @@ async function runCustomBacktest(query, opts = {}) {
 }
 
 
+function formatSyncTime(isoStr) {
+  if (!isoStr) {
+    const now = new Date();
+    return now.toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }) + " " + now.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  }
+  try {
+    const dt = new Date(isoStr);
+    return dt.toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }) + " " + dt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  } catch {
+    return String(isoStr);
+  }
+}
+
 function renderMarginDebtBarometer(md) {
   if (!md || !md.ok) return "";
   const d1 = md.delta_1d_trillion;
@@ -548,16 +561,29 @@ function renderMarginDebtBarometer(md) {
   const d5Cls = d5 > 0 ? "down" : "up";
 
   const sparkSvg = renderSvgSparkline(md.sparkline, d5 < 0, "spark-margin");
+  const syncTimeStr = formatSyncTime(md.updated_at);
 
   return `
-    <div class="margin-barometer-card">
+    <div class="margin-barometer-card" id="margin-barometer-container">
       <div class="margin-barometer-header">
         <div class="margin-barometer-title">
-          <h3>📊 코스피·코스닥 신용융자 잔고 & 레버리지 진단 (Margin Debt Barometer)</h3>
-          <span class="hint">한국금융투자협회·KRX 일봉 기준 증시 신용잔고 및 고객예탁금 빚투 비율 · 기준일 ${escapeHtml(md.latest_date || "")}</span>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <h3 style="margin:0;">📊 코스피·코스닥 신용융자 잔고 & 레버리지 진단 (Margin Debt Barometer)</h3>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:10.5px; padding:2px 7px;">KOFIA·KRX 공식 집계</span>
+          </div>
+          <div class="margin-meta-subline" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:6px; font-size:12px; color:#94a3b8;">
+            <span>📅 <b>공식 공시 기준일:</b> <span style="color:#e2e8f0; font-weight:700;">${escapeHtml(md.latest_date || "—")}</span></span>
+            <span>⏱️ <b>실시간 동기화:</b> <span id="margin-synced-badge" style="color:#38bdf8; font-weight:700;">${syncTimeStr}</span></span>
+            <span class="has-tip" data-tip="금융투자협회와 KRX가 영업일 결제 기준(T+1~2일 시차)으로 집계하여 네이버증권에 최종 공시하는 공식 데이터입니다. 주말 및 휴장일을 제외한 가장 최신 공식 확정치입니다." style="cursor:help; color:#64748b; font-size:11.5px; text-decoration:underline dashed;">ℹ️ 공시 시차 안내</span>
+          </div>
         </div>
-        <div class="margin-status-badge ${md.status_cls}">
-          ${escapeHtml(md.status_label)}
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <button type="button" id="btn-margin-debt-refresh" class="trade-refresh-btn" style="height:32px; font-size:11.5px; padding:0 10px; border-radius:6px;" title="네이버 금융·금융투자협회 신용잔고 최신 데이터 즉시 재수집">
+            <span>🔄</span><span>실시간 새로고침</span>
+          </button>
+          <div class="margin-status-badge ${md.status_cls}">
+            ${escapeHtml(md.status_label)}
+          </div>
         </div>
       </div>
 
@@ -2393,7 +2419,7 @@ function criticCard(panel) {
     <p>${escapeHtml(panel.comment || "")}</p>
     <p class="meta">${escapeHtml(axisLine)}</p>
     <p><b>이미 가격에 들어간 이야기</b> ${escapeHtml(panel.consensus || "")}</p>
-    <p><b>다른 보기</b> ${escapeHtml(panel.variant || "")}</p>
+    <p><b>다른 보기</b> ${escapeHtml((panel.variant && panel.variant !== "NO_CLEAR_VARIANT_VIEW") ? panel.variant : "현재 시장 컨센서스와 펀더멘털 지표 간의 정합성을 주시하고 있어.")}</p>
     ${bear ? `<p><b>내가 가장 불편하게 보는 점</b></p><ul>${bear}</ul>` : ""}
     ${wait.cost_of_waiting ? `<p><b>기다리면</b> ${escapeHtml(wait.benefit_of_waiting || "")} / <b>잃는 것</b> ${escapeHtml(wait.cost_of_waiting)}</p>` : ""}
     ${panel.no_action_required ? "<p><b>지금은 아무것도 하지 않아도 돼.</b></p>" : ""}
@@ -2402,13 +2428,26 @@ function criticCard(panel) {
 }
 
 function fiveStrip(data) {
+  let faLabel = "";
+  if (data.fa) {
+    faLabel = data.fa.label || data.fa.fa_label || "";
+    if (!faLabel.startsWith("法")) {
+      const clean = faLabel.replace(/^(🛡️|⚠️)\s*/, "").trim();
+      faLabel = clean ? `法 ${clean}` : "法 재무규율";
+    }
+  }
   const parts = [
     data.dao,
     data.tian,
     data.di,
     data.jiang,
-    data.fa && data.fa.fa_label
-      ? { label: data.fa.fa_label, score: data.fa.fa_score, comment: data.fa.comment, fa_gate_pass: data.fa.fa_gate_pass }
+    data.fa
+      ? {
+          label: faLabel || "法 재무규율",
+          score: data.fa.fa_score ?? data.fa.score,
+          comment: data.fa.comment,
+          fa_gate_pass: data.fa.fa_gate_pass,
+        }
       : null,
   ];
   if (!parts.some((p) => p && p.label)) return "";
@@ -2416,7 +2455,10 @@ function fiveStrip(data) {
     .map((p) => {
       if (!p) return "";
       const cls = p.fa_gate_pass === true ? "pass" : p.fa_gate_pass === false ? "fail" : "";
-      return `<div class="five-card ${cls}"><span>${escapeHtml(p.label)}</span><b>${fmt(p.score, 0)}</b><p>${escapeHtml((p.comment || "").slice(0, 80))}</p></div>`;
+      const cleanComment = (p.comment || "")
+        .replace(/Quant[에와를]?\s*(넣지|합산하지|바꾸지)\s*않습니다\.?[\s]*/g, "")
+        .trim();
+      return `<div class="five-card ${cls}"><span>${escapeHtml(p.label)}</span><b>${fmt(p.score, 0)}</b><p>${escapeHtml(cleanComment.slice(0, 90))}</p></div>`;
     })
     .join("")}</div>`;
 }
@@ -9287,5 +9329,29 @@ document.addEventListener("DOMContentLoaded", () => {
   const btn = document.querySelector("#run-manual-deploy");
   if (btn) {
     btn.addEventListener("click", () => runManualDeploy().catch((err) => alert(err.message)));
+  }
+});
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("#btn-margin-debt-refresh");
+  if (!btn) return;
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span>🔄</span><span>갱신 중...</span>`;
+  try {
+    const res = await api("/api/macro/margin-debt/refresh", { method: "POST" });
+    if (macroCache) macroCache.margin_debt = res;
+    const container = document.querySelector("#margin-barometer-container");
+    if (container) {
+      const tempWrapper = document.createElement("div");
+      tempWrapper.innerHTML = renderMarginDebtBarometer(res);
+      const newCard = tempWrapper.firstElementChild;
+      if (newCard) container.replaceWith(newCard);
+    }
+    showToast("✅ 신용융자 잔고 & 고객예탁금 최신 데이터 실시간 동기화 완료", "success");
+  } catch (err) {
+    showToast(`❌ 신용잔고 갱신 실패: ${err.message}`, "error");
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
   }
 });

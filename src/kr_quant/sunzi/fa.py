@@ -120,7 +120,7 @@ def fa_gate(row: dict[str, Any], cfg: dict[str, Any] | None = None) -> dict[str,
     if passed:
         comment = "데이터 신뢰도·재무건전성·리스크 공시 규율을 모두 통과한 안전 적격 종목입니다."
     else:
-        comment = " ".join(reason_ko) + " Quant 순위는 바꾸지 않고 A-후보만 제한합니다."
+        comment = " ".join(reason_ko) if reason_ko else "데이터 신뢰도·재무건전성·리스크 공시 규율을 모두 통과한 안전 적격 종목입니다."
     return {
         "used_in_quant": False,
         "fa_gate_pass": passed,
@@ -128,7 +128,7 @@ def fa_gate(row: dict[str, Any], cfg: dict[str, Any] | None = None) -> dict[str,
         "fa_score": round(_clip(score), 1),
         "fa_reasons": reasons,
         "fa_reasons_ko": reason_ko,
-        "fa_label": "🛡️ 재무적격" if passed else "⚠️ 재무주의",
+        "fa_label": "法 재무적격" if passed else "法 재무주의",
         "comment": comment,
         "disclaimer": cfg.get("disclaimer") or _DEFAULT["disclaimer"],
         "parts": {

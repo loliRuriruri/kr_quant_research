@@ -1049,6 +1049,20 @@ def api_macro(refresh: bool = False) -> dict[str, Any]:
     return build_macro_dashboard(load_settings(), refresh=refresh)
 
 
+@app.get("/api/macro/margin-debt")
+def api_macro_margin_debt(refresh: bool = False) -> dict[str, Any]:
+    from kr_quant.context.margin_debt import get_margin_debt_snapshot
+
+    return get_margin_debt_snapshot(refresh=refresh)
+
+
+@app.post("/api/macro/margin-debt/refresh")
+def api_macro_margin_debt_refresh() -> dict[str, Any]:
+    from kr_quant.context.margin_debt import get_margin_debt_snapshot
+
+    return get_margin_debt_snapshot(refresh=True)
+
+
 @app.get("/api/telegram/chats")
 def api_telegram_chats() -> dict[str, Any]:
     from kr_quant.ingest.telegram import get_me, list_chats

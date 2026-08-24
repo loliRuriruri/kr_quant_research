@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
-from __future__ import annotations
-
+from datetime import datetime, timezone
 import logging
 import re
 import time
@@ -10,7 +8,7 @@ import requests
 logger = logging.getLogger("kr_quant.context.margin_debt")
 
 _CACHE: tuple[float, dict[str, Any]] | None = None
-_CACHE_TTL = 3600  # 1 hour cache
+_CACHE_TTL = 1800  # 30 min cache
 
 
 def fetch_margin_debt_history(pages: int = 3, timeout: int = 10) -> list[dict[str, Any]]:
@@ -138,6 +136,8 @@ def get_margin_debt_snapshot(*, refresh: bool = False) -> dict[str, Any]:
     res = {
         "ok": True,
         "latest_date": latest["date"],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "settlement_note": "금융투자협회·KRX 결제 기준(T+1~2일 시차) 공식 확정 공시",
         "margin_debt_trillion": margin_now,
         "deposit_trillion": latest["deposit_trillion"],
         "margin_deposit_ratio": ratio_now,

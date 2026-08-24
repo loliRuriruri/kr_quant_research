@@ -532,7 +532,7 @@ def critic_panel(row: dict[str, Any], parts: dict[str, Any] | None = None) -> di
 
     no_action = posture in {"WAIT", "OBSERVE", "RETREAT", "AVOID"}
     consensus = "시장이 이미 아는 이야기는 실적·국면·업종 점수에 많이 들어가 있어. 그걸 또 찬양할 필요는 없지."
-    variant = "NO_CLEAR_VARIANT_VIEW"
+    variant = "현재 시장 컨센서스와 펀더멘털 지표 간의 정합성을 주시하고 있어."
     if value >= 20 and growth < 14:
         variant = "싸 보여. 싸 보이는 데는 보통 그만한 이유가 숨어 있지."
     elif growth >= 20 and value < 14:
