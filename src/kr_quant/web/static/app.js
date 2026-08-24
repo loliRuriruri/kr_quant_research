@@ -2978,14 +2978,14 @@ function flowTable(title, rows, amountKey, tabId) {
         <thead>
           <tr>
             <th style="width:40px;">#</th>
-            <th class="sortable" data-sort="company" style="min-width:140px;">종목명</th>
-            <th class="sortable" data-sort="last">최근가</th>
-            <th class="sortable" data-sort="foreign_net">외인(주)</th>
-            <th class="sortable" data-sort="institution_net">기관(주)</th>
-            <th class="sortable" data-sort="pe_net">사모(주)</th>
-            <th class="sortable" data-sort="${amountKey}">추정금액</th>
-            <th class="sortable" data-sort="ret_5d">이후 5일</th>
-            <th class="sortable" data-sort="ret_20d">이후 20일</th>
+            <th class="sortable has-tip" data-sort="company" style="min-width:140px;" data-tip-title="종목명 및 6자리 코드" data-tip="클릭 시 해당 종목의 실시간 수급 분해 및 팩터 상세창이 열립니다." tabindex="0">종목명</th>
+            <th class="sortable has-tip" data-sort="last" data-tip-title="토스 실시간 시세" data-tip="토스증권 실시간 기준 현재가 및 당일 등락률입니다." tabindex="0">최근가</th>
+            <th class="sortable has-tip" data-sort="foreign_net" data-tip-title="👽 외국인 누적 순매수" data-tip="설정 기간 동안 외국인 투자자의 합산 순매수 주수입니다." tabindex="0">외인(주)</th>
+            <th class="sortable has-tip" data-sort="institution_net" data-tip-title="🏛️ 기관 누적 순매수" data-tip="금융투자, 보험, 투신, 사모 등 기관 투자자 전체의 합산 순매수 주수입니다." tabindex="0">기관(주)</th>
+            <th class="sortable has-tip" data-sort="pe_net" data-tip-title="💼 사모펀드 누적 순매수" data-tip="가장 빠른 스마트머니인 사모펀드의 합산 순매수 주수입니다." tabindex="0">사모(주)</th>
+            <th class="sortable has-tip" data-sort="${amountKey}" data-tip-title="💵 수급 유입 추정금액" data-tip="(외인+기관 순매수 주수) × 최근 종가로 환산한 실질 자금 유입 규모입니다." tabindex="0">추정금액</th>
+            <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="📈 수급 발생 후 5일 성과" data-tip="과거 수급 신호 발생 후 5거래일 동안의 주가 실측 수익률입니다." tabindex="0">이후 5일</th>
+            <th class="sortable has-tip" data-sort="ret_20d" data-tip-title="📈 수급 발생 후 20일 성과" data-tip="과거 수급 신호 발생 후 20거래일 동안의 주가 실측 수익률입니다." tabindex="0">이후 20일</th>
           </tr>
         </thead>
         <tbody>${body}</tbody>
@@ -3132,11 +3132,19 @@ async function loadInvestor() {
 
   box.innerHTML = `
     ${asofBanner(asof)}
-    <div class="kpis" style="grid-template-columns:repeat(4,1fr);margin:8px 0 16px">
-      <div class="kpi"><span>KIS Open API</span><b class="${data.configured ? "ok" : "warn"}">${data.configured ? "연결 완료" : "미설정 (토스 대체)"}</b></div>
-      <div class="kpi"><span>저장된 종목</span><b>${cov.tickers ?? 0}개</b></div>
-      <div class="kpi"><span>수집된 수급 데이터</span><b>${cov.rows ?? 0}행</b></div>
-      <div class="kpi"><span>수집 예정 후보</span><b>${data.universe_n ?? 0}종목</b></div>
+    <div class="kpis" style="grid-template-columns:repeat(4,1fr); margin:0 0 16px;">
+      <div class="kpi has-tip" data-tip-title="🏛️ KIS Open API 연동" data-tip="한국투자증권 실거래/모의계좌 OpenAPI를 통한 실시간 수급 적재 상태입니다." tabindex="0">
+        <span>KIS Open API</span><b class="${data.configured ? "ok" : "warn"}" style="color:${data.configured ? '#4ade80' : '#f59e0b'};">${data.configured ? "연결 완료" : "미설정 (토스 대체)"}</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="📁 저장된 수급 종목" data-tip="로컬 데이터베이스에 수급 일별 시계열이 적재된 누적 종목 수입니다." tabindex="0">
+        <span>저장된 종목</span><b style="color:#00e5ff;">${cov.tickers ?? 0}개</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="📊 누적 수급 레코드" data-tip="외인·기관·개인·기금의 일자별 순매수 및 외인지분율 행 수입니다." tabindex="0">
+        <span>수집된 수급 데이터</span><b style="color:#c084fc;">${cov.rows ?? 0}행</b>
+      </div>
+      <div class="kpi has-tip" data-tip-title="🎯 수집 예정 유니버스" data-tip="관심종목 + 거래대금 상위 30종목 중 다음 수집 대기 후보입니다." tabindex="0">
+        <span>수집 예정 후보</span><b style="color:#facc15;">${data.universe_n ?? 0}종목</b>
+      </div>
     </div>
 
     <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px 14px; margin-bottom:14px;">
@@ -3226,12 +3234,12 @@ function renderInvestorEvents(data) {
 
   const head =
     investorEventTab === "turns"
-      ? `<th>종목명</th><th>전환 방향</th><th>이전 연속</th><th>오늘 순매수</th><th>출처</th>`
+      ? `<th class="has-tip" data-tip="종목명 및 6자리 코드입니다.">종목명</th><th class="has-tip" data-tip="외인/기관의 매도세가 매수세로 전환된 방향입니다.">전환 방향</th><th class="has-tip" data-tip="전환 직전까지 지속되었던 연속 매도 일수입니다.">이전 연속</th><th class="has-tip" data-tip="오늘 유입된 순매수 주수입니다.">오늘 순매수</th><th class="has-tip" data-tip="데이터 출처입니다.">출처</th>`
       : investorEventTab === "paired"
-        ? `<th>종목명</th><th>방향</th><th>${escapeHtml(src.pair || "기관")}</th><th>외국인</th><th>출처</th>`
+        ? `<th class="has-tip" data-tip="종목명 및 6자리 코드입니다.">종목명</th><th class="has-tip" data-tip="동반 매수 포지션입니다.">방향</th><th class="has-tip" data-tip="기관 투자자 순매수량입니다.">${escapeHtml(src.pair || "기관")}</th><th class="has-tip" data-tip="외국인 투자자 순매수량입니다.">외국인</th><th class="has-tip" data-tip="데이터 출처입니다.">출처</th>`
         : isCum
-          ? `<th>종목명</th><th>누적 순매수</th><th>일수</th><th>이력 상태</th><th>출처</th>`
-        : `<th>종목명</th><th>방향</th><th>연속 일수</th><th>누적 수급</th><th>이력 상태</th><th>출처</th>`;
+          ? `<th class="has-tip" data-tip="종목명 및 6자리 코드입니다.">종목명</th><th class="has-tip" data-tip="설정 기간 동안 누적된 합산 순매수량입니다.">누적 순매수</th><th class="has-tip" data-tip="수급 일수입니다.">일수</th><th class="has-tip" data-tip="이력 데이터 충분성 여부입니다.">이력 상태</th><th class="has-tip" data-tip="데이터 출처입니다.">출처</th>`
+        : `<th class="has-tip" data-tip="종목명 및 6자리 코드입니다.">종목명</th><th class="has-tip" data-tip="순매수 또는 순매도 포지션입니다.">방향</th><th class="has-tip" data-tip="쉬지 않고 연속으로 순매수한 거래일 수입니다.">연속 일수</th><th class="has-tip" data-tip="연속 매수 기간 동안 합산된 총 순매수량입니다.">누적 수급</th><th class="has-tip" data-tip="이력 상태입니다.">이력 상태</th><th class="has-tip" data-tip="데이터 출처입니다.">출처</th>`;
 
   const body = rows
     .slice(0, 40)
@@ -4004,18 +4012,18 @@ function renderEmpty(data) {
         <thead>
           <tr>
             <th style="width:40px;">#</th>
-            <th class="sortable" data-sort="company" style="min-width:150px;">종목 · 셋업</th>
-            <th class="sortable" data-sort="last">최근가</th>
-            <th class="sortable" data-sort="foreign_holding_rate">외인 지분</th>
-            <th class="sortable" data-sort="foreign_rate_chg">지분 변화</th>
-            <th class="sortable" data-sort="foreign_net">외인(주)</th>
-            <th class="sortable" data-sort="institution_net">기관(주)</th>
-            <th class="sortable" data-sort="individual_net">개인(주)</th>
-            <th class="sortable" data-sort="empty_share">이탈 비중</th>
-            <th class="sortable" data-sort="holding_exit">보유대비</th>
-            <th class="sortable" data-sort="empty_krw">이탈 추정</th>
-            <th class="sortable" data-sort="sell_streak">연속매도</th>
-            <th class="sortable" data-sort="ret_5d">이후 5일</th>
+            <th class="sortable has-tip" data-sort="company" style="min-width:150px;" data-tip-title="종목명 및 셋업" data-tip="종목명 및 포착된 빈집/복귀/개인받음 수급 셋업 태그입니다." tabindex="0">종목 · 셋업</th>
+            <th class="sortable has-tip" data-sort="last" data-tip-title="최근 종가" data-tip="토스증권 실시간 기준 현재가 및 당일 등락률입니다." tabindex="0">최근가</th>
+            <th class="sortable has-tip" data-sort="foreign_holding_rate" data-tip-title="👽 외국인 보유 지분율" data-tip="토스증권 기준 현재 외인 지분율입니다. 낮을수록 수급 공백(빈집)입니다." tabindex="0">외인 지분</th>
+            <th class="sortable has-tip" data-sort="foreign_rate_chg" data-tip-title="📊 외인 지분율 증감" data-tip="최근 5거래일 동안 외국인 지분율의 %p 변동치입니다." tabindex="0">지분 변화</th>
+            <th class="sortable has-tip" data-sort="foreign_net" data-tip-title="👽 외국인 순매도 주수" data-tip="최근 기간 동안 외국인의 순매도 수량입니다." tabindex="0">외인(주)</th>
+            <th class="sortable has-tip" data-sort="institution_net" data-tip-title="🏛️ 기관 순매도 주수" data-tip="최근 기간 동안 기관의 순매도 수량입니다." tabindex="0">기관(주)</th>
+            <th class="sortable has-tip" data-sort="individual_net" data-tip-title="🛒 개인 순매수(받음) 주수" data-tip="외인/기관이 던진 물량을 개인이 받아낸 수량입니다." tabindex="0">개인(주)</th>
+            <th class="sortable has-tip" data-sort="empty_share" data-tip-title="🚪 수급 이탈 비중" data-tip="전체 거래량 대비 외인·기관 순매도 물량이 차지하는 비중입니다." tabindex="0">이탈 비중</th>
+            <th class="sortable has-tip" data-sort="holding_exit" data-tip-title="📉 기존 보유고 대비 이탈률" data-tip="외국인이 기존에 보유하고 있던 물량 대비 털어낸 비율입니다." tabindex="0">보유대비</th>
+            <th class="sortable has-tip" data-sort="empty_krw" data-tip-title="💵 총 이탈 추정금액" data-tip="(외인+기관 순매도) × 종가로 계산한 이탈 자금 규모입니다." tabindex="0">이탈 추정</th>
+            <th class="sortable has-tip" data-sort="sell_streak" data-tip-title="⏳ 연속 순매도 일수" data-tip="외인·기관이 연속으로 매도한 거래일 수입니다." tabindex="0">연속매도</th>
+            <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="📈 빈집 발생 후 5일 성과" data-tip="수급 공백 발생 후 5거래일 동안의 실제 주가 성과입니다." tabindex="0">이후 5일</th>
           </tr>
         </thead>
         <tbody>${body || `<tr><td colspan="13" class="hint" style="text-align:center; padding:30px;">조건에 맞는 종목이 없습니다. 유형을 바꾸거나 다시 스캔해 보세요.</td></tr>`}</tbody>
@@ -4303,15 +4311,15 @@ function renderTrade(data) {
         <thead>
           <tr>
             <th style="width:40px;">#</th>
-            <th class="sortable" data-sort="company" style="min-width:160px;">종목 · 셋업</th>
-            <th class="sortable" data-sort="last">최근가</th>
-            <th class="sortable has-tip" data-sort="stoch_k" data-tip="${escapeHtml("스토캐스틱 %K입니다. 최근 5일 고저 대비 종가 위치(0~100)를 3일 평활합니다. 20 아래는 과매도, 80 위는 과매수.")}" tabindex="0">스토 %K (%D)</th>
-            <th class="has-tip" data-tip="${escapeHtml("KRX 일봉 스토캐스틱 5,3,3과 일목 9-26-52 기술적 분석 태그입니다.")}" tabindex="0">기술적 신호</th>
-            <th class="sortable" data-sort="foreign_net">외인(주)</th>
-            <th class="sortable" data-sort="institution_net">기관(주)</th>
-            <th class="sortable" data-sort="pe_net">사모(주)</th>
-            <th class="sortable" data-sort="setup_notional">추정금액</th>
-            <th class="sortable" data-sort="ret_5d">이후 5일</th>
+            <th class="sortable has-tip" data-sort="company" style="min-width:160px;" data-tip-title="종목명 및 수급 셋업" data-tip="종목명 및 포착된 수급/퀀트 셋업 태그입니다." tabindex="0">종목 · 셋업</th>
+            <th class="sortable has-tip" data-sort="last" data-tip-title="토스 실시간 시세" data-tip="토스증권 실시간 기준 현재가 및 당일 등락률입니다." tabindex="0">최근가</th>
+            <th class="sortable has-tip" data-sort="stoch_k" data-tip-title="📈 KRX 일봉 스토캐스틱 (5,3,3)" data-tip="20 이하는 단기 바닥 과매도(반등 기회), 80 이상은 과매수 과열권입니다." tabindex="0">스토 %K (%D)</th>
+            <th class="has-tip" data-tip-title="⚡ 기술적 보조지표 분석" data-tip="수급+기술 Confluence, 일목 구름대 상회, 스토 골든크로스 등 복합 타점입니다." tabindex="0">기술적 신호</th>
+            <th class="sortable has-tip" data-sort="foreign_net" data-tip-title="👽 외국인 순매수" data-tip="외국인 투자자 합산 순매수 주수입니다." tabindex="0">외인(주)</th>
+            <th class="sortable has-tip" data-sort="institution_net" data-tip-title="🏛️ 기관 순매수" data-tip="기관 투자자 합산 순매수 주수입니다." tabindex="0">기관(주)</th>
+            <th class="sortable has-tip" data-sort="pe_net" data-tip-title="💼 사모펀드 순매수" data-tip="사모펀드 합산 순매수 주수 및 연속 매집 일수입니다." tabindex="0">사모(주)</th>
+            <th class="sortable has-tip" data-sort="setup_notional" data-tip-title="💵 수급 유입 추정금액" data-tip="유입된 수급의 원화 환산 추정 규모입니다." tabindex="0">추정금액</th>
+            <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="📈 신호 발생 후 5일 성과" data-tip="신호 발생 후 5거래일 실제 주가 성과입니다." tabindex="0">이후 5일</th>
           </tr>
         </thead>
         <tbody>${body || `<tr><td colspan="10" class="hint" style="text-align:center; padding:30px;">조건에 맞는 종목이 없습니다. 퀀트 제외를 끄거나 셋업·기술을 바꿔 보세요.</td></tr>`}</tbody>
@@ -6458,17 +6466,24 @@ function showFloatTip(el) {
 function hideFloatTip() {
   if (floatTipEl) floatTipEl.classList.add("hidden");
 }
-document.addEventListener("pointerover", (e) => {
-  const el = e.target.closest("[data-tip]");
-  if (el) showFloatTip(el);
-});
-document.addEventListener("pointerout", (e) => {
-  const el = e.target.closest("[data-tip]");
-  if (!el) return;
-  const next = e.relatedTarget;
-  if (next && el.contains(next)) return;
-  hideFloatTip();
-});
+function attachTipListeners() {
+  const handleOver = (e) => {
+    const el = e.target.closest("[data-tip]");
+    if (el) showFloatTip(el);
+  };
+  const handleOut = (e) => {
+    const el = e.target.closest("[data-tip]");
+    if (!el) return;
+    const next = e.relatedTarget;
+    if (next && el.contains(next)) return;
+    hideFloatTip();
+  };
+  document.addEventListener("pointerover", handleOver, { passive: true });
+  document.addEventListener("pointerout", handleOut, { passive: true });
+  document.addEventListener("mouseover", handleOver, { passive: true });
+  document.addEventListener("mouseout", handleOut, { passive: true });
+}
+attachTipListeners();
 document.addEventListener("focusin", (e) => {
   const el = e.target.closest("[data-tip]");
   if (el) showFloatTip(el);

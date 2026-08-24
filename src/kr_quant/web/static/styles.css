@@ -393,7 +393,7 @@ tr.clickable { cursor: pointer; }
 .nav-btn[data-tip] { cursor: pointer; }
 .float-tip {
   position: fixed;
-  z-index: 1000;
+  z-index: 999999 !important;
   max-width: 380px;
   min-width: 240px;
   padding: 12px 14px;
@@ -4580,4 +4580,11 @@ body.modal-open { overflow: hidden; }
   color: #38bdf8;
   font-weight: 800;
   box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+}
+
+th.has-tip, .filter-tag.has-tip, .chip.has-tip, .kpi.has-tip, span.has-tip, label.has-tip {
+  cursor: help !important;
+}
+th.has-tip:hover, .filter-tag.has-tip:hover {
+  color: #38bdf8 !important;
 }

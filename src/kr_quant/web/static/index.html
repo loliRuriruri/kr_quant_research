@@ -359,7 +359,7 @@
 
             <!-- Filter Controls Group -->
             <div class="trade-filter-group">
-              <label class="trade-filter-label">
+              <label class="trade-filter-label has-tip" data-tip-title="📅 수급 누적 기간" data-tip="최근 5일, 10일, 20거래일 동안의 투자자별 순매수 주수를 합산하여 분석합니다." tabindex="0">
                 <span class="filter-tag">누적 기간</span>
                 <select id="flow-days" class="trade-select">
                   <option value="5" selected>📅 최근 5거래일</option>
@@ -368,7 +368,7 @@
                 </select>
               </label>
 
-              <label class="trade-filter-label">
+              <label class="trade-filter-label has-tip" data-tip-title="💰 최소 수급 유입 금액" data-tip="스마트머니 유의미성을 확보하기 위해 설정하는 최소 순매수 추정금액 필터입니다." tabindex="0">
                 <span class="filter-tag">최소 추정금액</span>
                 <select id="flow-min-krw" class="trade-select">
                   <option value="0" selected>전체 금액</option>
@@ -378,7 +378,7 @@
                 </select>
               </label>
 
-              <button type="button" class="trade-refresh-btn" id="flow-refresh">🔄 수급 다시 스캔</button>
+              <button type="button" class="trade-refresh-btn has-tip" id="flow-refresh" data-tip-title="🔄 수급 데이터 동기화" data-tip="토스증권 투자자별 매매동향 최신 데이터를 서버에서 즉시 다시 수신하여 갱신합니다." tabindex="0">🔄 수급 다시 스캔</button>
             </div>
           </div>
         </div>
@@ -411,7 +411,7 @@
 
             <!-- Filter Controls Group -->
             <div class="trade-filter-group">
-              <label class="trade-filter-label">
+              <label class="trade-filter-label has-tip" data-tip-title="🚪 빈집 수급 분류 유형" data-tip="외인·기관 동시 이탈(쌍매도), 저지분 바닥권, 수급 재유입(복귀 조짐) 등 분석 모드를 선택합니다." tabindex="0">
                 <span class="filter-tag">수급 유형</span>
                 <select id="empty-mode" class="trade-select">
                   <option value="empty" selected>🚪 쌍매도 빈집</option>
@@ -422,7 +422,7 @@
                 </select>
               </label>
 
-              <label class="trade-filter-label">
+              <label class="trade-filter-label has-tip" data-tip-title="📉 외국인 보유 지분율 상한" data-tip="외국인 지분이 일정 수준 이하로 떨어져 추가 매도 압력이 사실상 소멸된 바닥권 종목을 스캔합니다." tabindex="0">
                 <span class="filter-tag">외인 지분 상한</span>
                 <select id="empty-rate" class="trade-select">
                   <option value="" selected>제한 없음</option>
@@ -432,7 +432,7 @@
                 </select>
               </label>
 
-              <label class="trade-filter-label">
+              <label class="trade-filter-label has-tip" data-tip-title="💰 최소 이탈 금액" data-tip="외인과 기관이 던진 최소 매도 추정금액 필터입니다. 유의미한 수급 공백 종목만 엄선합니다." tabindex="0">
                 <span class="filter-tag">최소 이탈금액</span>
                 <select id="empty-min-krw" class="trade-select">
                   <option value="0">전체 금액</option>
@@ -442,7 +442,7 @@
                 </select>
               </label>
 
-              <button type="button" class="trade-refresh-btn" id="empty-refresh">🔄 빈집 다시 스캔</button>
+              <button type="button" class="trade-refresh-btn has-tip" id="empty-refresh" data-tip-title="🔄 빈집 데이터 갱신" data-tip="외인·기관 순매도 및 지분율 변화 최신 데이터를 다시 스캔합니다." tabindex="0">🔄 빈집 다시 스캔</button>
             </div>
           </div>
         </div>
@@ -475,7 +475,7 @@
 
             <!-- Filter Controls Group -->
             <div class="trade-filter-group">
-              <label class="trade-filter-label">
+              <label class="trade-filter-label has-tip" data-tip-title="⚡ 수급 셋업 선택" data-tip="쌍끌이, 사모매집, 빈집복귀, 기타법인 등 추적할 스마트머니 셋업을 지정합니다." tabindex="0">
                 <span class="filter-tag">수급 셋업</span>
                 <select id="trade-mode" class="trade-select">
                   <option value="setup" selected>전체 셋업</option>
@@ -490,7 +490,7 @@
                 </select>
               </label>
 
-              <label class="trade-filter-label">
+              <label class="trade-filter-label has-tip" data-tip-title="💰 최소 수급 금액" data-tip="일정 규모 이상의 메이저 자금이 유입된 종목만 필터링합니다." tabindex="0">
                 <span class="filter-tag">최소 추정금액</span>
                 <select id="trade-min-krw" class="trade-select">
                   <option value="0" selected>전체 금액</option>
@@ -500,7 +500,7 @@
                 </select>
               </label>
 
-              <label class="trade-filter-label">
+              <label class="trade-filter-label has-tip" data-tip-title="🎯 보조지표 타점 필터" data-tip="스토캐스틱 과매도(%K&lt;20), 골든크로스, 일목균형표 구름대 돌파 등 기술적 지표와 결합합니다." tabindex="0">
                 <span class="filter-tag">기술적 타점</span>
                 <select id="trade-ta" class="trade-select">
                   <option value="" selected>기술적 전체</option>
@@ -515,12 +515,12 @@
                 </select>
               </label>
 
-              <label class="trade-chk-label">
+              <label class="trade-chk-label has-tip" data-tip-title="🛡️ 퀀트 제외 모드" data-tip="메인 재무 퀀트 상위 100종목 외에 시장에서 소외되었으나 수급이 들어오는 숨은 알짜주를 발굴합니다." tabindex="0">
                 <input type="checkbox" id="trade-ex-quant" checked />
                 <span>퀀트 TOP100 제외</span>
               </label>
 
-              <button type="button" class="trade-refresh-btn" id="trade-refresh">🔄 다시 스캔</button>
+              <button type="button" class="trade-refresh-btn has-tip" id="trade-refresh" data-tip-title="🔄 트레이딩 랩 스캔" data-tip="최신 수급 및 일봉 기술적 지표를 재계산하여 갱신합니다." tabindex="0">🔄 다시 스캔</button>
             </div>
           </div>
         </div>
