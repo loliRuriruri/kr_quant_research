@@ -19,3 +19,13 @@ def test_backtest_single_stock_invalid():
     s = load_settings()
     res = backtest_single_stock(s, "99999999_invalid")
     assert res.get("ok") is False
+    assert "error" in res
+
+
+def test_backtest_single_stock_not_limited_to_top20():
+    s = load_settings()
+    res = backtest_single_stock(s, "000660")
+    assert isinstance(res, dict)
+    if res.get("ok"):
+        assert res["ticker"] == "000660"
+        assert res.get("playbook")

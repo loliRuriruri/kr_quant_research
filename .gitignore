@@ -12,3 +12,7 @@ data/watchlist.json
 db/
 logs/
 *.egg-info/
+tools/*.exe
+logs/tunnel.log
+dist-public/
+node_modules/

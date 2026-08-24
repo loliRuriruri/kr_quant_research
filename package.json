@@ -1,0 +1,9 @@
+{
+  "name": "korea-quant-research-public",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:public": "node scripts/build-public.mjs",
+    "deploy:public": "node scripts/build-public.mjs && npx --yes wrangler pages deploy dist-public --project-name korea-quant-research --branch main"
+  }
+}

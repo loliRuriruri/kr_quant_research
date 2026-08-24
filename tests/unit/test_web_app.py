@@ -27,9 +27,9 @@ def test_index_and_status():
     assert home.status_code == 200
     assert "KR Quant" in home.text
     assert "Research" in home.text
-    assert "styles.css?v=2.17.8" in home.text
-    assert "app.js?v=2.17.8" in home.text
-    assert "v2.17.8 Engine" in home.text
+    assert "styles.css?v=2.17.11" in home.text
+    assert "app.js?v=2.17.11" in home.text
+    assert "v2.17.11 Engine" in home.text
     assert "disc-modal-deep" in home.text
     assert "sunzi-q" in home.text
     assert "명부 전체" in home.text
@@ -43,6 +43,10 @@ def test_index_and_status():
     assert "function openHeatmapPlaybook" in js
     assert "function renderDiscDeepPlaybook" in js
     assert "function computeTrackStats" in js
+    assert "renderPlaybookHtml(data.playbook)" in js
+    assert "function applyPublicShareMode" in js
+    assert "function bindStockSearchers" in js
+    assert "function openStrategyBacktest" in js
     assert "function bindPreEntryClicks" in js
     assert "function renderPbMonthHeat" in js
     assert "function playbookRowFromScan" in js

@@ -1,10 +1,12 @@
-# 🚀 KR Quant Research - 프로젝트 인수인계 & 그록(Grok) 연계 가이드 (`v2.30.0-stable`)
+# 🚀 KR Quant Research - 프로젝트 인수인계 & 그록(Grok) 연계 가이드 (`v2.31.0-stable`)
 
 ## 1. 📌 현재 프로젝트 상태 요약
 * **저장소 (GitHub)**: `https://github.com/loliRuriruri/kr_quant_research.git`
-* **최신 릴리스 태그**: **`v2.30.0-stable`** (Commit will be created by this save)
-* **테스트 상태**: 166개 단위 테스트 **100% 정상 통과 (`pytest`)**
-* **실행 환경**: Python 3.12 (Virtualenv: `.venv`), FastAPI Backend, Vanilla Modern JS (ES6+) Frontend
+* **최신 릴리스 태그**: **`v2.31.0-stable`**
+* **공개 웹**: `https://korea-quant-research.pages.dev/` (Cloudflare Pages 읽기 전용 스냅샷. PC 꺼져 있어도 접속)
+* **로컬 대시보드**: `Start-KR-Quant.bat` → `http://127.0.0.1:8790` (수집·백테스트·API 설정)
+* **공개 웹 갱신**: `Start-KR-Quant-Public.bat` (로컬 계산본만 업로드, 키 미포함)
+* **실행 환경**: Python 3.12 (Virtualenv: `.venv`), FastAPI Backend, Vanilla JS, Cloudflare Pages static snapshot
 
 ---
 
@@ -31,12 +33,13 @@
 안녕하세요 Grok! 우리는 'kr_quant_research' (한국 주식 정량 계절성 & 은하퀀트전설 시스템) 프로젝트를 진행 중입니다.
 
 [현재 깃 저장소 상태]
-• GitHub Tag: v2.30.0-stable (Commit: <to‑be‑filled>)
-• 테스트: 166개 단위 테스트 100% 정상 통과 완료
+• GitHub Tag: v2.31.0-stable
+• 공개 웹: https://korea-quant-research.pages.dev/ (스냅샷, PC 오프라인 유지)
+• 로컬: Start-KR-Quant.bat / 공개 갱신: Start-KR-Quant-Public.bat
 • 핵심 구현 기능:
-  1) UI/UX 전면 개선 (flow, investor, empty, trade, 툴팁, 기술 배지)
-  2) 호버 오버레이 툴팁 복구 및 기술 신호 팝업 정상화
-  3) 화면 폭 축소 시 UI 클리핑 완화
+  1) Cloudflare Pages 읽기 전용 공개 스냅샷 (키·설정 UI 없음)
+  2) 로컬 live/screen 후 공개 웹 자동/수동 배포
+  3) 종목명 검색 자동완성, 전략 백테스트 확인창·로딩
   4) 기존 핵심 퀀트 로직 유지 (대시보드·선취매·전략 엔진)
 
 [주요 소스코드 경로]

@@ -28,3 +28,19 @@ def test_stocks_search_by_chosung():
     data = res.json()
     assert "items" in data
     assert any("삼성" in it["company"] for it in data["items"])
+
+
+def test_stocks_search_ranks_full_name_first():
+    res = client.get("/api/stocks/search?q=삼성전자")
+    assert res.status_code == 200
+    items = res.json()["items"]
+    assert items
+    assert items[0]["ticker"] == "005930"
+    assert "삼성전자" in items[0]["company"]
+
+
+def test_stocks_search_partial_korean_name():
+    res = client.get("/api/stocks/search?q=하이닉스")
+    assert res.status_code == 200
+    tickers = [it["ticker"] for it in res.json()["items"]]
+    assert "000660" in tickers

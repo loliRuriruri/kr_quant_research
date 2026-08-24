@@ -69,6 +69,7 @@ class JobRunner:
                 self.state["result"] = result
                 self.state["finished_at"] = datetime.now(timezone.utc).isoformat()
             self.logs.append(f"작업 완료: {kind}")
+            _maybe_publish(kind)
             _notify_job(kind, result=result)
         except Exception as exc:  # noqa: BLE001
             with self._lock:
@@ -197,6 +198,23 @@ def job_krx_history(as_of: str = "auto", lookback_days: int = HISTORY_DAYS) -> d
         "used_in_quant": False,
         "note": f"KRX 일봉을 최대 {days}거래일까지 채웠습니다. 전략 랩은 이력이 늘어난 뒤 다시 돌리세요.",
     }
+
+
+def _maybe_publish(kind: str) -> None:
+    try:
+        from kr_quant.web.publish import maybe_publish_after_job
+
+        RUNNER.logs.append("공개 스냅샷을 Cloudflare Pages에 올리는 중… (API 키는 로컬에만 있습니다)")
+        out = maybe_publish_after_job(kind)
+        if out is None:
+            RUNNER.logs.append("이 작업은 공개 사이트 자동 배포 대상이 아닙니다.")
+            return
+        if out.get("ok"):
+            RUNNER.logs.append(f"공개 사이트 갱신 완료: {out.get('url')}")
+        else:
+            RUNNER.logs.append(f"공개 사이트 배포 실패: {out.get('error')}")
+    except Exception as exc:  # noqa: BLE001
+        RUNNER.logs.append(f"공개 사이트 배포 생략: {exc}")
 
 
 def _notify_job(kind: str, result: dict[str, Any] | None = None, error: str | None = None) -> None:

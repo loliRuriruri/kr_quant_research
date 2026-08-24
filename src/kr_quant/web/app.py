@@ -31,8 +31,8 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -42,6 +42,22 @@ from kr_quant.web.jobs import RUNNER, job_demo, job_krx_history, job_krx_prices,
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+PUBLIC_BLOCKED = {
+    ("GET", "/api/settings/raw"),
+    ("PUT", "/api/settings"),
+    ("POST", "/api/settings/test"),
+    ("POST", "/api/jobs"),
+    ("POST", "/api/scheduler"),
+    ("POST", "/api/llm/grok/connect"),
+    ("GET", "/api/telegram/chats"),
+    ("POST", "/api/telegram/test"),
+}
+
+
+def public_share_mode() -> bool:
+    return os.environ.get("KR_QUANT_PUBLIC", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _grok_auth_public() -> dict[str, Any]:
     from kr_quant.research.grok_auth import session_status
 
@@ -50,6 +66,15 @@ def _grok_auth_public() -> dict[str, Any]:
 
 app = FastAPI(title="KR Quant Research", version="3.0.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.middleware("http")
+async def public_share_guard(request: Request, call_next):
+    if public_share_mode():
+        path = request.url.path.rstrip("/") or "/"
+        if (request.method, path) in PUBLIC_BLOCKED:
+            return JSONResponse({"detail": "공개 공유 모드에서는 이 기능을 사용할 수 없습니다."}, status_code=403)
+    return await call_next(request)
 
 
 class SettingsIn(BaseModel):
@@ -278,7 +303,8 @@ def api_status() -> dict[str, Any]:
         "llm_provider": s.llm_provider,
         "llm_model": resolve_status_model(s),
         "llm_label": resolve_status_label(s),
-        "keys": {
+        "public_mode": public_share_mode(),
+        "keys": {} if public_share_mode() else {
             "opendart": mask_secret(s.opendart_api_key),
             "krx": mask_secret(s.krx_api_key),
             "xai": mask_secret(s.xai_api_key),
@@ -292,6 +318,8 @@ def api_status() -> dict[str, Any]:
 
 @app.get("/api/settings")
 def api_settings_get() -> dict[str, Any]:
+    if public_share_mode():
+        return {"public_mode": True, "locked": True}
     from kr_quant.research.providers import PROVIDERS, resolve_provider
 
     s = load_settings()
@@ -1172,72 +1200,125 @@ def _to_chosung(text: str) -> str:
     return "".join(res)
 
 
+def _norm_company(name: str) -> str:
+    text = str(name or "")
+    for tok in ("주식회사", "(주)", "㈜", " " , "\u00a0"):
+        text = text.replace(tok, "")
+    return text.casefold()
+
+
+def _stock_match_score(query: str, ticker: str, company: str) -> int:
+    q = str(query or "").strip()
+    if not q:
+        return 0
+    digits = "".join(ch for ch in q if ch.isdigit())
+    if digits and (q.isdigit() or len(digits) >= 5):
+        code = digits.zfill(6)
+        if ticker == code:
+            return 100
+        if ticker.startswith(digits) or digits in ticker:
+            return 80
+    nq = _norm_company(q)
+    nc = _norm_company(company)
+    q_compact = q.replace(" ", "")
+    if ticker and ticker in q_compact:
+        return 88
+    if nq and nq == nc:
+        return 95
+    if nq and nc.startswith(nq):
+        return 90
+    if nq and nq in nc:
+        return 72
+    if q.casefold() in company.casefold():
+        return 68
+    chosung = _to_chosung(company)
+    if q and all(ch in _CHOSUNG_LIST for ch in q) and q in chosung:
+        return 55
+    return 0
+
+
 @app.get("/api/stocks/search")
 def api_stocks_search(q: str = "", limit: int = 15) -> dict[str, Any]:
     query = str(q or "").strip()
     if not query:
         return {"items": []}
-
+    cap = max(1, min(int(limit or 15), 30))
     s = load_settings()
-    # Try loading latest_all_stocks.parquet
-    df = None
+
+    universe: dict[str, dict[str, Any]] = {}
+    try:
+        from kr_quant.strategy.seasonality import ticker_meta_map
+
+        for code, info in (ticker_meta_map(s) or {}).items():
+            ticker = str(code or "").zfill(6)
+            if not ticker:
+                continue
+            universe[ticker] = {
+                "ticker": ticker,
+                "company": str((info or {}).get("company") or ticker),
+                "market": str((info or {}).get("market") or "KOSPI"),
+                "sector": "",
+                "quant_score": None,
+                "quant_rank": None,
+            }
+    except Exception:
+        pass
+
     for p in (s.output_dir / "latest_all_stocks.parquet", s.output_dir / "all_stocks.parquet"):
-        if p.exists():
-            try:
-                df = pd.read_parquet(p)
-                break
-            except Exception:
-                pass
-
-    if df is None or df.empty:
-        from kr_quant.strategy.run import _prices
-        df = _prices(s)
-
-    if df is None or df.empty:
-        return {"items": []}
-
-    q_lower = query.lower()
-    q_is_digit = query.isdigit()
-    q_is_chosung = all(ch in _CHOSUNG_LIST for ch in query)
-
-    items: list[dict[str, Any]] = []
-    seen: set[str] = set()
-
-    for rec in df.to_dict("records"):
-        ticker = str(rec.get("ticker") or "").zfill(6)
-        if not ticker or ticker in seen:
+        if not p.exists():
             continue
-        company = str(rec.get("company") or "")
-        company_lower = company.lower()
-
-        matched = False
-        if q_is_digit and query in ticker:
-            matched = True
-        elif not q_is_digit:
-            if query in company or q_lower in company_lower:
-                matched = True
-            elif q_is_chosung and query in _to_chosung(company):
-                matched = True
-
-        if matched:
-            seen.add(ticker)
+        try:
+            df = pd.read_parquet(p)
+        except Exception:
+            continue
+        if df is None or df.empty or "ticker" not in df.columns:
+            continue
+        if "company" in df.columns:
+            df = df.drop_duplicates(subset=["ticker"], keep="last")
+        for rec in df.to_dict("records"):
+            ticker = str(rec.get("ticker") or "").zfill(6)
+            if not ticker:
+                continue
+            row = universe.get(ticker) or {"ticker": ticker, "company": ticker, "market": "KOSPI", "sector": "", "quant_score": None, "quant_rank": None}
+            company = str(rec.get("company") or row.get("company") or ticker)
+            row["company"] = company
+            row["market"] = str(rec.get("market") or row.get("market") or "KOSPI")
+            row["sector"] = str(rec.get("sector") or row.get("sector") or "")
             r_score = rec.get("quant_score")
             r_rank = rec.get("quant_rank")
-            score_num = round(float(r_score), 1) if pd.notna(r_score) and r_score else None
-            rank_num = int(r_rank) if pd.notna(r_rank) and r_rank else None
+            if pd.notna(r_score) and r_score:
+                row["quant_score"] = round(float(r_score), 1)
+            if pd.notna(r_rank) and r_rank:
+                row["quant_rank"] = int(r_rank)
+            universe[ticker] = row
+        break
 
-            items.append({
-                "ticker": ticker,
-                "company": company or ticker,
-                "market": str(rec.get("market") or "KOSPI"),
-                "sector": str(rec.get("sector") or ""),
-                "quant_score": score_num,
-                "quant_rank": rank_num,
-            })
-            if len(items) >= limit:
-                break
+    if not universe:
+        from kr_quant.strategy.run import _prices
 
-    return {"items": items}
+        prices = _prices(s)
+        if prices is not None and not prices.empty and "ticker" in prices.columns:
+            cols = [c for c in ("ticker", "company", "market") if c in prices.columns]
+            uniq = prices[cols].drop_duplicates(subset=["ticker"], keep="last")
+            for rec in uniq.to_dict("records"):
+                ticker = str(rec.get("ticker") or "").zfill(6)
+                universe[ticker] = {
+                    "ticker": ticker,
+                    "company": str(rec.get("company") or ticker),
+                    "market": str(rec.get("market") or "KOSPI"),
+                    "sector": "",
+                    "quant_score": None,
+                    "quant_rank": None,
+                }
+
+    ranked: list[tuple[int, dict[str, Any]]] = []
+    for row in universe.values():
+        score = _stock_match_score(query, row["ticker"], row["company"])
+        if score <= 0:
+            continue
+        ranked.append((score, row))
+    ranked.sort(key=lambda x: (-x[0], x[1].get("quant_rank") or 10_000, x[1]["company"]))
+    return {"items": [row for _, row in ranked[:cap]]}
 
 
 @app.get("/api/stocks/all")
@@ -1474,14 +1555,20 @@ class StrategyTickerIn(BaseModel):
 def api_strategy_ticker_get(ticker: str) -> dict[str, Any]:
     from kr_quant.strategy.run import backtest_single_stock
 
-    return backtest_single_stock(load_settings(), ticker)
+    try:
+        return backtest_single_stock(load_settings(), ticker)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"백테스트 실행 중 오류: {exc}"}
 
 
 @app.post("/api/strategy/ticker")
 def api_strategy_ticker_post(body: StrategyTickerIn) -> dict[str, Any]:
     from kr_quant.strategy.run import backtest_single_stock
 
-    return backtest_single_stock(load_settings(), body.ticker)
+    try:
+        return backtest_single_stock(load_settings(), body.ticker)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"백테스트 실행 중 오류: {exc}"}
 
 @app.post("/api/strategy")
 def api_strategy_post(body: StrategyIn | None = None) -> dict[str, Any]:
@@ -1975,14 +2062,26 @@ def serve(host: str = "127.0.0.1", port: int = 8790, open_browser: bool = True) 
     print("     (아래에 아무 것도 안 나오는 게 정상입니다 — 서버가 요청을 대기 중)")
     print("")
 
-    uvicorn.run(
-        "kr_quant.web.app:app",
-        host=host,
-        port=chosen,
-        reload=False,
-        log_level="warning",
-        access_log=False,
-    )
+    try:
+        uvicorn.run(
+            "kr_quant.web.app:app",
+            host=host,
+            port=chosen,
+            reload=False,
+            log_level="warning",
+            access_log=False,
+        )
+    except OSError as exc:
+        busy = getattr(exc, "winerror", None) == 10048 or getattr(exc, "errno", None) in {48, 98, 10048} or "10048" in str(exc)
+        if busy:
+            _banner([
+                "Port is already in use. Opening the existing dashboard.",
+                f"Open {url}",
+            ])
+            if open_browser:
+                webbrowser.open(url)
+            return
+        raise
 
 
 if __name__ == "__main__":

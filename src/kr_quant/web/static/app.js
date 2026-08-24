@@ -32,11 +32,7 @@ async function fetchOnDemandFlow(query, boxTarget, scope = "trade") {
       });
       box.querySelectorAll("[data-backtest-stock]").forEach((b) => {
         b.addEventListener("click", () => {
-          const code = b.dataset.backtestStock;
-          switchView("strategy");
-          const inp = $("#custom-strategy-q");
-          if (inp) inp.value = code;
-          runCustomBacktest(code);
+          openStrategyBacktest(b.dataset.backtestStock, b.dataset.company || b.dataset.backtestStock);
         });
       });
       box.querySelectorAll("[data-watch-stock]").forEach((b) => {
@@ -115,11 +111,7 @@ async function triggerFlowDiag(ticker, company, scope = "empty") {
     });
     box.querySelectorAll("[data-backtest-stock]").forEach((b) => {
       b.addEventListener("click", () => {
-        const code = b.dataset.backtestStock;
-        switchView("strategy");
-        const inp = $("#custom-strategy-q");
-        if (inp) inp.value = code;
-        runCustomBacktest(code);
+        openStrategyBacktest(b.dataset.backtestStock, b.dataset.company || b.dataset.backtestStock);
       });
     });
     box.querySelectorAll("[data-watch-stock]").forEach((b) => {
@@ -194,7 +186,7 @@ function renderFlowDiagCard(row, query) {
 
       <div style="display:flex; gap:8px;">
         <button class="primary" data-open="${code}">🔍 심층 리서치</button>
-        <button data-backtest-stock="${code}" style="background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4);">🧪 전략 백테스트</button>
+        <button data-backtest-stock="${code}" data-company="${escapeHtml(company)}" style="background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4);">🧪 전략 백테스트</button>
         <button class="btn-ai-mini" data-ai-trigger="${code}" data-ai-company="${escapeHtml(company)}" style="padding:0 14px; height:32px; font-size:12px;">🤖 AI 리포트 발간</button>
         <button class="ghost" data-watch-stock="${code}" data-company="${escapeHtml(company)}">⭐ 관심종목 추가</button>
       </div>
@@ -238,6 +230,8 @@ async function getStockUniverse() {
 
 function setupStockAutocomplete(inputEl, menuEl, onSelect) {
   if (!inputEl || !menuEl) return;
+  if (inputEl.dataset.acBound === "1") return;
+  inputEl.dataset.acBound = "1";
   let activeIndex = -1;
   let currentItems = [];
   let debounceTimer = null;
@@ -359,25 +353,106 @@ function aiReportBtn(ticker, company) {
 }
 
 
-async function runCustomBacktest(query) {
-  const q = String(query || $("#custom-strategy-q")?.value || "").trim();
-  if (!q) {
+let backtestBusy = false;
+
+function ensureBacktestOverlay() {
+  let el = $("#backtest-overlay");
+  if (el) return el;
+  el = document.createElement("div");
+  el.id = "backtest-overlay";
+  el.className = "backtest-overlay hidden";
+  el.innerHTML = `
+    <div class="backtest-overlay-card">
+      <div class="skeleton-spinner"></div>
+      <b id="backtest-overlay-title">전략 백테스트 실행 중</b>
+      <p id="backtest-overlay-sub" class="hint">과거 3년 일봉으로 4대 전략을 최적화합니다. 창을 닫지 마세요.</p>
+    </div>`;
+  document.body.appendChild(el);
+  return el;
+}
+
+function showBacktestOverlay(title, sub) {
+  const el = ensureBacktestOverlay();
+  const t = $("#backtest-overlay-title");
+  const s = $("#backtest-overlay-sub");
+  if (t) t.textContent = title || "전략 백테스트 실행 중";
+  if (s && sub) s.textContent = sub;
+  el.classList.remove("hidden");
+  $("#global-progress-bar")?.classList.remove("hidden");
+}
+
+function hideBacktestOverlay() {
+  $("#backtest-overlay")?.classList.add("hidden");
+  $("#global-progress-bar")?.classList.add("hidden");
+}
+
+async function resolveStockQuery(query) {
+  const raw = String(query || "").trim();
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (/^\d{5,6}$/.test(digits)) return digits.padStart(6, "0");
+  try {
+    const res = await api(`/api/stocks/search?q=${encodeURIComponent(raw)}&limit=8`);
+    const items = res.items || [];
+    if (!items.length) return raw;
+    const compact = raw.replace(/\s+/g, "");
+    const exact = items.find((it) => it.ticker === padTicker(raw) || it.company === raw || `${it.company}${it.ticker}` === compact)
+      || items.find((it) => raw.includes(it.ticker))
+      || items[0];
+    return exact.ticker;
+  } catch {
+    return raw;
+  }
+}
+
+async function openStrategyBacktest(ticker, company) {
+  const code = padTicker(ticker);
+  const name = company || code;
+  if (!code || code === "000000") {
+    alert("종목 코드를 확인할 수 없습니다.");
+    return;
+  }
+  if (backtestBusy) {
+    showToast("이미 백테스트가 실행 중입니다.", "info");
+    return;
+  }
+  const ok = confirm(`${name} (${code}) 4대 전략 백테스트를 실행할까요?\n과거 3년 일봉 최적화라 수십 초 걸릴 수 있습니다.`);
+  if (!ok) return;
+  switchView("strategy");
+  const inp = $("#custom-strategy-q");
+  if (inp) inp.value = `${name} ${code}`.trim();
+  showToast(`${name} 백테스트를 시작합니다.`, "info", 2500);
+  await runCustomBacktest(code, { skipResolve: true, label: `${name} (${code})` });
+}
+
+async function runCustomBacktest(query, opts = {}) {
+  const raw = String(query || $("#custom-strategy-q")?.value || "").trim();
+  if (!raw) {
     alert("분석할 종목명 또는 6자리 코드를 입력하세요.");
     return;
   }
   const resBox = $("#custom-strategy-result");
   if (!resBox) return;
+  if (backtestBusy) {
+    showToast("이미 백테스트가 실행 중입니다.", "info");
+    return;
+  }
 
+  backtestBusy = true;
+  const label = opts.label || raw;
+  showBacktestOverlay(`'${label}' 백테스트 연산 중`, "RSI · 볼린저 · 골든크로스 · 돈치안 Walk-Forward 검증 중입니다.");
   resBox.style.display = "block";
   resBox.innerHTML = `
     <div style="padding:20px; text-align:center; background:#0e1626; border-radius:10px;">
       <div class="skeleton-spinner" style="margin:0 auto 10px;"></div>
-      <b style="color:#38bdf8;">'${escapeHtml(q)}' 과거 3년 일봉 4대 전략 백테스트 및 파라미터 최적화 연산 중...</b>
+      <b style="color:#38bdf8;">'${escapeHtml(label)}' 과거 3년 일봉 4대 전략 백테스트 및 파라미터 최적화 연산 중...</b>
       <p class="hint" style="margin-top:4px;">RSI 과매도, 볼린저 하단, 골든크로스, 돈치안 돌파 및 Walk-Forward 미래 검증을 수행하고 있습니다.</p>
     </div>
   `;
+  resBox.scrollIntoView({ behavior: "smooth", block: "start" });
 
   try {
+    const q = opts.skipResolve ? padTicker(raw) : await resolveStockQuery(raw);
     const data = await api("/api/strategy/ticker", {
       method: "POST",
       body: JSON.stringify({ ticker: q })
@@ -450,11 +525,15 @@ async function runCustomBacktest(query) {
             </tbody>
           </table>
         </div>
-        ${renderPlaybookHtml(bt.playbook)}
+        ${renderPlaybookHtml(data.playbook)}
       </div>
     `;
+    showToast("백테스트가 완료되었습니다.", "success", 2200);
   } catch (err) {
     resBox.innerHTML = `<div style="padding:14px; background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; color:#f87171;">⚠️ ${escapeHtml(err.message || "오류가 발생했습니다.")}</div>`;
+  } finally {
+    backtestBusy = false;
+    hideBacktestOverlay();
   }
 }
 
@@ -901,7 +980,23 @@ function fmtPct(n, d = 1) {
   return `${(x * 100).toFixed(d)}%`;
 }
 
+let publicShareMode = false;
+
+async function applyPublicShareMode() {
+  try {
+    const st = await api("/api/status");
+    publicShareMode = Boolean(st.public_mode);
+  } catch {
+    publicShareMode = false;
+  }
+  document.body.classList.toggle("public-mode", publicShareMode);
+  if (publicShareMode && (currentView === "settings" || currentView === "run")) {
+    switchView("dash");
+  }
+}
+
 function switchView(name) {
+  if (publicShareMode && (name === "settings" || name === "run")) name = "dash";
   currentView = name;
   closeDrawer();
   $$(".view").forEach((el) => el.classList.add("hidden"));
@@ -1903,10 +1998,7 @@ async function openStock(ticker) {
     if ($("#btn-backtest-stock")) {
       $("#btn-backtest-stock").addEventListener("click", () => {
         closeDrawerUi();
-        switchView("strategy");
-        const inp = $("#custom-strategy-q");
-        if (inp) inp.value = code;
-        runCustomBacktest(code);
+        openStrategyBacktest(code, r.company || code);
       });
     }
     $("#btn-report").addEventListener("click", () => runReport(code).catch((err) => alert(err.message)));
@@ -4257,7 +4349,10 @@ function renderTrade(data) {
   const qVal = ($("#trade-q")?.value || "").trim();
   const rows = sortedCopy(filterTradeRows(all), "trade", "setup_notional", "desc");
   if (rows.length === 0 && qVal.length > 0) {
-    fetchOnDemandFlow(qVal, "#trade-box", "trade");
+    box.innerHTML = `<p class="hint">${escapeHtml(qVal)} 종목을 전 종목에서 찾는 중…</p>`;
+    resolveStockQuery(qVal).then((code) => fetchOnDemandFlow(code, "#trade-box", "trade")).catch((err) => {
+      box.innerHTML = `<p class="bad">${escapeHtml(err.message || "검색 실패")}</p>`;
+    });
     return;
   }
   const outside = all.filter((r) => !r.in_quant);
@@ -5375,11 +5470,7 @@ async function loadWatch() {
   });
   box.querySelectorAll("[data-backtest-stock]").forEach((el) => {
     el.addEventListener("click", () => {
-      const code = el.dataset.backtestStock;
-      switchView("strategy");
-      const inp = $("#custom-strategy-q");
-      if (inp) inp.value = code;
-      runCustomBacktest(code);
+      openStrategyBacktest(el.dataset.backtestStock, el.closest(".stock-card")?.querySelector("h3, b")?.textContent || el.dataset.backtestStock);
     });
   });
 }
@@ -6469,6 +6560,48 @@ if ($("#trade-q")) {
 }
 if ($("#btn-trade-search")) {
   $("#btn-trade-search").addEventListener("click", () => { if (flowCache) renderTrade(flowCache); });
+}
+
+function bindStockSearchers() {
+  const tradeInput = $("#trade-q");
+  const tradeMenu = $("#trade-q-menu");
+  if (tradeInput && tradeMenu) {
+    setupStockAutocomplete(tradeInput, tradeMenu, (selected) => {
+      tradeInput.value = `${selected.company || ""} ${selected.ticker || ""}`.trim();
+      fetchOnDemandFlow(selected.ticker, "#trade-box", "trade");
+    });
+  }
+  const stratInput = $("#custom-strategy-q");
+  const stratMenu = $("#custom-strategy-menu");
+  if (stratInput && stratMenu) {
+    setupStockAutocomplete(stratInput, stratMenu, (selected) => {
+      stratInput.value = `${selected.company || ""} ${selected.ticker || ""}`.trim();
+    });
+    stratInput.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      if (e.isComposing) return;
+      e.preventDefault();
+      runCustomBacktest(stratInput.value);
+    });
+  }
+  $("#btn-custom-strategy")?.addEventListener("click", () => {
+    runCustomBacktest($("#custom-strategy-q")?.value || "");
+  });
+  const emptyInput = $("#empty-q");
+  const emptyMenu = $("#empty-q-menu");
+  if (emptyInput && emptyMenu) {
+    setupStockAutocomplete(emptyInput, emptyMenu, (selected) => {
+      emptyInput.value = `${selected.company || ""} ${selected.ticker || ""}`.trim();
+      fetchOnDemandFlow(selected.ticker, "#empty-box", "empty");
+    });
+  }
+  const flowInput = $("#flow-q");
+  const flowMenu = $("#flow-q-menu");
+  if (flowInput && flowMenu) {
+    setupStockAutocomplete(flowInput, flowMenu, (selected) => {
+      flowInput.value = `${selected.company || ""} ${selected.ticker || ""}`.trim();
+    });
+  }
 }
 
 let floatTipEl = null;
@@ -8733,10 +8866,20 @@ setupInvestorSubtabs();
 setupWatchSubtabs();
   setupV11SeasonalityUI();
 setupKeyShowHideToggles();
-loadDash().catch((err) => {
-  $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
-});
-loadSettings().catch(() => {});
+bindStockSearchers();
+applyPublicShareMode()
+  .then(() => {
+    loadDash().catch((err) => {
+      $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
+    });
+    if (!publicShareMode) loadSettings().catch(() => {});
+  })
+  .catch(() => {
+    loadDash().catch((err) => {
+      $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
+    });
+    loadSettings().catch(() => {});
+  });
 
 function reloadCurrentView() {
   const name = currentView || "dash";

@@ -10,3 +10,11 @@ krx_prices:
   minute: 30
   lookback_days: 80
   official_flow: true
+publish_public:
+  enabled: true
+  after_jobs:
+    - live
+    - screen
+    - demo
+  project: korea-quant-research
+  branch: main

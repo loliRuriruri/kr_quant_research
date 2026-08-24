@@ -88,9 +88,12 @@ def scheduler_status() -> dict[str, Any]:
     s = load_settings()
     job_kind = cfg.get("job_kind") or "krx-prices"
     enabled = bool(cfg.get("enabled")) and (bool(s.krx_api_key) or job_kind == "demo")
+    from kr_quant.web.publish import publish_status
+
     return {
         **_STATE,
         "enabled": enabled,
+        "publish_public": publish_status(),
         "job_kind": job_kind,
         "hour": int(cfg.get("hour") or 18),
         "minute": int(cfg.get("minute") or 30),

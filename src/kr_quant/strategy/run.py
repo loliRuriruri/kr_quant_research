@@ -293,39 +293,46 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
     code = ""
     company = ""
 
-    # Check if input is a 6-digit ticker
-    if q.isdigit():
-        code = q.zfill(6)
-        matched = prices[prices["ticker"].astype(str).str.zfill(6) == code]
+    tickers = prices["ticker"].astype(str).str.zfill(6) if not prices.empty and "ticker" in prices.columns else pd.Series(dtype=str)
+
+    if q.isdigit() or (len(q) <= 6 and q.replace(".", "").isdigit()):
+        code = "".join(ch for ch in q if ch.isdigit()).zfill(6)
+        matched = prices[tickers == code] if not prices.empty else pd.DataFrame()
         if not matched.empty and "company" in matched.columns:
             company = str(matched["company"].iloc[0])
-    else:
-        # Search by company name in prices
-        if "company" in prices.columns:
-            matched = prices[prices["company"].astype(str).str.contains(q, case=False, na=False)]
-            if not matched.empty:
-                code = str(matched["ticker"].iloc[0]).zfill(6)
-                company = str(matched["company"].iloc[0])
+    elif "company" in prices.columns:
+        matched = prices[prices["company"].astype(str).str.contains(q, case=False, na=False, regex=False)]
+        if not matched.empty:
+            code = str(matched["ticker"].iloc[0]).zfill(6)
+            company = str(matched["company"].iloc[0])
 
     if not code:
-        # Fallback check output_dir
-        top20_csv = settings.output_dir / "latest_top20.csv"
-        if top20_csv.exists():
-            df = pd.read_csv(top20_csv, dtype={"ticker": str})
+        for stem in ("latest_all_stocks", "latest_top100", "latest_top20"):
+            csv = settings.output_dir / f"{stem}.csv"
+            pq = settings.output_dir / f"{stem}.parquet"
+            df = None
+            if csv.exists():
+                df = pd.read_csv(csv, dtype={"ticker": str})
+            elif pq.exists():
+                df = pd.read_parquet(pq)
+            if df is None or df.empty:
+                continue
             for r in df.to_dict("records"):
                 t = str(r.get("ticker") or "").zfill(6)
                 c = str(r.get("company") or "")
-                if q == t or q in c or c in q:
+                if q.zfill(6) == t or q in c or c in q:
                     code = t
                     company = c
                     break
+            if code:
+                break
 
     if not code:
-        return {"ok": False, "error": f"종목 '{query}'을(를) 찾을 수 없습니다. 6자리 종목코드나 정확한 종목명을 입력하세요."}
+        return {"ok": False, "error": f"종목 '{query}'을(를) 찾을 수 없습니다. 6자리 종목코드나 정확한 종목명을 입력하세요. (퀀트 TOP20이 아니어도 시세가 있으면 실행됩니다.)"}
 
     data = ohlc_for(prices, code)
     if data.empty or len(data) < 20:
-        return {"ok": False, "ticker": code, "company": company, "error": f"종목 '{code}'의 가격 이력이 부족합니다 ({len(data)}일)."}
+        return {"ok": False, "ticker": code, "company": company, "error": f"종목 '{code}'의 가격 이력이 부족합니다 ({len(data)}일). 퀀트 선별 여부와 무관하게 일봉이 있어야 합니다."}
 
     cfg = _cfg(settings)
     costs = cfg.get("costs") or {}
@@ -333,7 +340,10 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
     oos_ratio = float((cfg.get("splits") or {}).get("oos_ratio") or 0.2)
     min_days = int(cfg.get("minimum_history_days") or 40)
 
-    ev = evaluate_ticker(data, slippage_bps=slippage, oos_ratio=oos_ratio, min_days=min_days)
+    try:
+        ev = evaluate_ticker(data, slippage_bps=slippage, oos_ratio=oos_ratio, min_days=min_days)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "ticker": code, "company": company or code, "error": f"백테스트 연산 실패: {exc}"}
 
     for st in ev.get("strategies") or []:
         st["params_ko"] = format_params_ko(st.get("params") if isinstance(st.get("params"), dict) else None)

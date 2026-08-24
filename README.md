@@ -1,137 +1,161 @@
-# KR Quant Research 📈
+# KR Quant Research
 
-> **한국 주식 퀀트 스코어링 & 글로벌 매크로·기관 수급·업종·13F 통합 인텔리전스 시스템**  
-> GitHub Repository: [loliRuriruri/KR-Quant-Research](https://github.com/loliRuriruri/KR-Quant-Research)
+한국 주식 **재무 퀀트 스코어링**과 수급·매크로·계절성·13F를 한곳에서 보는 리서치 시스템입니다.  
+주문·잔고·체결 기능은 없습니다. 점수는 참고용이며 투자 권유가 아닙니다.
 
----
-
-## 🌟 주요 기능 (Key Features)
-
-1. **⭐ 재무 팩터 퀀트 스코어링 (Quant Scoring)**
-   - 시가총액·거래대금 조건을 통과한 코스피/코스닥 전 종목 대상 5대 팩터(가치, 퀄리티, 성장, 안정성, 모멘텀) 종합 평가.
-   - 투명한 팩터 분해 바 차트 및 일봉 백테스트 전략 랩 제공.
-
-2. **🔍 테마 스크리너 (Thematic Screener)**
-   - 밸류에이션 저평가, 고성장주, 고배당 우량주, 턴어라운드 후보 등 목적별 정밀 스크리닝.
-   - 퀀트 TOP 20 포함/제외 토글 지원 (숨은 진주 발굴).
-
-3. **🌐 글로벌 매크로 & 계절성 분석 (Macro & Seasonality)**
-   - **글로벌 자산군 바로미터**: 코스피, 코스닥, S&P 500, 나스닥, 닛케이 225, 환율(USD/KRW, USD/JPY, DXY), 원자재(금, WTI 유가, 구리), 암호화폐(비트코인, 이더리움) 실시간 시세 연동.
-   - **거시경제 핵심 지표**: 한국은행 ECOS 및 미 연준 FRED 기반 기준금리, 한-미 기준금리차, 국고채 3년, 장단기 스프레드(10Y-2Y), CPI 물가지수, 실업률, M2 통화량.
-   - **엔 캐리 트레이드 청산 위험 모니터**: USD/JPY 속도 및 미·일 금리차 기반 유동성 위기 감지.
-   - **주식시장 30개년 역사적 계절성(Seasonality) 히트맵**: 1월~12월 월별 평균 수익률, 상승 승률(%) 및 현재 월 전술 진단.
-   - 30초 실시간 자동 동기화(Live Sync) 및 즉시 새로고침 지원.
-
-4. **🏛️ 메이저 수급 & 국민연금 지분 (Major Flow & NPS Holdings)**
-   - **기관·외국인 수급 추적**: KIS Open API 기반 일별 기관/외인 순매수, 연속 순매수(Streak), 동반 매수(Double Buy), 방향 전환(Reversal) 탐지.
-   - **국민연금 5% 대량보유 공시**: OpenDART 5% 이상 대량보유상황보고 기반 지분 변동, 신규 편입 및 비중 증감 추적.
-
-5. **📊 업종·섹터 6축 분석 (Sector Momentum Leaderboard)**
-   - KSIC 업종별 상대강도(RS), 상승 확산도(Breadth), 실적 성장률, 밸류에이션 종합 6축 랭킹.
-   - 주도 업종 모멘텀 바 차트 및 원클릭 대표 종목 상세 분석 모달 연동.
-
-6. **🇺🇸 미국 13F 슈퍼인베스터 시각화 (Superinvestor Portfolio)**
-   - 워런 버핏(버크셔 해서웨이), 마이클 버리(사이온), 레이 달리오(브릿지워터) 등 글로벌 대가들의 분기별 Top 5 포트폴리오 비중 스택 바(Stack Bar) 차트.
-   - 대가들의 신규 편입(New Buys) 및 전량 청산(Exits) 카드 제공.
+- GitHub: [loliRuriruri/kr_quant_research](https://github.com/loliRuriruri/kr_quant_research)
+- 공개 웹(읽기 전용 스냅샷): [korea-quant-research.pages.dev](https://korea-quant-research.pages.dev/)
 
 ---
 
-## 🚀 빠른 시작 (Quick Start)
+## 두 가지 동작 방식
 
-### 1. 설치 및 가상환경 구성
+이 프로젝트는 **로컬 엔진**과 **공개 웹**이 분리되어 있습니다.
+
+| | 로컬 대시보드 | 공개 웹 (Cloudflare Pages) |
+|---|---|---|
+| 주소 | `http://127.0.0.1:8790` | https://korea-quant-research.pages.dev/ |
+| PC가 꺼져 있어도 접속 | 불가 | 가능 |
+| API 키·수집·재계산 | 이 PC에서만 | 없음 (키를 웹에 올리지 않음) |
+| 백테스트, 트레이딩 랩, 계절성 플레이북 | 있음 | 없음 |
+| API 설정 / 실행 파이프라인 | 있음 | 없음 |
+| 보여주는 데이터 | 실시간으로 이 PC가 계산한 결과 | **마지막으로 업로드한 스냅샷** |
+| 갱신 방법 | 실행 파이프라인 `live` / `screen` | 로컬 계산 후 `Start-KR-Quant-Public.bat` |
+
+핵심: **웹이 혼자 KRX/OpenDART를 받아 점수를 다시 매기지는 않습니다.**  
+최신 시세로 공개 사이트를 바꾸려면 이 PC에서 계산한 뒤 스냅샷을 올려야 합니다.
+
+```
+[이 PC]  API 키 → KRX/OpenDART/KIS 수집 → 퀀트 계산 → parquet/json
+    │
+    ├─ 로컬 웹  http://127.0.0.1:8790   (전체 기능)
+    │
+    └─ Start-KR-Quant-Public.bat
+           → dist-public (키·로그·원문 제외)
+           → Cloudflare Pages
+           → https://korea-quant-research.pages.dev/
+```
+
+---
+
+## 로컬 방식 (연구·수집·백테스트)
+
+이 컴퓨터에서 FastAPI 대시보드를 켭니다. `.env`의 API 키로 공식 데이터를 받고, 퀀트 점수를 계산합니다.
+
+### 설치
+
 ```powershell
-# 1) 저장소 클론
-git clone https://github.com/loliRuriruri/KR-Quant-Research.git
-cd KR-Quant-Research
-
-# 2) 파이썬 가상환경 생성 및 패키지 설치
+git clone https://github.com/loliRuriruri/kr_quant_research.git
+cd kr_quant_research
 python -m venv .venv
 .\.venv\Scripts\pip install -e ".[dev]"
-
-# 3) 환경설정 파일 복사
 copy .env.example .env
 ```
 
-### 2. 서버 실행
+### 실행
+
+`Start-KR-Quant.bat` 을 실행합니다.  
+브라우저에서 **http://127.0.0.1:8790** 으로 접속합니다.
+
+포트 8790이 이미 쓰이면, 이미 켜진 대시보드를 연 것으로 보면 됩니다. 같은 포트를 두 번 켜지 마세요.
+
+### 로컬에서 할 수 있는 일
+
+- 재무 5대 팩터 점수 (가치 30 / 품질 25 / 성장 25 / 모멘텀 10 / 안정 10)
+- 테마 스크리너, 업종 6축, 매크로, 13F
+- 메이저 수급·빈집·트레이딩 랩 (종목명 자동완성, 전 종목 검색)
+- 계절성 선취매 TOP 10, 종목 클릭 시 플레이북
+- 전략 백테스트: 확인창 → 로딩 오버레이 → 4대 전략 결과
+- 은하퀀트전설
+- API 설정, 실행 파이프라인 (KRX 시세, OpenDART, 재계산)
+
+### 데이터 원칙 (로컬 계산)
+
+- 가격·종목 마스터의 기본 출처는 **KRX**
+- 재무·공시의 기본 출처는 **OpenDART** (`available_date <= run_date`)
+- **KIS**는 수급 교차검증·보조이며 퀀트 점수에 넣지 않음
+- **ECOS / FRED**는 거시 오버레이
+- **네이버**는 뉴스 탐색용이며 투자 사실의 단독 근거로 쓰지 않음
+- 가격만으로 외인·기금 수급을 만들지 않음
+- 원천이 `FUND`이면 검증 전까지 **연기금/국민연금으로 이름을 바꾸지 않음**
+- AI는 설명만 담당하고 점수·순위를 수정하지 않음
+- 주문 실행 없음
+
+### API 키
+
+로컬 화면 **API 설정**에서 넣습니다. 키는 `.env`에만 저장됩니다.
+
+| API | 용도 |
+|---|---|
+| OpenDART | 재무제표, 대량보유 공시 |
+| KRX Open API | 전종목 시세·마스터 |
+| KIS | 투자자별 수급 (오버레이) |
+| ECOS / FRED | 거시 |
+| 네이버 검색 | 뉴스 탐색 |
+| xAI / DeepSeek | AI 리포트 (점수 미변경) |
+
+---
+
+## 공개 웹 방식 (읽기 전용 스냅샷)
+
+주소: **https://korea-quant-research.pages.dev/**
+
+Cloudflare Pages에 올라간 **정적 파일**입니다. PC가 꺼져 있어도 접속됩니다.  
+올라가는 것은 검증된 JSON 스냅샷과 읽기 전용 화면뿐입니다.
+
+- API 설정, 실행 파이프라인, AI 실행 UI 없음
+- `.env`, 로그, 원문 응답, 서버 코드 없음
+- 값이 없으면 0으로 채우지 않고 **미수집**으로 표시
+- 각 숫자에 기준일, 출처, 공식/관측/모델, 계산식, 누락, 경고를 붙임
+
+공개 화면에 있는 것: 시장 요약, 관심 종목, 퀀트 랭킹, 종목 상세(재무·밸류·팩터), 수급 오버레이, 출처·신뢰, 검증 결과.
+
+### 공개 웹을 최신 정보로 갱신하는 방법
+
+1. `Start-KR-Quant.bat`으로 로컬 대시보드를 켭니다.
+2. **실행 파이프라인**에서 실데이터 수집 + 재계산(`live` 또는 `screen`)을 돌립니다. 장 마감 후가 안전합니다.
+3. `Start-KR-Quant-Public.bat`을 실행합니다. 창에 진행 로그가 나옵니다. `[DONE]`까지 닫지 마세요. (한글 깨짐 방지를 위해 창 메시지는 영문입니다.)
+4. https://korea-quant-research.pages.dev/ 에서 **Ctrl+F5**.
+
+같은 작업의 별칭: `Publish-KR-Quant-Public.bat`
+
+명령줄:
+
 ```powershell
-# 배치 파일로 간편 실행
-.\Start-KR-Quant.bat
-
-# 또는 직접 uvicorn 실행
-.\.venv\Scripts\python.exe -m uvicorn kr_quant.web.app:app --host 0.0.0.0 --port 8790
+cd C:\Users\a4jud\kr_quant_research
+node scripts/build-public.mjs
+npx wrangler pages deploy dist-public --project-name korea-quant-research --branch main
 ```
-* 브라우저에서 **`http://localhost:8790`** 접속.
+
+로컬 대시보드를 켜 두면, 평일 18:30 `live`가 성공한 뒤 공개 웹도 같이 올리도록 연결돼 있습니다. PC가 꺼져 있으면 그날 스냅샷은 갱신되지 않습니다.
+
+### 임시 터널 (비권장)
+
+`Start-KR-Quant-Tunnel.bat`은 이 PC를 `trycloudflare.com`으로 잠깐 엽니다.  
+PC가 켜져 있어야 하고, API 설정까지 노출될 수 있습니다. 남에게 보여줄 때는 **Pages 공개 웹**을 쓰세요.
 
 ---
 
-## 🌍 외부 공유 및 배포 방법 (How to Share & Deploy)
+## 배치 파일 요약
 
-내 컴퓨터에서 실행 중인 이 대시보드를 친구, 동료 또는 외부에 공유하는 3가지 방법입니다.
-
-### 방법 1. Cloudflare Tunnel (가장 추천: 무료 + 1분 만에 외부 링크 생성)
-포트포워딩이나 복잡한 설정 없이, 즉시 안전한 공용 HTTPS URL을 무료로 발급받아 공유할 수 있습니다.
-
-```powershell
-# 1) Cloudflare Tunnel 다운로드 (Windows)
-# https://github.com/cloudflare/cloudflared/releases 에서 cloudflared-windows-amd64.exe 다운로드 후 실행
-
-# 2) 로컬 서버 포트(8790)에 무료 터널 열기
-cloudflared tunnel --url http://localhost:8790
-```
-* 터미널에 출력되는 **`https://xxxx.trycloudflare.com`** 링크를 복사하여 카카오톡이나 모바일/타인에게 공유하면 바로 외부에서 접속할 수 있습니다!
+| 파일 | 하는 일 |
+|---|---|
+| `Start-KR-Quant.bat` | 로컬 대시보드 (전체 기능) |
+| `Start-KR-Quant-Public.bat` | 로컬 스냅샷 → Cloudflare Pages 업로드 |
+| `Publish-KR-Quant-Public.bat` | 위와 동일 (별칭) |
+| `Start-KR-Quant-Tunnel.bat` | PC가 켜져 있는 동안만 임시 외부 URL |
 
 ---
 
-### 방법 2. 같은 Wi-Fi/로컬 네트워크 내 공유
-같은 공유기나 와이파이를 사용하는 기기(스마트폰, 태블릿, 노트북)에서 접속하는 방법입니다.
-
-1. 서버를 `0.0.0.0`으로 실행합니다:
-   ```powershell
-   .\.venv\Scripts\python.exe -m uvicorn kr_quant.web.app:app --host 0.0.0.0 --port 8790
-   ```
-2. 내 PC의 로컬 IP를 확인합니다 (`ipconfig` 실행 ➔ `IPv4 주소` 확인, 예: `192.168.0.15`).
-3. 스마트폰이나 다른 PC 브라우저에서 `http://192.168.0.15:8790` 으로 접속합니다.
-
----
-
-### 방법 3. 클라우드 상시 배포 (Render / Railway / VPS)
-PC를 켜두지 않고 24시간 웹에 상시 서비스로 띄우고 싶을 때 사용합니다.
-
-* **Render.com / Railway.app (무료/소액)**:
-  1. [Render.com](https://render.com) 회원가입 후 **New Web Service** 클릭.
-  2. GitHub 저장소 `loliRuriruri/KR-Quant-Research` 연결.
-  3. **Build Command**: `pip install -e .`
-  4. **Start Command**: `uvicorn kr_quant.web.app:app --host 0.0.0.0 --port $PORT`
-  5. 배포 완료 시 나만의 무료 도메인 (`https://kr-quant-research.onrender.com`)이 생성됩니다.
-
----
-
-## 🔑 API 키 설정 가이드
-
-웹 UI 우측 상단의 **[API 설정]** 메뉴에서 필요한 Open API 키를 등록하면 추가 기능이 활성화됩니다:
-
-| API | 용도 | 무료 발급 링크 |
-|---|---|---|
-| **OpenDART** | 상장사 재무제표 수집 및 국민연금 5% 대량보유 공시 | [opendart.fss.or.kr](https://opendart.fss.or.kr) |
-| **KRX Open API** | 한국거래소 공식 전종목 시세 및 수정주가 | [openapi.krx.co.kr](https://openapi.krx.co.kr) |
-| **한국투자증권 (KIS)** | 투자자별(외인/기관/사모) 일별 실시간 공식 수급 | [apiportal.koreainvestment.com](https://apiportal.koreainvestment.com) |
-| **한국은행 ECOS** | 국내 기준금리, 국고채, M2 통화량, CPI 물가 | [ecos.bok.or.kr](https://ecos.bok.or.kr) |
-| **미국 연준 FRED** | 연준 기준금리, 미국 10년/2년 국채금리, 장단기 스프레드 | [fred.stlouisfed.org](https://fred.stlouisfed.org) |
-| **네이버 검색** | 실시간 증시·금리·환율 뉴스 및 백과사전 용어 연동 | [developers.naver.com](https://developers.naver.com) |
-| **xAI / DeepSeek** | AI 심층 종목 분석 및 반대심문 리포트 생성 | [console.x.ai](https://console.x.ai) |
-
----
-
-## 🧪 테스트 실행
+## 테스트
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
 ```
-* **139개 단위/통합 테스트 100% PASS** 유지.
 
 ---
 
-## ⚠️ 유의 사항 (Disclaimer)
-* 본 시스템에서 제공하는 모든 퀀트 점수, 매크로 지표, 수급 및 섹터 분석은 투자 리서치 및 연구 목적의 참고 자료입니다.
-* 매수·매도에 대한 직접적인 투자 권유나 지시가 아니며, 최종 투자 판단과 책임은 투자자 본인에게 있습니다.
+## 면책
 
+퀀트 점수, 매크로, 수급, 섹터 분석은 연구용 참고 자료입니다.  
+매수·매도 지시가 아니며 투자 판단과 책임은 본인에게 있습니다.
