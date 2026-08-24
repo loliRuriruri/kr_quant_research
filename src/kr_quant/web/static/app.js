@@ -4175,9 +4175,12 @@ function taTags(r) {
       const bull = t.includes("골든") || t.includes("구름 위") || t.includes("전환>");
       const bear = t.includes("데드") || t.includes("구름 아래") || t.includes("과매수") || t.includes("전환<");
       const cls = bull ? "up" : bear ? "down" : t.includes("과매도") ? "hot" : "";
-      return tipTag(t, cls, TA_TIPS);
+      const tip = getTaTip(t);
+      const title = `📊 기술적 신호: ${t}`;
+      const extra = tip ? ` data-tip-title="${escapeHtml(title)}" data-tip="${escapeHtml(tip)}" tabindex="0"` : "";
+      return `<span class="tag ${cls || ""} ${tip ? "has-tip" : ""}" style="white-space:nowrap;"${extra}>${escapeHtml(t)}</span>`;
     })
-    .join("");
+    .join(" ");
 }
 
 function isEtf(r) {
@@ -4223,27 +4226,43 @@ function renderTrade(data) {
     if (!r.ta || r.ta.stoch_k == null) return '<span class="hint">—</span>';
     const k = Number(r.ta.stoch_k);
     const d = r.ta.stoch_d != null ? Number(r.ta.stoch_d) : null;
-    let badge = "";
+    let kBadge = "";
     if (k <= 20) {
-      badge = `<span class="chip" style="background:rgba(16,185,129,0.15); color:#34d399; font-weight:700; font-size:11px;">🟢 과매도 ${fmt(k, 1)}</span>`;
+      kBadge = `<div class="chip has-tip" data-tip-title="🟢 스토캐스틱 과매도 (%K < 20)" data-tip="최근 5일간 최저점 부근 과매도 구간(단기 반등 유력)입니다." tabindex="0" style="background:rgba(16,185,129,0.18); color:#34d399; font-weight:800; font-size:11px; padding:2px 6px; white-space:nowrap; display:inline-flex; align-items:center; gap:3px;">
+        <span style="font-size:9px;">🟢</span> 과매도 <b>${fmt(k, 1)}</b>
+      </div>`;
     } else if (k >= 80) {
-      badge = `<span class="chip" style="background:rgba(239,68,68,0.15); color:#f87171; font-weight:700; font-size:11px;">🔴 과매수 ${fmt(k, 1)}</span>`;
+      kBadge = `<div class="chip has-tip" data-tip-title="🔴 스토캐스틱 과매수 (%K > 80)" data-tip="최근 5일간 최고점 부근 과열 구간(단기 숨고르기 주의)입니다." tabindex="0" style="background:rgba(239,68,68,0.18); color:#f87171; font-weight:800; font-size:11px; padding:2px 6px; white-space:nowrap; display:inline-flex; align-items:center; gap:3px;">
+        <span style="font-size:9px;">🔴</span> 과매수 <b>${fmt(k, 1)}</b>
+      </div>`;
     } else {
-      badge = `<span style="font-weight:700; color:#e2e8f0;">${fmt(k, 1)}</span>`;
+      kBadge = `<b style="font-size:13px; color:#f1f5f9; white-space:nowrap;">${fmt(k, 1)}</b>`;
     }
-    return `<div>${badge}${d != null ? `<div class="meta" style="font-size:11px; margin-top:2px;">%D ${fmt(d, 1)}</div>` : ""}</div>`;
+    const dLine = d != null ? `<div class="meta" style="font-size:10.5px; color:#94a3b8; margin-top:2px; white-space:nowrap;">%D ${fmt(d, 1)}</div>` : "";
+    return `<div style="display:flex; flex-direction:column; align-items:flex-end; white-space:nowrap; min-width:75px;">${kBadge}${dLine}</div>`;
   };
 
   const renderTechBadges = (r) => {
     const tags = [];
-    if (taMatch(r, "confluence")) tags.push('<span class="chip" style="background:rgba(16,185,129,0.2); color:#4ade80; font-weight:800; border:1px solid rgba(74,222,128,0.4);">🔥 수급+기술</span>');
-    else if (taMatch(r, "ta_bull")) tags.push('<span class="chip" style="background:rgba(250,204,21,0.15); color:#facc15; font-weight:700;">⚡ 기술강세</span>');
-    if (taMatch(r, "stoch_golden")) tags.push('<span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">✨ 골든크로스</span>');
-    if (taMatch(r, "ichi_above")) tags.push('<span class="chip" style="background:rgba(168,85,247,0.15); color:#c084fc; font-weight:700;">☁️ 구름위</span>');
-    else if (taMatch(r, "ichi_tk")) tags.push('<span class="chip" style="background:rgba(59,130,246,0.15); color:#60a5fa; font-weight:700;">📈 전환&gt;기준</span>');
+    if (taMatch(r, "confluence")) {
+      tags.push(`<span class="chip has-tip" data-tip-title="🔥 수급 + 기술 Confluence" data-tip="${escapeHtml(TA_TIPS['수급+기술'])}" tabindex="0" style="background:rgba(16,185,129,0.2); color:#4ade80; font-weight:800; border:1px solid rgba(74,222,128,0.4); white-space:nowrap; padding:2px 7px;">🔥 수급+기술</span>`);
+    } else if (taMatch(r, "ta_bull")) {
+      tags.push(`<span class="chip has-tip" data-tip-title="⚡ 기술적 강세 셋업" data-tip="${escapeHtml(TA_TIPS['기술강세'])}" tabindex="0" style="background:rgba(250,204,21,0.18); color:#facc15; font-weight:750; white-space:nowrap; padding:2px 7px;">⚡ 기술강세</span>`);
+    }
+    if (taMatch(r, "stoch_golden")) {
+      tags.push(`<span class="chip has-tip" data-tip-title="✨ 스토캐스틱 골든크로스" data-tip="${escapeHtml(TA_TIPS['골든크로스'])}" tabindex="0" style="background:rgba(56,189,248,0.18); color:#38bdf8; font-weight:750; white-space:nowrap; padding:2px 7px;">✨ 골든크로스</span>`);
+    }
+    if (taMatch(r, "ichi_above")) {
+      tags.push(`<span class="chip has-tip" data-tip-title="☁️ 일목 구름대 위" data-tip="${escapeHtml(TA_TIPS['구름위'])}" tabindex="0" style="background:rgba(168,85,247,0.18); color:#c084fc; font-weight:750; white-space:nowrap; padding:2px 7px;">☁️ 구름위</span>`);
+    } else if (taMatch(r, "ichi_tk")) {
+      tags.push(`<span class="chip has-tip" data-tip-title="📈 전환선 > 기준선" data-tip="${escapeHtml(TA_TIPS['전환>기준'])}" tabindex="0" style="background:rgba(59,130,246,0.18); color:#60a5fa; font-weight:750; white-space:nowrap; padding:2px 7px;">📈 전환&gt;기준</span>`);
+    }
 
     const baseTags = taTags(r);
-    return tags.length ? tags.join(" ") : (baseTags || '<span class="hint">—</span>');
+    if (tags.length) {
+      return `<div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">${tags.join(" ")}</div>`;
+    }
+    return baseTags ? `<div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">${baseTags}</div>` : '<span class="hint">—</span>';
   };
 
   const body = rows

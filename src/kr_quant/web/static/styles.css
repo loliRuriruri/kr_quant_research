@@ -4588,3 +4588,14 @@ th.has-tip, .filter-tag.has-tip, .chip.has-tip, .kpi.has-tip, span.has-tip, labe
 th.has-tip:hover, .filter-tag.has-tip:hover {
   color: #38bdf8 !important;
 }
+
+/* Prevent badge icon and text clipping when screen narrows */
+.chip, .tag, .sector-stock-pill {
+  white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  flex-shrink: 0;
+}
+td.num, th.num, td .meta, th {
+  white-space: nowrap;
+}
