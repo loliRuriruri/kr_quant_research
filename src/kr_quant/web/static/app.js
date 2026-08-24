@@ -4130,11 +4130,50 @@ const TA_TIPS = {
 
 function getTaTip(tag) {
   if (!tag) return "";
-  const clean = tag.replace(/^[^\w가-힣>]+/, "").trim();
+  const clean = tag.replace(/^[^\w가-힣><]+/, "").trim();
   for (const [k, v] of Object.entries(TA_TIPS)) {
     if (clean === k || clean.includes(k) || k.includes(clean)) return v;
   }
   return TA_TIPS[tag] || TA_TIPS[clean] || "";
+}
+
+function renderTechnicalChip(t) {
+  if (!t) return "";
+  let icon = "📊";
+  let label = t;
+  let bg = "rgba(255,255,255,0.06)";
+  let color = "#cbd5e1";
+  let border = "rgba(255,255,255,0.15)";
+
+  if (t.includes("수급+기술")) {
+    icon = "🔥"; label = "수급+기술"; bg = "rgba(16,185,129,0.2)"; color = "#4ade80"; border = "rgba(74,222,128,0.4)";
+  } else if (t.includes("기술강세")) {
+    icon = "⚡"; label = "기술강세"; bg = "rgba(250,204,21,0.18)"; color = "#facc15"; border = "rgba(250,204,21,0.4)";
+  } else if (t.includes("골든")) {
+    icon = "✨"; label = t.includes("전환") ? "전환 골든" : "골든크로스"; bg = "rgba(56,189,248,0.18)"; color = "#38bdf8"; border = "rgba(56,189,248,0.4)";
+  } else if (t.includes("데드")) {
+    icon = "⚠️"; label = t.includes("전환") ? "전환 데드" : "데드크로스"; bg = "rgba(239,68,68,0.15)"; color = "#f87171"; border = "rgba(239,68,68,0.35)";
+  } else if (t.includes("구름 위") || t.includes("구름위")) {
+    icon = "☁️"; label = "구름 위"; bg = "rgba(168,85,247,0.18)"; color = "#c084fc"; border = "rgba(168,85,247,0.4)";
+  } else if (t.includes("구름 아래") || t.includes("구름아래")) {
+    icon = "🌧️"; label = "구름 아래"; bg = "rgba(59,130,246,0.15)"; color = "#93c5fd"; border = "rgba(59,130,246,0.35)";
+  } else if (t.includes("구름 안")) {
+    icon = "🌫️"; label = "구름 안"; bg = "rgba(148,163,184,0.15)"; color = "#cbd5e1"; border = "rgba(148,163,184,0.3)";
+  } else if (t.includes("전환>")) {
+    icon = "📈"; label = "전환>기준"; bg = "rgba(56,189,248,0.15)"; color = "#38bdf8"; border = "rgba(56,189,248,0.35)";
+  } else if (t.includes("전환<")) {
+    icon = "📉"; label = "전환<기준"; bg = "rgba(99,102,241,0.15)"; color = "#a5b4fc"; border = "rgba(99,102,241,0.35)";
+  } else if (t.includes("과매도")) {
+    icon = "🟢"; label = "과매도"; bg = "rgba(16,185,129,0.18)"; color = "#34d399"; border = "rgba(16,185,129,0.4)";
+  } else if (t.includes("과매수")) {
+    icon = "🔴"; label = "과매수"; bg = "rgba(239,68,68,0.15)"; color = "#f87171"; border = "rgba(239,68,68,0.35)";
+  }
+
+  const tip = getTaTip(t) || getTaTip(label) || "";
+  const title = `📊 기술적 신호: ${icon} ${label}`;
+  const extra = tip ? ` data-tip-title="${escapeHtml(title)}" data-tip="${escapeHtml(tip)}" tabindex="0"` : "";
+
+  return `<span class="chip has-tip" style="background:${bg}; color:${color}; border:1px solid ${border}; font-weight:750; font-size:11px; padding:2px 7px; white-space:nowrap; display:inline-flex; align-items:center; gap:3px;"${extra}><span style="font-size:10px;">${icon}</span> ${escapeHtml(label)}</span>`;
 }
 
 const SETUP_TIPS = {
@@ -4186,15 +4225,7 @@ function taTags(r) {
   const labels = (r.ta && r.ta.labels) || [];
   return labels
     .slice(0, 4)
-    .map((t) => {
-      const bull = t.includes("골든") || t.includes("구름 위") || t.includes("전환>");
-      const bear = t.includes("데드") || t.includes("구름 아래") || t.includes("과매수") || t.includes("전환<");
-      const cls = bull ? "up" : bear ? "down" : t.includes("과매도") ? "hot" : "";
-      const tip = getTaTip(t);
-      const title = `📊 기술적 신호: ${t}`;
-      const extra = tip ? ` data-tip-title="${escapeHtml(title)}" data-tip="${escapeHtml(tip)}" tabindex="0"` : "";
-      return `<span class="tag ${cls || ""} ${tip ? "has-tip" : ""}" style="white-space:nowrap;"${extra}>${escapeHtml(t)}</span>`;
-    })
+    .map((t) => renderTechnicalChip(t))
     .join(" ");
 }
 
@@ -4259,19 +4290,11 @@ function renderTrade(data) {
 
   const renderTechBadges = (r) => {
     const tags = [];
-    if (taMatch(r, "confluence")) {
-      tags.push(`<span class="chip has-tip" data-tip-title="🔥 수급 + 기술 Confluence" data-tip="${escapeHtml(TA_TIPS['수급+기술'])}" tabindex="0" style="background:rgba(16,185,129,0.2); color:#4ade80; font-weight:800; border:1px solid rgba(74,222,128,0.4); white-space:nowrap; padding:2px 7px;">🔥 수급+기술</span>`);
-    } else if (taMatch(r, "ta_bull")) {
-      tags.push(`<span class="chip has-tip" data-tip-title="⚡ 기술적 강세 셋업" data-tip="${escapeHtml(TA_TIPS['기술강세'])}" tabindex="0" style="background:rgba(250,204,21,0.18); color:#facc15; font-weight:750; white-space:nowrap; padding:2px 7px;">⚡ 기술강세</span>`);
-    }
-    if (taMatch(r, "stoch_golden")) {
-      tags.push(`<span class="chip has-tip" data-tip-title="✨ 스토캐스틱 골든크로스" data-tip="${escapeHtml(TA_TIPS['골든크로스'])}" tabindex="0" style="background:rgba(56,189,248,0.18); color:#38bdf8; font-weight:750; white-space:nowrap; padding:2px 7px;">✨ 골든크로스</span>`);
-    }
-    if (taMatch(r, "ichi_above")) {
-      tags.push(`<span class="chip has-tip" data-tip-title="☁️ 일목 구름대 위" data-tip="${escapeHtml(TA_TIPS['구름위'])}" tabindex="0" style="background:rgba(168,85,247,0.18); color:#c084fc; font-weight:750; white-space:nowrap; padding:2px 7px;">☁️ 구름위</span>`);
-    } else if (taMatch(r, "ichi_tk")) {
-      tags.push(`<span class="chip has-tip" data-tip-title="📈 전환선 > 기준선" data-tip="${escapeHtml(TA_TIPS['전환>기준'])}" tabindex="0" style="background:rgba(59,130,246,0.18); color:#60a5fa; font-weight:750; white-space:nowrap; padding:2px 7px;">📈 전환&gt;기준</span>`);
-    }
+    if (taMatch(r, "confluence")) tags.push(renderTechnicalChip("수급+기술"));
+    else if (taMatch(r, "ta_bull")) tags.push(renderTechnicalChip("기술강세"));
+    if (taMatch(r, "stoch_golden")) tags.push(renderTechnicalChip("골든크로스"));
+    if (taMatch(r, "ichi_above")) tags.push(renderTechnicalChip("구름 위"));
+    else if (taMatch(r, "ichi_tk")) tags.push(renderTechnicalChip("전환>기준"));
 
     const baseTags = taTags(r);
     if (tags.length) {
