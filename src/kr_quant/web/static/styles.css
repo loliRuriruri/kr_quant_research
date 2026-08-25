@@ -792,8 +792,8 @@ select.sr-only-select {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(1180px, 96vw);
-  height: min(92vh, 980px);
+  width: min(1500px, 97vw);
+  height: min(94vh, 1040px);
   background: #121a2d;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -865,8 +865,8 @@ select.sr-only-select {
 
 .stock-grid {
   display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
-  gap: 16px;
+  grid-template-columns: 1.08fr 0.92fr;
+  gap: 20px;
   align-items: start;
 }
 .tf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }
@@ -994,21 +994,30 @@ body.modal-open { overflow: hidden; }
 .five-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-  margin: 10px 0 14px;
+  gap: 10px;
+  margin: 10px 0 16px;
 }
 .five-card {
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 10px;
+  padding: 12px 14px;
   background: #10182a;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  transition: transform 0.2s ease, border-color 0.2s ease;
 }
-.five-card span { display: block; color: var(--muted); font-size: 12px; }
-.five-card b { display: block; margin: 4px 0 2px; font-size: 18px; }
-.five-card p { margin: 0; font-size: 12px; color: #c5d0e4; }
+.five-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.4);
+}
+.five-card span { display: block; color: var(--muted); font-size: 12.5px; }
+.five-card b { display: block; margin: 0; font-size: 18px; }
+.five-card p { margin: 0; font-size: 11.5px; line-height: 1.45; color: #cbd5e1; }
 .five-card.pass {
   border-color: rgba(34, 197, 94, 0.45) !important;
-  background: linear-gradient(145deg, rgba(16, 24, 42, 0.95), rgba(34, 197, 94, 0.1)) !important;
+  background: linear-gradient(145deg, rgba(16, 24, 42, 0.95), rgba(34, 197, 94, 0.12)) !important;
 }
 .five-card.pass span { color: #86efac !important; font-weight: 700; }
 .five-card.pass b { color: #22c55e !important; }
@@ -4905,10 +4914,15 @@ td.num, th.num, td .meta, th {
 
 .bottom-news-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 14px;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
   margin-top: 16px;
   width: 100%;
+}
+@media (max-width: 900px) {
+  .bottom-news-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* --- Top Header Interactive Chips & Quick LLM Switcher --- */

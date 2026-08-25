@@ -2128,12 +2128,14 @@ async function openStock(ticker) {
       .slice(0, 8)
       .map((n) => {
         const sent = classifyNewsSentiment(n.title, n.description);
-        return `<li style="margin-bottom:8px;">
-          <div style="display:flex; align-items:flex-start; gap:6px;">
-            <span class="news-badge ${sent.cls}">${sent.icon} ${sent.label}</span>
-            <a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener" style="font-weight:600; font-size:12.5px; color:#f1f5f9;">${escapeHtml(n.title)}</a>
+        return `<li style="padding:9px 12px; background:rgba(15,23,42,0.65); border:1px solid #1e293b; border-radius:8px; margin-bottom:8px; transition:border-color 0.2s ease;">
+          <div style="display:flex; align-items:flex-start; gap:8px;">
+            <span class="news-badge ${sent.cls}" style="flex-shrink:0; margin-top:2px;">${sent.icon} ${sent.label}</span>
+            <div style="flex:1; min-width:0;">
+              <a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener" style="font-weight:600; font-size:12.5px; color:#f1f5f9; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">${escapeHtml(n.title)}</a>
+              <div class="meta" style="margin-top:4px; font-size:11px; color:#94a3b8; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">${escapeHtml((n.pubDate || "").slice(0, 16))} · ${escapeHtml(n.description || "")}</div>
+            </div>
           </div>
-          <div class="meta" style="margin-top:3px; font-size:11px; color:#94a3b8;">${escapeHtml((n.pubDate || "").slice(0, 16))} · ${escapeHtml((n.description || "").slice(0, 95))}</div>
         </li>`;
       })
       .join("");
@@ -2154,11 +2156,11 @@ async function openStock(ticker) {
     }
 
     const webItems = (naver.web || [])
-      .slice(0, 6)
+      .slice(0, 8)
       .map(
-        (n) => `<li style="margin-bottom:8px;">
-          <a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener" style="font-weight:600; font-size:12.5px; color:#f1f5f9;">${escapeHtml(n.title)}</a>
-          <div class="meta" style="margin-top:3px; font-size:11px; color:#94a3b8;">${escapeHtml((n.description || "").slice(0, 90))}</div>
+        (n) => `<li style="padding:9px 12px; background:rgba(15,23,42,0.65); border:1px solid #1e293b; border-radius:8px; margin-bottom:8px;">
+          <a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener" style="font-weight:600; font-size:12.5px; color:#f1f5f9; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">${escapeHtml(n.title)}</a>
+          <div class="meta" style="margin-top:4px; font-size:11px; color:#94a3b8; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">${escapeHtml(n.description || "")}</div>
         </li>`
       )
       .join("");
@@ -2312,11 +2314,79 @@ async function openStock(ticker) {
     const radarSvg = renderHexagonRadarSvg(factors, timing.confidence || 60);
     const visualGauges = renderPriceAndBandGauge(brief, ta, toss);
 
+    const factorColors = {
+      "가치": { icon: "💎", color: "#38bdf8", bg: "rgba(56,189,248,0.12)", border: "rgba(56,189,248,0.3)" },
+      "품질": { icon: "👑", color: "#c084fc", bg: "rgba(192,132,252,0.12)", border: "rgba(192,132,252,0.3)" },
+      "성장": { icon: "🚀", color: "#34d399", bg: "rgba(52,211,153,0.12)", border: "rgba(52,211,153,0.3)" },
+      "모멘텀": { icon: "⚡", color: "#fb923c", bg: "rgba(251,146,60,0.12)", border: "rgba(251,146,60,0.3)" },
+      "안정": { icon: "🛡️", color: "#2dd4bf", bg: "rgba(45,212,191,0.12)", border: "rgba(45,212,191,0.3)" },
+    };
+
+    const factorCardsHtml = `
+      <div class="factor-grid-dashboard" style="display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; margin:12px 0 10px;">
+        ${factors.map(([name, v, max]) => {
+          const cfg = factorColors[name] || { icon: "📊", color: "#38bdf8", bg: "rgba(56,189,248,0.1)", border: "rgba(56,189,248,0.25)" };
+          const pct = Math.max(0, Math.min(100, ((v || 0) / max) * 100));
+          return `
+            <div class="factor-stat-card has-tip" data-tip-title="${cfg.icon} ${name} 팩터 점수" data-tip="${name} ${fmt(v, 1)} / ${max}점 (달성률 ${pct.toFixed(0)}%)" style="background:${cfg.bg}; border:1px solid ${cfg.border}; border-radius:8px; padding:8px 10px; display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:11px; font-weight:700; color:${cfg.color};">${cfg.icon} ${name}</span>
+                <span style="font-size:10px; color:#94a3b8;">/${max}</span>
+              </div>
+              <b style="font-size:15px; font-weight:800; color:#f8fafc;">${fmt(v, 1)}<span style="font-size:10.5px; font-weight:400; color:#94a3b8;">점</span></b>
+              <div style="width:100%; height:4px; background:rgba(0,0,0,0.4); border-radius:2px; overflow:hidden;">
+                <div style="width:${pct}%; height:100%; background:${cfg.color}; border-radius:2px;"></div>
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+      <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.65); border:1px solid #1e293b; border-radius:8px; padding:8px 12px; margin-bottom:14px; font-size:12px;">
+        <span style="color:#cbd5e1;">⚠️ 감점 요인: <b style="color:${r.risk_penalty ? '#fb7185' : '#4ade80'};">${r.risk_penalty ? `-${fmt(r.risk_penalty, 1)}점` : "0점 (감점 없음)"}</b></span>
+        <span style="color:#cbd5e1;">📊 데이터 신뢰도: <b style="color:${(r.data_confidence||0) >= 80 ? '#4ade80' : '#facc15'};">${r.data_confidence != null ? `${fmt(r.data_confidence, 1)}점` : "—"}</b></span>
+      </div>
+    `;
+
+    const gateCardsHtml = `
+      <article class="intro" style="background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:10px; padding:14px; margin-top:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h3 style="margin:0; font-size:13.5px; color:#38bdf8;">🛡️ 유니버스 선정 및 데이터 게이트 상태</h3>
+          <span class="chip ${gates.universe_eligible ? 'ok' : 'warn'}" style="font-size:10.5px; font-weight:700;">${escapeHtml(gateLine)}</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:10px;">
+          ${(gates.exclusion_reasons || []).filter(x => x && x.label && x.label !== "[]").map(x => `
+            <div style="padding:8px 10px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); border-radius:6px; font-size:12px; color:#fca5a5; display:flex; align-items:flex-start; gap:6px;">
+              <span style="flex-shrink:0;">🛑</span> <div><b>[제외 요건]</b> ${escapeHtml(x.label || x.code)}</div>
+            </div>
+          `).join("")}
+          ${(data.risk_notes || []).map(x => `
+            <div style="padding:8px 10px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.25); border-radius:6px; font-size:12px; color:#fde047; display:flex; align-items:flex-start; gap:6px;">
+              <span style="flex-shrink:0;">⚠️</span> <div><b>[리스크 유의]</b> ${escapeHtml(x.label || x.code)}</div>
+            </div>
+          `).join("")}
+          ${(data.data_notes || []).map(x => `
+            <div style="padding:8px 10px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.2); border-radius:6px; font-size:12px; color:#bae6fd; display:flex; align-items:flex-start; gap:6px;">
+              <span style="flex-shrink:0;">ℹ️</span> <div><b>[데이터 산출 참고]</b> ${escapeHtml(x.label || x.code)}</div>
+            </div>
+          `).join("")}
+          ${!excl && !riskNotes.length && !dataNotes.length ? `
+            <div style="padding:8px 12px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.25); border-radius:6px; font-size:12px; color:#86efac;">
+              ✅ 특이 데이터 결측이나 리스크 감점 요인 없이 모든 퀀트 게이트를 완벽히 통과했습니다.
+            </div>
+          ` : ""}
+        </div>
+      </article>
+    `;
+
     $("#drawer-title").textContent = `${r.company || ticker} (${padTicker(r.ticker || ticker)})`;
     $("#drawer-body").innerHTML = `
       ${renderExtLinksTop(links)}
+
+      <!-- 1. TOP FULL-WIDTH: 손자병법 5사 (道天地將法) 5개 카드 가로 풀 와이드 배치 -->
+      ${fiveStrip({ dao: data.dao, tian: data.tian, di: data.di, jiang: data.jiang, fa: data.fa })}
+
       <div class="stock-grid">
-        <!-- COLUMN 1 (LEFT): 퀀트 팩터 DNA, 기술적 지표 & 실전 해석, 타이밍 & 밴드, 게이트, 액션 & AI 리포트 -->
+        <!-- COLUMN 1 (LEFT): 종합 점수, 6축 레이더 & 5대 팩터 스코어보드, 기술적 지표 & 타이밍, 게이트 상태, 액션 & AI 리포트 -->
         <div>
           <!-- 1. 종합 점수 Hero -->
           <div class="score-hero">
@@ -2339,28 +2409,20 @@ async function openStock(ticker) {
             ${radarSvg}
           </div>
 
-          <div class="factor-bars">
-            ${factors.map(([name, v, max]) => `<span>${name} ${fmt(v, 1)} / ${max}</span><i class="has-tip" data-tip="${name} 점수"><em style="width:${Math.max(0, Math.min(100, ((v || 0) / max) * 100))}%"></em></i>`).join("")}
-          </div>
-          <p class="meta" style="margin-bottom:12px;">감점 요인: ${r.risk_penalty != null ? `-${fmt(r.risk_penalty, 1)}점` : "0점"} · 데이터 신뢰도: ${r.data_confidence != null ? `${fmt(r.data_confidence, 1)}점` : "—"}</p>
+          <!-- 3. 5대 팩터 스코어보드 & 데이터 신뢰도 카드 -->
+          ${factorCardsHtml}
 
-          <!-- 3. 기술적 지표 & 실전 해석 (일봉) -->
+          <!-- 4. 기술적 지표 & 실전 해석 (일봉) -->
           ${taBlock}
 
-          <!-- 4. 기술적 타이밍 & 가격 밴드 게이지 -->
+          <!-- 5. 기술적 타이밍 & 가격 밴드 게이지 -->
           ${visualGauges}
           ${timingBlock}
 
-          <!-- 5. 선정 및 게이트 상태 -->
-          <article class="intro">
-            <h3>선정 및 게이트 상태</h3>
-            <p>${escapeHtml(gateLine)}</p>
-            ${excl ? `<ul class="risk-notes">${excl}</ul>` : ""}
-            ${riskNotes.length ? `<ul class="risk-notes">${riskNotes.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : ""}
-            ${dataNotes.length ? `<ul class="data-notes">${dataNotes.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : ""}
-          </article>
+          <!-- 6. 선정 및 게이트 상태 -->
+          ${gateCardsHtml}
 
-          <!-- 6. 액션 버튼 (4개 버튼 1줄 정렬) & AI 리포트 박스 -->
+          <!-- 7. 액션 버튼 (4개 버튼 1줄 정렬) & AI 리포트 박스 -->
           ${publicShareMode ? `
             <p class="hint public-readonly-note">공개 웹은 마지막 업로드 스냅샷을 보는 읽기 전용 화면입니다. AI 생성·백테스트 실행·관심종목 저장은 로컬에서 사용할 수 있습니다.</p>
           ` : `
@@ -2373,8 +2435,20 @@ async function openStock(ticker) {
             <p class="hint" style="font-size:11px; color:#94a3b8; margin-top:2px;">💡 AI 심층 리포트는 선택한 LLM으로 14대 지침을 분석하며, <b>인포그래픽 뷰</b>로 시각화 덱을 즉시 확인할 수 있습니다.</p>
           `}
           <div id="report-box"><p style="font-size:12px; color:#64748b;">저장된 AI 분석 리포트를 확인하는 중…</p></div>
+        </div>
 
-          <!-- 7. 핵심 재무 팩트 & 기업 백과 & 본사 위치 -->
+        <!-- COLUMN 2 (RIGHT): 공식 수급 90일, 실전 참모 분석, DART 공시 이벤트, 핵심 재무 팩트 & 밸류에이션, 기업 백과 & 본사 위치, Yahoo Financials -->
+        <div>
+          <!-- 1. 공식 수급 90일 -->
+          ${flow90Block(data.flow90, code)}
+
+          <!-- 2. 실전 참모 분석 -->
+          ${criticCard((data.sunzi || {}).critic)}
+
+          <!-- 3. 공시 이벤트 & DART 캘린더 -->
+          ${eventsBlock(data.events)}
+
+          <!-- 4. 핵심 재무 팩트 & 밸류에이션 -->
           <article class="intro" style="margin-top:14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
               <h3 style="margin:0; font-size:13.5px; color:#38bdf8;">📊 핵심 재무 팩트 & 밸류에이션</h3>
@@ -2384,21 +2458,8 @@ async function openStock(ticker) {
           </article>
           ${encyc ? `<article class="intro" style="margin-top:12px;"><h3 style="font-size:13.5px; margin-bottom:6px;">📖 기업 백과</h3>${encyc}</article>` : ""}
           ${locBlock}
-        </div>
 
-        <!-- COLUMN 2 (RIGHT): 공식 수급 90일, 손자병법 5사 & 참모 분석, 공시 이벤트, Yahoo Financials -->
-        <div>
-          <!-- 1. 공식 수급 90일 -->
-          ${flow90Block(data.flow90, code)}
-
-          <!-- 2. 손자병법 5사 (道天地將法) & 실전 참모 분석 -->
-          ${fiveStrip({ dao: data.dao, tian: data.tian, di: data.di, jiang: data.jiang, fa: data.fa })}
-          ${criticCard((data.sunzi || {}).critic)}
-
-          <!-- 3. 공시 이벤트 & DART 캘린더 -->
-          ${eventsBlock(data.events)}
-
-          <!-- 4. Yahoo Financials & 컨센서스 -->
+          <!-- 5. Yahoo Financials & 컨센서스 -->
           ${yahooBlock}
         </div>
       </div>
@@ -2796,9 +2857,11 @@ function fiveStrip(data) {
         .replace(/재무\s*Quant\s*순위를\s*바꾸지\s*않습니다\.?[\s]*/gi, "")
         .trim();
       return `<div class="five-card ${cls}">
-        <span>${escapeHtml(p.label)}</span>
-        <b>${fmt(p.score, 0)}</b>
-        <p>${escapeHtml(cleanComment)}</p>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; gap:4px;">
+          <span style="font-weight:700; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(p.label)}</span>
+          <b style="font-size:18px; font-weight:800; flex-shrink:0;">${fmt(p.score, 0)}</b>
+        </div>
+        <p style="font-size:11.5px; line-height:1.45; word-break:keep-all; margin:0;">${escapeHtml(cleanComment)}</p>
       </div>`;
     })
     .join("")}</div>`;

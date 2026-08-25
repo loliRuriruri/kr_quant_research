@@ -144,17 +144,23 @@ def format_multiple(value: Any, digits: int = 1) -> str | None:
 
 
 DATA_FLAG_KO = {
-    "MOMENTUM_DISABLED_NO_ADJ_CLOSE": "예전 실행은 모멘텀을 넣지 않았습니다",
+    "DEBT_ASSUMED_ZERO": "무차입 경영 (차입금 0 가정 — 재무 레버리지 리스크 극히 낮음)",
+    "SFA_ASSUMED_ZERO": "단기금융자산 0으로 보수적 산정",
+    "NEGATIVE_EV_REVIEW": "순현금이 시총을 초과하는 순현금 우량 상태 (EV 음수)",
+    "NEGATIVE_FCF": "대규모 CAPEX 투자 또는 운전자본 확대로 최근 잉여현금흐름(FCF) 일시적 음수",
+    "LOSS_MAKING": "최근 결산 실적 영업적자/순손실",
+    "ZERO_DENOM": "분모 0으로 인한 산출 보정",
+    "MOMENTUM_DISABLED_NO_ADJ_CLOSE": "모멘텀 지표 미반영",
     "SHARE_ADJ_MOMENTUM": "모멘텀은 상장주식수로 분할만 보정했습니다",
     "MOMENTUM_UNRELIABLE": "모멘텀 지표 커버리지가 낮습니다",
-    "VALUE_UNRELIABLE": "가치 지표 커버리지가 낮습니다",
-    "QUALITY_UNRELIABLE": "품질 지표 커버리지가 낮습니다",
-    "GROWTH_UNRELIABLE": "성장 지표 커버리지가 낮습니다",
-    "STABILITY_UNRELIABLE": "안정 지표 커버리지가 낮습니다",
+    "VALUE_UNRELIABLE": "가치 팩터 데이터 일부 결측",
+    "QUALITY_UNRELIABLE": "품질 팩터 데이터 일부 결측",
+    "GROWTH_UNRELIABLE": "성장 팩터 데이터 일부 결측",
+    "STABILITY_UNRELIABLE": "안정 팩터 데이터 일부 결측",
     "EPS_PROXY_LOW_CONFIDENCE": "EPS는 추정값이라 신뢰도가 낮습니다",
-    "TAX_RATE_FALLBACK": "세율은 기본값을 썼습니다",
+    "TAX_RATE_FALLBACK": "세율은 법정 표준 기본값을 썼습니다",
     "ROIC_CASH_CLASSIFICATION_SIMPLE": "ROIC 현금 분류는 단순 방식입니다",
-    "CAPEX_PARTIAL": "설비투자 일부가 빠져 있을 수 있습니다",
+    "CAPEX_PARTIAL": "설비투자(CAPEX) 일부 세부 내역 추정치 반영",
     "Q4_DERIVATION_ANOMALY": "4분기 재무를 연간-누적으로 추정했습니다",
     "INSUFFICIENT_HISTORY": "가격 이력이 짧아 일부 기간 수익률은 비었습니다",
     "PREFERRED_CAPITAL_UNKNOWN": "우선주 자본을 확정하지 못했습니다",
@@ -162,16 +168,16 @@ DATA_FLAG_KO = {
 }
 
 RISK_FLAG_KO = {
-    "REV_DECLINE_STREAK": "매출 감소가 이어졌습니다",
-    "OP_DECLINE_STREAK": "영업이익 감소가 이어졌습니다",
-    "FCF_DETERIORATION": "잉여현금흐름이 나빠졌습니다",
-    "LEVERAGE_STRESS": "레버리지 부담이 큽니다",
-    "THIN_EQUITY": "자본이 얇습니다",
-    "DILUTION_12M_HIGH": "최근 1년 희석이 큽니다",
+    "REV_DECLINE_STREAK": "최근 2분기 이상 매출 감소세 지속",
+    "OP_DECLINE_STREAK": "최근 2분기 이상 영업이익 감소세 지속",
+    "FCF_DETERIORATION": "잉여현금흐름(FCF) 악화 추세",
+    "LEVERAGE_STRESS": "부채비율 또는 차입금 의존도 레버리지 부담",
+    "THIN_EQUITY": "자기자본비율이 얇아 자본 확충 필요",
+    "DILUTION_12M_HIGH": "최근 1년 희석이 큽니다 (유상증자/CB 대규모 발행)",
     "DILUTION_12M_MEDIUM": "최근 1년 희석이 있습니다",
-    "CB_BW_OVERHANG": "전환사채·신주인수권 오버행",
-    "REPEATED_CB_BW": "전환사채·신주인수권 반복 발행",
-    "ONE_OFF_EARNINGS_RISK": "일회성 이익 가능성이 있습니다",
+    "CB_BW_OVERHANG": "전환사채(CB)·신주인수권(BW) 잠재 오버행 매물 부담",
+    "REPEATED_CB_BW": "전환사채·신주인수권 반복 발행 이력",
+    "ONE_OFF_EARNINGS_RISK": "자산매각 등 일회성 영업외이익 착시 가능성",
 }
 
 
