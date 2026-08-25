@@ -219,23 +219,14 @@ def sort_models(provider: str, models: list[str]) -> list[str]:
 
     if provider == "openrouter":
         pinned = [
-            "deepseek/deepseek-chat",
-            "deepseek/deepseek-reasoner",
-            "deepseek/deepseek-r1",
-            "deepseek/deepseek-v3",
-            "deepseek/deepseek-chat-0731",
-            "deepseek/deepseek-vl2",
-            "deepseek/deepseek-coder",
-            "qwen/qwen-2.5-vl-72b-instruct",
-            "openai/gpt-4o",
-            "openai/gpt-4o-mini",
-            "openai/o3-mini",
-            "google/gemini-2.5-flash",
-            "google/gemini-2.5-pro",
-            "anthropic/claude-3.7-sonnet",
-            "anthropic/claude-3.5-sonnet",
-            "x-ai/grok-4-fast",
-            "x-ai/grok-2-vision-1212",
+            "deepseek/deepseek-v4-flash-0731",
+            "deepseek/deepseek-v4-pro-0813",
+            "deepseek/deepseek-v4-flash-vision-exp",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "openai/gpt-5.6-luna",
+            "google/gemini-3.7-flash",
+            "z-ai/glm-5.2",
+            "upstage/solar-pro4",
         ]
         head = [m for m in pinned if m in uniq]
         tail = [m for m in uniq if m not in head]
@@ -269,14 +260,23 @@ def sort_models(provider: str, models: list[str]) -> list[str]:
 
 
 def list_chat_models(endpoint: LlmEndpoint) -> list[str]:
-    if endpoint.provider == "antigravity":
-        return sort_models(endpoint.provider, fallback_models(endpoint.provider))
-    remote = fetch_remote_models(endpoint)
-    keep = [m for m in remote if is_chat_model(endpoint.provider, m)]
-    keep.extend(m for m in fallback_models(endpoint.provider) if is_chat_model(endpoint.provider, m))
-    if endpoint.model:
-        keep.append(endpoint.model)
-    return sort_models(endpoint.provider, keep)
+    if endpoint.provider in ("antigravity", "openrouter"):
+        curated = fallback_models(endpoint.provider)
+        if endpoint.model and endpoint.model not in curated:
+            curated.append(endpoint.model)
+        return sort_models(endpoint.provider, curated)
+    try:
+        remote = fetch_remote_models(endpoint)
+        keep = [m for m in remote if is_chat_model(endpoint.provider, m)]
+        keep.extend(m for m in fallback_models(endpoint.provider) if is_chat_model(endpoint.provider, m))
+        if endpoint.model:
+            keep.append(endpoint.model)
+        return sort_models(endpoint.provider, keep)
+    except Exception:
+        curated = fallback_models(endpoint.provider)
+        if endpoint.model and endpoint.model not in curated:
+            curated.append(endpoint.model)
+        return sort_models(endpoint.provider, curated)
 
 
 def extra_headers(endpoint: LlmEndpoint) -> dict[str, str]:

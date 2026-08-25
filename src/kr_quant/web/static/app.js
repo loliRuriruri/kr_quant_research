@@ -7662,7 +7662,18 @@ function decorateSelect(sel) {
       const item = document.createElement("button");
       item.type = "button";
       item.className = "sel-item" + (opt.selected ? " on" : "");
-      item.textContent = opt.textContent || opt.value || "—";
+      const info = MODEL_TOKEN_INFO[opt.value];
+      if (info && sel.id === "llm-model-select") {
+        const isFree = info.badge.includes("무료") || info.badge.includes("CLI");
+        item.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%; gap:8px;">
+            <span style="font-weight:600; font-family:monospace;">${escapeHtml(opt.textContent || opt.value)}</span>
+            <span style="font-size:10px; color:${isFree ? '#4ade80' : '#38bdf8'}; background:rgba(0,0,0,0.35); padding:1px 6px; border-radius:4px; flex-shrink:0;">${escapeHtml(info.badge)}</span>
+          </div>
+        `;
+      } else {
+        item.textContent = opt.textContent || opt.value || "—";
+      }
       item.addEventListener("click", () => {
         sel.value = opt.value;
         sel.dispatchEvent(new Event("change", { bubbles: true }));
