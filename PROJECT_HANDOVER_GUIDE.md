@@ -12,7 +12,10 @@
 
 ## 2. 🌟 최근 완성 및 배포된 핵심 퀀트 기능들
 
-### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.48)
+### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.49)
+* **OpenRouter 실전 랭킹 인기 모델 완벽 복원 & 기본값 반영 (v2.49.0)**:
+  - **deepseek/deepseek-v4-flash-0731 및 실전 랭킹 최상위 모델 전면 배치**: 오픈라우터 공식 랭킹 실사용 1위 플래그십인 deepseek-v4-flash-0731을 최상단 기본 추천 모델로 복원
+  - **오픈라우터 12대 정예 랭킹 라인업 탑재**: deepseek-v4-flash-0731, deepseek-v4-flash, deepseek-chat, deepseek-r1, deepseek-reasoner, claude-3.7-sonnet, claude-3.5-sonnet, gemini-2.5-pro, gemini-2.5-flash, gpt-4o, o3-mini, qwen2.5-vl-72b-instruct
 * **AI 빠른 교체 팝업 공급자 동기화 & OpenRouter 고성능 추천 모델 정제 (v2.48.0)**:
   - **공급자 4종 완전 일치**: API 설정에 존재하는 4개 공급자(xAI Grok, Google agy, DeepSeek 공식, OpenRouter)와 정확히 1:1 대응하도록 모달 재정렬
   - **OpenRouter 최고성능 프리셋 슬림화**: 저성능/불필요 모델을 과감히 제거하고 DeepSeek V3, DeepSeek R1, Claude 3.7 Sonnet, Gemini 2.5 Pro, GPT-4o, Qwen 2.5 VL 72B 등 실제 퀀트 분석에 최적화된 최고성능 인기 모델들로만 프리셋 압축 구성

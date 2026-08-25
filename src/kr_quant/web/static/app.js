@@ -7707,12 +7707,17 @@ const PROVIDER_MODELS = {
     "deepseek-reasoner",
   ],
   openrouter: [
+    "deepseek/deepseek-v4-flash-0731",
+    "deepseek/deepseek-v4-flash",
     "deepseek/deepseek-chat",
-    "deepseek/deepseek-reasoner",
     "deepseek/deepseek-r1",
+    "deepseek/deepseek-reasoner",
     "anthropic/claude-3.7-sonnet",
+    "anthropic/claude-3.5-sonnet",
     "google/gemini-2.5-pro",
+    "google/gemini-2.5-flash",
     "openai/gpt-4o",
+    "openai/o3-mini",
     "qwen/qwen2.5-vl-72b-instruct",
   ],
 };
@@ -9856,7 +9861,7 @@ if ($("#agy-check-btn")) {
 // Quick LLM Model Switcher Modal Logic
 // =========================================================
 let currentQuickProvider = "openrouter";
-let currentQuickModel = "deepseek/deepseek-chat";
+let currentQuickModel = "deepseek/deepseek-v4-flash-0731";
 
 function openQuickLlmModal() {
   const modal = $("#modal-llm-quick-switch");
