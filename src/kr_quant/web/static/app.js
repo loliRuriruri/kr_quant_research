@@ -7692,65 +7692,28 @@ const PROVIDER_MODELS = {
   xai: [
     "grok-4.6",
     "grok-4.5",
-    "grok-4.3",
-    "grok-4-1-fast",
     "grok-4",
     "grok-3",
-    "grok-3-mini",
     "grok-2-vision-1212",
   ],
   antigravity: [
     "gemini-2.5-pro",
     "gemini-2.5-flash",
     "gemini-2.0-pro",
-    "gemini-2.0-flash",
     "auto",
   ],
   deepseek: [
     "deepseek-chat",
     "deepseek-reasoner",
-    "deepseek-v3",
-    "deepseek-r1",
-    "deepseek-coder",
   ],
   openrouter: [
-    "deepseek/deepseek-v4-flash-0731",
     "deepseek/deepseek-chat",
     "deepseek/deepseek-reasoner",
     "deepseek/deepseek-r1",
-    "deepseek/deepseek-v3.2",
-    "deepseek/deepseek-v4-flash",
-    "deepseek/deepseek-v4-pro",
-    "qwen/qwen3-vl-32b-instruct",
-    "qwen/qwen2.5-vl-72b-instruct",
-    "google/gemini-2.5-flash",
-    "google/gemini-2.5-pro",
-    "openai/gpt-4o-mini",
-    "openai/o3-mini",
     "anthropic/claude-3.7-sonnet",
-    "anthropic/claude-3.5-sonnet",
-    "x-ai/grok-4-fast",
-    "x-ai/grok-2-vision-1212",
-  ],
-  anthropic: [
-    "claude-3-7-sonnet-20250219",
-    "claude-3-5-sonnet-20241022",
-    "claude-3-5-haiku-20241022",
-    "claude-3-opus-20240229",
-  ],
-  openai: [
-    "gpt-4o",
-    "gpt-4o-mini",
-    "o3-mini",
-    "o1",
-    "o1-mini",
-  ],
-  google_antigravity: [
-    "gemini-2.5-pro",
-    "gemini-2.5-flash",
-    "gemini-2.0-pro",
-    "gemini-2.0-flash",
-    "auto",
+    "google/gemini-2.5-pro",
+    "openai/gpt-4o",
+    "qwen/qwen2.5-vl-72b-instruct",
   ],
 };
 
@@ -9893,7 +9856,7 @@ if ($("#agy-check-btn")) {
 // Quick LLM Model Switcher Modal Logic
 // =========================================================
 let currentQuickProvider = "openrouter";
-let currentQuickModel = "deepseek/deepseek-v4-flash-0731";
+let currentQuickModel = "deepseek/deepseek-chat";
 
 function openQuickLlmModal() {
   const modal = $("#modal-llm-quick-switch");

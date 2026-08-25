@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%236ee7b7'%3EQ%3C/text%3E%3C/svg%3E" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.46.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.48.0" />
 </head>
 <body>
   <aside class="nav">
@@ -1331,7 +1331,7 @@
       </div>
     </div>
 
-  <script src="/static/app.js?v=2.46.0"></script>
+  <script src="/static/app.js?v=2.48.0"></script>
 
 
     <!-- Status Guide Modal (Mobile Dashboard Integration) -->
@@ -1449,23 +1449,23 @@
         <div style="padding:18px 20px; display:flex; flex-direction:column; gap:16px; max-height:75vh; overflow-y:auto;">
           <!-- 1. Provider Select -->
           <div>
-            <label style="display:block; font-size:12px; font-weight:700; color:#38bdf8; margin-bottom:8px;">1. AI 엔진 공급자 (Provider)</label>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px;">
+            <label style="display:block; font-size:12px; font-weight:700; color:#38bdf8; margin-bottom:8px;">1. AI 엔진 공급자 (Provider 선택)</label>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px;">
+              <button type="button" class="quick-prov-btn" data-provider="xai" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
+                <b style="font-size:12px;">⚡ Grok (xAI)</b>
+                <span style="font-size:10px; color:#94a3b8;">기본 리서치 엔진</span>
+              </button>
+              <button type="button" class="quick-prov-btn" data-provider="antigravity" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
+                <b style="font-size:12px;">🚀 Google agy</b>
+                <span style="font-size:10px; color:#38bdf8;">Gemini 2.5 Pro (무료)</span>
+              </button>
+              <button type="button" class="quick-prov-btn" data-provider="deepseek" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
+                <b style="font-size:12px;">🧠 DeepSeek</b>
+                <span style="font-size:10px; color:#94a3b8;">V3 / R1 공식 API</span>
+              </button>
               <button type="button" class="quick-prov-btn" data-provider="openrouter" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
                 <b style="font-size:12px;">🌐 OpenRouter</b>
-                <span style="font-size:10.5px; color:#94a3b8;">DeepSeek / Claude / GPT</span>
-              </button>
-              <button type="button" class="quick-prov-btn" data-provider="google_antigravity" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
-                <b style="font-size:12px;">⚡ Google agy 세션</b>
-                <span style="font-size:10.5px; color:#38bdf8;">CLI 로그인 (API키 불필요)</span>
-              </button>
-              <button type="button" class="quick-prov-btn" data-provider="anthropic" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
-                <b style="font-size:12px;">🧠 Anthropic</b>
-                <span style="font-size:10.5px; color:#94a3b8;">Claude 3.7 / 3.5 Sonnet</span>
-              </button>
-              <button type="button" class="quick-prov-btn" data-provider="openai" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
-                <b style="font-size:12px;">🔮 OpenAI</b>
-                <span style="font-size:10.5px; color:#94a3b8;">GPT-4o / o3-mini</span>
+                <span style="font-size:10px; color:#94a3b8;">인기 글로벌 모델</span>
               </button>
             </div>
           </div>
