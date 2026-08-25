@@ -1353,7 +1353,11 @@ function switchView(name) {
     loadPortfolio().catch(() => {});
   }
   if (name === "watch") loadWatch().catch((err) => alert(err.message));
-  if (name === "reports") loadReportArchive().catch(() => {});
+  if (name === "reports") {
+    loadReportArchive().catch(() => {});
+    const btnReports = $("#subtab-watch-reports");
+    if (btnReports) btnReports.click();
+  }
   if (name === "seasonality") {
     loadSeasonalityTier1Briefing().catch(() => {});
     if (currentV11Subtab === "pre-entry") loadPreEntryView().catch(() => {});
@@ -1621,6 +1625,239 @@ function reportBadge(ticker) {
   return hit ? `<span class="chip ok">리포트</span>` : "";
 }
 
+let currentReportFilter = "all";
+let currentReportViewMode = "grid";
+
+function formatModelBadge(model = "", provider = "") {
+  const m = String(model || "").toLowerCase();
+  let cls = "";
+  let icon = "🤖";
+  let display = model ? model.split("/").pop() : (provider || "AI");
+  if (m.includes("deepseek")) {
+    cls = "deepseek";
+    icon = "🤖";
+    display = m.includes("flash") ? "DeepSeek V4 Flash" : "DeepSeek";
+  } else if (m.includes("claude") || m.includes("anthropic")) {
+    cls = "claude";
+    icon = "🧠";
+    display = "Claude 3.5 Sonnet";
+  } else if (m.includes("gemini") || m.includes("google")) {
+    cls = "gemini";
+    icon = "✨";
+    display = "Gemini 2.5 Pro";
+  } else if (m.includes("gpt") || m.includes("openai")) {
+    cls = "openai";
+    icon = "🟩";
+    display = "GPT-4o";
+  } else if (m.includes("nemotron") || m.includes("nvidia")) {
+    cls = "nvidia";
+    icon = "⚡";
+    display = "Nemotron 550B";
+  }
+  return `<span class="model-badge ${cls}">${icon} ${escapeHtml(display)}</span>`;
+}
+
+function renderReportKpis(rows) {
+  const el = $("#reports-kpi-bar");
+  if (!el) return;
+  const total = rows.length;
+  const deepCount = rows.filter((r) => r.kind === "AI 분석 리포트").length;
+  const quickCount = rows.filter((r) => r.kind !== "AI 분석 리포트").length;
+  const btCount = rows.filter((r) => r.has_backtest).length;
+  const latest = rows[0];
+
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const weekCount = rows.filter((r) => {
+    const d = new Date(r.researched_at || r.as_of_date || 0);
+    return d >= weekAgo;
+  }).length;
+
+  // Update counter badges
+  const cAll = $("#count-rep-all");
+  const cReport = $("#count-rep-report");
+  const cQuick = $("#count-rep-quick");
+  const cWeek = $("#count-rep-week");
+  if (cAll) cAll.textContent = total;
+  if (cReport) cReport.textContent = deepCount;
+  if (cQuick) cQuick.textContent = quickCount;
+  if (cWeek) cWeek.textContent = weekCount;
+
+  if (!total) {
+    el.innerHTML = `
+      <div class="report-kpi-card" style="grid-column: 1 / -1; justify-content: center; text-align: center; padding: 24px;">
+        <div style="font-size: 28px; margin-bottom: 8px;">📑</div>
+        <b style="color: #94a3b8; font-size: 14px;">보관된 AI 분석 리포트가 없습니다.</b>
+        <p style="color: #64748b; font-size: 12px; margin: 4px 0 0;">종목 상세 창에서 [🤖 AI 심층 분석 리포트 발간]을 실행해 보세요.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const latestTimeStr = latest ? (fmtWhen(latest.researched_at) || (latest.researched_at || "").slice(0, 16).replace("T", " ")) : "기록 없음";
+  const topModelStr = latest ? (latest.model ? latest.model.split("/").pop() : latest.provider || "AI") : "—";
+
+  el.innerHTML = `
+    <div class="report-kpi-card">
+      <div class="report-kpi-icon" style="color:#c084fc; background:rgba(168,85,247,0.12); border-color:rgba(168,85,247,0.25);">📑</div>
+      <div class="report-kpi-content">
+        <div class="report-kpi-label">총 보관 리포트</div>
+        <div class="report-kpi-val">${total}건</div>
+        <div class="report-kpi-sub">🔮 Deep AI ${deepCount}건 · ⚡ 간단 ${quickCount}건</div>
+      </div>
+    </div>
+
+    <div class="report-kpi-card">
+      <div class="report-kpi-icon" style="color:#38bdf8; background:rgba(56,189,248,0.12); border-color:rgba(56,189,248,0.25);">⚡</div>
+      <div class="report-kpi-content">
+        <div class="report-kpi-label">최근 발간 종목</div>
+        <div class="report-kpi-val" style="font-size:15.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(latest?.company || "—")} <span style="font-size:11.5px; font-weight:normal; color:#94a3b8;">(${latest?.ticker || ""})</span></div>
+        <div class="report-kpi-sub">🕒 ${escapeHtml(latestTimeStr)}</div>
+      </div>
+    </div>
+
+    <div class="report-kpi-card">
+      <div class="report-kpi-icon" style="color:#34d399; background:rgba(52,211,153,0.12); border-color:rgba(52,211,153,0.25);">🤖</div>
+      <div class="report-kpi-content">
+        <div class="report-kpi-label">주력 분석 엔진</div>
+        <div class="report-kpi-val" style="font-size:15px; color:#34d399;">${escapeHtml(topModelStr)}</div>
+        <div class="report-kpi-sub">프로바이더: ${escapeHtml(latest?.provider || "OpenRouter")}</div>
+      </div>
+    </div>
+
+    <div class="report-kpi-card">
+      <div class="report-kpi-icon" style="color:#fbbf24; background:rgba(251,191,36,0.12); border-color:rgba(251,191,36,0.25);">🧪</div>
+      <div class="report-kpi-content">
+        <div class="report-kpi-label">4대 전략 백테스트 연계</div>
+        <div class="report-kpi-val" style="color:#fbbf24;">${btCount}건 / ${total}건</div>
+        <div class="report-kpi-sub">최적 파라미터 & 타이밍 자동 결합</div>
+      </div>
+    </div>
+  `;
+}
+
+function filterReportRows(q = "", filter = currentReportFilter) {
+  const needle = q.trim().toLowerCase();
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  return reportRows.filter((r) => {
+    // 1. Text filter
+    if (needle) {
+      const match = [r.ticker, r.company, r.model, r.provider, r.kind, r.summary, r.best_strategy].some((x) =>
+        String(x || "").toLowerCase().includes(needle)
+      );
+      if (!match) return false;
+    }
+    // 2. Chip filter
+    if (filter === "report") return r.kind === "AI 분석 리포트";
+    if (filter === "quick") return r.kind !== "AI 분석 리포트";
+    if (filter === "week") {
+      const d = new Date(r.researched_at || r.as_of_date || 0);
+      return d >= weekAgo;
+    }
+    return true;
+  });
+}
+
+function renderReportCardGrid(rows) {
+  const grid = $("#reports-card-grid");
+  if (!grid) return;
+  if (!rows.length) {
+    grid.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align:center; padding:40px; background:rgba(15,23,42,0.5); border:1px dashed rgba(255,255,255,0.1); border-radius:12px;">
+        <div style="font-size:24px; margin-bottom:8px;">🔍</div>
+        <b style="color:#94a3b8;">조건에 일치하는 발간 리포트가 없습니다.</b>
+        <p style="font-size:12px; color:#64748b; margin-top:4px;">검색어를 변경하거나 필터를 '전체'로 전환해 보세요.</p>
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = rows.map((r) => {
+    const isDeep = r.kind === "AI 분석 리포트";
+    const kindBadge = isDeep
+      ? `<span class="chip" style="background:rgba(168,85,247,0.18); color:#c084fc; border:1px solid rgba(168,85,247,0.35); font-weight:700;">🔮 Deep AI 리포트</span>`
+      : `<span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); font-weight:700;">⚡ 간단 검증</span>`;
+    
+    const timeDisplay = (r.researched_at || "").slice(0, 16).replace("T", " ");
+    const relTime = fmtWhen(r.researched_at) || "";
+
+    const btBadge = r.has_backtest
+      ? `<span class="chip" style="background:rgba(234,179,8,0.15); color:#fde047; border:1px solid rgba(234,179,8,0.3); font-size:11px;">🧪 백테스트 1위: ${escapeHtml(r.best_strategy || "완료")}</span>`
+      : "";
+
+    return `
+      <div class="report-archive-card ${isDeep ? 'kind-deep' : 'kind-quick'}" data-ticker="${padTicker(r.ticker)}" data-asof="${escapeHtml(r.as_of_date || "")}">
+        <div>
+          <div class="report-card-header">
+            <div>
+              <div class="report-card-title">
+                <span>${escapeHtml(r.company || r.ticker)}</span>
+                <span class="chip" style="background:#1e293b; color:#94a3b8; font-family:monospace; font-size:11px;">${escapeHtml(r.market || "")} ${padTicker(r.ticker)}</span>
+              </div>
+              <div class="report-card-meta-row" style="margin-top:6px;">
+                ${formatModelBadge(r.model, r.provider)}
+                <span>·</span>
+                <span>📅 기준일 ${escapeHtml(r.as_of_date || "")}</span>
+              </div>
+            </div>
+            <div>${kindBadge}</div>
+          </div>
+
+          <div style="margin: 10px 0 6px;">
+            ${btBadge}
+          </div>
+
+          <!-- Summary Box -->
+          <div class="report-summary-box" title="${escapeHtml(r.summary || '요약 정보 없음')}">
+            <span style="color:#67e8f9; font-weight:700; margin-right:4px;">“</span>${escapeHtml(r.summary || '리포트 본문에서 상세 투자 의견을 확인하세요.')}<span style="color:#67e8f9; font-weight:700; margin-left:4px;">”</span>
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#64748b; margin-bottom:8px;">
+            <span>🕒 발간: ${escapeHtml(timeDisplay)} ${relTime ? `(${escapeHtml(relTime)})` : ""}</span>
+            ${r.total_tokens ? `<span>🪙 ${Number(r.total_tokens).toLocaleString()} 토큰</span>` : ""}
+          </div>
+
+          <div class="report-card-actions">
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="btn-open-report-card" data-ticker="${padTicker(r.ticker)}" data-asof="${escapeHtml(r.as_of_date || "")}" data-kind="${escapeHtml(r.kind || "")}" style="background:#38bdf8; color:#0f172a; border:none; border-radius:6px; padding:5px 12px; font-size:12px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                📖 리포트 열람
+              </button>
+              ${isDeep ? `
+                <a href="/api/research/${padTicker(r.ticker)}/infographic?as_of=${encodeURIComponent(r.as_of_date || "")}" target="_blank" class="ghost small" style="font-size:11.5px; padding:4px 8px; color:#94a3b8; border:1px solid rgba(255,255,255,0.1); border-radius:6px; text-decoration:none; display:flex; align-items:center; gap:3px;">
+                  🖼️ 인포그래픽
+                </a>
+              ` : ''}
+            </div>
+            <button type="button" class="ghost small btn-del-report-card" data-del-report="1" data-ticker="${padTicker(r.ticker)}" data-asof="${escapeHtml(r.as_of_date || "")}" data-kind="${escapeHtml(r.kind || "")}" data-filename="${escapeHtml(r.filename || "")}" style="color:#f43f5e; border:1px solid rgba(244,63,94,0.3); border-radius:6px; padding:4px 8px; font-size:11.5px; cursor:pointer;">
+              🗑️ 삭제
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // Bind Open Buttons in cards
+  grid.querySelectorAll(".btn-open-report-card").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openArchivedItem(btn.dataset.ticker, btn.dataset.asof, btn.dataset.kind).catch((err) => alert(err.message));
+    });
+  });
+
+  // Bind Card Click
+  grid.querySelectorAll(".report-archive-card").forEach((card) => {
+    card.addEventListener("click", (e) => {
+      if (e.target.closest("button") || e.target.closest("a")) return;
+      openArchivedItem(card.dataset.ticker, card.dataset.asof).catch((err) => alert(err.message));
+    });
+  });
+}
+
 function renderReportList(target, rows, limit) {
   const body = $(target);
   if (!body) return;
@@ -1628,46 +1865,89 @@ function renderReportList(target, rows, limit) {
   const show = limit ? scoped.slice(0, limit) : scoped;
   const wide = target === "#reports-body";
   if (!show.length) {
-    body.innerHTML = `<tr><td colspan="${wide ? 9 : 5}">아직 보관한 리포트가 없습니다. 종목 상세에서 AI 분석 리포트를 발간하세요.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="${wide ? 10 : 5}" style="text-align:center; padding:24px; color:#94a3b8;">보관된 리포트가 없습니다.</td></tr>`;
     return;
   }
   body.innerHTML = show
-    .map(
-      (r) => `<tr class="clickable" data-ticker="${padTicker(r.ticker)}" data-asof="${r.as_of_date || ""}">
-      <td><b>${r.company || ""}</b></td>
-      ${wide ? `<td>${padTicker(r.ticker)}</td>` : ""}
-      <td>${r.kind || ""}</td>
-      <td>${r.as_of_date || ""}</td>
-      ${wide ? `<td>${(r.researched_at || "").slice(0, 16).replace("T", " ")}</td>` : ""}
-      ${wide ? `<td>${r.provider || ""}</td>` : ""}
-      <td>${r.model || ""}</td>
-      <td>${r.summary || ""}</td>
-      ${wide ? `<td><button class="ghost" data-del-report="1" data-ticker="${padTicker(r.ticker)}" data-asof="${escapeHtml(r.as_of_date || "")}" data-kind="${escapeHtml(r.kind || "")}" data-filename="${escapeHtml(r.filename || "")}">삭제</button></td>` : ""}
-    </tr>`
-    )
+    .map((r) => {
+      const isDeep = r.kind === "AI 분석 리포트";
+      const kindBadge = isDeep
+        ? `<span class="chip" style="background:rgba(168,85,247,0.15); color:#c084fc; font-weight:700;">🔮 Deep 리포트</span>`
+        : `<span class="chip" style="background:rgba(56,189,248,0.12); color:#38bdf8; font-weight:700;">⚡ 간단 검증</span>`;
+
+      const btBadge = r.has_backtest
+        ? `<span class="chip" style="background:rgba(234,179,8,0.12); color:#fde047; font-size:11px;">🧪 ${escapeHtml(r.best_strategy || "백테스트")}</span>`
+        : `<span style="color:#64748b;">—</span>`;
+
+      const timeStr = (r.researched_at || "").slice(0, 16).replace("T", " ");
+
+      if (!wide) {
+        // Dash compact list
+        return `
+          <tr class="clickable" data-ticker="${padTicker(r.ticker)}" data-asof="${r.as_of_date || ""}">
+            <td><b>${escapeHtml(r.company || "")}</b></td>
+            <td>${kindBadge}</td>
+            <td>${escapeHtml(r.as_of_date || "")}</td>
+            <td>${formatModelBadge(r.model, r.provider)}</td>
+            <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.summary || "")}</td>
+          </tr>
+        `;
+      }
+
+      return `
+        <tr class="clickable" data-ticker="${padTicker(r.ticker)}" data-asof="${r.as_of_date || ""}">
+          <td><b style="font-size:13.5px; color:#fff;">${escapeHtml(r.company || "")}</b></td>
+          <td><span class="chip" style="font-family:monospace;">${padTicker(r.ticker)}</span></td>
+          <td>${kindBadge}</td>
+          <td>${formatModelBadge(r.model, r.provider)}</td>
+          <td>${escapeHtml(r.as_of_date || "")}</td>
+          <td><span style="font-size:11.5px; color:#94a3b8;">${escapeHtml(timeStr)}</span></td>
+          <td style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(r.summary || "")}">${escapeHtml(r.summary || "")}</td>
+          <td>${btBadge}</td>
+          <td>
+            <button type="button" class="ghost small" style="color:#38bdf8; border:1px solid rgba(56,189,248,0.3); padding:2px 8px; font-size:11px; border-radius:4px;">열람 ➔</button>
+          </td>
+          <td>
+            <button type="button" class="ghost small" data-del-report="1" data-ticker="${padTicker(r.ticker)}" data-asof="${escapeHtml(r.as_of_date || "")}" data-kind="${escapeHtml(r.kind || "")}" data-filename="${escapeHtml(r.filename || "")}" style="color:#f43f5e; border:1px solid rgba(244,63,94,0.3); padding:2px 6px; font-size:11px; border-radius:4px;">삭제</button>
+          </td>
+        </tr>
+      `;
+    })
     .join("");
   if (wide) paintSortHeaders("reports");
 }
 
-function filterReportRows(q = "") {
-  const needle = q.trim().toLowerCase();
-  if (!needle) return reportRows;
-  return reportRows.filter((r) =>
-    [r.ticker, r.company, r.model, r.kind, r.summary].some((x) => String(x || "").toLowerCase().includes(needle))
-  );
+function renderReportArchiveHub() {
+  const filtered = filterReportRows($("#report-q") ? $("#report-q").value : "", currentReportFilter);
+  renderReportKpis(reportRows);
+
+  const cardGridEl = $("#reports-card-grid");
+  const tableWrapEl = $("#reports-table-wrap");
+
+  if (currentReportViewMode === "grid") {
+    if (cardGridEl) cardGridEl.classList.remove("hidden");
+    if (tableWrapEl) tableWrapEl.classList.add("hidden");
+    renderReportCardGrid(filtered);
+  } else {
+    if (cardGridEl) cardGridEl.classList.add("hidden");
+    if (tableWrapEl) tableWrapEl.classList.remove("hidden");
+    renderReportList("#reports-body", filtered);
+  }
 }
 
 async function loadReportArchive() {
   const data = await api("/api/research/reports");
   reportRows = data.rows || [];
   renderReportList("#dash-reports-body", reportRows, 6);
-  renderReportList("#reports-body", filterReportRows($("#report-q") ? $("#report-q").value : ""));
-  if (currentView === "reports") {
+  renderReportArchiveHub();
+  if (currentView === "reports" || currentView === "watch") {
     const latest = reportRows[0]?.researched_at || reportRows[0]?.as_of_date;
-    setPageAsOf(
-      latest ? `최근 보관 ${fmtWhen(latest) || latest}` : "보관한 리포트가 없습니다.",
-      "종목 상세에서 발간한 시각입니다. 시세 칩과 무관합니다."
-    );
+    if (currentView === "reports") {
+      setPageAsOf(
+        latest ? `최근 보관 ${fmtWhen(latest) || latest}` : "보관한 리포트가 없습니다.",
+        "종목 상세에서 발간한 시각입니다. 시세 칩과 무관합니다."
+      );
+    }
   }
 }
 
@@ -8156,8 +8436,35 @@ if ($("#us13f-q")) {
 $("#refresh-dash").addEventListener("click", loadDash);
 $("#rank-q").addEventListener("input", (e) => renderRank(e.target.value));
 if ($("#report-q")) {
-  $("#report-q").addEventListener("input", (e) => renderReportList("#reports-body", filterReportRows(e.target.value)));
+  $("#report-q").addEventListener("input", () => renderReportArchiveHub());
 }
+
+document.querySelectorAll(".report-filter-chip").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".report-filter-chip").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentReportFilter = btn.dataset.filter || "all";
+    renderReportArchiveHub();
+  });
+});
+
+const btnGrid = $("#btn-rep-view-grid");
+const btnTable = $("#btn-rep-view-table");
+if (btnGrid && btnTable) {
+  btnGrid.addEventListener("click", () => {
+    btnGrid.classList.add("active");
+    btnTable.classList.remove("active");
+    currentReportViewMode = "grid";
+    renderReportArchiveHub();
+  });
+  btnTable.addEventListener("click", () => {
+    btnTable.classList.add("active");
+    btnGrid.classList.remove("active");
+    currentReportViewMode = "table";
+    renderReportArchiveHub();
+  });
+}
+
 if ($("#goto-reports")) {
   $("#goto-reports").addEventListener("click", () => switchView("reports"));
 }
@@ -8366,7 +8673,7 @@ document.addEventListener("click", (e) => {
       sortState[scope] = { key: th.dataset.sort, dir: cur.key === th.dataset.sort && cur.dir === "desc" ? "asc" : "desc" };
       if (scope === "dash") renderTop20(dashRows);
       else if (scope === "rank") renderRank($("#rank-q") ? $("#rank-q").value : "");
-      else if (scope === "reports") renderReportList("#reports-body", filterReportRows($("#report-q") ? $("#report-q").value : ""));
+      else if (scope === "reports") renderReportArchiveHub();
       else if (String(scope).startsWith("flow")) {
         if (flowCache) renderFlow(flowCache);
       } else if (scope === "empty") {

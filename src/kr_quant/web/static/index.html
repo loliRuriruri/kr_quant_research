@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%236ee7b7'%3EQ%3C/text%3E%3C/svg%3E" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.62.1" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.63.0" />
 </head>
 <body>
   <aside class="nav">
@@ -813,28 +813,63 @@
       <!-- Pane 2: AI Report Archive Integrated -->
       <div id="watch-subtab-reports-pane" class="hidden">
         <article class="card">
-          <div class="card-h">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <h2 style="margin:0;">📑 발간된 AI 리포트 보관함</h2>
-              <span class="chip" style="background:rgba(168,85,247,0.15); color:#c084fc;">EquityResearch 3.7.2 Deep</span>
+          <div class="card-h" style="flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <h2 style="margin:0; display:flex; align-items:center; gap:8px;">
+                <span style="font-size:20px;">📑</span>
+                발간된 AI 리포트 보관함
+              </h2>
+              <span class="chip" style="background:rgba(168,85,247,0.18); color:#c084fc; border:1px solid rgba(168,85,247,0.35); font-weight:700;">EquityResearch 3.7.2 Deep</span>
+              <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); font-weight:700;">🧪 4대 백테스트 연계</span>
             </div>
-            <div class="autocomplete-wrap" style="max-width: 280px;"><input id="report-q" type="text" autocomplete="off" placeholder="종목명 또는 코드 검색" /><ul id="report-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul></div>
+            <div class="autocomplete-wrap" style="min-width: 260px; max-width: 320px;">
+              <input id="report-q" type="text" autocomplete="off" placeholder="🔍 종목명, 코드, 모델, 요약 검색" />
+              <ul id="report-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
+            </div>
           </div>
-          <p class="hint">EquityResearch v3.7.2 Cloud-First Deep 지침 및 4대 전략 백테스트가 반영되어 발간된 AI 심층 기업 분석 리포트 목록입니다.</p>
-          <div class="table-wrap">
-            <table data-scope="reports">
-              <thead>
-                <tr>
-                  <th>종목</th>
-                  <th>구분</th>
-                  <th>제공자/모델</th>
-                  <th class="sortable" data-sort="researched_at">작성</th>
-                  <th>요약</th>
-                  <th>보기</th>
-                </tr>
-              </thead>
-              <tbody id="reports-body"></tbody>
-            </table>
+          <p class="hint" style="margin-bottom:16px;">
+            Cloud-First Deep 지침 및 4대 전략 백테스트가 반영되어 발간된 AI 심층 기업 분석 리포트 보관함입니다. 카드를 클릭하거나 <b>[📖 리포트 열람]</b>을 누르면 전체 원문과 인포그래픽을 감상할 수 있습니다.
+          </p>
+
+          <!-- 4 KPI Summary Stats -->
+          <div id="reports-kpi-bar" class="report-kpi-grid"></div>
+
+          <!-- Filter & View Mode Toolbar -->
+          <div class="report-toolbar-wrap">
+            <div class="report-filter-chips">
+              <button type="button" class="report-filter-chip active" data-filter="all">전체 (<span id="count-rep-all">0</span>)</button>
+              <button type="button" class="report-filter-chip" data-filter="report">🔮 Deep AI 리포트 (<span id="count-rep-report">0</span>)</button>
+              <button type="button" class="report-filter-chip" data-filter="quick">⚡ 간단 검증 (<span id="count-rep-quick">0</span>)</button>
+              <button type="button" class="report-filter-chip" data-filter="week">📅 최근 7일 (<span id="count-rep-week">0</span>)</button>
+            </div>
+            <div class="report-view-toggle">
+              <button type="button" id="btn-rep-view-grid" class="report-view-btn active" title="카드 그리드 뷰">🗂️ 카드 뷰</button>
+              <button type="button" id="btn-rep-view-table" class="report-view-btn" title="스마트 테이블 뷰">📋 테이블 뷰</button>
+            </div>
+          </div>
+
+          <!-- Dynamic Container (Cards or Table) -->
+          <div id="reports-view-container">
+            <div id="reports-card-grid" class="report-card-grid"></div>
+            <div id="reports-table-wrap" class="table-wrap hidden">
+              <table data-scope="reports">
+                <thead>
+                  <tr>
+                    <th class="sortable" data-sort="company">종목</th>
+                    <th class="sortable" data-sort="ticker">코드</th>
+                    <th class="sortable" data-sort="kind">구분</th>
+                    <th class="sortable" data-sort="model">분석 엔진</th>
+                    <th class="sortable" data-sort="as_of_date">기준일</th>
+                    <th class="sortable" data-sort="researched_at">작성일시</th>
+                    <th>핵심 요약</th>
+                    <th>백테스트</th>
+                    <th>열람</th>
+                    <th>삭제</th>
+                  </tr>
+                </thead>
+                <tbody id="reports-body"></tbody>
+              </table>
+            </div>
           </div>
         </article>
       </div>
@@ -1443,7 +1478,7 @@
       </div>
     </div>
 
-  <script src="/static/app.js?v=2.62.1"></script>
+  <script src="/static/app.js?v=2.63.0"></script>
 
 
     <!-- Status Guide Modal (Mobile Dashboard Integration) -->

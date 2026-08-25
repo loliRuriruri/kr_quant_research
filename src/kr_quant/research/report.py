@@ -54,6 +54,8 @@ def list_saved_reports(output_dir: Path) -> list[dict[str, Any]]:
             kind = "간단 검증"
             thesis = rec.get("thesis") if isinstance(rec.get("thesis"), dict) else {}
             summary = str(thesis.get("one_line") or rec.get("research_decision") or "")
+        bt = rec.get("strategy_backtest") if isinstance(rec.get("strategy_backtest"), dict) else {}
+        usage = rec.get("usage") if isinstance(rec.get("usage"), dict) else {}
         rows.append(
             {
                 "ticker": ticker,
@@ -65,6 +67,10 @@ def list_saved_reports(output_dir: Path) -> list[dict[str, Any]]:
                 "researched_at": rec.get("researched_at"),
                 "summary": summary,
                 "filename": path.name,
+                "has_backtest": bool(bt.get("ok") and bt.get("strategies")),
+                "best_strategy": bt.get("best_name") or bt.get("best_id"),
+                "total_tokens": usage.get("total_tokens"),
+                "market": rec.get("market") or ("KOSDAQ" if str(ticker).startswith(("2", "3", "4", "9")) else "KOSPI"),
             }
         )
     rows.sort(key=lambda r: str(r.get("researched_at") or r.get("as_of_date") or ""), reverse=True)
