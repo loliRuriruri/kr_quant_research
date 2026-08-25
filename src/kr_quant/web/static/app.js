@@ -1568,9 +1568,13 @@ function rankMedal(rank) {
   return `<span class="rank-badge">${rank || "—"}</span>`;
 }
 
-function renderTop20(rows) {
+let currentDashTopN = 30;
+
+function renderTop20(rows, count = currentDashTopN) {
   const body = $("#top20-body");
-  const show = sortedCopy(rows, "dash", "quant_rank", "asc").slice(0, 20);
+  if (!body) return;
+  const n = count || currentDashTopN || 30;
+  const show = sortedCopy(rows, "dash", "quant_rank", "asc").slice(0, n);
   body.innerHTML = show
     .map(
       (r) => `<tr class="clickable" data-ticker="${padTicker(r.ticker)}">
@@ -1587,6 +1591,11 @@ function renderTop20(rows) {
     )
     .join("");
   paintSortHeaders("dash");
+
+  const titleEl = $("#dash-leaderboard-title");
+  if (titleEl) titleEl.textContent = `🏆 Quant TOP ${n} 리더보드`;
+  const dnaTitleEl = $("#dash-dna-title");
+  if (dnaTitleEl) dnaTitleEl.textContent = `🧬 TOP ${n} 팩터 DNA 분석`;
 }
 
 function renderRank(q = "") {
@@ -2213,20 +2222,22 @@ async function openGlancePlaybook(ticker) {
   openStock(code).catch((err) => alert(err.message));
 }
 
-function renderDashDna(rows) {
+function renderDashDna(rows, count = currentDashTopN) {
   const box = $("#dash-dna-box");
   if (!box) return;
-  if (!rows || !rows.length) {
-    box.innerHTML = "<p class='hint'>TOP20 데이터가 없습니다.</p>";
+  const nLimit = count || currentDashTopN || 30;
+  const targetRows = (rows || []).slice(0, nLimit);
+  if (!targetRows.length) {
+    box.innerHTML = `<p class='hint'>TOP ${nLimit} 데이터가 없습니다.</p>`;
     return;
   }
-  const n = rows.length;
-  const avgVal = rows.reduce((acc, r) => acc + (Number(r.value_score) || 0), 0) / n;
-  const avgQua = rows.reduce((acc, r) => acc + (Number(r.quality_score) || 0), 0) / n;
-  const avgGro = rows.reduce((acc, r) => acc + (Number(r.growth_score) || 0), 0) / n;
-  const avgMom = rows.reduce((acc, r) => acc + (Number(r.momentum_score) || 0), 0) / n;
-  const avgFin = rows.reduce((acc, r) => acc + (Number(r.financial_score) || 0), 0) / n;
-  const avgTotal = (rows.reduce((acc, r) => acc + (Number(r.quant_score) || 0), 0) / n).toFixed(1);
+  const n = targetRows.length;
+  const avgVal = targetRows.reduce((acc, r) => acc + (Number(r.value_score) || 0), 0) / n;
+  const avgQua = targetRows.reduce((acc, r) => acc + (Number(r.quality_score) || 0), 0) / n;
+  const avgGro = targetRows.reduce((acc, r) => acc + (Number(r.growth_score) || 0), 0) / n;
+  const avgMom = targetRows.reduce((acc, r) => acc + (Number(r.momentum_score) || 0), 0) / n;
+  const avgFin = targetRows.reduce((acc, r) => acc + (Number(r.financial_score) || 0), 0) / n;
+  const avgTotal = (targetRows.reduce((acc, r) => acc + (Number(r.quant_score) || 0), 0) / n).toFixed(1);
 
   const factors = [
     {
@@ -3690,8 +3701,8 @@ async function openArchivedItem(ticker, asOf, kind) {
 async function loadDash() {
   const [status, top, all, guide, archive] = await Promise.all([
     api("/api/status"),
-    api("/api/results/top?n=20"),
-    api("/api/results/all?limit=250"),
+    api("/api/results/top?n=100"),
+    api("/api/results/all?limit=300"),
     guideCache ? Promise.resolve(guideCache) : api("/api/guide"),
     api("/api/research/reports").catch(() => ({ rows: [] })),
   ]);
@@ -3711,8 +3722,8 @@ async function loadDash() {
   renderKpis(status, dashRows);
   renderChampions(dashRows);
   loadGlanceTop3().catch(() => {});
-  renderDashDna(dashRows);
-  renderTop20(dashRows);
+  renderDashDna(dashRows, currentDashTopN);
+  renderTop20(dashRows, currentDashTopN);
   renderQuality(status.quality, guideCache, status.freshness);
   rankRows = all.rows || [];
   renderRank($("#rank-q").value);
@@ -8434,6 +8445,17 @@ if ($("#us13f-q")) {
   $("#us13f-q").addEventListener("input", () => { if (us13fCache) renderUs13f(us13fCache); });
 }
 $("#refresh-dash").addEventListener("click", loadDash);
+
+document.querySelectorAll(".dash-topn-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".dash-topn-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentDashTopN = parseInt(btn.dataset.n, 10) || 30;
+    renderTop20(dashRows, currentDashTopN);
+    renderDashDna(dashRows, currentDashTopN);
+  });
+});
+
 $("#rank-q").addEventListener("input", (e) => renderRank(e.target.value));
 if ($("#report-q")) {
   $("#report-q").addEventListener("input", () => renderReportArchiveHub());

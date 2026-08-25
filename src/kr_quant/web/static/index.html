@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%236ee7b7'%3EQ%3C/text%3E%3C/svg%3E" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.63.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.64.0" />
 </head>
 <body>
   <aside class="nav">
@@ -83,12 +83,23 @@
 
       <div class="grid-2">
         <article class="card">
-          <div class="card-h">
-            <h2>🏆 Quant TOP20 리더보드</h2>
-            <button class="ghost" id="refresh-dash">새로고침</button>
+          <div class="card-h" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <h2 id="dash-leaderboard-title" style="margin:0;">🏆 Quant TOP 30 리더보드</h2>
+              <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">5대 팩터 종합 우량주</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <div class="dash-topn-toggle">
+                <button type="button" class="dash-topn-btn" data-n="20">TOP 20</button>
+                <button type="button" class="dash-topn-btn active" data-n="30">TOP 30</button>
+                <button type="button" class="dash-topn-btn" data-n="50">TOP 50</button>
+                <button type="button" class="dash-topn-btn" data-n="100">TOP 100</button>
+              </div>
+              <button class="ghost small" id="refresh-dash">새로고침</button>
+            </div>
           </div>
           <p class="hint">시총·거래대금·보통주 조건을 통과한 종목을 가치·품질·성장·모멘텀·안정으로 점수한 조사 후보입니다. 종목을 클릭하면 상세 리서치 창이 열립니다.</p>
-          <div class="table-wrap">
+          <div class="table-wrap dash-table-wrap">
             <table data-scope="dash">
               <thead>
                 <tr>
@@ -108,7 +119,7 @@
 
         <div>
           <article class="card" style="margin-bottom:14px;">
-            <div class="card-h"><h2>🧬 TOP20 팩터 DNA 분석</h2></div>
+            <div class="card-h"><h2 id="dash-dna-title">🧬 TOP 30 팩터 DNA 분석</h2></div>
             <div id="dash-dna-box" class="dash-dna-box"></div>
           </article>
           <article class="card">
@@ -1478,7 +1489,7 @@
       </div>
     </div>
 
-  <script src="/static/app.js?v=2.63.0"></script>
+  <script src="/static/app.js?v=2.64.0"></script>
 
 
     <!-- Status Guide Modal (Mobile Dashboard Integration) -->

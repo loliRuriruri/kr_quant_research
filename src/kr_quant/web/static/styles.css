@@ -5302,3 +5302,45 @@ td.num, th.num, td .meta, th {
   border-color: rgba(192, 132, 252, 0.3);
   color: #d8b4fe;
 }
+
+/* Dashboard Expanded Leaderboard & Top N Toggle */
+.dash-table-wrap {
+  max-height: none !important;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.dash-topn-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.dash-topn-btn {
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dash-topn-btn:hover {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.dash-topn-btn.active {
+  background: #38bdf8;
+  color: #0f172a;
+  font-weight: 800;
+  box-shadow: 0 1px 6px rgba(56, 189, 248, 0.35);
+}
+

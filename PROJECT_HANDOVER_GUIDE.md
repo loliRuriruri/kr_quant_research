@@ -1,18 +1,24 @@
-# 🚀 KR Quant Research - 프로젝트 인수인계 & 그록(Grok) 연계 가이드 (`v2.63.0-stable`)
+# 🚀 KR Quant Research - 프로젝트 인수인계 & 그록(Grok) 연계 가이드 (`v2.64.0-stable`)
 
 ## 1. 📌 현재 프로젝트 상태 요약
 * **저장소 (GitHub)**: `https://github.com/loliRuriruri/kr_quant_research.git`
-* **최신 릴리스 태그**: **`v2.63.0-stable`**
+* **최신 릴리스 태그**: **`v2.64.0-stable`**
 * **공개 웹**: `https://korea-quant-research.pages.dev/` (Cloudflare Pages 읽기 전용 스냅샷. PC 꺼져 있어도 접속)
 * **로컬 대시보드**: `Start-KR-Quant.bat` → `http://127.0.0.1:8790` (수집·백테스트·API 설정)
 * **공개 웹 갱신**: `Start-KR-Quant-Public.bat` (로컬 계산본만 업로드, 키 미포함)
+* **서버 재시작/중단**: `Restart-KR-Quant.bat` / `Stop-KR-Quant.bat`
 * **실행 환경**: Python 3.12 (Virtualenv: `.venv`), FastAPI Backend, Vanilla JS, Cloudflare Pages static snapshot
 
 ---
 
 ## 2. 🌟 최근 완성 및 배포된 핵심 퀀트 기능들
 
-### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.63)
+### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.64)
+* **대시보드 종목 수 확대 & 빈 공간 완전 해소 (v2.64.0)**:
+  - **① 기본 표시 종목 30개로 대폭 확장**: 우측 사이드 패널(DNA 분석 + 품질 기준 가이드)의 높이와 정확하게 균형을 맞추어 아래쪽 거대한 빈 공간(Void)을 완벽하게 제거.
+  - **② 4단 TOP N 인터랙티브 스위처 (`[TOP 20]` `[TOP 30]` `[TOP 50]` `[TOP 100]`)**: 사용자가 한 번의 클릭으로 20개, 30개, 50개, 100개의 우량 퀀트 종목을 자유롭게 확장/축소하여 열람 가능.
+  - **③ 인위적 640px 스크롤바 제한 제거 (`.dash-table-wrap`)**: 좁은 스크롤 박스에 갇히지 않고 카드 전체에 종목들이 시원하고 미려하게 펼쳐지도록 최적화.
+  - **④ 실시간 DNA 분석 & 타이틀 연동**: 선택한 TOP N 종목군에 맞추어 5대 팩터 DNA 평균 점수와 카드 타이틀이 실시간 동적 동기화.
 * **발간된 AI 리포트 보관함 (AI Research Archive Hub) UI/UX 전면 개편 (v2.63.0)**:
   - **① 컬럼 미스매치 및 레이아웃 왜곡 완벽 해결**: 기존 6개 헤더 vs 9개 데이터 셀 불일치로 깨지던 테이블을 완벽 정상화.
   - **② 4대 핵심 통계 KPI 대시보드 바 탑재**: 총 보관 리포트 수(Deep AI vs 간단 검증), 최근 발간 종목 및 일시, 주력 분석 엔진 배지, 4대 백테스트 연계 현황 한눈에 파악.
