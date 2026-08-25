@@ -4911,3 +4911,37 @@ td.num, th.num, td .meta, th {
   width: 100%;
 }
 
+/* --- Top Header Interactive Chips & Quick LLM Switcher --- */
+.btn-chip-interactive {
+  cursor: pointer;
+  background: linear-gradient(135deg, rgba(56,189,248,0.18), rgba(168,85,247,0.18));
+  border: 1px solid rgba(56,189,248,0.45);
+  color: #38bdf8;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  transition: all 0.2s ease;
+}
+
+.btn-chip-interactive:hover {
+  background: linear-gradient(135deg, rgba(56,189,248,0.32), rgba(168,85,247,0.32));
+  border-color: #38bdf8;
+  color: #f0f9ff;
+  box-shadow: 0 0 12px rgba(56,189,248,0.35);
+  transform: translateY(-1px);
+}
+
+.quick-prov-btn:hover {
+  border-color: rgba(56, 189, 248, 0.6) !important;
+  background: #17233f !important;
+}
+
+.quick-mod-chip:hover {
+  border-color: #38bdf8 !important;
+  color: #38bdf8 !important;
+}
+
+

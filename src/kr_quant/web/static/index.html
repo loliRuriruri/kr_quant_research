@@ -58,12 +58,9 @@
       </div>
       <div class="top-right">
         <div class="chips">
-          <span class="chip activity-idle has-tip" id="chip-activity" tabindex="0">🟢 시스템 준비됨</span>
-          <span class="chip ok has-tip" id="chip-fresh" tabindex="0">시세 확인 중</span>
-          <span class="chip has-tip" id="chip-llm" tabindex="0">🤖 AI 분석</span>
-          <span class="chip hidden" id="chip-model">model</span>
-          <span class="chip hidden" id="chip-status">status</span>
-          <span class="chip hidden" id="chip-asof">as_of</span>
+          <span class="chip activity-idle has-tip" id="chip-activity" tabindex="0" title="시스템 상태 (클릭하여 실행 파이프라인으로 이동)">🟢 시스템 정상</span>
+          <span class="chip ok has-tip" id="chip-fresh" tabindex="0" title="최근 KRX 종가 시세 기준일">🗓️ 최근 종가 확인 중</span>
+          <button type="button" class="chip btn-chip-interactive has-tip" id="chip-llm" tabindex="0" style="cursor:pointer; background:linear-gradient(135deg, rgba(56,189,248,0.18), rgba(168,85,247,0.18)); border:1px solid rgba(56,189,248,0.45); color:#38bdf8; font-weight:700; display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; transition:all 0.2s;" title="클릭하여 AI 분석 LLM 모델을 즉시 교체/선택합니다.">🤖 AI: 확인 중 <span style="font-size:9px; opacity:0.8;">▾</span></button>
         </div>
         <div class="top-actions">
           <button class="ghost" id="btn-krx-now" data-tip="최근 KRX 일봉 종가 시세를 갱신합니다. 장 마감 후 최신 시세를 반영합니다.">시세 받기</button>
@@ -1435,16 +1432,61 @@
     </div>
 
 
-    <!-- Floating Status Hover Popover -->
-    <div id="status-hover-popover" class="status-hover-popover hidden">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;">
-        <b id="status-popover-title" style="font-size:13px;">—</b>
-        <span style="font-size:10px; color:#94a3b8;">상태 가이드</span>
-      </div>
-      <p id="status-popover-desc" style="margin:0 0 8px; font-size:11.5px; color:#cbd5e1; line-height:1.45;">—</p>
-      <div style="background:rgba(0,0,0,0.35); padding:6px 8px; border-radius:6px; font-size:11px; line-height:1.4;">
-        <div style="color:#94a3b8;"><b style="color:#cbd5e1;">판정:</b> <span id="status-popover-criteria">—</span></div>
-        <div style="margin-top:3px;"><b id="status-popover-action-lbl" style="color:#38bdf8;">대응:</b> <span id="status-popover-action" style="color:#38bdf8;">—</span></div>
+    <!-- Quick LLM Model Switcher Modal -->
+    <div id="modal-llm-quick-switch" class="modal hidden" style="position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.7); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; padding:16px;">
+      <div class="modal-box" style="background:#0f172a; border:1px solid rgba(56,189,248,0.4); border-radius:14px; max-width:560px; width:100%; box-shadow:0 25px 50px -12px rgba(0,0,0,0.7); overflow:hidden; display:flex; flex-direction:column;">
+        <div style="padding:16px 20px; border-bottom:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center; background:linear-gradient(135deg, rgba(56,189,248,0.1), rgba(168,85,247,0.1));">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:20px;">🤖</span>
+            <div>
+              <h3 style="margin:0; font-size:15px; color:#f8fafc; font-weight:700;">AI 심층 리포트 모델 빠른 교체</h3>
+              <p style="margin:2px 0 0; font-size:11px; color:#94a3b8;">원하는 LLM 공급자 및 모델을 원클릭으로 변경합니다.</p>
+            </div>
+          </div>
+          <button type="button" class="ghost" id="quick-llm-close-btn" style="padding:4px 8px; font-size:16px; border:none; color:#94a3b8; cursor:pointer;">✕</button>
+        </div>
+
+        <div style="padding:18px 20px; display:flex; flex-direction:column; gap:16px; max-height:75vh; overflow-y:auto;">
+          <!-- 1. Provider Select -->
+          <div>
+            <label style="display:block; font-size:12px; font-weight:700; color:#38bdf8; margin-bottom:8px;">1. AI 엔진 공급자 (Provider)</label>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px;">
+              <button type="button" class="quick-prov-btn" data-provider="openrouter" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
+                <b style="font-size:12px;">🌐 OpenRouter</b>
+                <span style="font-size:10.5px; color:#94a3b8;">DeepSeek / Claude / GPT</span>
+              </button>
+              <button type="button" class="quick-prov-btn" data-provider="google_antigravity" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
+                <b style="font-size:12px;">⚡ Google agy 세션</b>
+                <span style="font-size:10.5px; color:#38bdf8;">CLI 로그인 (API키 불필요)</span>
+              </button>
+              <button type="button" class="quick-prov-btn" data-provider="anthropic" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
+                <b style="font-size:12px;">🧠 Anthropic</b>
+                <span style="font-size:10.5px; color:#94a3b8;">Claude 3.7 / 3.5 Sonnet</span>
+              </button>
+              <button type="button" class="quick-prov-btn" data-provider="openai" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
+                <b style="font-size:12px;">🔮 OpenAI</b>
+                <span style="font-size:10.5px; color:#94a3b8;">GPT-4o / o3-mini</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. Model Presets -->
+          <div>
+            <label style="display:block; font-size:12px; font-weight:700; color:#38bdf8; margin-bottom:8px;">2. 추천 모델 프리셋 (클릭하여 선택)</label>
+            <div id="quick-models-chips" style="display:flex; flex-wrap:wrap; gap:6px; min-height:40px;"></div>
+          </div>
+
+          <!-- 3. Custom Model Input -->
+          <div>
+            <label style="display:block; font-size:12px; font-weight:700; color:#cbd5e1; margin-bottom:6px;">3. 직접 입력 또는 선택된 모델 ID</label>
+            <input type="text" id="quick-model-custom" style="width:100%; padding:9px 12px; background:#0b1220; border:1px solid #334155; border-radius:8px; color:#38bdf8; font-size:13px; font-weight:600; box-sizing:border-box;" placeholder="예: deepseek/deepseek-v4-flash-0731" />
+          </div>
+        </div>
+
+        <div style="padding:14px 20px; border-top:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.6);">
+          <button type="button" class="ghost" id="quick-llm-cancel-btn" style="padding:7px 14px; font-size:12.5px; border-radius:6px; cursor:pointer;">취소</button>
+          <button type="button" class="primary" id="quick-llm-save-btn" style="padding:8px 20px; font-size:13px; font-weight:700; border-radius:8px; cursor:pointer; background:linear-gradient(135deg, #0284c7, #2563eb); border:none; color:#fff;">⚡ 모델 즉시 적용 & 저장</button>
+        </div>
       </div>
     </div>
 

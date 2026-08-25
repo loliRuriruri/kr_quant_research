@@ -3151,26 +3151,14 @@ async function loadDash() {
   reportRows = archive.rows || [];
   lastStatus = status;
   lastStatusExplain = status.status_explain || null;
-  const ver = String(status.model_version || "");
-  const shortVer = (ver.match(/^(\d+\.\d+\.\d+)/) || [ver])[0];
-  setChip($("#chip-model"), `모델 ${shortVer}`, `내부 버전 ${ver}. 점수 공식 식별자이며 매매 신호가 아닙니다.`);
-  const qst = status.quality?.status || "no-run";
-  const statusTip = statusExplainTip(lastStatusExplain, STATUS_TIP[qst] || ver);
-  setChip($("#chip-status"), statusKo(qst), statusTip);
-  $("#chip-status")?.classList.toggle("clickable-chip", qst === "partial" || qst === "failed");
-  setChip($("#chip-asof"), status.quality?.as_of_date ? `점수일 ${status.quality.as_of_date}` : "점수일 없음", "이 날짜 기준으로 Quant 점수를 계산했습니다.");
   renderFreshChip(status.freshness);
   if (currentView === "dash" || currentView === "rank") stampFromStatus();
   renderSchedLine(status.scheduler);
-  if (!$("#chip-llm")) {
-    const chip = document.createElement("span");
-    chip.className = "chip has-tip";
-    chip.id = "chip-llm";
-    chip.tabIndex = 0;
-    $(".chips").appendChild(chip);
-  }
-  const llmName = status.llm_label || status.llm_provider || "xai";
-  setChip($("#chip-llm"), `🤖 AI: ${llmName}`, `AI 분석 리포트 생성 모델: ${status.llm_model || llmName}. (AI 심층 리포트 생성 시에만 사용)`);
+  
+  const llmName = status.llm_label || status.llm_provider || "openrouter";
+  const llmModel = status.llm_model ? status.llm_model.split("/").pop() : "";
+  const llmDisplay = llmModel ? `🤖 AI: ${llmName} (${llmModel}) ▾` : `🤖 AI: ${llmName} ▾`;
+  setChip($("#chip-llm"), llmDisplay, `AI 분석 리포트 생성 모델: ${status.llm_model || llmName}. 클릭하여 모델을 즉시 변경할 수 있습니다.`);
   dashRows = top.rows || [];
   renderKpis(status, dashRows);
   renderChampions(dashRows);
@@ -7724,12 +7712,31 @@ const PROVIDER_MODELS = {
     "google/gemini-2.5-flash",
     "google/gemini-2.5-pro",
     "openai/gpt-4o-mini",
-    "openai/gpt-4o",
     "openai/o3-mini",
     "anthropic/claude-3.7-sonnet",
     "anthropic/claude-3.5-sonnet",
     "x-ai/grok-4-fast",
     "x-ai/grok-2-vision-1212",
+  ],
+  anthropic: [
+    "claude-3-7-sonnet-20250219",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
+    "claude-3-opus-20240229",
+  ],
+  openai: [
+    "gpt-4o",
+    "gpt-4o-mini",
+    "o3-mini",
+    "o1",
+    "o1-mini",
+  ],
+  google_antigravity: [
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.0-pro",
+    "gemini-2.0-flash",
+    "auto",
   ],
 };
 
