@@ -7700,6 +7700,13 @@ function syncDecorated(sel) {
   if (sel && typeof sel._decorateSync === "function") sel._decorateSync();
 }
 
+const PROVIDER_LABELS = {
+  xai: "Grok (xAI)",
+  antigravity: "Google agy",
+  deepseek: "DeepSeek",
+  openrouter: "OpenRouter",
+};
+
 const PROVIDER_MODELS = {
   xai: [
     "grok-4.6",
@@ -9989,7 +9996,7 @@ async function saveQuickLlmChoice() {
       applyModelOptions(PROVIDER_MODELS[provToSave] || [], modelToSave);
     }
     
-    const provLabel = PROVIDERS?.[provToSave]?.label || provToSave;
+    const provLabel = PROVIDER_LABELS[provToSave] || provToSave;
     setChip($("#chip-llm"), `🤖 AI: ${provLabel} · ${modelToSave.split("/").pop()}`, `AI 분석 리포트 생성 모델: ${modelToSave}`);
     
     renderConnections().catch(() => {});
