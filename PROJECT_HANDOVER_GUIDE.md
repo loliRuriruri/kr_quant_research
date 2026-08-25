@@ -12,7 +12,9 @@
 
 ## 2. 🌟 최근 완성 및 배포된 핵심 퀀트 기능들
 
-### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.35)
+### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.36)
+* **Google Antigravity CLI (gy) 세션 AUTH 신규 연동**: API 키 없이 Windows 터미널 gy 1회 로그인 세션(Windows Credential Manager 캐시)을 Python subprocess로 안전 호출하여 AI 심층 분석 실행. Grok AUTH 형태의 전용 카드 UI 제공.
+* **OpenRouter 및 DeepSeek 최신 모델 라인업 전면 개편**: DeepSeek-V3, DeepSeek-R1, DeepSeek-Chat-0731, DeepSeek-VL2(비전), Qwen-2.5-VL-72B, Claude-3.7-Sonnet, Grok-2-Vision-1212 등 최신 비전·추론 모델 목록 최신화
 * **글로벌 매크로 전 항목 실시간 동기화 & 원클릭 새로고침 완비**: ECOS 핵심 지표, 엔 캐리 모니터(USD/JPY 심볼 매칭 정상화 포함), 글로벌 바로미터 16대 자산군, ECOS·FRED 거시 펀더멘털 카드에 각각 [🔄 실시간 새로고침] 버튼 및 실시간 동기화 타임스탬프(HUD) 연동
 * **종목 심층분석 팝업 전략 백테스트 연동 복구**: 종목 상세 모달 내 [🧪 전략 백테스트] 버튼 클릭 시 모달이 닫히고 4대 전략 백테스트 탭으로 부드럽게 이동하여 즉시 백테스트 실행
 * **손자병법 오사(道·天·地·將·法) UI/UX 완성**: 5번째 카드 法 한자 및 아이콘(🛡️/⚠️) 통일, 주의/경고/탈락 시 빨간/주황색 하이라이트 발광 테두리 및 텍스트 강조, 중복 면책 문구(Quant에 넣지 않습니다 등) 전면 제거

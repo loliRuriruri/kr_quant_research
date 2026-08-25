@@ -1091,6 +1091,7 @@
           <label>AI 분석 제공자 (기본: Grok)
             <select id="llm-provider">
               <option value="xai" selected>Grok (xAI) — 기본</option>
+              <option value="antigravity">Antigravity CLI (Google) — agy 세션</option>
               <option value="deepseek">DeepSeek</option>
               <option value="openrouter">OpenRouter</option>
             </select>
@@ -1122,6 +1123,32 @@
               <div class="key-field-wrap"><input id="key-xai" type="password" autocomplete="off" placeholder="console.x.ai 키를 쓸 때만" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-xai">👁️</button></div>
             </label>
           </div>
+
+          <div class="grok-connect antigravity-connect" style="margin-top:14px; border: 1px solid rgba(56, 189, 248, 0.3); background: rgba(15, 23, 42, 0.6); border-radius: 12px; padding: 16px;">
+            <div class="card-h">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <h3 style="margin:0; color:#38bdf8;">Google Antigravity CLI AUTH</h3>
+                <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">Google agy 세션</span>
+              </div>
+              <span class="chip" id="agy-chip">확인 중</span>
+            </div>
+            <p class="hint" id="agy-hint" style="margin:6px 0 10px;">Google API 키 없이 Windows 터미널에서 <code>agy</code>로 1회 로그인하면 Windows Credential Manager 캐시를 자동으로 사용하여 AI 심층 분석을 실행합니다.</p>
+            <div class="antigravity-auth-box" style="background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:12px; margin-bottom:12px;">
+              <div style="display:flex; align-items:flex-start; gap:10px;">
+                <span style="font-size:18px;">💡</span>
+                <div style="font-size:12.5px; color:#cbd5e1; line-height:1.6;">
+                  <b>최초 1회 연결 방법:</b>
+                  <div>1. Windows 터미널(PowerShell 또는 CMD)을 열고 <code>agy</code> 명령어를 실행하여 Google 계정으로 로그인합니다.</div>
+                  <div>2. 로그인 완료 후 아래 <b>[Antigravity CLI 세션 확인]</b> 버튼을 누르면 즉시 연동됩니다.</div>
+                  <div style="color:#94a3b8; font-size:11.5px; margin-top:4px;">* OAuth 토큰을 프로그램이 직접 저장하지 않으며, Windows 자격 증명 관리자의 보안 세션을 안전하게 subprocess로 호출합니다.</div>
+                </div>
+              </div>
+            </div>
+            <div class="actions" style="display:flex; gap:8px;">
+              <button class="primary" type="button" id="agy-check-btn">Antigravity CLI 세션 확인</button>
+            </div>
+          </div>
+
           <label>DeepSeek API 키
             <span class="meta" id="meta-deepseek">미설정</span>
             <div class="key-field-wrap"><input id="key-deepseek" type="password" autocomplete="off" placeholder="DeepSeek를 쓸 때만" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-deepseek">👁️</button></div>

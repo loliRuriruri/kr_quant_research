@@ -72,6 +72,14 @@ def public_share_mode(request: Request | None = None) -> bool:
     return visible_host not in LOCAL_WEB_HOSTS or client_host not in LOCAL_CLIENT_HOSTS
 
 
+def _antigravity_auth_public() -> dict[str, Any]:
+    try:
+        from kr_quant.research.antigravity_auth import check_agy_auth
+
+        return check_agy_auth()
+    except Exception as exc:
+        return {"connected": False, "cli_available": False, "detail": str(exc)}
+
 def _grok_auth_public() -> dict[str, Any]:
     from kr_quant.research.grok_auth import session_status
 
@@ -383,6 +391,7 @@ def api_settings_get(request: Request) -> dict[str, Any]:
         "kiwoom_secret_key": mask_secret(s.kiwoom_secret_key),
         "opendart_sleep_sec": s.opendart_sleep_sec,
         "grok_auth": _grok_auth_public(),
+        "antigravity_auth": _antigravity_auth_public(),
         "help": {
             "opendart": "https://opendart.fss.or.kr",
             "krx": "https://openapi.krx.co.kr",
@@ -691,6 +700,8 @@ def api_llm_connections() -> dict[str, Any]:
         via = None
         if name == "xai":
             via = "Grok AUTH" if grok.get("connected") else ("API 키" if s.xai_api_key else None)
+        elif name == "antigravity":
+            via = "Google agy 세션" if ep.configured else None
         elif name == "deepseek":
             via = "API 키" if s.deepseek_api_key else None
         elif name == "openrouter":
@@ -720,6 +731,20 @@ def api_llm_connections() -> dict[str, Any]:
         "connections": rows,
     }
 
+
+
+@app.get("/api/llm/antigravity")
+def api_antigravity_status() -> dict[str, Any]:
+    from kr_quant.research.antigravity_auth import check_agy_auth
+
+    return check_agy_auth()
+
+
+@app.post("/api/llm/antigravity/check")
+def api_antigravity_check() -> dict[str, Any]:
+    from kr_quant.research.antigravity_auth import check_agy_auth
+
+    return check_agy_auth()
 
 @app.get("/api/llm/grok")
 def api_grok_status() -> dict[str, Any]:

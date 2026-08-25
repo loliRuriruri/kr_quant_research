@@ -6625,6 +6625,7 @@ async function loadSettings() {
   applyModelOptions(PROVIDER_MODELS[provider] || PROVIDER_MODELS.xai, s.llm_model);
   syncDecorated($("#llm-model-select"));
   renderGrokAuth(s.grok_auth);
+  renderAntigravityAuth(s.antigravity_auth);
   await loadModels({ reset: false }).catch(() => {});
   renderConnections().catch(() => {});
   metaLine($("#meta-opendart"), s.opendart_api_key);
@@ -7348,14 +7349,48 @@ function syncDecorated(sel) {
 }
 
 const PROVIDER_MODELS = {
-  xai: ["grok-4.6", "grok-4.5", "grok-4.3", "grok-4-1-fast", "grok-4", "grok-3", "grok-3-mini"],
-  deepseek: ["deepseek-chat", "deepseek-reasoner"],
+  xai: [
+    "grok-4.6",
+    "grok-4.5",
+    "grok-4.3",
+    "grok-4-1-fast",
+    "grok-4",
+    "grok-3",
+    "grok-3-mini",
+    "grok-2-vision-1212",
+  ],
+  antigravity: [
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.0-pro",
+    "gemini-2.0-flash",
+    "auto",
+  ],
+  deepseek: [
+    "deepseek-chat",
+    "deepseek-reasoner",
+    "deepseek-v3",
+    "deepseek-r1",
+    "deepseek-coder",
+  ],
   openrouter: [
-    "openai/gpt-4o-mini",
-    "x-ai/grok-4-fast",
-    "google/gemini-2.5-flash",
-    "anthropic/claude-sonnet-4",
     "deepseek/deepseek-chat",
+    "deepseek/deepseek-reasoner",
+    "deepseek/deepseek-r1",
+    "deepseek/deepseek-v3",
+    "deepseek/deepseek-chat-0731",
+    "deepseek/deepseek-vl2",
+    "deepseek/deepseek-coder",
+    "qwen/qwen-2.5-vl-72b-instruct",
+    "openai/gpt-4o",
+    "openai/gpt-4o-mini",
+    "openai/o3-mini",
+    "google/gemini-2.5-flash",
+    "google/gemini-2.5-pro",
+    "anthropic/claude-3.7-sonnet",
+    "anthropic/claude-3.5-sonnet",
+    "x-ai/grok-4-fast",
+    "x-ai/grok-2-vision-1212",
   ],
 };
 
@@ -9447,3 +9482,49 @@ document.addEventListener("click", async (e) => {
     btn.innerHTML = origHtml;
   }
 });
+
+function renderAntigravityAuth(sess) {
+  const chip = $("#agy-chip");
+  const hint = $("#agy-hint");
+  const btn = $("#agy-check-btn");
+  if (!chip || !hint || !btn) return;
+  if (sess && sess.connected) {
+    chip.textContent = "연결됨 · Windows 세션";
+    chip.className = "chip ok";
+    hint.textContent = "Windows Credential Manager에 캐시된 Google Antigravity 세션을 사용합니다. API Key 없이 무료로 실행됩니다.";
+    btn.textContent = "세션 재확인";
+  } else {
+    chip.textContent = sess && sess.cli_available ? "인증 대기" : "CLI 미확인";
+    chip.className = "chip warn";
+    hint.textContent = "터미널에서 agy를 실행하여 Google 계정으로 로그인하세요. 이후 세션 확인을 누르면 연결됩니다.";
+    btn.textContent = "Antigravity CLI 세션 확인";
+  }
+}
+
+if ($("#agy-check-btn")) {
+  $("#agy-check-btn").addEventListener("click", async () => {
+    const btn = $("#agy-check-btn");
+    const orig = btn.textContent;
+    btn.textContent = "확인 중…";
+    btn.disabled = true;
+    try {
+      const data = await api("/api/llm/antigravity/check", { method: "POST" });
+      renderAntigravityAuth(data);
+      if (data.connected) {
+        showToast("✅ Google Antigravity CLI 세션이 정상 연결되었습니다.", "success");
+      } else {
+        showToast("⚠️ " + (data.detail || "터미널에서 agy를 실행하여 로그인하세요."), "warn");
+      }
+      await renderConnections();
+    } catch (err) {
+      showToast(`❌ 세션 확인 실패: ${err.message}`, "error");
+    } finally {
+      btn.disabled = false;
+      if ($("#agy-chip")?.classList.contains("ok")) {
+        btn.textContent = "세션 재확인";
+      } else {
+        btn.textContent = "Antigravity CLI 세션 확인";
+      }
+    }
+  });
+}

@@ -149,8 +149,25 @@ def call_chat(
     *,
     json_mode: bool = True,
 ) -> tuple[str, dict[str, Any]]:
+    if endpoint.provider == "antigravity" or endpoint.base_url.startswith("cli://"):
+        from kr_quant.research.antigravity_auth import call_agy_subprocess
+
+        prompt_lines = []
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if role == "system":
+                prompt_lines.append(f"[지침 / System Prompt]\n{content}\n")
+            else:
+                prompt_lines.append(f"[분석 요청 / User Prompt]\n{content}\n")
+        combined_prompt = "\n".join(prompt_lines)
+        if json_mode:
+            combined_prompt += "\n\n반드시 JSON 형식으로만 응답하세요. 다른 설명이나 마크다운 백틱 없이 순수 JSON 객체만 반환하세요."
+        return call_agy_subprocess(combined_prompt, model=endpoint.model, timeout=timeout)
+
+
     if not endpoint.api_key:
-        raise RuntimeError(f"{endpoint.label} 연결이 없습니다. Grok 연결 또는 API 키를 설정하세요.")
+        raise RuntimeError(f"{endpoint.label} 연결이 없습니다. Grok/Antigravity 연결 또는 API 키를 설정하세요.")
     if not endpoint.model:
         raise RuntimeError("모델을 선택하세요.")
     url = f"{endpoint.base_url}/chat/completions"

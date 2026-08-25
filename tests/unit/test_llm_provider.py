@@ -45,9 +45,17 @@ def test_xai_drops_openrouter_model():
 
 def test_removed_providers_fall_back_to_grok():
     assert "openai" not in PROVIDERS
-    assert set(PROVIDERS) == {"xai", "deepseek", "openrouter"}
+    assert set(PROVIDERS) == {"xai", "antigravity", "deepseek", "openrouter"}
     assert resolve_provider(_S(), "openai").provider == "xai"
     assert resolve_provider(_S(), "opencode").provider == "xai"
+
+
+def test_antigravity_provider():
+    ep = resolve_provider(_S(), "antigravity")
+    assert ep.provider == "antigravity"
+    assert ep.base_url == "cli://agy"
+    assert "gemini" in ep.model
+
 
 
 def test_rejects_quant_fields():

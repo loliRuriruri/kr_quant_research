@@ -18,6 +18,21 @@ PROVIDERS = {
             "grok-4",
             "grok-3",
             "grok-3-mini",
+            "grok-2-vision-1212",
+        ],
+    },
+    "antigravity": {
+        "label": "Antigravity CLI (Google)",
+        "base_url": "cli://agy",
+        "model": "gemini-2.5-pro",
+        "env_key": "ANTIGRAVITY_AUTH",
+        "help": "Windows 터미널에서 agy를 실행하여 Google 계정으로 로그인",
+        "fallback_models": [
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.0-pro",
+            "gemini-2.0-flash",
+            "auto",
         ],
     },
     "deepseek": {
@@ -26,20 +41,38 @@ PROVIDERS = {
         "model": "deepseek-chat",
         "env_key": "DEEPSEEK_API_KEY",
         "help": "https://platform.deepseek.com/",
-        "fallback_models": ["deepseek-chat", "deepseek-reasoner"],
+        "fallback_models": [
+            "deepseek-chat",
+            "deepseek-reasoner",
+            "deepseek-v3",
+            "deepseek-r1",
+            "deepseek-coder",
+        ],
     },
     "openrouter": {
         "label": "OpenRouter",
         "base_url": "https://openrouter.ai/api/v1",
-        "model": "openai/gpt-4o-mini",
+        "model": "deepseek/deepseek-chat",
         "env_key": "OPENROUTER_API_KEY",
         "help": "https://openrouter.ai/keys",
         "fallback_models": [
-            "openai/gpt-4o-mini",
-            "x-ai/grok-4-fast",
-            "google/gemini-2.5-flash",
-            "anthropic/claude-sonnet-4",
             "deepseek/deepseek-chat",
+            "deepseek/deepseek-reasoner",
+            "deepseek/deepseek-r1",
+            "deepseek/deepseek-v3",
+            "deepseek/deepseek-chat-0731",
+            "deepseek/deepseek-vl2",
+            "deepseek/deepseek-coder",
+            "qwen/qwen-2.5-vl-72b-instruct",
+            "openai/gpt-4o",
+            "openai/gpt-4o-mini",
+            "openai/o3-mini",
+            "google/gemini-2.5-flash",
+            "google/gemini-2.5-pro",
+            "anthropic/claude-3.7-sonnet",
+            "anthropic/claude-3.5-sonnet",
+            "x-ai/grok-4-fast",
+            "x-ai/grok-2-vision-1212",
         ],
     },
 }
@@ -50,8 +83,10 @@ REMOVED_PROVIDERS = frozenset({"openai", "opencode", "custom"})
 
 def normalize_provider(name: str | None) -> str:
     n = (name or DEFAULT_PROVIDER).lower().strip()
-    if n == "grok":
+    if n in ("grok", "x_ai"):
         return "xai"
+    if n in ("agy", "google", "gemini", "antigravity_cli", "google_antigravity", "antigravity"):
+        return "antigravity"
     if n in REMOVED_PROVIDERS:
         return DEFAULT_PROVIDER
     return n or DEFAULT_PROVIDER
@@ -63,6 +98,8 @@ def model_fits_provider(provider: str, model: str | None) -> bool:
         return False
     if provider == "openrouter":
         return "/" in m
+    if provider == "antigravity":
+        return "/" not in m
     if "/" in m:
         return False
     if provider == "xai":
@@ -89,6 +126,8 @@ class LlmEndpoint:
 
     @property
     def configured(self) -> bool:
+        if self.provider == "antigravity":
+            return bool(self.api_key or self.base_url.startswith("cli://"))
         return bool(self.api_key)
 
 
@@ -98,15 +137,27 @@ def resolve_provider(settings: Any, provider: str | None = None) -> LlmEndpoint:
         raise ValueError(f"지원하지 않는 LLM 제공자: {name}")
     spec = PROVIDERS[name]
     session_key = None
-    try:
-        from kr_quant.research.grok_auth import load_session_token
+    if name == "xai":
+        try:
+            from kr_quant.research.grok_auth import load_session_token
 
-        session_key = load_session_token()
-    except Exception:
-        session_key = None
-    xai_key = session_key or getattr(settings, "xai_api_key", None)
+            session_key = load_session_token()
+        except Exception:
+            session_key = None
+    elif name == "antigravity":
+        try:
+            from kr_quant.research.antigravity_auth import check_agy_auth
+
+            auth_info = check_agy_auth()
+            if auth_info.get("connected"):
+                session_key = "antigravity-cli-cached-session"
+        except Exception:
+            session_key = None
+
+    xai_key = session_key if name == "xai" else getattr(settings, "xai_api_key", None)
     key_map = {
         "xai": xai_key,
+        "antigravity": session_key,
         "deepseek": getattr(settings, "deepseek_api_key", None),
         "openrouter": getattr(settings, "openrouter_api_key", None),
     }
@@ -119,7 +170,7 @@ def resolve_provider(settings: Any, provider: str | None = None) -> LlmEndpoint:
         label=spec["label"],
         base_url=str(base).rstrip("/"),
         model=str(model or ""),
-        api_key=key_map[name],
+        api_key=key_map.get(name),
     )
 
 
@@ -133,35 +184,89 @@ def is_chat_model(provider: str, model: str | None) -> bool:
     if not m or not model_fits_provider(provider, m):
         return False
     low = m.lower()
-    if provider == "xai" and any(tok in low for tok in ("imagine", "image", "video", "tts", "voice", "embedding")):
+    if any(tok in low for tok in ("tts", "voice", "embedding", "whisper", "moderation")):
+        return False
+    if provider == "xai" and any(tok in low for tok in ("imagine", "image", "video")):
         return False
     return True
 
 
 def sort_models(provider: str, models: list[str]) -> list[str]:
     uniq = list(dict.fromkeys(m for m in models if m))
-    if provider != "xai":
-        return uniq
-    pinned = [
-        "grok-4.6",
-        "grok-4.5",
-        "grok-4.3",
-        "grok-4.20-0309-reasoning",
-        "grok-4.20-0309-non-reasoning",
-        "grok-4.20-multi-agent-0309",
-        "grok-build-0.1",
-        "grok-4-1-fast",
-        "grok-4-fast",
-        "grok-4",
-        "grok-3-mini",
-        "grok-3",
-    ]
-    head = [m for m in pinned if m in uniq]
-    tail = [m for m in uniq if m not in head]
-    return head + tail
+    if provider == "xai":
+        pinned = [
+            "grok-4.6",
+            "grok-4.5",
+            "grok-4.3",
+            "grok-4.20-0309-reasoning",
+            "grok-4.20-0309-non-reasoning",
+            "grok-4.20-multi-agent-0309",
+            "grok-build-0.1",
+            "grok-4-1-fast",
+            "grok-4-fast",
+            "grok-4",
+            "grok-3-mini",
+            "grok-3",
+            "grok-2-vision-1212",
+        ]
+        head = [m for m in pinned if m in uniq]
+        tail = [m for m in uniq if m not in head]
+        return head + tail
+
+    if provider == "openrouter":
+        pinned = [
+            "deepseek/deepseek-chat",
+            "deepseek/deepseek-reasoner",
+            "deepseek/deepseek-r1",
+            "deepseek/deepseek-v3",
+            "deepseek/deepseek-chat-0731",
+            "deepseek/deepseek-vl2",
+            "deepseek/deepseek-coder",
+            "qwen/qwen-2.5-vl-72b-instruct",
+            "openai/gpt-4o",
+            "openai/gpt-4o-mini",
+            "openai/o3-mini",
+            "google/gemini-2.5-flash",
+            "google/gemini-2.5-pro",
+            "anthropic/claude-3.7-sonnet",
+            "anthropic/claude-3.5-sonnet",
+            "x-ai/grok-4-fast",
+            "x-ai/grok-2-vision-1212",
+        ]
+        head = [m for m in pinned if m in uniq]
+        tail = [m for m in uniq if m not in head]
+        return head + tail
+
+    if provider == "deepseek":
+        pinned = [
+            "deepseek-chat",
+            "deepseek-reasoner",
+            "deepseek-v3",
+            "deepseek-r1",
+            "deepseek-coder",
+        ]
+        head = [m for m in pinned if m in uniq]
+        tail = [m for m in uniq if m not in head]
+        return head + tail
+
+    if provider == "antigravity":
+        pinned = [
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.0-pro",
+            "gemini-2.0-flash",
+            "auto",
+        ]
+        head = [m for m in pinned if m in uniq]
+        tail = [m for m in uniq if m not in head]
+        return head + tail
+
+    return uniq
 
 
 def list_chat_models(endpoint: LlmEndpoint) -> list[str]:
+    if endpoint.provider == "antigravity":
+        return sort_models(endpoint.provider, fallback_models(endpoint.provider))
     remote = fetch_remote_models(endpoint)
     keep = [m for m in remote if is_chat_model(endpoint.provider, m)]
     keep.extend(m for m in fallback_models(endpoint.provider) if is_chat_model(endpoint.provider, m))
@@ -180,6 +285,8 @@ def extra_headers(endpoint: LlmEndpoint) -> dict[str, str]:
 
 
 def fetch_remote_models(endpoint: LlmEndpoint, timeout: int = 20) -> list[str]:
+    if endpoint.provider == "antigravity" or endpoint.base_url.startswith("cli://"):
+        return fallback_models(endpoint.provider)
     import requests
 
     headers = extra_headers(endpoint)

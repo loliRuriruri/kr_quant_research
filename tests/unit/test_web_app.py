@@ -293,7 +293,7 @@ def test_connections_lists_providers():
     data = client.get("/api/llm/connections").json()
     assert "active" in data
     names = {c["id"] for c in data["connections"]}
-    assert names == {"xai", "deepseek", "openrouter"}
+    assert names == {"xai", "antigravity", "deepseek", "openrouter"}
     html = client.get("/").text
     assert "llm-active-line" in html
 
@@ -308,15 +308,26 @@ def test_grok_connect_endpoint_exists():
     assert "승인" in html
 
 
+def test_antigravity_connect_endpoint_exists():
+    data = client.get("/api/llm/antigravity").json()
+    assert "connected" in data
+    assert "cli_available" in data
+    assert "detail" in data
+    html = client.get("/").text
+    assert "agy-chip" in html
+    assert "Google Antigravity CLI AUTH" in html
+
+
 def test_settings_has_no_standalone_openai():
     home = client.get("/")
     assert 'value="openai"' not in home.text
     data = client.get("/api/settings").json()
     assert "openai" not in data["providers"]
-    assert set(data["providers"]) == {"xai", "deepseek", "openrouter"}
+    assert set(data["providers"]) == {"xai", "antigravity", "deepseek", "openrouter"}
     assert "openai_api_key" not in data
     assert "fred_api_key" in data
     assert "telegram_bot_token" in data
+
     status = client.get("/api/status").json()
     assert "openai" not in status["keys"]
 
