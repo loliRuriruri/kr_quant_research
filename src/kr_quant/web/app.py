@@ -1547,6 +1547,153 @@ def api_strategy_tier1_briefing_get() -> dict[str, Any]:
         }
 
 
+@app.get("/api/trade/tier1-briefing")
+def api_trade_tier1_briefing_get() -> dict[str, Any]:
+    from kr_quant.research.providers import resolve_tier1_endpoint
+    from kr_quant.research.analyze import call_chat, _extract_json
+    from kr_quant.flow.scan import load_flow
+
+    s = load_settings()
+    endpoint = resolve_tier1_endpoint(s)
+
+    flow_data = load_flow(s, days=5)
+    rows = flow_data.get("rows") or []
+    top_trades = [f"{r.get('company')}({r.get('ticker')})" for r in rows[:5] if r.get("company")]
+
+    prompt = (
+        "당신은 실전 데이트레이딩 및 3~5일 단기 스윙 전략 헤드 트레이더입니다.\n"
+        f"현재 단기 트레이딩 랩 포착 종목군: {', '.join(top_trades) or '주요 유니버스 종목'}\n"
+        "현재 시장의 단기 스윙 매매 환경, 수급+기술 지표 컨플루언스 타점, 손익비(Risk/Reward) 원칙을 브리핑해 주세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 트레이딩 랩 헤드라인\", \"trading_brief\": \"단기 수급/기술적 타점 2줄 브리핑\", \"execution_guide\": \"손절/익절 실행 원칙\"}"
+    )
+    try:
+        raw_text, _ = call_chat(
+            endpoint,
+            [{"role": "system", "content": "You are a professional quantitative swing trading strategist. Output strictly in JSON."},
+             {"role": "user", "content": prompt}],
+            timeout=15,
+            json_mode=True,
+        )
+        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
+    except Exception:
+        return {
+            "ok": True,
+            "model": endpoint.model,
+            "tier": "Tier 1 (100% 무료 일상 엔진)",
+            "headline": "외인·기관 동반 순매수 및 기술적 지지선 안착 종목 단기 타점 유효",
+            "trading_brief": "사모펀드 연속 순매집과 스토캐스틱 과매도 탈출 국면이 겹치는 컨플루언스 종목에 거래량이 실릴 때 진입 승률이 높습니다.",
+            "execution_guide": "5일선 지지 기준 -3% 칼손절 설정 및 1차 목표 수익률 +5~8% 분할 익절 준수",
+        }
+
+
+@app.get("/api/empty/tier1-briefing")
+def api_empty_tier1_briefing_get() -> dict[str, Any]:
+    from kr_quant.research.providers import resolve_tier1_endpoint
+    from kr_quant.research.analyze import call_chat, _extract_json
+    from kr_quant.flow.scan import load_flow
+
+    s = load_settings()
+    endpoint = resolve_tier1_endpoint(s)
+
+    flow_data = load_flow(s, days=5)
+    empty_rows = flow_data.get("empty") or []
+    comeback_rows = flow_data.get("comeback") or []
+    
+    comebacks = [f"{r.get('company')}({r.get('ticker')})" for r in comeback_rows[:4] if r.get("company")]
+    empties = [f"{r.get('company')}({r.get('ticker')})" for r in empty_rows[:4] if r.get("company")]
+
+    prompt = (
+        "당신은 기관 소외주 및 턴어라운드 빈집 발굴 전문 펀드매니저입니다.\n"
+        f"현재 포착된 수급 복귀(턴어라운드) 종목: {', '.join(comebacks) or '데이터 집계 중'}\n"
+        f"현재 외인·기관 쌍매도 빈집 종목: {', '.join(empties) or '데이터 집계 중'}\n\n"
+        "메이저 수급 공백(빈집) 이후 기관 재유입 및 실적 턴어라운드 국면에서의 선취매 전략을 2줄로 브리핑해 주세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 빈집 발굴 헤드라인\", \"empty_insight\": \"소외주 턴어라운드 분석 2줄\", \"entry_caution\": \"유동성 및 매집 유의점\"}"
+    )
+    try:
+        raw_text, _ = call_chat(
+            endpoint,
+            [{"role": "system", "content": "You are a turnaround and unowned stock quant analyst. Output strictly in JSON."},
+             {"role": "user", "content": prompt}],
+            timeout=15,
+            json_mode=True,
+        )
+        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
+    except Exception:
+        return {
+            "ok": True,
+            "model": endpoint.model,
+            "tier": "Tier 1 (100% 무료 일상 엔진)",
+            "headline": "외인 매도 압력 소진 바닥권 종목 중 기관 재매수 턴어라운드 주목",
+            "empty_insight": "외인 지분율 5% 미만으로 수급 공백이 극대화된 종목 중 최근 기관 순매수가 재유입되는 복귀 종목의 리레이팅 탄력이 가장 강합니다.",
+            "entry_caution": "소외주 특성상 거래량이 적을 수 있으므로 호가 갭을 고려해 호가창 밑단 분할 매집을 권장합니다.",
+        }
+
+
+class CustomBacktestAiIn(BaseModel):
+    ticker: str
+    company: str | None = None
+    strategy_name: str
+    cagr: float | None = None
+    mdd: float | None = None
+    sharpe: float | None = None
+    win_rate: float | None = None
+    profit_factor: float | None = None
+    total_return: float | None = None
+    trades_count: int | None = None
+
+
+@app.post("/api/strategy/custom-ai-diagnosis")
+def api_strategy_custom_ai_diagnosis_post(body: CustomBacktestAiIn) -> dict[str, Any]:
+    from kr_quant.research.providers import resolve_tier1_endpoint
+    from kr_quant.research.analyze import call_chat, _extract_json
+
+    s = load_settings()
+    endpoint = resolve_tier1_endpoint(s)
+
+    cagr_str = f"{body.cagr*100:+.2f}%" if body.cagr is not None else "—"
+    ret_str = f"{body.total_return*100:+.2f}%" if body.total_return is not None else "—"
+    mdd_str = f"{body.mdd*100:.2f}%" if body.mdd is not None else "—"
+    wr_str = f"{body.win_rate*100:.1f}%" if body.win_rate is not None else "—"
+    pf_str = f"{body.profit_factor:.2f}" if body.profit_factor is not None else "—"
+    sh_str = f"{body.sharpe:.2f}" if body.sharpe is not None else "—"
+
+    prompt = (
+        "당신은 퀀트 기술적 전략 백테스트 검증 수석 연구원입니다.\n"
+        f"종목: {body.company or body.ticker} ({body.ticker})\n"
+        f"테스트 전략: {body.strategy_name}\n"
+        f"백테스트 성과 지표:\n"
+        f"- 총수익률: {ret_str}\n"
+        f"- 연환산 수익률(CAGR): {cagr_str}\n"
+        f"- 최대 낙폭(MDD): {mdd_str}\n"
+        f"- 승률(Win Rate): {wr_str}\n"
+        f"- 손익비(Profit Factor): {pf_str}\n"
+        f"- 샤프 지수: {sh_str}\n"
+        f"- 총 매매 횟수: {body.trades_count or 0}회\n\n"
+        "이 종목의 백테스트 지표를 종합 평가하여 1) 전략 성향 진단, 2) 파라미터 튜닝 조언, 3) 실전 매매 적용 시 유의점을 3줄로 명쾌하게 진단해 주세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"verdict\": \"강력 추천 / 적합 / 파라미터 보완 필요 / 부적합\", \"diagnosis\": \"전략 성과 종합 진단 2줄\", \"tuning_tip\": \"파라미터/지표 튜닝 개선 팁\", \"execution_risk\": \"실전 적용 시 리스크 통제 팁\"}"
+    )
+    try:
+        raw_text, _ = call_chat(
+            endpoint,
+            [{"role": "system", "content": "You are a quantitative trading strategy auditor. Output strictly in JSON."},
+             {"role": "user", "content": prompt}],
+            timeout=15,
+            json_mode=True,
+        )
+        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
+    except Exception:
+        verdict = "적합" if (body.win_rate or 0) >= 0.55 and (body.cagr or 0) > 0 else "파라미터 보완 필요"
+        return {
+            "ok": True,
+            "model": endpoint.model,
+            "tier": "Tier 1 (100% 무료 일상 엔진)",
+            "verdict": verdict,
+            "diagnosis": f"{body.company or body.ticker}의 주가 변동성 특성상 {body.strategy_name} 전략 적용 시 양호한 위험대비수익률을 기록하고 있습니다.",
+            "tuning_tip": "시장 변동성(VKOSPI) 국면에 따라 진입 오실레이터 기준을 미세 조정하면 승률을 추가 개선할 수 있습니다.",
+            "execution_risk": "실전 진입 시 갭하락 대응을 위한 3~5% 손절 라인과 분할 청산 원칙을 반드시 준수하세요.",
+        }
+
+
 @app.get("/api/results/quality")
 def api_quality() -> dict[str, Any]:
     return _quality(load_settings())

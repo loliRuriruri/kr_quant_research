@@ -526,8 +526,55 @@ async function runCustomBacktest(query, opts = {}) {
           </table>
         </div>
         ${renderPlaybookHtml(data.playbook)}
+        <div id="custom-strat-ai-diag" style="margin-top:12px;">
+          <div style="padding:10px 14px; background:rgba(30, 41, 59, 0.6); border:1px dashed rgba(56, 189, 248, 0.4); border-radius:8px; display:flex; align-items:center; gap:8px;">
+            <div class="skeleton-spinner" style="width:14px; height:14px;"></div>
+            <span style="font-size:12px; color:#94a3b8;">Tier 1 AI가 '${escapeHtml(data.company || data.ticker)}'의 4대 전략 백테스트 성과를 정밀 진단 중입니다...</span>
+          </div>
+        </div>
       </div>
     `;
+
+    const bestStrat = strats.find(s => s.strategy_id === data.best_id) || strats[0] || {};
+    api("/api/strategy/custom-ai-diagnosis", {
+      method: "POST",
+      body: JSON.stringify({
+        ticker: data.ticker,
+        company: data.company,
+        strategy_name: bestStrat.name || data.best_name || "최적 전략",
+        cagr: bestStrat.cagr,
+        mdd: bestStrat.max_drawdown,
+        sharpe: bestStrat.sharpe,
+        win_rate: bestStrat.wf_hit || bestStrat.win_rate,
+        profit_factor: bestStrat.profit_factor,
+        total_return: bestStrat.total_return,
+        trades_count: bestStrat.trade_count
+      })
+    }).then(aiRes => {
+      const diagEl = $("#custom-strat-ai-diag");
+      if (!diagEl || !aiRes || !aiRes.ok) return;
+      const verdictColor = aiRes.verdict === "강력 추천" ? "#34d399" : aiRes.verdict === "적합" ? "#38bdf8" : "#f59e0b";
+      diagEl.innerHTML = `
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:10px; padding:14px; margin-top:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">🤖</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">Tier 1 AI 백테스트 정밀 진단 리포트</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">100% 무료 엔진</span>
+            </div>
+            <span class="chip" style="font-size:11px; font-weight:800; background:rgba(56,189,248,0.15); color:${verdictColor}; border:1px solid ${verdictColor};">
+              종합 판정: ${escapeHtml(aiRes.verdict || "적합")}
+            </span>
+          </div>
+          <p style="margin:0 0 6px; font-size:13px; color:#f1f5f9; line-height:1.5;">${escapeHtml(aiRes.diagnosis || "")}</p>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:8px; margin-top:8px;">
+            ${aiRes.tuning_tip ? `<div style="background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:6px 10px; border-radius:4px; font-size:11.5px; color:#cbd5e1;">🎯 <b>파라미터 튜닝:</b> ${escapeHtml(aiRes.tuning_tip)}</div>` : ""}
+            ${aiRes.execution_risk ? `<div style="background:rgba(239, 68, 68, 0.08); border-left:3px solid #ef4444; padding:6px 10px; border-radius:4px; font-size:11.5px; color:#cbd5e1;">🛡️ <b>실전 리스크 관리:</b> ${escapeHtml(aiRes.execution_risk)}</div>` : ""}
+          </div>
+        </div>
+      `;
+    }).catch(() => {});
+
     showToast("백테스트가 완료되었습니다.", "success", 2200);
   } catch (err) {
     resBox.innerHTML = `<div style="padding:14px; background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; color:#f87171;">⚠️ ${escapeHtml(err.message || "오류가 발생했습니다.")}</div>`;
@@ -3573,6 +3620,56 @@ async function loadSeasonalityTier1Briefing() {
   } catch (e) {}
 }
 
+async function loadTradeTier1Briefing() {
+  const container = $("#trade-tier1-briefing");
+  if (!container) return;
+  try {
+    const res = await api("/api/trade/tier1-briefing");
+    if (res && res.ok && res.headline) {
+      container.innerHTML = `
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">⚡</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">트레이딩 랩 단기 스윙 & 수급 타점 AI 브리핑</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+            </div>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+          </div>
+          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
+          <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.trading_brief || "")}</p>
+          ${res.execution_guide ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">🎯 <b>실전 매매 원칙:</b> ${escapeHtml(res.execution_guide)}</div>` : ""}
+        </div>
+      `;
+    }
+  } catch (e) {}
+}
+
+async function loadEmptyTier1Briefing() {
+  const container = $("#empty-tier1-briefing");
+  if (!container) return;
+  try {
+    const res = await api("/api/empty/tier1-briefing");
+    if (res && res.ok && res.headline) {
+      container.innerHTML = `
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">🚪</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">메이저 수급 이탈 & 빈집 복귀(턴어라운드) AI 브리핑</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+            </div>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+          </div>
+          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
+          <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.empty_insight || "")}</p>
+          ${res.entry_caution ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">💡 <b>선취매 및 매집 유의점:</b> ${escapeHtml(res.entry_caution)}</div>` : ""}
+        </div>
+      `;
+    }
+  } catch (e) {}
+}
+
 async function loadStrategyTier1Briefing() {
   const container = $("#strategy-tier1-briefing");
   if (!container) return;
@@ -5169,6 +5266,7 @@ function renderEmpty(data) {
 async function loadEmpty(force) {
   const box = $("#empty-box");
   if (!box) return;
+  loadEmptyTier1Briefing().catch(() => {});
   box.innerHTML = "<p>빈집 종목을 불러오는 중…</p>";
   if (force || !(flowCache && Array.isArray(flowCache.empty) && !flowCache.need_scan)) {
     box.innerHTML = "<p>토스 수급을 스캔하는 중… 빈집 분류를 위해 1분 안팎 걸릴 수 있습니다.</p>";
@@ -6012,6 +6110,7 @@ async function loadStrategy(force) {
 async function loadTrade(force) {
   const box = $("#trade-box");
   if (!box) return;
+  loadTradeTier1Briefing().catch(() => {});
   box.innerHTML = "<p>트레이딩 수급을 불러오는 중…</p>";
   if (force || !flowReady(flowCache)) {
     box.innerHTML = "<p>토스 수급을 스캔하는 중… 거래대금·랭킹 종목 포함이라 1~2분 걸릴 수 있습니다.</p>";
