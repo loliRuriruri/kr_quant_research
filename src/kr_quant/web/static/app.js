@@ -2025,6 +2025,35 @@ function renderKpis(status, top) {
   $("#kpi-goto-reports")?.addEventListener("click", () => switchView("reports"));
 }
 
+function renderExtLinksTop(links) {
+  if (!links || !links.length) return "";
+  const iconMap = {
+    "네이버 시세": "🟢",
+    "네이버 종목분석": "📊",
+    "다음 금융": "🌐",
+    "FnGuide": "📑",
+    "DART 검색": "🏛️",
+    "KIND": "📋",
+    "토스증권": "📱",
+    "토스 골라보기": "⚡",
+  };
+
+  return `
+    <div class="drawer-ext-links-top" style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 14px; padding:10px 14px; background:linear-gradient(145deg, #0d1527, #0b1120); border:1px solid rgba(56,189,248,0.25); border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+      <span style="font-size:11.5px; font-weight:700; color:#38bdf8; display:inline-flex; align-items:center; gap:4px; margin-right:4px;">
+        🔗 사이트 직링크:
+      </span>
+      ${links.map((l) => {
+        const icon = iconMap[l.label] || "🔗";
+        return `<a class="ext-top-pill" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:600; padding:4px 10px; background:#131d33; border:1px solid rgba(56,189,248,0.25); border-radius:6px; color:#e2e8f0; text-decoration:none; transition:all 0.15s ease;" onmouseover="this.style.borderColor='#38bdf8'; this.style.background='rgba(56,189,248,0.18)'; this.style.transform='translateY(-1px)';" onmouseout="this.style.borderColor='rgba(56,189,248,0.25)'; this.style.background='#131d33'; this.style.transform='none';">
+          <span>${icon}</span>
+          <span>${escapeHtml(l.label)}</span>
+        </a>`;
+      }).join("")}
+    </div>
+  `;
+}
+
 async function openStock(ticker) {
   const code = padTicker(ticker);
   openDrawerUi();
@@ -2148,14 +2177,74 @@ async function openStock(ticker) {
     const ta = data.ta || {};
     let taBlock = "";
     if (ta.ok) {
-      const k = ta.stoch_k == null ? "—" : fmt(ta.stoch_k, 1);
-      const d = ta.stoch_d == null ? "—" : fmt(ta.stoch_d, 1);
-      const cloud = ta.ichi_cloud === "above" ? "구름 위" : ta.ichi_cloud === "below" ? "구름 아래" : ta.ichi_cloud === "inside" ? "구름 안" : "—";
-      taBlock = `<article class="intro"><h3>기술적 지표 (일봉)</h3>
-        <p>스토캐스틱 K <b>${k}</b> · D <b>${d}</b>${ta.stoch_cross ? ` (${escapeHtml(ta.stoch_cross)})` : ""}</p>
-        <p>일목균형표: ${escapeHtml(cloud)}${ta.ichi_signal ? ` · ${escapeHtml(ta.ichi_signal)}` : ""}</p>
-        ${ta.support != null ? `<p>지지 <b>${fmt(ta.support, 0)}</b> · 저항 <b>${fmt(ta.resistance, 0)}</b></p>` : ""}
-      </article>`;
+      const kVal = typeof ta.stoch_k === "number" ? ta.stoch_k : null;
+      const dVal = typeof ta.stoch_d === "number" ? ta.stoch_d : null;
+      const k = kVal != null ? fmt(kVal, 1) : "—";
+      const d = dVal != null ? fmt(dVal, 1) : "—";
+
+      // Detailed technical interpretations
+      let stochInterp = "";
+      if (kVal != null && dVal != null) {
+        if (kVal <= 20 && kVal >= dVal) {
+          stochInterp = "🟢 과매도 탈출 골든크로스 (단기 반등 매수 유효 구간)";
+        } else if (kVal <= 25) {
+          stochInterp = "🔵 과매도 침체 구간 (바닥권 분할 매수 관심)";
+        } else if (kVal >= 80 && kVal <= dVal) {
+          stochInterp = "🔴 과매수권 데드크로스 (단기 차익 실현 경계)";
+        } else if (kVal >= 75) {
+          stochInterp = "🟠 과매수권 과열 (상승 탄력 강하나 단기 눌림목 유의)";
+        } else if (kVal > dVal) {
+          stochInterp = "🟢 단기 상승 모멘텀 지속 (K > D 매수 우위)";
+        } else {
+          stochInterp = "🟡 단기 숨고르기/조정 국면 (K < D 매도 우위)";
+        }
+      }
+
+      let cloudText = "—";
+      let cloudInterp = "";
+      if (ta.ichi_cloud === "above") {
+        cloudText = "구름대 상단 돌파 (구름 위)";
+        cloudInterp = "🟢 중기 상승 추세 지지 국면 (구름대가 하방 지지선 역할)";
+      } else if (ta.ichi_cloud === "below") {
+        cloudText = "구름대 하회 (구름 아래)";
+        cloudInterp = "🔴 중기 하락/역배열 저항 국면 (상단 구름대 돌파 확인 필요)";
+      } else if (ta.ichi_cloud === "inside") {
+        cloudText = "구름대 내부 (구름 안)";
+        cloudInterp = "🟡 방향성 탐색/변동성 국면 (구름 상단 안착 시 추세 전환 기대)";
+      }
+
+      taBlock = `
+        <article class="intro" style="background:#0f172a; border:1px solid rgba(56,189,248,0.25); border-radius:10px; padding:14px; margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h3 style="margin:0; font-size:14px; color:#38bdf8;">📈 기술적 지표 & 실전 해석 (일봉)</h3>
+            <span class="chip" style="font-size:10.5px; padding:2px 7px;">KRX 일봉 데이터</span>
+          </div>
+
+          <div style="margin-bottom:10px; padding:9px 12px; background:rgba(15,23,42,0.85); border-radius:8px; border:1px solid #1e293b;">
+            <div style="display:flex; justify-content:space-between; font-size:12.5px; font-weight:600; color:#f1f5f9;">
+              <span>스토캐스틱 (Slow)</span>
+              <span>K <b>${k}</b> · D <b>${d}</b> ${ta.stoch_cross ? `<span class="chip ok" style="font-size:10.5px; padding:1px 6px;">${escapeHtml(ta.stoch_cross)}</span>` : ""}</span>
+            </div>
+            ${stochInterp ? `<p style="margin:5px 0 0; font-size:11.5px; color:#93c5fd; line-height:1.4;">💡 <b>해석:</b> ${escapeHtml(stochInterp)}</p>` : ""}
+          </div>
+
+          <div style="margin-bottom:10px; padding:9px 12px; background:rgba(15,23,42,0.85); border-radius:8px; border:1px solid #1e293b;">
+            <div style="display:flex; justify-content:space-between; font-size:12.5px; font-weight:600; color:#f1f5f9;">
+              <span>일목균형표 (Ichimoku)</span>
+              <span style="color:#38bdf8; font-weight:700;">${escapeHtml(cloudText)}</span>
+            </div>
+            ${cloudInterp ? `<p style="margin:5px 0 0; font-size:11.5px; color:#93c5fd; line-height:1.4;">💡 <b>해석:</b> ${escapeHtml(cloudInterp)}</p>` : ""}
+            ${ta.ichi_signal ? `<p style="margin:3px 0 0; font-size:11px; color:#94a3b8;">• 신호: ${escapeHtml(ta.ichi_signal)}</p>` : ""}
+          </div>
+
+          ${ta.support != null && ta.resistance != null ? `
+            <div style="display:flex; justify-content:space-between; font-size:12px; padding:7px 12px; background:rgba(56,189,248,0.08); border-radius:6px;">
+              <span style="color:#4ade80;">🛡️ 1차 지지선: <b>${fmt(ta.support, 0)}원</b></span>
+              <span style="color:#f87171;">🎯 1차 저항선: <b>${fmt(ta.resistance, 0)}원</b></span>
+            </div>
+          ` : ""}
+        </article>
+      `;
     }
     const timing = data.timing || {};
     const timingSignals = timing.signals || [];
@@ -2181,6 +2270,7 @@ async function openStock(ticker) {
 
     $("#drawer-title").textContent = `${r.company || ticker} (${padTicker(r.ticker || ticker)})`;
     $("#drawer-body").innerHTML = `
+      ${renderExtLinksTop(links)}
       <div class="stock-grid">
         <div>
           <div class="score-hero">
@@ -2223,15 +2313,13 @@ async function openStock(ticker) {
           ${publicShareMode ? `
             <p class="hint public-readonly-note">공개 웹은 마지막 업로드 스냅샷을 보는 읽기 전용 화면입니다. AI 생성·백테스트 실행·관심종목 저장은 로컬에서 사용할 수 있습니다.</p>
           ` : `
-            <div class="actions">
-              <button id="btn-analyze" data-ticker="${ticker}">간단 검증</button>
-              <button class="primary" id="btn-report" data-ticker="${ticker}">AI 분석 리포트</button>
-              <button id="btn-backtest-stock" data-ticker="${ticker}" style="background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4);">🧪 전략 백테스트</button>
-              <button id="btn-watch" data-ticker="${ticker}" data-company="${escapeHtml(r.company || "")}">관심종목</button>
+            <div class="actions" style="display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 8px;">
+              <button class="primary" id="btn-report" data-ticker="${ticker}" style="font-weight:700; padding:8px 16px;">🤖 AI 심층 리포트 생성</button>
+              <button id="btn-backtest-stock" data-ticker="${ticker}" style="background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4); font-weight:600; padding:8px 14px;">🧪 4대 전략 백테스트</button>
+              <button id="btn-watch" data-ticker="${ticker}" data-company="${escapeHtml(r.company || "")}" style="padding:8px 14px;">⭐ 관심종목</button>
             </div>
-            <p class="hint">간단 검증은 핵심 요약 점검이며, AI 분석 리포트는 심층 펀더멘털 분석 리포트를 생성합니다.</p>
+            <p class="hint" style="font-size:11.5px; color:#94a3b8; margin-top:4px;">💡 AI 심층 리포트는 선택한 LLM을 호출하여 5대 팩터, 4대 전략 백테스트, 공시 및 실전 매매 플레이북을 실시간 분석합니다.</p>
           `}
-          <div id="research-box"><p>저장된 간단 검증을 불러오는 중…</p></div>
           <div id="report-box"><p>저장된 AI 분석 리포트를 불러오는 중…</p></div>
         </div>
         <div>
@@ -2245,15 +2333,11 @@ async function openStock(ticker) {
           ${tossBlock}
           ${yahooBlock}
           ${newsBlock}
-          <div class="ext-links">
-            ${links.map((l) => `<a class="ext" href="${l.url}" target="_blank" rel="noopener">${l.label}</a>`).join("")}
-          </div>
         </div>
       </div>
     `;
 
     if (!publicShareMode) {
-      $("#btn-analyze")?.addEventListener("click", () => runAnalyze(code).catch((err) => alert(err.message)));
       $("#btn-backtest-stock")?.addEventListener("click", () => {
         closeDrawer();
         openStrategyBacktest(code, r.company || code).catch((err) => alert(err.message));
@@ -2261,9 +2345,6 @@ async function openStock(ticker) {
       $("#btn-report")?.addEventListener("click", () => runReport(code).catch((err) => alert(err.message)));
       $("#btn-watch")?.addEventListener("click", () => addWatch(code, r.company || "").catch((err) => alert(err.message)));
     }
-    loadResearch(code).catch(() => {
-      $("#research-box").innerHTML = "<p>저장된 간단 검증 없음</p>";
-    });
     loadReport(code).catch(() => {
       $("#report-box").innerHTML = "<p>저장된 AI 분석 리포트 없음</p>";
     });
