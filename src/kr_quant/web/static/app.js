@@ -2272,14 +2272,16 @@ async function openStock(ticker) {
     $("#drawer-body").innerHTML = `
       ${renderExtLinksTop(links)}
       <div class="stock-grid">
+        <!-- COLUMN 1 (LEFT): 퀀트 팩터 DNA, 기술적 지표 & 실전 해석, 타이밍 & 밴드, 게이트, 액션 & AI 리포트 -->
         <div>
+          <!-- 1. 종합 점수 Hero -->
           <div class="score-hero">
             <span class="has-tip" data-tip="${escapeHtml(r.rank_label || "순위")}">종합 점수</span>
             <b>${fmt(r.quant_score)}</b>
             <span class="meta">${r.market || ""} · ${r.sector || ""} · ${r.industry || ""}</span>
           </div>
 
-          <!-- 6-Axis Hexagon Radar Chart -->
+          <!-- 2. 6-Axis Hexagon Radar Chart -->
           <div class="stock-radar-card">
             <div class="stock-radar-header">
               <div class="stock-radar-title">
@@ -2296,7 +2298,16 @@ async function openStock(ticker) {
           <div class="factor-bars">
             ${factors.map(([name, v, max]) => `<span>${name} ${fmt(v, 1)} / ${max}</span><i class="has-tip" data-tip="${name} 점수"><em style="width:${Math.max(0, Math.min(100, ((v || 0) / max) * 100))}%"></em></i>`).join("")}
           </div>
-          <p class="meta">감점 요인: ${r.risk_penalty != null ? `-${fmt(r.risk_penalty, 1)}점` : "0점"} · 데이터 신뢰도: ${r.data_confidence != null ? `${fmt(r.data_confidence, 1)}점` : "—"}</p>
+          <p class="meta" style="margin-bottom:12px;">감점 요인: ${r.risk_penalty != null ? `-${fmt(r.risk_penalty, 1)}점` : "0점"} · 데이터 신뢰도: ${r.data_confidence != null ? `${fmt(r.data_confidence, 1)}점` : "—"}</p>
+
+          <!-- 3. 기술적 지표 & 실전 해석 (일봉) -->
+          ${taBlock}
+
+          <!-- 4. 기술적 타이밍 & 가격 밴드 게이지 -->
+          ${visualGauges}
+          ${timingBlock}
+
+          <!-- 5. 선정 및 게이트 상태 -->
           <article class="intro">
             <h3>선정 및 게이트 상태</h3>
             <p>${escapeHtml(gateLine)}</p>
@@ -2304,12 +2315,8 @@ async function openStock(ticker) {
             ${riskNotes.length ? `<ul class="risk-notes">${riskNotes.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : ""}
             ${dataNotes.length ? `<ul class="data-notes">${dataNotes.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : ""}
           </article>
-          <article class="intro">
-            <h3>핵심 재무 팩트</h3>
-            <div class="facts-grid">${facts}</div>
-          </article>
-          ${encyc ? `<article class="intro"><h3>기업 백과</h3>${encyc}</article>` : ""}
-          ${locBlock}
+
+          <!-- 6. 액션 버튼 & AI 리포트 박스 -->
           ${publicShareMode ? `
             <p class="hint public-readonly-note">공개 웹은 마지막 업로드 스냅샷을 보는 읽기 전용 화면입니다. AI 생성·백테스트 실행·관심종목 저장은 로컬에서 사용할 수 있습니다.</p>
           ` : `
@@ -2322,15 +2329,28 @@ async function openStock(ticker) {
           `}
           <div id="report-box"><p>저장된 AI 분석 리포트를 불러오는 중…</p></div>
         </div>
+
+        <!-- COLUMN 2 (RIGHT): 공식 수급 90일, 손자병법 5사 & 참모 분석, 공시 이벤트, 재무 팩트 & 기업 정보, 실시간 뉴스 -->
         <div>
-          ${visualGauges}
-          ${timingBlock}
+          <!-- 1. 공식 수급 90일 -->
           ${flow90Block(data.flow90)}
-          ${eventsBlock(data.events)}
+
+          <!-- 2. 손자병법 5사 (道天地將法) & 실전 참모 분석 -->
           ${fiveStrip({ dao: data.dao, tian: data.tian, di: data.di, jiang: data.jiang, fa: data.fa })}
           ${criticCard((data.sunzi || {}).critic)}
-          ${taBlock}
-          ${tossBlock}
+
+          <!-- 3. 공시 이벤트 -->
+          ${eventsBlock(data.events)}
+
+          <!-- 4. 핵심 재무 팩트 & 기업 백과 & 본사 위치 -->
+          <article class="intro">
+            <h3>핵심 재무 팩트</h3>
+            <div class="facts-grid">${facts}</div>
+          </article>
+          ${encyc ? `<article class="intro"><h3>기업 백과</h3>${encyc}</article>` : ""}
+          ${locBlock}
+
+          <!-- 5. Yahoo Financials & 실시간 뉴스 & 웹검색 -->
           ${yahooBlock}
           ${newsBlock}
         </div>
