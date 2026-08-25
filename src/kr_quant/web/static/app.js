@@ -2316,30 +2316,33 @@ async function openStock(ticker) {
             ${dataNotes.length ? `<ul class="data-notes">${dataNotes.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>` : ""}
           </article>
 
-          <!-- 6. 액션 버튼 & AI 리포트 박스 -->
+          <!-- 6. 액션 버튼 (4개 버튼 1줄 정렬) & AI 리포트 박스 -->
           ${publicShareMode ? `
             <p class="hint public-readonly-note">공개 웹은 마지막 업로드 스냅샷을 보는 읽기 전용 화면입니다. AI 생성·백테스트 실행·관심종목 저장은 로컬에서 사용할 수 있습니다.</p>
           ` : `
-            <div class="actions" style="display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 8px;">
-              <button class="primary" id="btn-report" data-ticker="${ticker}" style="font-weight:700; padding:8px 16px;">🤖 AI 심층 리포트 생성</button>
-              <button id="btn-infographic-drawer" data-ticker="${ticker}" style="background:linear-gradient(135deg, rgba(6,182,212,0.25), rgba(59,130,246,0.25)); color:#38bdf8; border:1px solid rgba(56,189,248,0.55); font-weight:700; padding:8px 16px; transition:all 0.2s;">🎨 인포그래픽 뷰</button>
-              <button id="btn-backtest-stock" data-ticker="${ticker}" style="background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4); font-weight:600; padding:8px 14px;">🧪 4대 전략 백테스트</button>
-              <button id="btn-watch" data-ticker="${ticker}" data-company="${escapeHtml(r.company || "")}" style="padding:8px 14px;">⭐ 관심종목</button>
+            <div class="actions" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; margin:14px 0 6px;">
+              <button class="primary" id="btn-report" data-ticker="${ticker}" style="font-weight:700; font-size:11px; padding:7px 2px; display:inline-flex; align-items:center; justify-content:center; gap:2px; white-space:nowrap;" title="AI 심층 분석 리포트 생성">🤖 AI 리포트</button>
+              <button id="btn-infographic-drawer" data-ticker="${ticker}" style="background:linear-gradient(135deg, rgba(6,182,212,0.22), rgba(59,130,246,0.22)); color:#38bdf8; border:1px solid rgba(56,189,248,0.5); font-weight:700; font-size:11px; padding:7px 2px; display:inline-flex; align-items:center; justify-content:center; gap:2px; white-space:nowrap;" title="인포그래픽 프레젠테이션 뷰 열기">🎨 인포그래픽</button>
+              <button id="btn-backtest-stock" data-ticker="${ticker}" style="background:rgba(56,189,248,0.12); color:#38bdf8; border-color:rgba(56,189,248,0.35); font-weight:600; font-size:11px; padding:7px 2px; display:inline-flex; align-items:center; justify-content:center; gap:2px; white-space:nowrap;" title="4대 전략 백테스트">🧪 백테스팅</button>
+              <button id="btn-watch" data-ticker="${ticker}" data-company="${escapeHtml(r.company || "")}" style="font-size:11px; padding:7px 2px; display:inline-flex; align-items:center; justify-content:center; gap:2px; white-space:nowrap;" title="관심종목 추가/해제">⭐ 관심종목</button>
             </div>
-            <p class="hint" style="font-size:11.5px; color:#94a3b8; margin-top:4px;">💡 AI 심층 리포트는 선택한 LLM으로 14대 지침을 분석하며, <b>인포그래픽 뷰</b>로 시각화 덱을 즉시 확인할 수 있습니다.</p>
+            <p class="hint" style="font-size:11px; color:#94a3b8; margin-top:2px;">💡 AI 심층 리포트는 선택한 LLM으로 14대 지침을 분석하며, <b>인포그래픽 뷰</b>로 시각화 덱을 즉시 확인할 수 있습니다.</p>
           `}
           <div id="report-box"><p style="font-size:12px; color:#64748b;">저장된 AI 분석 리포트를 확인하는 중…</p></div>
 
-          <!-- 7. 핵심 재무 팩트 & 기업 백과 & 본사 위치 (좌측 하단 1:1 배치) -->
+          <!-- 7. 핵심 재무 팩트 & 기업 백과 & 본사 위치 -->
           <article class="intro" style="margin-top:14px;">
             <h3>핵심 재무 팩트</h3>
             <div class="facts-grid">${facts}</div>
           </article>
           ${encyc ? `<article class="intro"><h3>기업 백과</h3>${encyc}</article>` : ""}
           ${locBlock}
+
+          <!-- 8. 실시간 네이버 뉴스 & 웹검색 (좌측 하단 배치로 1:1 완벽 균형) -->
+          ${newsBlock}
         </div>
 
-        <!-- COLUMN 2 (RIGHT): 공식 수급 90일, 손자병법 5사 & 참모 분석, 공시 이벤트, Yahoo, 실시간 뉴스 -->
+        <!-- COLUMN 2 (RIGHT): 공식 수급 90일, 손자병법 5사 & 참모 분석, 공시 이벤트, Yahoo Financials -->
         <div>
           <!-- 1. 공식 수급 90일 -->
           ${flow90Block(data.flow90)}
@@ -2348,12 +2351,11 @@ async function openStock(ticker) {
           ${fiveStrip({ dao: data.dao, tian: data.tian, di: data.di, jiang: data.jiang, fa: data.fa })}
           ${criticCard((data.sunzi || {}).critic)}
 
-          <!-- 3. 공시 이벤트 -->
+          <!-- 3. 공시 이벤트 & DART 캘린더 -->
           ${eventsBlock(data.events)}
 
-          <!-- 4. Yahoo Financials & 실시간 뉴스 & 웹검색 -->
+          <!-- 4. Yahoo Financials & 컨센서스 -->
           ${yahooBlock}
-          ${newsBlock}
         </div>
       </div>
     `;
@@ -2771,7 +2773,8 @@ function openReportModal(rec, customTitle = null) {
         <button type="button" class="report-view-btn active" id="modal-tab-infographic">🎨 인포그래픽 뷰 (Interactive Deck)</button>
         <button type="button" class="report-view-btn" id="modal-tab-markdown">📑 정통 리포트 뷰 (Text Deep-Dive)</button>
       </div>
-      <div style="display:flex; gap:8px; align-items:center;">
+      <div style="display:flex; gap:6px; align-items:center;">
+        <button type="button" class="ghost small" id="btn-modal-regen" style="height:32px; font-size:12px; border-color:rgba(56,189,248,0.4); color:#38bdf8; font-weight:600;">🔄 다시 생성</button>
         <button type="button" class="primary small" id="btn-open-fullscreen-report" style="height:32px; font-size:12px;">🖥️ 새 창 전체화면</button>
         <button type="button" class="ghost small" id="btn-print-report" style="height:32px; font-size:12px;">🖨️ PDF / 인쇄</button>
         <a class="ghost small" href="${infographicUrl}" download="${encodeURIComponent(company)}_${code}_인포그래픽리포트.html" style="height:32px; font-size:12px; display:inline-flex; align-items:center; text-decoration:none;">📥 HTML 저장</a>
@@ -2808,6 +2811,7 @@ function openReportModal(rec, customTitle = null) {
     const paneInfo = $("#modal-pane-infographic");
     const paneMd = $("#modal-pane-markdown");
     const btnFull = $("#btn-open-fullscreen-report");
+    const btnModalRegen = $("#btn-modal-regen");
 
     if (tabInfo && tabMd && paneInfo && paneMd) {
       tabInfo.onclick = () => {
@@ -2826,6 +2830,11 @@ function openReportModal(rec, customTitle = null) {
     if (btnFull) {
       btnFull.onclick = () => {
         window.open(infographicUrl, "_blank");
+      };
+    }
+    if (btnModalRegen) {
+      btnModalRegen.onclick = () => {
+        runReport(code).catch((err) => alert(err.message));
       };
     }
     const btnPrint = $("#btn-print-report");
@@ -2852,18 +2861,19 @@ function renderReport(rec) {
   const box = $("#report-box");
   if (!box) return;
   if (!rec) {
-    box.innerHTML = `<p style="font-size:12px; color:#64748b; margin:6px 0 0;">💡 아직 생성된 AI 리포트가 없습니다. 상단 [AI 심층 리포트 생성] 또는 [인포그래픽 뷰]를 클릭하세요.</p>`;
+    box.innerHTML = `<p style="font-size:11.5px; color:#64748b; margin:6px 0 0;">💡 아직 생성된 AI 리포트가 없습니다. 상단 [🤖 AI 리포트] 또는 [🎨 인포그래픽]을 클릭하세요.</p>`;
     return;
   }
   box.innerHTML = `
-    <div style="padding:10px 14px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.3); border-radius:10px; margin-top:8px;">
+    <div style="padding:9px 12px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.3); border-radius:8px; margin-top:6px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-size:12px; font-weight:700; color:#38bdf8;">🤖 AI 리포트 (${escapeHtml(rec.provider || "")} ${escapeHtml(rec.model || "")})</span>
-        <span class="chip ok" style="font-size:10.5px;">생성 완료</span>
+        <span style="font-size:11.5px; font-weight:700; color:#38bdf8;">🤖 AI 리포트 & 인포그래픽</span>
+        <span class="chip ok" style="font-size:10px; padding:2px 6px;">생성 완료</span>
       </div>
-      <div style="display:flex; gap:6px; margin-top:8px;">
-        <button class="primary small" id="btn-report-wide" style="font-size:11.5px; padding:5px 12px; font-weight:700;">🎨 인포그래픽 / 리포트 열기</button>
-        <button class="ghost small" id="btn-report-regen" style="font-size:11.5px; padding:5px 10px;">🔄 다시 생성</button>
+      <div style="font-size:10.5px; color:#94a3b8; margin:2px 0 6px;">엔진: ${escapeHtml(rec.provider || "")} · ${escapeHtml(rec.model || "")}</div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+        <button class="primary small" id="btn-report-wide" style="font-size:11px; padding:4px 6px; font-weight:700; white-space:nowrap;">🎨 인포그래픽 열기</button>
+        <button class="ghost small" id="btn-report-regen" style="font-size:11px; padding:4px 6px; font-weight:600; white-space:nowrap; border-color:rgba(56,189,248,0.4); color:#38bdf8;">🔄 다시 생성</button>
       </div>
     </div>
   `;
