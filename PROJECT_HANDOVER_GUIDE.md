@@ -1,8 +1,8 @@
-# 🚀 KR Quant Research - 프로젝트 인수인계 & 그록(Grok) 연계 가이드 (`v2.62.0-stable`)
+# 🚀 KR Quant Research - 프로젝트 인수인계 & 그록(Grok) 연계 가이드 (`v2.62.1-stable`)
 
 ## 1. 📌 현재 프로젝트 상태 요약
 * **저장소 (GitHub)**: `https://github.com/loliRuriruri/kr_quant_research.git`
-* **최신 릴리스 태그**: **`v2.62.0-stable`**
+* **최신 릴리스 태그**: **`v2.62.1-stable`**
 * **공개 웹**: `https://korea-quant-research.pages.dev/` (Cloudflare Pages 읽기 전용 스냅샷. PC 꺼져 있어도 접속)
 * **로컬 대시보드**: `Start-KR-Quant.bat` → `http://127.0.0.1:8790` (수집·백테스트·API 설정)
 * **공개 웹 갱신**: `Start-KR-Quant-Public.bat` (로컬 계산본만 업로드, 키 미포함)

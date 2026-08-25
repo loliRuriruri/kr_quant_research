@@ -3645,6 +3645,53 @@ async function loadTradeTier1Briefing() {
   } catch (e) {}
 }
 
+const SUNZI_PERSONAS = {
+  yang: {
+    avatar: "🍵",
+    name: "양 웬리 제독",
+    sub: "제13함대 사령관 · 불패의 퀀트 참모",
+    badge: "🍵 홍차 브리핑 준비 완료",
+    quote: "“전쟁에서 가장 중요한 건 이기는 게 아니라, 지지 않는 거라네.”",
+    briefingTitle: "제13함대 히페리온 작전 회의록",
+    heroStep2Label: "💡 양 웬리의 기책 & 진입 타점:",
+    heroTitle: "⚔️ 양 웬리의 정밀 전술 분석 후보 TOP 6",
+    tableCol: "양 웬리 전술 총평"
+  },
+  reinhard: {
+    avatar: "🦁",
+    name: "라인하르트 폰 로엔그람 황제",
+    sub: "은하제국 황제 · 패도적 모멘텀 총사령관",
+    badge: "🦁 제국 친정군 출진 준비 완료",
+    quote: "“우주(시장)의 패권은 주저하는 자에게 주어지지 않는다. 전 함대 돌격!”",
+    briefingTitle: "은하제국 황제 친정군 작전 칙령록",
+    heroStep2Label: "⚔️ 라인하르트의 주도주 돌파 타점:",
+    heroTitle: "🦁 라인하르트 황제의 전력 돌격 후보 TOP 6",
+    tableCol: "라인하르트 황제 칙령"
+  },
+  oberstein: {
+    avatar: "👁️",
+    name: "파울 폰 오베르슈타인 군무상서",
+    sub: "은하제국 군무상서 · 냉혹한 리스크 통제관",
+    badge: "👁️ 리스크 사정 및 도려내기 준비 완료",
+    quote: "“감정은 자본의 독입니다. 기대치가 음수인 포지션을 즉시 도려내십시오.”",
+    briefingTitle: "군무상서 기밀 리스크 종합 사정서",
+    heroStep2Label: "🛡️ 오베르슈타인의 리스크 사정 & 진입선:",
+    heroTitle: "👁️ 오베르슈타인의 리스크 사정 후보 TOP 6",
+    tableCol: "오베르슈타인 사정 총평"
+  },
+  julian: {
+    avatar: "📖",
+    name: "율리안 민츠 참모",
+    sub: "양 웬리 제독의 후계자 · 팩터 정석 연구원",
+    badge: "📖 5대 팩터 교차 검증 완료",
+    quote: "“데이터는 거짓말을 하지 않습니다. 제독님의 가르침대로 정석만 따르겠습니다!”",
+    briefingTitle: "후계자 율리안의 퀀트 정석 작전 보고서",
+    heroStep2Label: "📖 율리안의 팩터 교차 검증 타점:",
+    heroTitle: "📖 율리안의 팩터 정석 검증 후보 TOP 6",
+    tableCol: "율리안 정석 총평"
+  }
+};
+
 let currentSunziPersona = "yang";
 
 async function loadSunziTier1Briefing(persona = currentSunziPersona) {
@@ -3662,33 +3709,33 @@ async function loadSunziTier1Briefing(persona = currentSunziPersona) {
       ];
       
       const buttonsHtml = personaBadges.map(p => `
-        <button type="button" class="tag-btn yang-deck-persona-btn ${p.id === persona ? 'active' : ''}" data-persona="${p.id}" style="padding:3px 8px; font-size:11px; ${p.id === persona ? 'background:#38bdf8; color:#0f172a; font-weight:800;' : 'background:rgba(255,255,255,0.06); color:#cbd5e1;'}">
+        <button type="button" class="tag-btn yang-deck-persona-btn ${p.id === persona ? 'active' : ''}" data-persona="${p.id}" style="padding:4px 10px; font-size:11.5px; border-radius:6px; transition:all 0.2s; ${p.id === persona ? 'background:#38bdf8; color:#0f172a; font-weight:800; border:1px solid #38bdf8;' : 'background:rgba(255,255,255,0.06); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1);'}">
           ${p.icon} ${p.name} (${p.desc})
         </button>
       `).join("");
 
       container.innerHTML = `
-        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9)); border:1px solid rgba(56, 189, 248, 0.4); border-radius:12px; padding:14px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:8px;">
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.95)); border:1px solid rgba(56, 189, 248, 0.45); border-radius:12px; padding:14px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:8px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:8px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">⚔️</span>
-              <span style="font-size:14px; font-weight:900; color:#38bdf8;">은하퀀트전설 참모 당직 전술 브리핑</span>
+              <span style="font-size:14px; font-weight:900; color:#38bdf8;">은하퀀트전설 4대 지휘관 당직 전술 브리핑</span>
               <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10.5px; padding:1px 6px;">Tier 1 무료 AI</span>
             </div>
             <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
-              <span style="font-size:11.5px; color:#94a3b8; margin-right:4px;">참모 전환:</span>
+              <span style="font-size:11.5px; color:#94a3b8; margin-right:4px;">지휘관 변경:</span>
               ${buttonsHtml}
             </div>
           </div>
           
           <div style="display:flex; align-items:center; gap:8px;">
-            <span class="chip" style="background:#eab308; color:#0f172a; font-weight:800; font-size:11px;">${escapeHtml(res.commander || '지휘관')}</span>
-            <b style="font-size:14.5px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
+            <span class="chip" style="background:#eab308; color:#0f172a; font-weight:800; font-size:11.5px;">${escapeHtml(res.commander || '지휘관')}</span>
+            <b style="font-size:15px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           </div>
-          <p style="margin:0; font-size:12.5px; color:#e2e8f0; line-height:1.55; padding:8px 12px; background:rgba(15,23,42,0.5); border-radius:8px; border-left:3px solid #38bdf8;">
+          <p style="margin:0; font-size:13px; color:#e2e8f0; line-height:1.55; padding:10px 14px; background:rgba(15,23,42,0.6); border-radius:8px; border-left:3px solid #38bdf8;">
             ${escapeHtml(res.briefing || "")}
           </p>
-          ${res.tactical_order ? `<div style="font-size:12px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:6px 10px; border-radius:4px;">📜 <b>오늘의 작전 지침:</b> ${escapeHtml(res.tactical_order)}</div>` : ""}
+          ${res.tactical_order ? `<div style="font-size:12px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:8px 12px; border-radius:4px;">📜 <b>오늘의 작전 지침:</b> ${escapeHtml(res.tactical_order)}</div>` : ""}
         </div>
       `;
 
@@ -3696,7 +3743,9 @@ async function loadSunziTier1Briefing(persona = currentSunziPersona) {
         btn.addEventListener("click", () => {
           const p = btn.getAttribute("data-persona");
           if (p && p !== currentSunziPersona) {
+            currentSunziPersona = p;
             loadSunziTier1Briefing(p);
+            loadSunzi();
           }
         });
       });
@@ -4887,6 +4936,8 @@ async function loadSunzi() {
     </div>
   `).join("");
 
+  const pMeta = SUNZI_PERSONAS[currentSunziPersona] || SUNZI_PERSONAS.yang;
+
   // Top 6 Staff Hero Cards
   const staff = sunziAllRows.slice(0, 6);
   const staffCards = staff.map((r, idx) => `
@@ -4913,7 +4964,7 @@ async function loadSunzi() {
         </div>
         ${r.maneuver_entry ? `
         <div class="yang-tier-box maneuver">
-          <b style="font-size:12px; color:#fbbf24;">💡 양 웬리의 기책:</b> ${escapeHtml(r.maneuver_entry)}
+          <b style="font-size:12px; color:#fbbf24;">${escapeHtml(pMeta.heroStep2Label)}</b> ${escapeHtml(r.maneuver_entry)}
         </div>` : ''}
       </div>
 
@@ -4928,18 +4979,18 @@ async function loadSunzi() {
     <!-- Top War Room HUD Banner -->
     <div class="yang-war-room-header">
       <div class="yang-portrait-card">
-        <div class="yang-avatar-hud">🍵</div>
-        <b style="font-size:18px; color:#fff; font-weight:900;">양 웬리 제독</b>
-        <span style="color:#94a3b8; font-size:12px; display:block; margin-top:2px;">제13함대 사령관 · 실전 퀀트 참모</span>
-        <div class="yang-tea-badge">🍵 홍차 브리핑 준비 완료</div>
+        <div class="yang-avatar-hud">${pMeta.avatar}</div>
+        <b style="font-size:18px; color:#fff; font-weight:900;">${escapeHtml(pMeta.name)}</b>
+        <span style="color:#94a3b8; font-size:12px; display:block; margin-top:2px;">${escapeHtml(pMeta.sub)}</span>
+        <div class="yang-tea-badge">${escapeHtml(pMeta.badge)}</div>
         <p style="margin:12px 0 0; font-size:11.5px; color:#cbd5e1; line-height:1.45; font-style:italic;">
-          “전쟁에서 가장 중요한 건 이기는 게 아니라, 지지 않는 거라네.”
+          ${escapeHtml(pMeta.quote)}
         </p>
       </div>
 
       <article class="yang-briefing-hud">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <h3 style="margin:0; font-size:17px; color:#38bdf8; font-weight:900;">📜 ${escapeHtml(briefing.title || "제13함대 히페리온 작전 회의록")}</h3>
+          <h3 style="margin:0; font-size:17px; color:#38bdf8; font-weight:900;">📜 ${escapeHtml(pMeta.briefingTitle)}</h3>
           <span class="chip" style="background:rgba(234,179,8,0.2); color:#fde047; font-size:11.5px; font-weight:800;">孫子 五事 評點</span>
         </div>
         <p style="font-size:12px; color:#94a3b8; margin:0 0 8px; line-height:1.4;">${escapeHtml(briefing.sunzi_line || "")}</p>
@@ -5010,7 +5061,7 @@ async function loadSunzi() {
     <!-- Staff Hero Cards (Top 6) -->
     <div style="margin-bottom:18px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <b style="font-size:14.5px; color:#fde047;">⚔️ 양 웬리의 정밀 전술 분석 후보 TOP 6</b>
+        <b style="font-size:14.5px; color:#fde047;">${escapeHtml(pMeta.heroTitle)}</b>
         <span style="font-size:11.5px; color:#94a3b8;">카드를 클릭하면 1:1 심층 작전 지시서가 열립니다.</span>
       </div>
       <div class="yang-staff-grid">${staffCards}</div>
@@ -5033,7 +5084,7 @@ async function loadSunzi() {
             <th class="sortable" data-sort="jiang">將</th>
             <th class="sortable has-tip" data-sort="fa" data-tip="손자 法 — 데이터·리스크·공시 규율">法</th>
             <th>규율</th>
-            <th>양 웬리 전술 총평</th>
+            <th>${escapeHtml(pMeta.tableCol)}</th>
             <th>지시서</th>
           </tr>
         </thead>
@@ -5077,13 +5128,13 @@ async function loadSunzi() {
     });
   });
 
-  // Bind Clicks to open Yang Tactical Modal
+  // Bind Clicks to open Yang Tactical Modal with active commander
   box.querySelectorAll(".yang-tactical-card, .btn-open-yang-brief, .btn-table-open-brief").forEach((el) => {
     el.addEventListener("click", (e) => {
       e.stopPropagation();
       const idx = parseInt(el.dataset.index, 10);
       const row = sunziAllRows[idx];
-      if (row) openYangTacticalModal(row);
+      if (row) openYangTacticalModal(row, currentSunziPersona);
     });
   });
 
@@ -5092,7 +5143,7 @@ async function loadSunzi() {
       if (e.target.closest("button")) return;
       const idx = parseInt(tr.dataset.index, 10);
       const row = sunziAllRows[idx];
-      if (row) openYangTacticalModal(row);
+      if (row) openYangTacticalModal(row, currentSunziPersona);
     });
   });
 
