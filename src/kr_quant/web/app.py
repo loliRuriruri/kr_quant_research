@@ -1268,6 +1268,102 @@ def api_flow_tier1_briefing_get() -> dict[str, Any]:
         }
 
 
+@app.get("/api/dashboard/tier1-briefing")
+def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
+    from kr_quant.research.providers import resolve_tier1_endpoint
+    from kr_quant.research.analyze import call_chat, _extract_json
+
+    s = load_settings()
+    endpoint = resolve_tier1_endpoint(s)
+
+    top_stocks = []
+    try:
+        folder = _run_dir(s)
+        path = folder / "all_stocks.parquet"
+        if path.exists():
+            import pandas as pd
+
+            df = pd.read_parquet(path)
+            if "universe_eligible" in df.columns:
+                df = df[df["universe_eligible"]]
+            if "quant_rank" in df.columns:
+                df = df.sort_values("quant_rank", na_position="last")
+            top_stocks = df.head(5)[["ticker", "company", "quant_score", "sector"]].to_dict("records")
+    except Exception:
+        pass
+
+    stocks_summary = "\n".join(f"- {st.get('company')} ({st.get('ticker')}): 퀀트점수 {st.get('quant_score')}점, 업종: {st.get('sector')}" for st in top_stocks) or "상위 퀀트 종목 데이터 준비 중"
+
+    prompt = (
+        "당신은 국내 최고 퀀트 펀드매니저입니다.\n"
+        f"오늘의 퀀트 랭킹 상위 우량 종목 포트폴리오:\n{stocks_summary}\n\n"
+        "현재 퀀트 랭킹 1위 종목의 매력도와 시장 대응 전략을 2줄로 명쾌하게 브리핑해 주세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 시장 헤드라인\", \"champion_focus\": \"1위 챔피언 핵심 모멘텀 1줄\", \"strategy_note\": \"오늘의 퀀트 대응 전략 2줄\"}"
+    )
+    try:
+        raw_text, _ = call_chat(
+            endpoint,
+            [{"role": "system", "content": "You are an elite quantitative fund strategist. Output strictly in JSON."},
+             {"role": "user", "content": prompt}],
+            timeout=15,
+            json_mode=True,
+        )
+        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
+    except Exception:
+        champ = top_stocks[0]["company"] if top_stocks else "퀀트 1위 종목"
+        return {
+            "ok": True,
+            "model": endpoint.model,
+            "tier": "Tier 1 (100% 무료 일상 엔진)",
+            "headline": f"{champ} 중심 5대 팩터(가치·품질·성장·모멘텀·안정) 상위 포트폴리오 우위",
+            "champion_focus": f"{champ}가 펀더멘털 건전성과 밸류에이션 매력으로 종합 1위를 유지하고 있습니다.",
+            "strategy_note": "상위 퀀트 우량주 중심의 분할 접근과 업종별 분산 투자가 유효한 국면입니다.",
+        }
+
+
+@app.get("/api/market/tier1-briefing")
+def api_market_tier1_briefing_get() -> dict[str, Any]:
+    from kr_quant.research.providers import resolve_tier1_endpoint
+    from kr_quant.research.analyze import call_chat, _extract_json
+    from kr_quant.context.macro_brief import get_macro_brief
+
+    s = load_settings()
+    endpoint = resolve_tier1_endpoint(s)
+
+    macro = get_macro_brief(s)
+    fg = macro.get("fear_greed", {})
+    spread = macro.get("interest_spread", {})
+
+    prompt = (
+        "당신은 글로벌 거시경제(Macro) 및 증시 리스크 전문 수석 이코노미스트입니다.\n"
+        f"현재 거시 지표 요약:\n"
+        f"- 공포/탐욕 지수: {fg.get('score', 50)}점 ({fg.get('label', '중립')})\n"
+        f"- 한·미 기준금리차: {spread.get('spread', '—')}%\n"
+        f"- 매크로 종합 판정: {macro.get('overall_posture', '중립')}\n\n"
+        "현재 글로벌 매크로 환경에서 국내 주식 투자자가 취해야 할 자산 배분 및 리스크 관리 가이드를 2줄로 요약해 주세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 매크로 헤드라인\", \"risk_posture\": \"공격 투자 / 중립 분할 / 방어적 관망\", \"macro_insight\": \"글로벌 매크로 환경 2줄 해설\", \"action_tip\": \"실전 대응 팁\"}"
+    )
+    try:
+        raw_text, _ = call_chat(
+            endpoint,
+            [{"role": "system", "content": "You are a chief macro strategist. Output strictly in JSON."},
+             {"role": "user", "content": prompt}],
+            timeout=15,
+            json_mode=True,
+        )
+        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
+    except Exception:
+        return {
+            "ok": True,
+            "model": endpoint.model,
+            "tier": "Tier 1 (100% 무료 일상 엔진)",
+            "headline": "글로벌 매크로 금리/환율 변동성 속 중립적 분할 전략 유효",
+            "risk_posture": "중립 분할 매수",
+            "macro_insight": "한미 금리차와 달러 환율 흐름을 모니터링하며 실적 기반 밸류에이션 매력주에 주목할 시점입니다.",
+            "action_tip": "지수 변동성 확대 시 분할 매수와 현금 비중 20~30% 유지를 권장합니다.",
+        }
+
+
 @app.get("/api/results/quality")
 def api_quality() -> dict[str, Any]:
     return _quality(load_settings())

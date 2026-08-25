@@ -3393,6 +3393,83 @@ async function loadDash() {
   renderReportList("#reports-body", filterReportRows($("#report-q") ? $("#report-q").value : ""));
   loadWatch().catch(() => {});
   loadPortfolio().catch(() => {});
+  loadDashTier1Briefing().catch(() => {});
+}
+
+async function loadDashTier1Briefing() {
+  const container = $("#dash-tier1-briefing");
+  if (!container) return;
+  try {
+    const res = await api("/api/dashboard/tier1-briefing");
+    if (res && res.headline) {
+      container.innerHTML = `
+        <div style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,58,138,0.25)); border:1px solid rgba(56,189,248,0.35); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">⚡ 오늘의 퀀트 시장 종합 브리핑</span>
+              <span class="chip ok" style="font-size:10px; font-weight:700;">Tier 1 무료 엔진</span>
+            </div>
+            <span style="font-size:11px; color:#86efac; font-weight:600;">🤖 ${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")} (비용 0원)</span>
+          </div>
+          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
+          <div style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#cbd5e1; line-height:1.5;">
+            ${res.champion_focus ? `<div>👑 <b>1위 챔피언 모멘텀:</b> ${escapeHtml(res.champion_focus)}</div>` : ""}
+            ${res.strategy_note ? `<div>💡 <b>퀀트 실전 전략:</b> ${escapeHtml(res.strategy_note)}</div>` : ""}
+          </div>
+        </div>
+      `;
+    }
+  } catch (e) {}
+}
+
+async function loadMarketTier1Briefing() {
+  const container = $("#market-tier1-briefing");
+  if (!container) return;
+  try {
+    const res = await api("/api/market/tier1-briefing");
+    if (res && res.headline) {
+      container.innerHTML = `
+        <div style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(168,85,247,0.2)); border:1px solid rgba(168,85,247,0.35); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35); margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:13px; font-weight:800; color:#c084fc;">🌐 글로벌 매크로 & 공포탐욕 AI 코멘터리</span>
+              <span class="chip ok" style="font-size:10px; font-weight:700;">Tier 1 무료 엔진</span>
+            </div>
+            <span style="font-size:11px; color:#86efac; font-weight:600;">🤖 ${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")} (비용 0원)</span>
+          </div>
+          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)} <span class="chip" style="font-size:11px; margin-left:6px; color:#38bdf8;">${escapeHtml(res.risk_posture || "중립 대응")}</span></b>
+          <div style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#cbd5e1; line-height:1.5;">
+            ${res.macro_insight ? `<div>📊 <b>거시 환경 진단:</b> ${escapeHtml(res.macro_insight)}</div>` : ""}
+            ${res.action_tip ? `<div>💡 <b>자산 배분 가이드:</b> ${escapeHtml(res.action_tip)}</div>` : ""}
+          </div>
+        </div>
+      `;
+    }
+  } catch (e) {}
+}
+
+async function loadFlowTier1Briefing(containerId = "flow-tier1-briefing") {
+  const container = $(`#${containerId}`);
+  if (!container) return;
+  try {
+    const res = await api("/api/flow/tier1-briefing");
+    if (res && res.headline) {
+      container.innerHTML = `
+        <div style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(52,211,153,0.18)); border:1px solid rgba(52,211,153,0.35); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35); margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:13px; font-weight:800; color:#34d399;">⚡ 외인·기관 메이저 수급 AI 브리핑</span>
+              <span class="chip ok" style="font-size:10px; font-weight:700;">Tier 1 무료 엔진</span>
+            </div>
+            <span style="font-size:11px; color:#86efac; font-weight:600;">🤖 ${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")} (비용 0원)</span>
+          </div>
+          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
+          <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.briefing || "")}</p>
+          ${(res.focus_sectors || []).length ? `<div style="display:flex; gap:6px; align-items:center; margin-top:2px;"><span style="font-size:11px; color:#94a3b8;">주목 섹터:</span> ${res.focus_sectors.map(s => `<span class="chip" style="font-size:10.5px; padding:1px 6px;">${escapeHtml(s)}</span>`).join("")}</div>` : ""}
+        </div>
+      `;
+    }
+  } catch (e) {}
 }
 
 async function loadTossRankings() {
@@ -3707,6 +3784,7 @@ async function loadMarket(refresh) {
     </div>
   `;
   stampLive("#market-live");
+  loadMarketTier1Briefing().catch(() => {});
 }
 
 function krw(n) {
@@ -3957,6 +4035,7 @@ function renderFlow(data) {
     <p class="hint" style="margin-top:12px;">💡 최근가는 토스, 수급 데이터는 일별 합산입니다. 열 이름을 클릭하면 최근가, 외인/기관 순매수량, 추정금액으로 정렬할 수 있습니다.</p>
   `;
   paintSortHeaders(`flow-${active.id}`);
+  loadFlowTier1Briefing("flow-tier1-briefing").catch(() => {});
 }
 
 function flowReady(data) {
@@ -3999,6 +4078,8 @@ async function loadInvestor() {
     .join(" ");
   const asof = cov.last_date ? `공식 수급 최신일 ${cov.last_date} · ${cov.tickers || 0}종목 · ${cov.rows || 0}행` : "공식 수급 데이터 없음 (토스 캐시 대체 가동 중)";
   if (currentView === "investor") setPageAsOf(asof, "KIS 관심종목·고유동성 수급 추적. API 미설정 시 토스 데이터로 자동 대체됩니다.");
+
+  loadFlowTier1Briefing("investor-tier1-briefing").catch(() => {});
 
   box.innerHTML = `
     ${asofBanner(asof)}
