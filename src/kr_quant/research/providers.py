@@ -56,19 +56,20 @@ PROVIDERS = {
         "env_key": "OPENROUTER_API_KEY",
         "help": "https://openrouter.ai/keys",
         "fallback_models": [
+            "deepseek/deepseek-v4-flash-0731",
             "deepseek/deepseek-chat",
             "deepseek/deepseek-reasoner",
             "deepseek/deepseek-r1",
-            "deepseek/deepseek-v3",
-            "deepseek/deepseek-chat-0731",
-            "deepseek/deepseek-vl2",
-            "deepseek/deepseek-coder",
-            "qwen/qwen-2.5-vl-72b-instruct",
-            "openai/gpt-4o",
-            "openai/gpt-4o-mini",
-            "openai/o3-mini",
+            "deepseek/deepseek-v3.2",
+            "deepseek/deepseek-v4-flash",
+            "deepseek/deepseek-v4-pro",
+            "qwen/qwen3-vl-32b-instruct",
+            "qwen/qwen2.5-vl-72b-instruct",
             "google/gemini-2.5-flash",
             "google/gemini-2.5-pro",
+            "openai/gpt-4o-mini",
+            "openai/gpt-4o",
+            "openai/o3-mini",
             "anthropic/claude-3.7-sonnet",
             "anthropic/claude-3.5-sonnet",
             "x-ai/grok-4-fast",
@@ -78,6 +79,16 @@ PROVIDERS = {
 }
 
 DEFAULT_PROVIDER = "xai"
+
+OPENROUTER_MODEL_ALIASES: dict[str, str] = {
+    "deepseek/deepseek-chat-0731": "deepseek/deepseek-v4-flash-0731",
+    "deepseek/deepseek-chat-0324": "deepseek/deepseek-chat-v3-0324",
+    "deepseek/deepseek-vl": "deepseek/deepseek-v4-flash-0731",
+    "deepseek/deepseek-vl2": "deepseek/deepseek-v4-flash-0731",
+    "deepseek/deepseek-vision": "deepseek/deepseek-v4-flash-0731",
+    "qwen/qwen-2.5-vl-72b-instruct": "qwen/qwen2.5-vl-72b-instruct",
+}
+
 REMOVED_PROVIDERS = frozenset({"openai", "opencode", "custom"})
 
 
@@ -111,8 +122,11 @@ def model_fits_provider(provider: str, model: str | None) -> bool:
 
 def coerce_model(provider: str, model: str | None) -> str:
     spec = PROVIDERS.get(provider) or PROVIDERS[DEFAULT_PROVIDER]
-    if model_fits_provider(provider, model):
-        return str(model).strip()
+    m = str(model or "").strip()
+    if provider == "openrouter" and m in OPENROUTER_MODEL_ALIASES:
+        return OPENROUTER_MODEL_ALIASES[m]
+    if model_fits_provider(provider, m):
+        return m
     return str(spec["model"])
 
 

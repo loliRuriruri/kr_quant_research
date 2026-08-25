@@ -12,7 +12,10 @@
 
 ## 2. 🌟 최근 완성 및 배포된 핵심 퀀트 기능들
 
-### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.37)
+### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.38)
+* **OpenRouter DeepSeek 모델 ID 정상화 및 AI 퀵 스위처 모달 연동**:
+  - OpenRouter 공식 모델 ID (deepseek/deepseek-v4-flash-0731) 및 별칭 자동 변환 매핑 적용으로 리포트 생성 시 HTTP 400 에러 해결
+  - 상단 우측 🤖 AI: ... 뱃지 및 리포트 작성 화면에서 바로 열리는 **AI 분석 모델 빠른 변경 팝업 모달 (#modal-llm-quick-switch)** 신설 (Google Antigravity / OpenRouter / DeepSeek / Grok 원클릭 전환)
 * **API 연결 테스트 종합 결과 패널 UI 전면 개편 및 오류 정상화**:
   - 상단 즉시 표시 패널 #test-box-top 신설로 버튼 클릭 시 스크롤 없이 즉시 상태 확인 가능
   - KIS 1분당 토큰 발급 제한(EGW00133) 정상 처리, Grok AUTH 세션 인증 연동, Google Antigravity CLI 세션 인증 연동, 네이버 지도/텔레그램 선택 항목 완벽 대응

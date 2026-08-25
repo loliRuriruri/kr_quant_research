@@ -7450,19 +7450,20 @@ const PROVIDER_MODELS = {
     "deepseek-coder",
   ],
   openrouter: [
+    "deepseek/deepseek-v4-flash-0731",
     "deepseek/deepseek-chat",
     "deepseek/deepseek-reasoner",
     "deepseek/deepseek-r1",
-    "deepseek/deepseek-v3",
-    "deepseek/deepseek-chat-0731",
-    "deepseek/deepseek-vl2",
-    "deepseek/deepseek-coder",
-    "qwen/qwen-2.5-vl-72b-instruct",
-    "openai/gpt-4o",
-    "openai/gpt-4o-mini",
-    "openai/o3-mini",
+    "deepseek/deepseek-v3.2",
+    "deepseek/deepseek-v4-flash",
+    "deepseek/deepseek-v4-pro",
+    "qwen/qwen3-vl-32b-instruct",
+    "qwen/qwen2.5-vl-72b-instruct",
     "google/gemini-2.5-flash",
     "google/gemini-2.5-pro",
+    "openai/gpt-4o-mini",
+    "openai/gpt-4o",
+    "openai/o3-mini",
     "anthropic/claude-3.7-sonnet",
     "anthropic/claude-3.5-sonnet",
     "x-ai/grok-4-fast",
@@ -9604,3 +9605,133 @@ if ($("#agy-check-btn")) {
     }
   });
 }
+
+// =========================================================
+// Quick LLM Model Switcher Modal Logic
+// =========================================================
+let currentQuickProvider = "openrouter";
+let currentQuickModel = "deepseek/deepseek-v4-flash-0731";
+
+function openQuickLlmModal() {
+  const modal = $("#modal-llm-quick-switch");
+  if (!modal) return;
+  
+  const curProv = $("#llm-provider")?.value || "openrouter";
+  const curMod = $("#llm-model")?.value || $("#llm-model-select")?.value || PROVIDER_MODELS[curProv]?.[0] || "";
+  
+  currentQuickProvider = curProv;
+  currentQuickModel = curMod;
+  
+  selectQuickProvider(curProv);
+  
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+}
+
+function closeQuickLlmModal() {
+  const modal = $("#modal-llm-quick-switch");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.style.display = "none";
+}
+
+function selectQuickProvider(prov) {
+  currentQuickProvider = prov;
+  $$(".quick-prov-btn").forEach((b) => {
+    const isSelected = b.dataset.provider === prov;
+    b.style.borderColor = isSelected ? "#38bdf8" : "#1e293b";
+    b.style.background = isSelected ? "rgba(56,189,248,0.15)" : "#131d33";
+  });
+  
+  const chipsContainer = $("#quick-models-chips");
+  const customInput = $("#quick-model-custom");
+  const models = PROVIDER_MODELS[prov] || [];
+  
+  if (!models.includes(currentQuickModel)) {
+    currentQuickModel = models[0] || "";
+  }
+  
+  if (customInput) customInput.value = currentQuickModel;
+  
+  if (chipsContainer) {
+    chipsContainer.innerHTML = models.map((m) => {
+      const active = m === currentQuickModel;
+      const bg = active ? "rgba(56,189,248,0.25)" : "#1e293b";
+      const border = active ? "1px solid #38bdf8" : "1px solid rgba(255,255,255,0.1)";
+      const color = active ? "#38bdf8" : "#cbd5e1";
+      return `<button type="button" class="tag-btn quick-mod-chip" data-model="${escapeHtml(m)}" style="background:${bg}; border:${border}; color:${color}; font-size:11.5px; padding:4px 9px; cursor:pointer; border-radius:6px;">${escapeHtml(m)}</button>`;
+    }).join("");
+    
+    $$(".quick-mod-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        currentQuickModel = chip.dataset.model;
+        if (customInput) customInput.value = currentQuickModel;
+        selectQuickProvider(currentQuickProvider);
+      });
+    });
+  }
+}
+
+async function saveQuickLlmChoice() {
+  const customInput = $("#quick-model-custom");
+  const modelToSave = (customInput?.value || currentQuickModel || "").trim();
+  const provToSave = currentQuickProvider || "openrouter";
+  
+  const saveBtn = $("#quick-llm-save-btn");
+  if (saveBtn) {
+    saveBtn.textContent = "저장 중…";
+    saveBtn.disabled = true;
+  }
+  
+  try {
+    await api("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        llm_provider: provToSave,
+        llm_model: modelToSave,
+      }),
+    });
+    
+    if ($("#llm-provider")) {
+      $("#llm-provider").value = provToSave;
+      syncDecorated($("#llm-provider"));
+    }
+    if ($("#llm-model")) $("#llm-model").value = modelToSave;
+    if ($("#llm-model-select")) {
+      applyModelOptions(PROVIDER_MODELS[provToSave] || [], modelToSave);
+    }
+    
+    const provLabel = PROVIDERS?.[provToSave]?.label || provToSave;
+    setChip($("#chip-llm"), `🤖 AI: ${provLabel} · ${modelToSave.split("/").pop()}`, `AI 분석 리포트 생성 모델: ${modelToSave}`);
+    
+    renderConnections().catch(() => {});
+    
+    showToast(`✅ AI 모델이 <b>${escapeHtml(provLabel)} · ${escapeHtml(modelToSave)}</b>(으)로 변경되었습니다.`, "success", 4000);
+    closeQuickLlmModal();
+  } catch (err) {
+    showToast(`❌ 모델 변경 실패: ${err.message}`, "error");
+  } finally {
+    if (saveBtn) {
+      saveBtn.textContent = "⚡ 모델 즉시 적용";
+      saveBtn.disabled = false;
+    }
+  }
+}
+
+// Wire events for Quick LLM Switcher
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#chip-llm, .btn-open-quick-llm")) {
+    e.preventDefault();
+    openQuickLlmModal();
+  }
+  if (e.target.closest("#quick-llm-close-btn, #quick-llm-cancel-btn")) {
+    closeQuickLlmModal();
+  }
+  const provBtn = e.target.closest(".quick-prov-btn");
+  if (provBtn) {
+    selectQuickProvider(provBtn.dataset.provider);
+  }
+  if (e.target.closest("#quick-llm-save-btn")) {
+    saveQuickLlmChoice();
+  }
+});
