@@ -12,7 +12,11 @@
 
 ## 2. 🌟 최근 완성 및 배포된 핵심 퀀트 기능들
 
-### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.52)
+### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.53)
+* **AI 리포트 생성 시 LLM 응답 안전성 강화 및 KeyError ('choices') 원천 해결 (v2.53.0)**:
+  - **오류 원인 방어**: OpenRouter 등 외부 API가 일시적 상위 제공자 과부하나 에러를 반환할 때 ody['choices'] 직접 접근으로 발생하던 KeyError: choices 예외 방어 로직 완비
+  - **상세 오류 메시지 파싱**: API 공급자가 반환하는 실제 에러 메시지(API 오류: ... [코드: ...]) 및 멀티모달/Gemini/OpenAI/DeepSeek 응답 형식을 자동으로 식별하여 안전하게 텍스트 추출
+  - **실전 생성 테스트 완료**: deepseek/deepseek-v4-flash-0731 모델 기반 종목 심층 리포트 및 인포그래픽 정상 생성 100% 검증
 * **AI 빠른 교체 팝업 적용 오류 (ReferenceError: PROVIDERS) 원천 해결 (v2.52.0)**:
   - **JS ReferenceError 수정**: saveQuickLlmChoice() 내부에서 미정의된 PROVIDERS 참조를 PROVIDER_LABELS로 교체하여 모델 적용 버튼 클릭 시 에러 토스트 없이 즉시 정상 반영 및 성공 토스트 출력
   - **실시간 모델 변경 동작 보장**: 모달 내 [⚡ 모델 즉시 적용] 클릭 즉시 상단 칩, API 설정, 리서치 엔진이 새로고침 없이 실시간으로 동기화

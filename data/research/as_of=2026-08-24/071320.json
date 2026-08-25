@@ -1,0 +1,120 @@
+{
+  "schema_version": "gpt_research_output_v1",
+  "run_id": "",
+  "security_id": "071320",
+  "ticker": "071320",
+  "company": "지역난방공사",
+  "as_of_date": "2026-08-24",
+  "quant_snapshot_hash_ack": "cd32f2427fe27be2cf7451213b3aee18ea70fd6e312acb0c0e857dd7602ebf90",
+  "provider": "openrouter",
+  "model": "deepseek/deepseek-v4-flash-0731",
+  "prompt_version": "research_v1.0.0",
+  "researched_at": "2026-08-25T15:47:36.920347+00:00",
+  "usage": {
+    "prompt_tokens": 595,
+    "completion_tokens": 1995,
+    "total_tokens": 2590,
+    "cost": 0.0014476,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0014476,
+      "upstream_inference_prompt_cost": 0.0001309,
+      "upstream_inference_completions_cost": 0.0013167
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 861,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "research_decision": "RESEARCH_INCOMPLETE",
+  "research_score": 42,
+  "research_confidence": 35,
+  "score_components": {
+    "business_quality": 12,
+    "growth_durability": 5,
+    "catalyst": 5,
+    "governance_capital_allocation": 7,
+    "risk_resilience": 13
+  },
+  "thesis": {
+    "one_line": "지역난방공사는 안정적인 지역난방 독점 사업 기반을 가진 공기업이나, 낮은 성장성과 ROE로 인해 투자 매력은 제한적이다.",
+    "business_model": "집단에너지 사업(지역난방, 열병합발전)을 통해 수도권 및 일부 지방에 난방과 전기를 공급하며, 정부 규제 아래에서 안정적인 수익을 창출한다.",
+    "competitive_position": "지역난방 분야에서 사실상 독점적 지위를 보유하고 있어 경쟁 진입 장벽이 높다. 다만 전력·열 요금이 정부 규제에 의해 결정되므로 수익성은 정책에 크게 의존한다.",
+    "moat_and_roic_durability": "독점적 인프라와 높은 진입 장벽으로 일정 수준의 이익 안정성은 확보했으나, ROIC 데이터가 없어 자본 효율성을 정확히 판단하기 어렵다. ROE 7.1%는 공기업 평균 수준으로, 초과이익 창출력은 크지 않다."
+  },
+  "catalysts": [
+    {
+      "event": "정부의 집단에너지 요금 인상 결정",
+      "date_or_window": "불확실",
+      "status": "unknown"
+    },
+    {
+      "event": "에너지 전환 정책에 따른 신규 투자 및 사업 재편",
+      "date_or_window": "중장기",
+      "status": "unknown"
+    }
+  ],
+  "value_trap_assessment": {
+    "level": "MEDIUM",
+    "reasons": [
+      "PER 5.2, PBR 0.35는 저평가로 보이나 ROE 7.1%로 낮은 수익성",
+      "성장률 데이터 부재로 미래 이익 성장 기대가 낮음",
+      "공기업 특성상 정부 규제와 정책 변화에 따라 수익성 변동 가능",
+      "주가 상승을 견인할 뚜렷한 촉매가 확인되지 않음"
+    ]
+  },
+  "scenarios": {
+    "bull": {
+      "conditions": [
+        "정부가 집단에너지 요금을 인상하고, 신재생에너지 연계 사업에서 성과",
+        "배당 확대 또는 자사주 매입 등 주주환원 정책 강화"
+      ],
+      "evidence": [
+        "현재 PER 5.2, PBR 0.35로 저평가 상태",
+        "독점적 사업 구조로 안정적 현금흐름 가능성"
+      ]
+    },
+    "base": {
+      "conditions": [
+        "요금 규제가 유지되고, 사업 성장이 정체",
+        "배당은 현재 수준에서 유지"
+      ],
+      "evidence": [
+        "ROE 7.1%로 낮은 수익성",
+        "공기업으로서 적극적 주주환원 기대 어려움"
+      ]
+    },
+    "bear": {
+      "conditions": [
+        "에너지 가격 급등으로 원가 부담 증가, 요금 인상 지연",
+        "정부의 에너지 전환 정책으로 기존 사업 가치 하락"
+      ],
+      "evidence": [
+        "규제 산업으로 외부 환경 변화에 취약",
+        "성장 동력 및 촉매 부재"
+      ]
+    }
+  },
+  "thesis_breakers": [
+    "정부의 강제적인 요금 인하 또는 원가 미반영",
+    "지역난방 사업의 경쟁 도입으로 독점 지위 상실",
+    "대규모 자본 지출로 재무 건전성 악화",
+    "에너지 전환 정책으로 인한 자산 손상"
+  ],
+  "unknowns": [
+    "ROIC 및 정확한 자본 효율성",
+    "매출 성장률 및 영업이익 성장률",
+    "부채 비율 및 재무 건전성",
+    "정부 규제 환경 및 요금 결정 메커니즘",
+    "배당 정책 및 주주환원 계획",
+    "신재생에너지 등 신사업 추진 현황"
+  ],
+  "disclaimer": "본 검증은 제한된 정량 데이터와 공개 정보 기반의 정성 평가로, 투자 결정의 최종 근거로 사용될 수 없습니다."
+}

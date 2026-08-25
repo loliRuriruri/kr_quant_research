@@ -191,8 +191,44 @@ def call_chat(
     )
     if resp.status_code >= 400:
         raise RuntimeError(_friendly_llm_error(endpoint, resp))
-    body = resp.json()
-    text = body["choices"][0]["message"]["content"]
+    try:
+        body = resp.json()
+    except Exception as exc:
+        raise RuntimeError(f"{endpoint.label} 응답 JSON 파싱 실패: {resp.text[:300]}") from exc
+
+    if not isinstance(body, dict):
+        raise RuntimeError(f"{endpoint.label} 응답 형식 오류: {resp.text[:300]}")
+
+    if body.get("error"):
+        err_obj = body["error"]
+        msg = err_obj.get("message") if isinstance(err_obj, dict) else str(err_obj)
+        code = err_obj.get("code") if isinstance(err_obj, dict) else ""
+        code_str = f" [코드: {code}]" if code else ""
+        raise RuntimeError(f"{endpoint.label} ({endpoint.model}) API 오류: {msg}{code_str}")
+
+    choices = body.get("choices")
+    if choices and isinstance(choices, list) and len(choices) > 0:
+        c0 = choices[0]
+        if isinstance(c0, dict):
+            if "message" in c0 and isinstance(c0["message"], dict):
+                text = c0["message"].get("content") or ""
+            elif "text" in c0:
+                text = c0.get("text") or ""
+            else:
+                text = str(c0)
+        else:
+            text = str(c0)
+    elif "candidates" in body and isinstance(body["candidates"], list) and len(body["candidates"]) > 0:
+        cand = body["candidates"][0]
+        content = cand.get("content", {})
+        parts = content.get("parts", [])
+        text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+    else:
+        raise RuntimeError(f"{endpoint.label} ({endpoint.model}) 응답에 유효한 결과가 없습니다: {resp.text[:300]}")
+
+    if not str(text).strip():
+        raise RuntimeError(f"{endpoint.label} ({endpoint.model})에서 빈 내용이 반환되었습니다.")
+
     return text, body
 
 
