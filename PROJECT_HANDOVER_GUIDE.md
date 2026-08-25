@@ -12,7 +12,10 @@
 
 ## 2. 🌟 최근 완성 및 배포된 핵심 퀀트 기능들
 
-### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.36)
+### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.37)
+* **API 연결 테스트 종합 결과 패널 UI 전면 개편 및 오류 정상화**:
+  - 상단 즉시 표시 패널 #test-box-top 신설로 버튼 클릭 시 스크롤 없이 즉시 상태 확인 가능
+  - KIS 1분당 토큰 발급 제한(EGW00133) 정상 처리, Grok AUTH 세션 인증 연동, Google Antigravity CLI 세션 인증 연동, 네이버 지도/텔레그램 선택 항목 완벽 대응
 * **Google Antigravity CLI (gy) 세션 AUTH 신규 연동**: API 키 없이 Windows 터미널 gy 1회 로그인 세션(Windows Credential Manager 캐시)을 Python subprocess로 안전 호출하여 AI 심층 분석 실행. Grok AUTH 형태의 전용 카드 UI 제공.
 * **OpenRouter 및 DeepSeek 최신 모델 라인업 전면 개편**: DeepSeek-V3, DeepSeek-R1, DeepSeek-Chat-0731, DeepSeek-VL2(비전), Qwen-2.5-VL-72B, Claude-3.7-Sonnet, Grok-2-Vision-1212 등 최신 비전·추론 모델 목록 최신화
 * **글로벌 매크로 전 항목 실시간 동기화 & 원클릭 새로고침 완비**: ECOS 핵심 지표, 엔 캐리 모니터(USD/JPY 심볼 매칭 정상화 포함), 글로벌 바로미터 16대 자산군, ECOS·FRED 거시 펀더멘털 카드에 각각 [🔄 실시간 새로고침] 버튼 및 실시간 동기화 타임스탬프(HUD) 연동

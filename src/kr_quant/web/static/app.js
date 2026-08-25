@@ -6700,12 +6700,88 @@ async function saveSettings() {
   $("#test-box").innerHTML = "<p class='ok'>저장했습니다. 연결 테스트로 확인할 수 있습니다.</p>";
 }
 
+function renderTestResults(r) {
+  const boxTop = $("#test-box-top");
+  const boxBottom = $("#test-box");
+  const entries = Object.entries(r || {});
+  const okCount = entries.filter(([k, v]) => v.ok).length;
+  const totalCount = entries.length;
+
+  const cardsHtml = `
+    <div class="test-results-panel" style="background:#0b1329; border:1.5px solid rgba(56,189,248,0.4); border-radius:12px; padding:16px; margin:14px 0; box-shadow:0 0 20px rgba(0,0,0,0.5);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px; border-bottom:1px solid #1e293b; padding-bottom:10px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <h3 style="margin:0; font-size:15px; color:#38bdf8;">⚡ API 종합 연결 테스트 결과</h3>
+          <span class="chip ok" style="font-weight:800; font-size:12px; padding:3px 10px; background:rgba(34,197,94,0.2); color:#4ade80;">
+            ${okCount} / ${totalCount} 전체 정상 연동
+          </span>
+        </div>
+        <small style="color:#94a3b8; font-size:11.5px;">⏱️ 실시간 검증 완료</small>
+      </div>
+      <div class="test-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:10px;">
+        ${entries.map(([k, v]) => {
+          const isOk = v.ok;
+          const isOpt = v.optional;
+          const badgeClass = isOk ? "ok" : isOpt ? "warn" : "bad";
+          const icon = isOk ? "✅" : isOpt ? "ℹ️" : "❌";
+          const label = v.label || k;
+          const borderColor = isOk ? "rgba(34,197,94,0.35)" : isOpt ? "rgba(234,179,8,0.35)" : "rgba(239,68,68,0.45)";
+          const bgColor = isOk ? "rgba(16,24,42,0.95)" : isOpt ? "rgba(25,24,15,0.95)" : "rgba(35,14,20,0.95)";
+          const statusText = isOk ? (isOpt ? "정상 (선택)" : "정상") : (isOpt ? "선택 (미설정)" : "실패");
+          return `
+            <div class="test-item-card" style="background:${bgColor}; border:1px solid ${borderColor}; border-radius:8px; padding:10px 12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <b style="font-size:13px; color:#f1f5f9;">${escapeHtml(label)}</b>
+                <span class="chip ${badgeClass}" style="font-size:10.5px; padding:2px 7px; font-weight:700;">
+                  ${icon} ${statusText}
+                </span>
+              </div>
+              <p style="margin:0; font-size:11.5px; color:${isOk ? '#86efac' : isOpt ? '#fef08a' : '#fca5a5'}; line-height:1.4; word-break:break-all;">
+                ${escapeHtml(v.detail || "")}
+              </p>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+
+  if (boxTop) boxTop.innerHTML = cardsHtml;
+  if (boxBottom) boxBottom.innerHTML = cardsHtml;
+}
+
 async function testSettings() {
-  $("#test-box").innerHTML = "<p>테스트 중…</p>";
-  const r = await api("/api/settings/test", { method: "POST" });
-  $("#test-box").innerHTML = Object.entries(r)
-    .map(([k, v]) => `<p class="${v.ok ? "ok" : "bad"}">${k}: ${v.ok ? "정상" : "실패"} — ${v.detail}</p>`)
-    .join("");
+  const btn = $("#test-keys");
+  const origText = btn ? btn.textContent : "";
+  if (btn) {
+    btn.textContent = "⏳ 연결 테스트 중...";
+    btn.disabled = true;
+  }
+  const loadingHtml = `
+    <div class="test-loading-banner" style="background:#0f172a; border:1px solid #38bdf8; border-radius:10px; padding:14px; margin:14px 0; text-align:center; color:#38bdf8; font-weight:700;">
+      <span>⏳ 14개 핵심 API(거래소·증권사·공시·거시경제·AI)의 연결 상태를 실시간 진단 중입니다...</span>
+    </div>
+  `;
+  if ($("#test-box-top")) $("#test-box-top").innerHTML = loadingHtml;
+  if ($("#test-box")) $("#test-box").innerHTML = loadingHtml;
+
+  try {
+    const r = await api("/api/settings/test", { method: "POST" });
+    renderTestResults(r);
+    const okCount = Object.values(r).filter((v) => v.ok).length;
+    const totalCount = Object.values(r).length;
+    showToast(`✅ API 연결 테스트 완료 (${okCount}/${totalCount}개 정상 연동)`, "success", 4000);
+  } catch (err) {
+    const errHtml = `<div class="test-loading-banner" style="background:#200b10; border:1px solid #ef4444; border-radius:10px; padding:14px; margin:14px 0; color:#f87171;">❌ 연결 테스트 실패: ${escapeHtml(err.message)}</div>`;
+    if ($("#test-box-top")) $("#test-box-top").innerHTML = errHtml;
+    if ($("#test-box")) $("#test-box").innerHTML = errHtml;
+    showToast(`❌ 연결 테스트 실패: ${err.message}`, "error");
+  } finally {
+    if (btn) {
+      btn.textContent = origText || "연결 테스트";
+      btn.disabled = false;
+    }
+  }
 }
 
 let toastContainerEl = null;
