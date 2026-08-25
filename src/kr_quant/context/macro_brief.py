@@ -385,10 +385,10 @@ def build_macro_brief(
 def compute_yencarry_monitor(yahoo_indexes: list[dict[str, Any]]) -> dict[str, Any]:
     """Evaluates Yen Carry Trade risk based on USD/JPY, Nikkei 225, and US-JP rate trends."""
     by_sym = {str(row.get("symbol") or ""): row for row in (yahoo_indexes or []) if isinstance(row, dict)}
-    usdjpy = by_sym.get("JPY=X") or {}
-    jpykrw = by_sym.get("JPYKRW=X") or {}
-    nikkei = by_sym.get("^N225") or {}
-    tnx = by_sym.get("^TNX") or {}
+    usdjpy = by_sym.get("JPY=X") or by_sym.get("USDJPY=X") or by_sym.get("USD/JPY") or {}
+    jpykrw = by_sym.get("JPYKRW=X") or by_sym.get("100JPY/KRW") or by_sym.get("JPYKRW") or {}
+    nikkei = by_sym.get("^N225") or by_sym.get("N225") or by_sym.get("NIKKEI") or {}
+    tnx = by_sym.get("^TNX") or by_sym.get("TNX") or {}
 
     rate = _num(usdjpy.get("last"))
     ret_1m = _num(usdjpy.get("ret_1m"))
@@ -573,6 +573,16 @@ def build_macro_dashboard(settings: Any, *, refresh: bool = False) -> dict[str, 
     seasonality = compute_seasonality_brief()
     margin_debt = get_margin_debt_snapshot(refresh=refresh)
     now = datetime.now(timezone.utc).isoformat()
+    if isinstance(grouped_assets, dict):
+        grouped_assets["fetched_at"] = now
+    if isinstance(yencarry, dict):
+        yencarry["fetched_at"] = now
+    if isinstance(ecos, dict):
+        ecos["fetched_at"] = now
+    if isinstance(fred, dict):
+        fred["fetched_at"] = now
+    if isinstance(commodities_crypto, dict):
+        commodities_crypto["fetched_at"] = now
     return {
         "used_in_quant": False,
         "fetched_at": now,

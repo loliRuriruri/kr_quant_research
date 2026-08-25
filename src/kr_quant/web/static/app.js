@@ -3218,9 +3218,18 @@ async function loadMarket(refresh) {
     <div class="market-regime-card">
       <div class="market-regime-header">
         <div>
-          <h3 style="margin:0 0 4px;font-size:15px;color:#fff;">🇰🇷 한국은행 ECOS 거시경제 핵심 지표</h3>
-          <span class="hint">한국은행 오픈 API 실시간 연동 기준금리, 국고채, 환율, 물가 통계</span>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <h3 style="margin:0;font-size:15px;color:#fff;">🇰🇷 한국은행 ECOS 거시경제 핵심 지표</h3>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:10.5px; padding:2px 7px;">한국은행 오픈 API</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:4px; font-size:12px; color:#94a3b8;">
+            <span>한국은행 오픈 API 실시간 연동 기준금리, 국고채, 환율, 물가 통계</span>
+            <span>⏱️ <b>실시간 동기화:</b> <span id="ecos-synced-badge" style="color:#38bdf8; font-weight:700;">${formatSyncTime(ecos.fetched_at || data.fetched_at)}</span></span>
+          </div>
         </div>
+        <button type="button" id="btn-ecos-summary-refresh" class="trade-refresh-btn" style="height:32px; font-size:11.5px; padding:0 10px; border-radius:6px;" title="한국은행 ECOS 데이터 즉시 재수집">
+          <span>🔄</span><span>실시간 새로고침</span>
+        </button>
       </div>
       <div class="ecos-visual-grid">
         ${ecosCards || `<p class="hint">${escapeHtml(ecos.error || "조회 데이터 없음")}</p>`}
@@ -5830,16 +5839,28 @@ function renderYenCarryCard(yc) {
   const jpykrw = yc.jpykrw || {};
 
   const reasons = (yc.reasons || []).map((r) => `<li>${escapeHtml(r)}</li>`).join("");
+  const syncTime = formatSyncTime(yc.fetched_at || yc.updated_at);
 
   return `
-    <div class="yencarry-card">
+    <div class="yencarry-card" id="yencarry-card-container">
       <div class="yencarry-header">
         <div>
-          <h3>엔 캐리 트레이드 위험 모니터 (Yen Carry Monitor)</h3>
-          <span class="hint">엔/달러 환율 속도 + 닛케이 225 + 미·일 금리차 종합 청산 위험도</span>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <h3 style="margin:0;">엔 캐리 트레이드 위험 모니터 (Yen Carry Monitor)</h3>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:10.5px; padding:2px 7px;">글로벌 외환·채권 연동</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:4px; font-size:12px; color:#94a3b8;">
+            <span>엔/달러 환율 속도 + 닛케이 225 + 미·일 금리차 종합 청산 위험도</span>
+            <span>⏱️ <b>실시간 동기화:</b> <span id="yencarry-synced-badge" style="color:#38bdf8; font-weight:700;">${syncTime}</span></span>
+          </div>
         </div>
-        <div class="yencarry-badge ${lvl}">
-          ${score}점 · ${escapeHtml(lvlKo)}
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <button type="button" id="btn-yencarry-refresh" class="trade-refresh-btn" style="height:32px; font-size:11.5px; padding:0 10px; border-radius:6px;" title="엔/달러 환율 및 닛케이 225 실시간 재수집">
+            <span>🔄</span><span>실시간 새로고침</span>
+          </button>
+          <div class="yencarry-badge ${lvl}">
+            ${score}점 · ${escapeHtml(lvlKo)}
+          </div>
         </div>
       </div>
       <div class="yencarry-grid">
@@ -6046,13 +6067,27 @@ function renderTradingEconomicsMacroCards(grouped, cc) {
     `;
   }).join("");
 
+  const syncTime = formatSyncTime(grouped?.fetched_at);
   return `
-    <div style="margin-top:18px">
+    <div style="margin-top:18px" id="macro-barometer-container">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-        <h3 style="margin:0;">글로벌 매크로 바로미터 (지수 · 환율 · 금·원유 · 비트코인 · 금리)</h3>
-        <span class="chip has-tip" data-tip-title="💡 글로벌 매크로 바로미터 도움말" data-tip="각 카드를 마우스로 가리키면 해당 지표의 의미와 상승/하락 시 한국 증시 영향(호재/악재) 상세 가이드가 표시됩니다.">💡 카드에 마우스를 올리면 호재/악재 가이드 표시</span>
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <h3 style="margin:0;">글로벌 매크로 바로미터 (지수 · 환율 · 금·원유 · 비트코인 · 금리)</h3>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:10.5px; padding:2px 7px;">Yahoo Finance 실시간</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:4px; font-size:12px; color:#94a3b8;">
+            <span>TradingEconomics 스타일 30일/60일 시계열 차트 및 실시간 등락률</span>
+            <span>⏱️ <b>실시간 동기화:</b> <span id="barometer-synced-badge" style="color:#38bdf8; font-weight:700;">${syncTime}</span></span>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <button type="button" id="btn-barometer-refresh" class="trade-refresh-btn" style="height:32px; font-size:11.5px; padding:0 10px; border-radius:6px;" title="글로벌 지수·환율·원자재·가상자산 실시간 재수집">
+            <span>🔄</span><span>실시간 새로고침</span>
+          </button>
+          <span class="chip has-tip" data-tip-title="💡 글로벌 매크로 바로미터 도움말" data-tip="각 카드를 마우스로 가리키면 해당 지표의 의미와 상승/하락 시 한국 증시 영향(호재/악재) 상세 가이드가 표시됩니다.">💡 호재/악재 가이드</span>
+        </div>
       </div>
-      <p class="hint" style="margin-top:4px;">TradingEconomics 스타일 30일/60일 시계열 차트 및 실시간 등락률</p>
       <div class="macro-card-grid">
         ${cards}
       </div>
@@ -6439,14 +6474,36 @@ function renderMacroData(data) {
       ${!seasonBox ? renderSeasonalitySection(seasonality) : ""}
       <div class="macro-bi-grid">
         <div>
-          <h3 style="margin:0 0 8px;font-size:15px;color:#e8eef8;">🇰🇷 한국은행 ECOS 거시 펀더멘털</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <h3 style="margin:0;font-size:15px;color:#e8eef8;">🇰🇷 한국은행 ECOS 거시 펀더멘털</h3>
+                <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:10.5px; padding:2px 7px;">ECOS</span>
+              </div>
+              <small style="color:#38bdf8; font-size:11px;">⏱️ 동기화: ${formatSyncTime(data.ecos?.fetched_at || data.fetched_at)}</small>
+            </div>
+            <button type="button" id="btn-ecos-fundamental-refresh" class="trade-refresh-btn" style="height:28px; font-size:11px; padding:0 8px; border-radius:6px;" title="한국은행 통계 실시간 재조회">
+              <span>🔄</span><span>실시간 새로고침</span>
+            </button>
+          </div>
           <p class="hint" style="margin-bottom:8px;">기준금리, 한-미 금리차, 국고채 3년, 한국 CPI 물가지수, M2 통화량 (환율·지수는 상단 바로미터 참조)</p>
           <div class="macro-item-grid">
             ${domesticFiltered.map((it, idx) => renderMacroItemCard(it, idx, "kr")).join("")}
           </div>
         </div>
         <div>
-          <h3 style="margin:0 0 8px;font-size:15px;color:#e8eef8;">🌐 미국 연준 FRED 거시 펀더멘털</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <h3 style="margin:0;font-size:15px;color:#e8eef8;">🌐 미국 연준 FRED 거시 펀더멘털</h3>
+                <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:10.5px; padding:2px 7px;">FRED</span>
+              </div>
+              <small style="color:#38bdf8; font-size:11px;">⏱️ 동기화: ${formatSyncTime(data.fred?.fetched_at || data.fetched_at)}</small>
+            </div>
+            <button type="button" id="btn-fred-fundamental-refresh" class="trade-refresh-btn" style="height:28px; font-size:11px; padding:0 8px; border-radius:6px;" title="미국 연준 통계 실시간 재조회">
+              <span>🔄</span><span>실시간 새로고침</span>
+            </button>
+          </div>
           <p class="hint" style="margin-bottom:8px;">연준 기준금리, 미 국채 2년, 10Y-2Y 장단기 스프레드, 미국 CPI 물가, 미국 실업률 (10년금리·환율은 상단 바로미터 참조)</p>
           <div class="macro-item-grid">
             ${internationalFiltered.map((it, idx) => renderMacroItemCard(it, idx, "us")).join("")}
@@ -9367,6 +9424,25 @@ document.addEventListener("click", async (e) => {
     showToast("✅ 신용융자 잔고 & 고객예탁금 최신 데이터 실시간 동기화 완료", "success");
   } catch (err) {
     showToast(`❌ 신용잔고 갱신 실패: ${err.message}`, "error");
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
+});
+
+
+// Unified Event Listener for Global Macro Refresh Buttons
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("#btn-ecos-summary-refresh, #btn-yencarry-refresh, #btn-barometer-refresh, #btn-ecos-fundamental-refresh, #btn-fred-fundamental-refresh");
+  if (!btn) return;
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span>🔄</span><span>갱신 중...</span>`;
+  try {
+    macroCache = null;
+    await Promise.all([loadMarket(true), loadMacro(true)]);
+    showToast("✅ 글로벌 매크로·지수·환율·금리 실시간 동기화 완료", "success");
+  } catch (err) {
+    showToast(`❌ 동기화 실패: ${err.message}`, "error");
     btn.disabled = false;
     btn.innerHTML = origHtml;
   }
