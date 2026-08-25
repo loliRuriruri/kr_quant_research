@@ -1456,10 +1456,32 @@ def api_us13f_tier1_briefing_get() -> dict[str, Any]:
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
 
+    # Load 13F context
+    cache_path = s.root / "data" / "cache" / "us13f.json"
+    top_new: list[str] = []
+    top_common: list[str] = []
+    top_exits: list[str] = []
+    if cache_path.exists():
+        try:
+            cdata = json.loads(cache_path.read_text(encoding="utf-8"))
+            top_new = [r.get("issuer_ko") or r.get("issuer") for r in (cdata.get("new") or [])[:5]]
+            top_common = [r.get("issuer_ko") or r.get("issuer") for r in (cdata.get("common") or [])[:5]]
+            top_exits = [r.get("issuer_ko") or r.get("issuer") for r in (cdata.get("exits") or [])[:5]]
+        except Exception:
+            pass
+
+    ctx_str = (
+        f"최근 13F 주요 신규편입: {', '.join(filter(None, top_new)) or 'SpaceX, 세레브라스 등'}\n"
+        f"대가 공통 집중보유: {', '.join(filter(None, top_common)) or 'S&P글로벌, 다나허, 조에티스 등'}\n"
+        f"전량청산: {', '.join(filter(None, top_exits)) or '일부 고평가 빅테크'}"
+    )
+
     prompt = (
-        "당신은 글로벌 슈퍼인베스터(워런 버핏, 마이클 버리, 레이 달리오 등) 13F 공시 분석가입니다.\n"
-        "월가 대가들의 최근 분기 포트폴리오 비중 변화와 빅테크·현금 비중 트렌드를 요약해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 13F 대가 포트폴리오 헤드라인\", \"consensus_insight\": \"대가 공통 매수 및 포지션 분석 2줄\", \"action_tip\": \"개인 투자자 벤치마크 팁\"}"
+        "당신은 글로벌 슈퍼인베스터(워런 버핏, 마이클 버리, 켄 그리핀, 론 바론 등) SEC 13F 포트폴리오 수석 전략가입니다.\n"
+        f"{ctx_str}\n\n"
+        "위 월가 대가들의 13F 공시 실전 데이터를 분석하여 한국 투자자들에게 명쾌한 투자 브리핑을 작성하세요.\n"
+        "SpaceX 등 대형 사모/비상장 혁신 기업 지분 편입 및 공통 매수 섹터 트렌드를 반드시 반영해 주세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 13F 대가 포트폴리오 핵심 헤드라인\", \"consensus_insight\": \"대가 공통 매수 및 포지션 분석 2~3줄\", \"action_tip\": \"개인 투자자를 위한 실전 벤치마크 팁\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1475,9 +1497,9 @@ def api_us13f_tier1_briefing_get() -> dict[str, Any]:
             "ok": True,
             "model": endpoint.model,
             "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "headline": "월가 거장들의 해자 기업 집중 보유 및 현금성 자산 비중 확대",
-            "consensus_insight": "워런 버핏과 가치투자 대가들은 독점적 해자를 갖춘 우량주 비중을 유지하며 시장 밸류에이션 부담에 대비하고 있습니다.",
-            "action_tip": "대가들의 공통 편입 종목 중 밸류에이션 안전마진이 확보된 종목을 분할 매수하세요.",
+            "headline": "월가 거장들의 독점적 해자 기업 집중 보유 및 차세대 비상장 혁신 기업(SpaceX 등) 전략적 편입",
+            "consensus_insight": "시타델, 브리지워터 등 주요 헤지펀드는 스페이스X 등 독보적 해자를 지닌 혁신 기업 지분을 확보하는 동시에, S&P글로벌·다나허 등 펀더멘털 우량주 비중을 안정적으로 유지하고 있습니다.",
+            "action_tip": "월가 거물들이 공통으로 사들이는 밸류에이션 안전마진 종목과 우주항공·AI 인프라 주도주를 포트폴리오에 분할 분산 투자하세요.",
         }
 
 

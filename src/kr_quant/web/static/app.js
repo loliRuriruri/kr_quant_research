@@ -6623,23 +6623,72 @@ function filter13f(rows, extraKeys) {
   });
 }
 
+function usdDelta(n) {
+  const x = Number(n);
+  if (!x) return "<span style='color:#64748b;'>—</span>";
+  const str = usd(x);
+  if (x > 0) return `<b style="color:#4ade80;">+${str}</b>`;
+  if (x < 0) return `<b style="color:#f87171;">${str}</b>`;
+  return `<span>${str}</span>`;
+}
+
+function tickerChip(r) {
+  const ticker = r.ticker || "";
+  const ko = r.issuer_ko || r.issuer || "";
+  const isSpaceX = ko.includes("스페이스X") || String(r.issuer || "").toUpperCase().includes("SPACE") || ticker === "SPCX" || ticker.includes("SPACE-X");
+  if (isSpaceX) {
+    return `<span class="tag" style="background:rgba(234,179,8,0.18); color:#facc15; font-weight:700; border:1px solid rgba(234,179,8,0.35); padding:2px 6px;">🔒 비상장 (SPCX)</span>`;
+  }
+  if (ticker) {
+    return `<span class="tag" style="background:#1e293b; color:#38bdf8; font-weight:700; font-family:monospace; padding:2px 6px; border:1px solid rgba(56,189,248,0.25);">${escapeHtml(ticker)}</span>`;
+  }
+  return r.cusip ? `<span class="tag" style="background:#1e293b; color:#94a3b8; font-size:10px;">${escapeHtml(r.cusip)}</span>` : `<span style="color:#64748b;">—</span>`;
+}
+
 function filerLabel(r) {
   const ko = r.filer_ko || r.name_ko || r.filer || r.name || "";
   const who = r.filer_who || r.who_ko || "";
   const en = r.filer || r.name || "";
-  return `<b>${escapeHtml(ko)}</b><div class="meta">${escapeHtml([who, en !== ko ? en : ""].filter(Boolean).join(" · "))}</div>${rowNote(r.comment)}`;
+  return `
+    <div style="display:flex; flex-direction:column; gap:2px;">
+      <b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(ko)}</b>
+      <div class="meta" style="color:#94a3b8; font-size:11px;">${escapeHtml([who, en !== ko ? en : ""].filter(Boolean).join(" · "))}</div>
+      ${rowNote(r.comment)}
+    </div>
+  `;
 }
 
 function issuerLabel(r) {
   const ko = r.issuer_ko || r.issuer || "";
   const ticker = r.ticker || "";
-  const note = r.note_ko || "";
+  const isSpaceX = ko.includes("스페이스X") || String(r.issuer || "").toUpperCase().includes("SPACE") || ticker === "SPCX" || ticker.includes("SPACE-X");
+  const note = r.note_ko || (isSpaceX ? "일론 머스크 설립 우주항공·스타링크 위성 인터넷. 대형 기관이 비상장 프리IPO 지분으로 보유" : "");
   const en = r.issuer && r.issuer_ko && r.issuer !== r.issuer_ko ? r.issuer : "";
-  const y = r.yahoo && ticker
-    ? ` <a class="ext inline" href="${escapeHtml(r.yahoo)}" target="_blank" rel="noopener">Yahoo</a>`
-    : "";
-  return `<b>${escapeHtml(ko)}</b>${ticker ? ` <span class="tag">${escapeHtml(ticker)}</span>` : ""}${y}
-    <div class="meta">${escapeHtml(note || en || r.cusip || "")}</div>${rowNote(r.comment_short || r.comment)}`;
+  
+  let tickerBadge = "";
+  let extLink = "";
+  
+  if (isSpaceX) {
+    tickerBadge = ` <span class="tag" style="background:rgba(234,179,8,0.18); color:#facc15; font-weight:700; border:1px solid rgba(234,179,8,0.35); font-size:11px; padding:2px 6px;">🔒 비상장 (Private)</span> <span class="tag" style="background:#1e293b; color:#38bdf8; font-weight:700; font-family:monospace; font-size:11px;">SPCX</span>`;
+    extLink = ` <a class="ext inline" href="https://www.google.com/search?q=SpaceX+13F+Valuation+Baron+Capital" target="_blank" rel="noopener" style="font-size:11px; color:#38bdf8;">Google ↗</a>`;
+  } else if (ticker) {
+    tickerBadge = ` <span class="tag" style="background:#1e293b; color:#38bdf8; font-weight:700; font-family:monospace; font-size:11px; padding:2px 6px; border:1px solid rgba(56,189,248,0.25);">${escapeHtml(ticker)}</span>`;
+    extLink = r.yahoo ? ` <a class="ext inline" href="${escapeHtml(r.yahoo)}" target="_blank" rel="noopener" style="font-size:11px; color:#38bdf8;">Yahoo ↗</a>` : "";
+  } else {
+    tickerBadge = r.cusip ? ` <span class="tag" style="background:#1e293b; color:#94a3b8; font-size:10.5px;">${escapeHtml(r.cusip)}</span>` : "";
+  }
+
+  return `
+    <div style="display:flex; flex-direction:column; gap:2px;">
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(ko)}</b>
+        ${tickerBadge}
+        ${extLink}
+      </div>
+      <div class="meta" style="color:#94a3b8; font-size:11.5px; line-height:1.45;">${escapeHtml(note || en || r.cusip || "")}</div>
+      ${rowNote(r.comment_short || r.comment)}
+    </div>
+  `;
 }
 
 function renderUs13f(data) {
@@ -6650,38 +6699,36 @@ function renderUs13f(data) {
   const kpis = `
     <div class="kpis" style="grid-template-columns:repeat(4,1fr);margin:8px 0 16px">
       <div class="kpi has-tip" data-tip-title="🏛️ 스캔 대상 대가 펀드 수" data-tip="버크셔 해서웨이, 브리지워터, 시타델 등 미국 SEC에 13F를 공시한 핵심 글로벌 헤지펀드/기관 수입니다." tabindex="0">
-        <span>펀드</span><b>${data.scanned || (data.filers || []).length}</b>
+        <span>스캔 펀드</span><b style="color:#38bdf8;">${data.scanned || (data.filers || []).length}개사</b>
       </div>
       <div class="kpi has-tip" data-tip-title="🔥 이번 분기 신규 매수 종목 수" data-tip="월가 거물들이 이번 분기에 새롭게 포트폴리오에 편입한 신규 베팅 종목 수입니다." tabindex="0">
-        <span>신규</span><b style="color:#4ade80;">${(data.new || []).length}</b>
+        <span>신규 편입</span><b style="color:#4ade80;">${(data.new || []).length}건</b>
       </div>
       <div class="kpi has-tip" data-tip-title="🎯 2인 이상 대가 공통 보유 종목 수" data-tip="버핏, 달리오, 켄 그리핀 등 2개 이상의 독립 대형 펀드가 동시에 러브콜을 보낸 핵심 종목 수입니다." tabindex="0">
-        <span>공통(2+)</span><b style="color:#38bdf8;">${(data.common || []).length}</b>
+        <span>대가 공통보유</span><b style="color:#facc15;">${(data.common || []).length}건</b>
       </div>
       <div class="kpi has-tip" data-tip-title="🚪 이번 분기 전량 청산 종목 수" data-tip="거물들이 이번 분기 포트폴리오에서 비중 100%를 전량 매도한 종목 수입니다." tabindex="0">
-        <span>청산</span><b style="color:#f87171;">${(data.exits || []).length}</b>
+        <span>전량 청산</span><b style="color:#f87171;">${(data.exits || []).length}건</b>
       </div>
     </div>
-    <p class="hint">${escapeHtml(data.selection || "SEC EDGAR 13F-HR 분기 말 보유입니다. 신규·확대·청산은 직전 분기 대비 주수 변화입니다. ")}</p>
-    ${asofBanner([`13F 보고 ${(data.periods || []).join(" · ") || "—"}`, data.fetched_at ? `받은 시각 ${fmtWhen(data.fetched_at)}` : ""].filter(Boolean).join(" · "))}
-    <p>기준 ${(data.periods || []).join(" · ") || "—"} · 출처 SEC EDGAR
-      <a class="ext inline" href="https://www.sec.gov/" target="_blank" rel="noopener">sec.gov</a>
-      · 참고 <a class="ext inline" href="https://whalewisdom.com/" target="_blank" rel="noopener">WhaleWisdom</a></p>`;
+    <p class="hint">${escapeHtml(data.selection || "SEC EDGAR 13F-HR 분기 말 보유 보고서 기반입니다. 신규·확대·청산은 직전 분기 대비 공식 보유 지분 변화입니다.")}</p>
+    ${asofBanner([`13F 보고 ${(data.periods || []).join(" · ") || "—"}`, data.fetched_at ? `동기화 ${fmtWhen(data.fetched_at)}` : ""].filter(Boolean).join(" · "))}`;
+
   let table = "";
   if (mode === "filers" || mode === "weights") {
     const filers = filter13f(data.filers || [], ["name", "manager", "cik"]);
     if (mode === "filers") {
-      table = `<table><thead><tr><th>펀드</th><th>보고일</th><th>공시일</th><th>종목수</th><th>총액</th><th>신규</th><th>청산</th><th>원문</th></tr></thead><tbody>
+      table = `<table data-scope="us13f"><thead><tr><th>헤지펀드·기관</th><th>보고일</th><th>공시일</th><th class="num">종목수</th><th class="num">총 자산규모</th><th class="num">신규</th><th class="num">청산</th><th>원문</th></tr></thead><tbody>
         ${filers.map((f) => `<tr>
           <td>${filerLabel(f)}</td>
           <td>${escapeHtml(f.report_date || "")}</td>
           <td>${escapeHtml(f.filing_date || "")}</td>
-          <td class="num">${f.n ?? "—"}</td>
-          <td class="num">${usd(f.total_value)}</td>
-          <td class="num">${f.new ?? 0}</td>
-          <td class="num">${f.exits ?? 0}</td>
-          <td>${f.page ? `<a class="ext inline" href="${escapeHtml(f.page)}" target="_blank" rel="noopener">SEC</a>` : "—"}
-            ${f.whale ? ` · <a class="ext inline" href="${escapeHtml(f.whale)}" target="_blank" rel="noopener">WW</a>` : ""}</td>
+          <td class="num"><b>${f.n ?? "—"}</b></td>
+          <td class="num"><b style="color:#f8fafc;">${usd(f.total_value)}</b></td>
+          <td class="num"><b style="color:#4ade80;">${f.new ? `+${f.new}` : 0}</b></td>
+          <td class="num"><span style="color:#f43f5e;">${f.exits ? `-${f.exits}` : 0}</span></td>
+          <td>${f.page ? `<a class="ext inline" href="${escapeHtml(f.page)}" target="_blank" rel="noopener">SEC ↗</a>` : "—"}
+            ${f.whale ? ` · <a class="ext inline" href="${escapeHtml(f.whale)}" target="_blank" rel="noopener">WW ↗</a>` : ""}</td>
         </tr>`).join("")}</tbody></table>`;
     } else {
       const rows = [];
@@ -6689,49 +6736,49 @@ function renderUs13f(data) {
         for (const t of f.top || []) rows.push({ ...t, filer: f.name });
       }
       const filtered = filter13f(rows, ["issuer", "cusip", "filer"]);
-      table = `<table><thead><tr><th>펀드</th><th>종목</th><th>티커</th><th>비중</th><th>금액</th><th>주수</th></tr></thead><tbody>
+      table = `<table data-scope="us13f"><thead><tr><th>펀드</th><th style="min-width:220px;">종목</th><th>티커</th><th class="num">비중</th><th class="num">평가액</th><th class="num">보유 주수</th></tr></thead><tbody>
         ${filtered.map((r) => `<tr>
           <td>${filerLabel(r)}</td>
           <td>${issuerLabel(r)}</td>
-          <td><b>${escapeHtml(r.ticker || "—")}</b></td>
-          <td class="num">${r.weight == null ? "—" : fmtPct(r.weight, 1)}</td>
-          <td class="num">${usd(r.value)}</td>
-          <td class="num">${Number(r.shares || 0).toLocaleString("en-US")}</td>
+          <td>${tickerChip(r)}</td>
+          <td class="num">${r.weight == null ? "—" : `<span class="chip ok">${fmtPct(r.weight, 1)}</span>`}</td>
+          <td class="num"><b style="color:#f8fafc;">${usd(r.value)}</b></td>
+          <td class="num">${Number(r.shares || 0).toLocaleString("en-US")}주</td>
         </tr>`).join("")}</tbody></table>`;
     }
   } else if (mode === "common") {
     const rows = filter13f(data.common || [], ["issuer", "cusip", "filers"]);
-    table = `<table><thead><tr><th>종목</th><th>펀드 수</th><th>보유 펀드</th><th>합산 금액</th></tr></thead><tbody>
+    table = `<table data-scope="us13f"><thead><tr><th style="min-width:220px;">종목</th><th class="num">펀드 수</th><th>보유 슈퍼인베스터 목록</th><th class="num">합산 투자규모</th></tr></thead><tbody>
       ${rows.map((r) => `<tr>
         <td>${issuerLabel(r)}</td>
-        <td class="num">${r.n_filers}</td>
-        <td>${escapeHtml((r.filers_ko || r.filers || []).join(", "))}</td>
-        <td class="num">${usd(r.value)}</td>
+        <td class="num"><span class="tag tone-우호" style="font-weight:800;">🌟 ${r.n_filers}개 펀드</span></td>
+        <td>${(r.filers_ko || r.filers || []).map(f => `<span class="us13f-fund-chip">${escapeHtml(f)}</span>`).join(" ")}</td>
+        <td class="num"><b style="color:#f8fafc; font-size:14px;">${usd(r.value)}</b></td>
       </tr>`).join("")}</tbody></table>`;
   } else if (mode === "trend") {
     const rows = filter13f(data.trend || [], ["issuer", "cusip", "buyers", "sellers"]);
-    table = `<table><thead><tr><th>종목</th><th>점수</th><th>신규</th><th>확대</th><th>축소</th><th>청산</th><th>금액 변화</th></tr></thead><tbody>
+    table = `<table data-scope="us13f"><thead><tr><th style="min-width:220px;">종목</th><th class="num">점수</th><th class="num">신규</th><th class="num">확대</th><th class="num">축소</th><th class="num">청산</th><th class="num">순변화 금액</th></tr></thead><tbody>
       ${rows.map((r) => `<tr>
         <td>${issuerLabel(r)}</td>
-        <td class="num">${r.score}</td>
-        <td class="num">${r.new}</td>
-        <td class="num">${r.increase}</td>
-        <td class="num">${r.decrease}</td>
-        <td class="num">${r.exit}</td>
-        <td class="num">${usd(r.value_delta)}</td>
+        <td class="num"><span class="score-pill ${Number(r.score) >= 4 ? 'high' : ''}">${r.score}</span></td>
+        <td class="num"><b style="color:#4ade80;">${r.new ? `+${r.new}` : 0}</b></td>
+        <td class="num"><b style="color:#60a5fa;">${r.increase ? `+${r.increase}` : 0}</b></td>
+        <td class="num"><span style="color:#f87171;">${r.decrease ? `-${r.decrease}` : 0}</span></td>
+        <td class="num"><span style="color:#f43f5e;">${r.exit ? `-${r.exit}` : 0}</span></td>
+        <td class="num">${usdDelta(r.value_delta)}</td>
       </tr>`).join("")}</tbody></table>`;
   } else {
     const key = mode === "exits" ? "exits" : mode === "increases" ? "increases" : "new";
     const rows = filter13f(data[key] || [], ["issuer", "cusip", "filer"]);
     const amt = mode === "exits" ? "prev_value" : "value";
-    table = `<table><thead><tr><th>펀드</th><th>종목</th><th>티커</th><th>금액</th><th>변화</th><th>비중</th></tr></thead><tbody>
-      ${rows.slice(0, 80).map((r) => `<tr>
+    table = `<table data-scope="us13f"><thead><tr><th>헤지펀드</th><th style="min-width:220px;">종목</th><th>티커</th><th class="num">투자 금액</th><th class="num">변화 규모</th><th class="num">포트 비중</th></tr></thead><tbody>
+      ${rows.slice(0, 100).map((r) => `<tr>
         <td>${filerLabel(r)}</td>
         <td>${issuerLabel(r)}</td>
-        <td><b>${escapeHtml(r.ticker || "—")}</b></td>
-        <td class="num">${usd(r[amt])}</td>
-        <td class="num">${usd(r.value_delta)}</td>
-        <td class="num">${r.weight ? fmtPct(r.weight, 1) : "—"}</td>
+        <td>${tickerChip(r)}</td>
+        <td class="num"><b style="color:#f8fafc;">${usd(r[amt])}</b></td>
+        <td class="num">${usdDelta(r.value_delta)}</td>
+        <td class="num">${r.weight ? `<span class="chip ok">${fmtPct(r.weight, 1)}</span>` : "—"}</td>
       </tr>`).join("")}</tbody></table>`;
   }
   const SLICE_COLORS = ["#4c8dff", "#3dcf8e", "#f59e0b", "#a855f7", "#ec4899", "#64748b"];
@@ -6789,9 +6836,9 @@ function renderUs13f(data) {
     ["trend", "⚡ 매매 트렌드"],
   ];
   const modeTabsHtml = `
-    <div class="h-tabs" style="margin:12px 0 16px;">
+    <div class="h-tabs" style="margin:12px 0 16px; flex-wrap:wrap; gap:6px;">
       ${MODES.map(([k, label]) => `
-        <button type="button" class="${mode === k ? "on" : ""}" data-13f-mode="${k}">
+        <button type="button" class="${mode === k ? "on active" : ""}" data-13f-mode="${k}" style="padding:6px 14px; font-weight:700; border-radius:8px;">
           ${label} ${k === "new" ? `(${(data.new || []).length})` : k === "common" ? `(${(data.common || []).length})` : k === "exits" ? `(${(data.exits || []).length})` : ""}
         </button>
       `).join("")}
@@ -6807,12 +6854,12 @@ function renderUs13f(data) {
         <div class="us13f-consensus-top">
           <div>
             <div class="us13f-consensus-name">${escapeHtml(c.issuer_ko || c.issuer)}</div>
-            <div class="meta">${escapeHtml(c.ticker || c.cusip || "")}</div>
+            <div class="meta">${tickerChip(c)}</div>
           </div>
           <span class="tag tone-우호">🌟 ${c.n_filers}개 펀드 동시 보유</span>
         </div>
         <div style="font-size:12px; color:#cbd5e1; margin-top:6px;">
-          합산 투자액: <b style="color:#fff; font-size:13px;">${usd(c.value)}</b>
+          합산 투자액: <b style="color:#fff; font-size:13.5px;">${usd(c.value)}</b>
         </div>
         <div class="us13f-consensus-funds">
           ${funds}
@@ -6836,12 +6883,12 @@ function renderUs13f(data) {
           <span class="us13f-action-title">${escapeHtml(r.issuer_ko || r.issuer)}</span>
           <span class="tag ${tagCls}">${tagTxt}</span>
         </div>
-        <div class="us13f-action-meta">
-          ${escapeHtml(r.filer_ko || r.filer)} · 티커: <b>${escapeHtml(r.ticker || "—")}</b>
+        <div class="us13f-action-meta" style="margin-top:4px;">
+          ${escapeHtml(r.filer_ko || r.filer)} · 티커: ${tickerChip(r)}
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:12px;">
           <span style="color:var(--muted);">거래 규모</span>
-          <b style="color:#fff; font-size:13px;">${usd(amt)}</b>
+          <b style="color:#fff; font-size:13.5px;">${usd(amt)}</b>
         </div>
       </div>
     `;
@@ -6872,7 +6919,7 @@ function renderUs13f(data) {
     ${modeTabsHtml}
     <div class="table-wrap tall">${table}</div>
     ${err ? `<p class="hint">일부 실패: ${escapeHtml(err)}</p>` : ""}
-    <p class="hint">${escapeHtml(data.disclaimer || "")}</p>
+    <p class="hint" style="margin-top:12px;">${escapeHtml(data.disclaimer || "")}</p>
   `;
 
   box.querySelectorAll("[data-13f-mode]").forEach((btn) => {
