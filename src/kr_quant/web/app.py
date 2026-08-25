@@ -919,21 +919,71 @@ def _dart_company(corp_code: str) -> dict[str, Any]:
         r = requests.get(
             "https://opendart.fss.or.kr/api/company.json",
             params={"crtfc_key": s.opendart_api_key, "corp_code": corp_code},
-            timeout=15,
+            timeout=10,
         )
         js = r.json()
         if str(js.get("status")) != "000":
             return {}
+        est = str(js.get("est_dt") or "")
+        est_fmt = f"{est[:4]}-{est[4:6]}-{est[6:8]}" if len(est) == 8 else est
         return {
             "corp_name": js.get("corp_name"),
+            "corp_name_eng": js.get("corp_name_eng"),
             "ceo": js.get("ceo_nm"),
             "address": js.get("adres"),
             "homepage": js.get("hm_url"),
             "phone": js.get("phn_no"),
-            "founded": js.get("est_dt"),
+            "founded": est_fmt,
+            "jurir_no": js.get("jurir_no"),
+            "bizr_no": js.get("bizr_no"),
+            "induty_code": js.get("induty_code"),
         }
     except Exception:  # noqa: BLE001
         return {}
+
+
+def _dart_shareholders(corp_code: str) -> list[dict[str, Any]]:
+    s = load_settings()
+    if not s.opendart_api_key or not corp_code:
+        return []
+    try:
+        import requests
+        from datetime import datetime
+
+        now_year = datetime.now().year
+        for year in (str(now_year), str(now_year - 1), str(now_year - 2)):
+            for reprt in ("11011", "11012", "11014", "11013"):
+                r = requests.get(
+                    "https://opendart.fss.or.kr/api/hyslrSttus.json",
+                    params={
+                        "crtfc_key": s.opendart_api_key,
+                        "corp_code": corp_code,
+                        "bsns_year": year,
+                        "reprt_code": reprt,
+                    },
+                    timeout=5,
+                )
+                js = r.json()
+                if str(js.get("status")) == "000" and js.get("list"):
+                    rows = []
+                    for item in js.get("list", []):
+                        nm = (item.get("nm") or "").strip()
+                        if not nm or nm in {"총계", "합계", "계", "None"}:
+                            continue
+                        ratio = item.get("trmend_posesn_stock_qota_rt") or item.get("bsis_posesn_stock_qota_rt") or "-"
+                        shares = item.get("trmend_posesn_stock_co") or item.get("bsis_posesn_stock_co") or "-"
+                        relate = item.get("relate") or "대주주"
+                        rows.append({
+                            "name": nm,
+                            "relate": relate,
+                            "ratio": ratio,
+                            "shares": shares,
+                        })
+                    if rows:
+                        return rows[:6]
+    except Exception:  # noqa: BLE001
+        pass
+    return []
 
 
 def _load_profile(ticker: str) -> dict[str, Any]:
@@ -1123,6 +1173,7 @@ def api_stock(ticker: str, as_of: str | None = None) -> dict[str, Any]:
         "events": dart_events,
         "flow90": flow90,
         "naver": naver,
+        "shareholders": _dart_shareholders(_corp_code(code, profile)),
         "explain": explain_stock(row),
         "comment": quant_comment(row),
         "links": external_links(code, row.get("company")),

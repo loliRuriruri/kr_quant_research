@@ -2174,7 +2174,7 @@ async function openStock(ticker) {
     </article>`;
 
     const bottomNewsGrid = `
-      <div class="bottom-news-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:14px; margin-top:16px; width:100%;">
+      <div class="bottom-news-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-top:20px; width:100%; box-sizing:border-box;">
         <div id="tier1-news-container" style="grid-column: 1 / -1;"></div>
         ${newsCard}
         ${webCard}
@@ -2182,20 +2182,82 @@ async function openStock(ticker) {
     `;
 
     const loc = data.location || {};
-    let locBlock = "";
-    if (loc.address || loc.ceo) {
-      const mapLink = loc.map_url
-        ? `<p style="margin:4px 0 0;"><a class="ext" href="${escapeHtml(loc.map_url)}" target="_blank" rel="noopener">네이버 지도에서 보기</a></p>`
-        : "";
-      const img = loc.static_map && loc.lat && loc.lng
-        ? `<p style="margin:6px 0 0;"><img class="hq-map" alt="본사 위치" src="/api/maps/static?lat=${encodeURIComponent(loc.lat)}&lng=${encodeURIComponent(loc.lng)}" /></p>`
-        : "";
-      locBlock = `<article class="intro" style="margin-top:12px;"><h3>본사 위치</h3>
-        ${loc.ceo ? `<p style="margin:2px 0; font-size:12px; color:#cbd5e1;"><b>대표이사:</b> ${escapeHtml(loc.ceo)}</p>` : ""}
-        ${loc.address ? `<p style="margin:2px 0; font-size:12px; color:#cbd5e1;"><b>주소:</b> ${escapeHtml(loc.address)}</p>` : ""}
-        ${loc.homepage ? `<p style="margin:4px 0;"><a class="ext inline" href="${escapeHtml(loc.homepage.startsWith("http") ? loc.homepage : "https://" + loc.homepage)}" target="_blank" rel="noopener">공식 홈페이지</a></p>` : ""}
-        ${mapLink}${img}</article>`;
+    const dartInfo = data.dart || {};
+    const shareholders = data.shareholders || [];
+
+    let shareholderRows = "";
+    if (shareholders.length > 0) {
+      shareholderRows = `
+        <div style="margin-top:10px;">
+          <span style="font-size:11.5px; font-weight:700; color:#38bdf8; display:block; margin-bottom:6px;">👥 주요주주 지분 현황 (DART 공시)</span>
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:6px;">
+            ${shareholders.map(sh => `
+              <div style="padding:7px 10px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:6px; display:flex; flex-direction:column; gap:2px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-size:11.5px; font-weight:700; color:#f8fafc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(sh.name)}">${escapeHtml(sh.name)}</span>
+                  <span style="font-size:10px; color:#94a3b8;">${escapeHtml(sh.relate || "주주")}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+                  <b style="font-size:12.5px; color:#34d399; font-weight:800;">${escapeHtml(sh.ratio)}%</b>
+                  <span style="font-size:10px; color:#64748b;">${escapeHtml(sh.shares)}주</span>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
     }
+
+    const companyInfoBlock = `
+      <article class="intro" style="margin-top:14px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:10px; padding:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0; font-size:13.5px; color:#38bdf8;">🏢 기업 개요 & 지배구조</h3>
+          <span class="chip" style="font-size:10px;">DART·공식 정보</span>
+        </div>
+
+        <!-- 1. 기본 정보 팩트 그리드 -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:10px;">
+          <div class="fact-card" style="padding:8px 10px; background:rgba(15,23,42,0.7); border:1px solid #1e293b; border-radius:8px;">
+            <span style="font-size:10.5px; color:#94a3b8;">대표이사</span>
+            <b style="font-size:13px; color:#f8fafc;">${escapeHtml(dartInfo.ceo || loc.ceo || "-")}</b>
+          </div>
+          <div class="fact-card" style="padding:8px 10px; background:rgba(15,23,42,0.7); border:1px solid #1e293b; border-radius:8px;">
+            <span style="font-size:10.5px; color:#94a3b8;">설립일</span>
+            <b style="font-size:13px; color:#f8fafc;">${escapeHtml(dartInfo.founded || loc.founded || "-")}</b>
+          </div>
+          <div class="fact-card" style="padding:8px 10px; background:rgba(15,23,42,0.7); border:1px solid #1e293b; border-radius:8px;">
+            <span style="font-size:10.5px; color:#94a3b8;">대표 전화</span>
+            <b style="font-size:13px; color:#f8fafc;">${escapeHtml(dartInfo.phone || "-")}</b>
+          </div>
+          <div class="fact-card" style="padding:8px 10px; background:rgba(15,23,42,0.7); border:1px solid #1e293b; border-radius:8px;">
+            <span style="font-size:10.5px; color:#94a3b8;">영문 사명</span>
+            <b style="font-size:12px; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(dartInfo.corp_name_eng || "-")}</b>
+          </div>
+        </div>
+
+        <!-- 2. 본사 주소 & 바로가기 버튼 -->
+        <div style="background:rgba(15,23,42,0.6); border:1px solid #1e293b; border-radius:8px; padding:10px 12px; margin-bottom:10px;">
+          <div style="font-size:12px; color:#cbd5e1; margin-bottom:6px;">
+            📍 본사 주소: <b>${escapeHtml(dartInfo.address || loc.address || "-")}</b>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            ${(dartInfo.homepage || loc.homepage) ? `<a class="ext inline" href="${escapeHtml(dartInfo.homepage || loc.homepage)}" target="_blank" rel="noopener" style="font-size:11px; padding:4px 10px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.35); border-radius:6px; color:#38bdf8; font-weight:600;">🌐 공식 홈페이지</a>` : ""}
+            ${loc.map_url ? `<a class="ext inline" href="${escapeHtml(loc.map_url)}" target="_blank" rel="noopener" style="font-size:11px; padding:4px 10px; background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.35); border-radius:6px; color:#4ade80; font-weight:600;">🗺️ 네이버 지도</a>` : ""}
+          </div>
+        </div>
+
+        <!-- 3. 대주주 지분 현황 -->
+        ${shareholderRows}
+
+        <!-- 4. 기업 백과 / 사업 소개 -->
+        ${encyc ? `
+          <div style="margin-top:10px; padding:10px 12px; background:rgba(30,41,59,0.4); border-left:3px solid #38bdf8; border-radius:0 8px 8px 0;">
+            <span style="font-size:11.5px; font-weight:700; color:#38bdf8; display:block; margin-bottom:4px;">📖 기업 백과 & 사업 개요</span>
+            ${encyc}
+          </div>
+        ` : ""}
+      </article>
+    `;
     const toss = data.toss || {};
     const tq = toss.quote || {};
     const tprice = tq.lastPrice ?? tq.price ?? tq.close ?? tq.last ?? tq.currentPrice ?? tq.tradePrice;
@@ -2389,10 +2451,17 @@ async function openStock(ticker) {
         <!-- COLUMN 1 (LEFT): 종합 점수, 6축 레이더 & 5대 팩터 스코어보드, 기술적 지표 & 타이밍, 게이트 상태, 액션 & AI 리포트 -->
         <div>
           <!-- 1. 종합 점수 Hero -->
-          <div class="score-hero">
-            <span class="has-tip" data-tip="${escapeHtml(r.rank_label || "순위")}">종합 점수</span>
-            <b>${fmt(r.quant_score)}</b>
-            <span class="meta">${r.market || ""} · ${r.sector || ""} · ${r.industry || ""}</span>
+          <div class="score-hero" style="background:linear-gradient(135deg, rgba(30,58,138,0.35), rgba(15,23,42,0.85)); border:1px solid rgba(56,189,248,0.3); border-radius:12px; padding:14px 18px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                <span style="font-size:12px; color:#94a3b8; font-weight:600;">종합 퀀트 스코어</span>
+                <span class="chip ok" style="font-size:10px; font-weight:700;">${escapeHtml(r.rank_label || "순위권")}</span>
+              </div>
+              <div class="meta" style="font-size:11.5px; color:#cbd5e1;">${r.market || ""} · ${r.sector || ""} · ${r.industry || ""}</div>
+            </div>
+            <div style="text-align:right;">
+              <b style="font-size:28px; font-weight:900; color:#38bdf8; letter-spacing:-0.5px;">${fmt(r.quant_score)}<span style="font-size:13px; font-weight:600; color:#94a3b8;"> / 100</span></b>
+            </div>
           </div>
 
           <!-- 2. 6-Axis Hexagon Radar Chart -->
@@ -2434,10 +2503,15 @@ async function openStock(ticker) {
             </div>
             <p class="hint" style="font-size:11px; color:#94a3b8; margin-top:2px;">💡 AI 심층 리포트는 선택한 LLM으로 14대 지침을 분석하며, <b>인포그래픽 뷰</b>로 시각화 덱을 즉시 확인할 수 있습니다.</p>
           `}
-          <div id="report-box"><p style="font-size:12px; color:#64748b;">저장된 AI 분석 리포트를 확인하는 중…</p></div>
+          <div id="report-box" style="margin-top:8px;">
+            <div style="padding:10px 14px; background:rgba(15,23,42,0.6); border:1px dashed rgba(56,189,248,0.25); border-radius:8px; font-size:12px; color:#94a3b8; display:flex; align-items:center; justify-content:space-between;">
+              <span>💡 <b>AI 심층 분석 리포트 대기 중</b> (상단 [🤖 AI 리포트] 또는 [🎨 인포그래픽] 클릭)</span>
+              <span style="font-size:11px; color:#64748b;">${escapeHtml(r.company || ticker)}</span>
+            </div>
+          </div>
         </div>
 
-        <!-- COLUMN 2 (RIGHT): 공식 수급 90일, 실전 참모 분석, DART 공시 이벤트, 핵심 재무 팩트 & 밸류에이션, 기업 백과 & 본사 위치, Yahoo Financials -->
+        <!-- COLUMN 2 (RIGHT): 공식 수급 90일, 실전 참모 분석, DART 공시 이벤트, 핵심 재무 팩트 & 밸류에이션, 기업 개요 & 대주주 지분, Yahoo Financials -->
         <div>
           <!-- 1. 공식 수급 90일 -->
           ${flow90Block(data.flow90, code)}
@@ -2456,15 +2530,16 @@ async function openStock(ticker) {
             </div>
             ${facts}
           </article>
-          ${encyc ? `<article class="intro" style="margin-top:12px;"><h3 style="font-size:13.5px; margin-bottom:6px;">📖 기업 백과</h3>${encyc}</article>` : ""}
-          ${locBlock}
 
-          <!-- 5. Yahoo Financials & 컨센서스 -->
+          <!-- 5. 기업 개요 & 지배구조 & 본사 정보 -->
+          ${companyInfoBlock}
+
+          <!-- 6. Yahoo Financials & 컨센서스 -->
           ${yahooBlock}
         </div>
       </div>
 
-      <!-- BOTTOM FULL-WIDTH 2-COLUMN GRID: 네이버 뉴스 & 네이버 웹검색 나란히 배치 -->
+      <!-- BOTTOM FULL-WIDTH 2-COLUMN GRID: 네이버 뉴스 & 네이버 웹검색 나란히 배치 (가로폭 100% 꽉 차게) -->
       ${bottomNewsGrid}
     `;
 
@@ -2850,18 +2925,23 @@ function fiveStrip(data) {
       const isFail = p.fa_gate_pass === false || (p.label && (p.label.includes("주의") || p.label.includes("경고") || p.label.includes("탈락") || p.label.includes("위험") || p.label.includes("부담") || p.label.includes("미달")));
       const isPass = p.fa_gate_pass === true || (p.label && (p.label.includes("적격") || p.label.includes("통과") || p.label.includes("선행")));
       const cls = isFail ? "fail warn" : isPass ? "pass" : "";
+      const scoreVal = Number(p.score || 0);
+      const scoreColor = isFail ? "#ef4444" : scoreVal >= 70 ? "#34d399" : scoreVal >= 50 ? "#38bdf8" : "#fbbf24";
       const cleanComment = (p.comment || "")
         .replace(/Quant[에와를]?\s*(넣지|합산하지|바꾸지)\s*않습니다\.?[\s]*/gi, "")
         .replace(/Quant\s*순위는\s*바꾸지\s*않습니다\.?[\s]*/gi, "")
         .replace(/이\s*판단은\s*Quant와\s*합산하지\s*않아\.?[\s]*/gi, "")
         .replace(/재무\s*Quant\s*순위를\s*바꾸지\s*않습니다\.?[\s]*/gi, "")
         .trim();
-      return `<div class="five-card ${cls}">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; gap:4px;">
-          <span style="font-weight:700; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(p.label)}</span>
-          <b style="font-size:18px; font-weight:800; flex-shrink:0;">${fmt(p.score, 0)}</b>
+      return `<div class="five-card ${cls}" style="background:linear-gradient(145deg, rgba(15,23,42,0.95), ${isPass ? 'rgba(34,197,94,0.12)' : isFail ? 'rgba(239,68,68,0.14)' : 'rgba(56,189,248,0.1)'}); border:1px solid ${isPass ? 'rgba(34,197,94,0.5)' : isFail ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.3)'}; border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35);">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+          <span style="font-weight:800; font-size:13.5px; color:#f8fafc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(p.label)}</span>
+          <span style="padding:2px 8px; border-radius:99px; background:${isPass ? 'rgba(34,197,94,0.2)' : isFail ? 'rgba(239,68,68,0.2)' : 'rgba(56,189,248,0.2)'}; border:1px solid ${scoreColor}; font-size:13px; font-weight:900; color:${scoreColor}; flex-shrink:0;">${fmt(p.score, 0)}점</span>
         </div>
-        <p style="font-size:11.5px; line-height:1.45; word-break:keep-all; margin:0;">${escapeHtml(cleanComment)}</p>
+        <div style="width:100%; height:3px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;">
+          <div style="width:${Math.max(0, Math.min(100, scoreVal))}%; height:100%; background:${scoreColor}; border-radius:2px;"></div>
+        </div>
+        <p style="font-size:11.5px; line-height:1.45; word-break:keep-all; margin:0; color:#cbd5e1;">${escapeHtml(cleanComment)}</p>
       </div>`;
     })
     .join("")}</div>`;
