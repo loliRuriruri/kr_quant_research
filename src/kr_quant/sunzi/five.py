@@ -56,7 +56,7 @@ def tian_panel(settings: Settings | None = None, market: dict[str, Any] | None =
                 "regime_ko": "시세 없음",
                 "evidence": [],
                 "contrary": ["KRX 일봉이 없어 天을 못 그립니다."],
-                "comment": "시장 국면은 天의 입력입니다. Quant에 넣지 않습니다.",
+                "comment": "시장 국면과 매크로 리스크 환경을 반영한 시장 점수입니다.",
                 "components": [],
             }
             _TIAN_CACHE.update({"at": now, "panel": panel})
@@ -109,7 +109,7 @@ def tian_panel(settings: Settings | None = None, market: dict[str, Any] | None =
         "evidence": evidence[:6],
         "contrary": contrary[:6],
         "comment": (
-            f"시장 국면 {label_ko or '미산정'}을 天으로 봅니다. 종목 공통이며 Quant와 합산하지 않습니다."
+            f"시장 국면({label_ko or '미산정'})과 매크로 리스크 환경을 반영한 시장 점수입니다."
         ),
         "components": components,
     }
@@ -134,7 +134,7 @@ def di_panel(row: dict[str, Any], sector: dict[str, Any] | None = None) -> dict[
             "state_ko": "표본부족",
             "evidence": [],
             "contrary": [f"{name} 업종 묶음이 없어 地를 못 붙입니다."],
-            "comment": "업종 상대강도는 地입니다. Quant에 넣지 않습니다.",
+            "comment": f"{name} 업종 상대강도와 주도주 흐름을 평가한 업종 점수입니다.",
         }
     score = _num(sector.get("score"))
     state = str(sector.get("state_ko") or "")
@@ -161,7 +161,7 @@ def di_panel(row: dict[str, Any], sector: dict[str, Any] | None = None) -> dict[
         "contrary": contrary[:4],
         "comment": (
             f"{name} 업종 조사 점수 {('—' if score is None else f'{score:.0f}')} · {state or '보통'}. "
-            "한 종목 급등과 업종 강세를 가르기 위한 地이며 Quant에 합산하지 않습니다."
+            "한 종목 급등과 업종 전반의 추세 강도를 가르는 업종 상대강도입니다."
         ),
     }
 

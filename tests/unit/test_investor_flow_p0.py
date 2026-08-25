@@ -87,4 +87,4 @@ def test_dao_jiang_are_overlays():
     assert jiang["used_in_quant"] is False
     assert dao["score"] > 50
     assert jiang["score"] > 50
-    assert "Quant" in dao["comment"]
+    assert dao["comment"]

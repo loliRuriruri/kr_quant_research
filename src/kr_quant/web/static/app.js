@@ -2255,8 +2255,8 @@ async function openStock(ticker) {
     if (!publicShareMode) {
       $("#btn-analyze")?.addEventListener("click", () => runAnalyze(code).catch((err) => alert(err.message)));
       $("#btn-backtest-stock")?.addEventListener("click", () => {
-        closeDrawerUi();
-        openStrategyBacktest(code, r.company || code);
+        closeDrawer();
+        openStrategyBacktest(code, r.company || code).catch((err) => alert(err.message));
       });
       $("#btn-report")?.addEventListener("click", () => runReport(code).catch((err) => alert(err.message)));
       $("#btn-watch")?.addEventListener("click", () => addWatch(code, r.company || "").catch((err) => alert(err.message)));
@@ -2413,13 +2413,18 @@ function criticCard(panel) {
     .join(" · ");
   const wait = panel.waiting_test || {};
   const bear = (panel.strongest_bear_evidence || []).map((t) => `<li>${escapeHtml(t)}</li>`).join("");
+  const variantRaw = String(panel.variant_view || panel.variant || "").trim();
+  const variantClean = (!variantRaw || variantRaw.includes("NO_CLEAR") || variantRaw === "NO_CLEAR_VARIANT_VIEW")
+    ? "현재 시장 컨센서스와 펀더멘털 지표 간의 정합성을 주시하고 있어."
+    : variantRaw;
+
   return `<article class="intro yang-brief">
     <h3>🍵 전략검토 · ${escapeHtml(panel.posture_ko || panel.posture)} ${fmt(panel.score, 0)}</h3>
     <p class="yang-voice">${escapeHtml(panel.one_line_judgment || panel.comment || "")}</p>
     <p>${escapeHtml(panel.comment || "")}</p>
     <p class="meta">${escapeHtml(axisLine)}</p>
     <p><b>이미 가격에 들어간 이야기</b> ${escapeHtml(panel.consensus || "")}</p>
-    <p><b>다른 보기</b> ${escapeHtml((panel.variant && panel.variant !== "NO_CLEAR_VARIANT_VIEW") ? panel.variant : "현재 시장 컨센서스와 펀더멘털 지표 간의 정합성을 주시하고 있어.")}</p>
+    <p><b>다른 보기</b> ${escapeHtml(variantClean)}</p>
     ${bear ? `<p><b>내가 가장 불편하게 보는 점</b></p><ul>${bear}</ul>` : ""}
     ${wait.cost_of_waiting ? `<p><b>기다리면</b> ${escapeHtml(wait.benefit_of_waiting || "")} / <b>잃는 것</b> ${escapeHtml(wait.cost_of_waiting)}</p>` : ""}
     ${panel.no_action_required ? "<p><b>지금은 아무것도 하지 않아도 돼.</b></p>" : ""}
@@ -2429,12 +2434,14 @@ function criticCard(panel) {
 
 function fiveStrip(data) {
   let faLabel = "";
+  let faGatePass = true;
   if (data.fa) {
-    faLabel = data.fa.label || data.fa.fa_label || "";
-    if (!faLabel.startsWith("法")) {
-      const clean = faLabel.replace(/^(🛡️|⚠️)\s*/, "").trim();
-      faLabel = clean ? `法 ${clean}` : "法 재무규율";
-    }
+    faGatePass = data.fa.fa_gate_pass !== false;
+    let rawLabel = data.fa.label || data.fa.fa_label || "";
+    let clean = rawLabel.replace(/^(🛡️|⚠️)\s*/, "").replace(/^法\s*/, "").trim();
+    if (!clean) clean = faGatePass ? "재무적격" : "재무주의";
+    const icon = faGatePass ? "🛡️" : "⚠️";
+    faLabel = `${icon} 法 ${clean}`;
   }
   const parts = [
     data.dao,
@@ -2443,7 +2450,7 @@ function fiveStrip(data) {
     data.jiang,
     data.fa
       ? {
-          label: faLabel || "法 재무규율",
+          label: faLabel || (faGatePass ? "🛡️ 法 재무적격" : "⚠️ 法 재무주의"),
           score: data.fa.fa_score ?? data.fa.score,
           comment: data.fa.comment,
           fa_gate_pass: data.fa.fa_gate_pass,
@@ -2454,11 +2461,20 @@ function fiveStrip(data) {
   return `<div class="five-grid">${parts
     .map((p) => {
       if (!p) return "";
-      const cls = p.fa_gate_pass === true ? "pass" : p.fa_gate_pass === false ? "fail" : "";
+      const isFail = p.fa_gate_pass === false || (p.label && (p.label.includes("주의") || p.label.includes("경고") || p.label.includes("탈락") || p.label.includes("위험") || p.label.includes("부담") || p.label.includes("미달")));
+      const isPass = p.fa_gate_pass === true || (p.label && (p.label.includes("적격") || p.label.includes("통과") || p.label.includes("선행")));
+      const cls = isFail ? "fail warn" : isPass ? "pass" : "";
       const cleanComment = (p.comment || "")
-        .replace(/Quant[에와를]?\s*(넣지|합산하지|바꾸지)\s*않습니다\.?[\s]*/g, "")
+        .replace(/Quant[에와를]?\s*(넣지|합산하지|바꾸지)\s*않습니다\.?[\s]*/gi, "")
+        .replace(/Quant\s*순위는\s*바꾸지\s*않습니다\.?[\s]*/gi, "")
+        .replace(/이\s*판단은\s*Quant와\s*합산하지\s*않아\.?[\s]*/gi, "")
+        .replace(/재무\s*Quant\s*순위를\s*바꾸지\s*않습니다\.?[\s]*/gi, "")
         .trim();
-      return `<div class="five-card ${cls}"><span>${escapeHtml(p.label)}</span><b>${fmt(p.score, 0)}</b><p>${escapeHtml(cleanComment.slice(0, 90))}</p></div>`;
+      return `<div class="five-card ${cls}">
+        <span>${escapeHtml(p.label)}</span>
+        <b>${fmt(p.score, 0)}</b>
+        <p>${escapeHtml(cleanComment)}</p>
+      </div>`;
     })
     .join("")}</div>`;
 }

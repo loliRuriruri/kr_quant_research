@@ -1006,8 +1006,30 @@ body.modal-open { overflow: hidden; }
 .five-card span { display: block; color: var(--muted); font-size: 12px; }
 .five-card b { display: block; margin: 4px 0 2px; font-size: 18px; }
 .five-card p { margin: 0; font-size: 12px; color: #c5d0e4; }
-.five-card.pass b { color: var(--good); }
-.five-card.fail b { color: var(--warn); }
+.five-card.pass {
+  border-color: rgba(34, 197, 94, 0.45) !important;
+  background: linear-gradient(145deg, rgba(16, 24, 42, 0.95), rgba(34, 197, 94, 0.1)) !important;
+}
+.five-card.pass span { color: #86efac !important; font-weight: 700; }
+.five-card.pass b { color: #22c55e !important; }
+
+.five-card.fail,
+.five-card.warn {
+  border: 1.5px solid rgba(239, 68, 68, 0.65) !important;
+  background: linear-gradient(145deg, rgba(35, 14, 20, 0.95), rgba(239, 68, 68, 0.16)) !important;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.22);
+}
+.five-card.fail span,
+.five-card.warn span { color: #fca5a5 !important; font-weight: 800; }
+.five-card.fail b,
+.five-card.warn b {
+  color: #ef4444 !important;
+  font-size: 20px !important;
+  font-weight: 900 !important;
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+}
+.five-card.fail p,
+.five-card.warn p { color: #fecaca !important; }
 .five-card.posture-engage b { color: #34d399; }
 .five-card.posture-wait b { color: #fbbf24; }
 .five-card.posture-observe b { color: #38bdf8; }

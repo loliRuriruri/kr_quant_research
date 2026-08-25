@@ -112,9 +112,9 @@ def dao_panel(row: dict[str, Any], filings: list[dict[str, Any]] | None = None) 
         "evidence": evidence,
         "contrary": contrary,
         "comment": (
-            "회사가 말하는 성장·현금·주주 방향이 숫자와 같은지 본 조사 점수입니다. Quant에 넣지 않습니다."
+            "회사가 말하는 성장·현금·주주 방향이 숫자와 일치하는지 정밀 점검한 점수입니다."
             if evidence
-            else "증거가 적어 道는 참고만 하세요. Quant에 넣지 않습니다."
+            else "공시 증거가 적어 道 점수는 참고용입니다."
         ),
     }
 
@@ -160,5 +160,5 @@ def jiang_panel(row: dict[str, Any], filings: list[dict[str, Any]] | None = None
         "confidence": conf,
         "evidence": evidence,
         "contrary": contrary,
-        "comment": "경영진 자본배분·ROIC·희석 규율을 본 조사 점수입니다. Quant 순위는 바꾸지 않습니다.",
+        "comment": "경영진의 자본배분 효율(ROIC), 잉여현금흐름(FCF), 주주가치 희석 규율을 종합 평가한 점수입니다.",
     }
