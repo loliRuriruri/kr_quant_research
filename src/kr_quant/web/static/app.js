@@ -6617,11 +6617,13 @@ function renderTradingEconomicsMacroCards(grouped, cc) {
   const cards = allList.map((item, idx) => {
     if (!item || item.error || item.last == null) return "";
     const chg = Number(item.ret_1d);
-    const chg1m = Number(item.ret_1m);
+    const delta = item.delta_1d != null ? Number(item.delta_1d) : null;
     const isUp = chg >= 0;
-    const is1mUp = chg1m >= 0;
     const chgTxt = chg == null || Number.isNaN(chg) ? "—" : `${isUp ? "+" : ""}${(chg * 100).toFixed(2)}%`;
-    const priceFmt = item.category === "crypto" || item.category === "index" ? fmt(item.last, 2) : fmt(item.last, 2);
+    const deltaTxt = delta != null && Number.isFinite(delta)
+      ? `${delta > 0 ? "+" : ""}${fmt(delta, item.category === "fx" && Math.abs(delta) < 1 ? 4 : 2)}`
+      : "";
+    const priceFmt = fmt(item.last, item.category === "fx" && item.last < 10 ? 3 : 2);
     const sparkSvg = renderSvgSparkline(item.spark, isUp, `spark-${idx}`);
     const comment = item.comment || (item.ret_1y != null ? `1년 변동 ${pctCell(item.ret_1y)} · 52주고점 ${pctCell(item.high_52w_distance)}` : "");
     const guide = MACRO_BAROMETER_GUIDE[item.symbol] || MACRO_BAROMETER_GUIDE[item.id] || {
@@ -6647,7 +6649,10 @@ function renderTradingEconomicsMacroCards(grouped, cc) {
           </div>
           <div style="text-align:right">
             <div class="macro-card-price">${priceFmt}</div>
-            <div class="macro-card-chg ${isUp ? "up" : "down"}">${chgTxt}</div>
+            <div class="macro-card-chg ${isUp ? "up" : "down"}">
+              <span>${chgTxt}</span>
+              ${deltaTxt ? `<small style="font-size:10px; margin-left:3px; opacity:0.9;">(${deltaTxt})</small>` : ""}
+            </div>
           </div>
         </div>
         ${sparkSvg}

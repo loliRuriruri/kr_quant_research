@@ -74,6 +74,23 @@ def parse_chart(payload: dict[str, Any]) -> dict[str, Any]:
         if not math.isfinite(val):
             continue
         bars.append({"date": _as_date(int(ts)), "close": val})
+
+    reg_price = meta.get("regularMarketPrice")
+    reg_time = meta.get("regularMarketTime")
+    if reg_price is not None and reg_time is not None:
+        try:
+            reg_val = float(reg_price)
+            if math.isfinite(reg_val):
+                reg_date = _as_date(int(reg_time))
+                if bars and bars[-1]["date"] < reg_date:
+                    bars.append({"date": reg_date, "close": reg_val})
+                elif bars and bars[-1]["date"] == reg_date:
+                    bars[-1]["close"] = reg_val
+                elif not bars:
+                    bars.append({"date": reg_date, "close": reg_val})
+        except (TypeError, ValueError):
+            pass
+
     return {
         "symbol": meta.get("symbol"),
         "currency": meta.get("currency"),
@@ -112,9 +129,12 @@ def summarize_bars(bars: list[dict[str, Any]], last_override: float | None = Non
     if len(bars) >= 200:
         ma200 = sum(float(r["close"]) for r in bars[-200:]) / 200
     prev = float(bars[-2]["close"]) if len(bars) >= 2 else None
+    delta_1d = (last - prev) if prev is not None else None
     return {
         "as_of": last_date,
         "last": last,
+        "prev": prev,
+        "delta_1d": delta_1d,
         "ret_1d": _ret(last, prev),
         "ret_1m": _ret(last, _close_on_or_before(bars, (last_dt - timedelta(days=31)).isoformat())),
         "ret_3m": _ret(last, _close_on_or_before(bars, (last_dt - timedelta(days=93)).isoformat())),
