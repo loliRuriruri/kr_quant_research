@@ -3767,7 +3767,18 @@ async function loadInvestor() {
   const blockers = (data.blockers || []).map((t) => `<li class="warn">${escapeHtml(t)}</li>`).join("");
   const next = (data.next_steps || []).map((t) => `<li>${escapeHtml(t)}</li>`).join("");
   const uni = (data.universe_preview || [])
-    .map((t) => `<span class="sector-stock-pill" onclick="openStock('${escapeHtml(t.ticker)}')"><b>${escapeHtml(t.company || t.ticker)}</b> <span class="meta">${escapeHtml(t.why || "")}</span></span>`)
+    .map((t) => {
+      const isWatch = t.why === "관심종목";
+      const icon = isWatch ? "⭐" : "🔥";
+      const tagCls = isWatch ? "watch-tag" : "liquidity-tag";
+      const pillCls = isWatch ? "watch-pill" : "liquidity-pill";
+      const tipTitle = `${icon} ${escapeHtml(t.company || t.ticker)} (${t.ticker})`;
+      const tipDesc = escapeHtml(t.detail || (isWatch ? "사용자가 직접 관심종목으로 등록한 종목입니다." : "최근 시장 거래대금 최상위 고유동성 대형주입니다."));
+      return `<button type="button" class="universe-pill ${pillCls} has-tip" data-tip-title="${tipTitle}" data-tip="${tipDesc}" onclick="openStock('${escapeHtml(t.ticker)}')" tabindex="0">
+        <b class="pill-name">${escapeHtml(t.company || t.ticker)}</b>
+        <span class="badge-tag ${tagCls}">${icon} ${escapeHtml(t.why || "")}</span>
+      </button>`;
+    })
     .join(" ");
   const asof = cov.last_date ? `공식 수급 최신일 ${cov.last_date} · ${cov.tickers || 0}종목 · ${cov.rows || 0}행` : "공식 수급 데이터 없음 (토스 캐시 대체 가동 중)";
   if (currentView === "investor") setPageAsOf(asof, "KIS 관심종목·고유동성 수급 추적. API 미설정 시 토스 데이터로 자동 대체됩니다.");
