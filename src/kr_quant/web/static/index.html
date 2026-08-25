@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%236ee7b7'%3EQ%3C/text%3E%3C/svg%3E" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.61.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.62.0" />
 </head>
 <body>
   <aside class="nav">
@@ -279,13 +279,16 @@
     </section>
 
     <section id="view-sunzi" class="view hidden">
+      <!-- Tier 1 AI Galactic Tactical Command Briefing (100% Free Engine) -->
+      <div id="sunzi-tier1-briefing" style="margin-bottom:14px;"></div>
+
       <article class="card yang-stage">
         <div class="card-h">
           <div style="display:flex; align-items:center; gap:10px;">
             <span style="font-size:22px;">🍵</span>
             <div>
               <h2 style="margin:0; font-size:20px; color:#fff; font-weight:900; letter-spacing:-0.5px;">은하퀀트전설 (Legend of Galactic Quant)</h2>
-              <p class="hint" style="margin:2px 0 0; color:#94a3b8; font-size:12px;">제13함대 기함 히페리온 작전 회의실 · 손자 오사(道天地將法) 기반 양 웬리 실전 전술 참모</p>
+              <p class="hint" style="margin:2px 0 0; color:#94a3b8; font-size:12px;">제13함대 기함 히페리온 작전 회의실 · 손자 오사(道天地將法) 기반 전술 참모 본부</p>
             </div>
           </div>
           <div class="actions">
@@ -298,19 +301,28 @@
       </article>
     </section>
 
-    <!-- 🍵 Yang Wen-li 1:1 Tactical Intelligence Modal -->
+    <!-- 🍵 Galactic Quant 1:1 Tactical Intelligence Modal -->
     <div id="yang-tactical-modal" class="yang-modal-overlay hidden" style="display: none;">
       <div class="yang-modal-dialog">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px;">
           <div>
             <div style="display:flex; align-items:center; gap:8px;">
-              <span class="chip" style="background:#eab308; color:#0f172a; font-weight:900;">제13함대 기밀 작전 지시서</span>
+              <span id="yang-modal-badge" class="chip" style="background:#eab308; color:#0f172a; font-weight:900;">제13함대 기밀 작전 지시서</span>
               <span id="yang-modal-strategy-tag" class="yang-strategy-pill">先勝求戰 (선승구전)</span>
             </div>
             <h2 id="yang-modal-title" style="margin:8px 0 0; font-size:22px; color:#fff; font-weight:900;">종목명 (000000)</h2>
             <p id="yang-modal-sub" class="meta" style="margin:4px 0 0; font-size:13px; color:#94a3b8;">KOSPI · 반도체 · 퀀트 종합 82.1점</p>
           </div>
           <button type="button" class="ghost" id="btn-close-yang-modal" style="font-size:18px; padding:4px 10px; cursor:pointer;">✕</button>
+        </div>
+
+        <!-- Commander Persona Switcher -->
+        <div id="yang-modal-persona-bar" style="display:flex; align-items:center; gap:6px; margin-bottom:14px; flex-wrap:wrap; background:rgba(15,23,42,0.6); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
+          <span style="font-size:12px; font-weight:700; color:#94a3b8; margin-right:4px;">지휘관 참모 선택:</span>
+          <button type="button" class="tag-btn yang-persona-btn active" data-persona="yang" style="padding:4px 10px; font-size:11.5px;">🍵 양 웬리 (홍차·안전마진)</button>
+          <button type="button" class="tag-btn yang-persona-btn" data-persona="reinhard" style="padding:4px 10px; font-size:11.5px;">🦁 라인하르트 (패도·모멘텀)</button>
+          <button type="button" class="tag-btn yang-persona-btn" data-persona="oberstein" style="padding:4px 10px; font-size:11.5px;">👁️ 오베르슈타인 (냉혹·손절)</button>
+          <button type="button" class="tag-btn yang-persona-btn" data-persona="julian" style="padding:4px 10px; font-size:11.5px;">📖 율리안 (성실·정석)</button>
         </div>
 
         <!-- Yang Commentary Content -->
@@ -1431,7 +1443,7 @@
       </div>
     </div>
 
-  <script src="/static/app.js?v=2.61.0"></script>
+  <script src="/static/app.js?v=2.62.0"></script>
 
 
     <!-- Status Guide Modal (Mobile Dashboard Integration) -->

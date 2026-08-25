@@ -3645,6 +3645,65 @@ async function loadTradeTier1Briefing() {
   } catch (e) {}
 }
 
+let currentSunziPersona = "yang";
+
+async function loadSunziTier1Briefing(persona = currentSunziPersona) {
+  currentSunziPersona = persona;
+  const container = $("#sunzi-tier1-briefing");
+  if (!container) return;
+  try {
+    const res = await api(`/api/sunzi/tier1-briefing?persona=${encodeURIComponent(persona)}`);
+    if (res && res.ok && res.headline) {
+      const personaBadges = [
+        { id: "yang", icon: "🍵", name: "양 웬리", desc: "홍차·안전마진" },
+        { id: "reinhard", icon: "🦁", name: "라인하르트", desc: "패도·모멘텀" },
+        { id: "oberstein", icon: "👁️", name: "오베르슈타인", desc: "냉혹·손절" },
+        { id: "julian", icon: "📖", name: "율리안", desc: "성실·정석" }
+      ];
+      
+      const buttonsHtml = personaBadges.map(p => `
+        <button type="button" class="tag-btn yang-deck-persona-btn ${p.id === persona ? 'active' : ''}" data-persona="${p.id}" style="padding:3px 8px; font-size:11px; ${p.id === persona ? 'background:#38bdf8; color:#0f172a; font-weight:800;' : 'background:rgba(255,255,255,0.06); color:#cbd5e1;'}">
+          ${p.icon} ${p.name} (${p.desc})
+        </button>
+      `).join("");
+
+      container.innerHTML = `
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9)); border:1px solid rgba(56, 189, 248, 0.4); border-radius:12px; padding:14px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:18px;">⚔️</span>
+              <span style="font-size:14px; font-weight:900; color:#38bdf8;">은하퀀트전설 참모 당직 전술 브리핑</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10.5px; padding:1px 6px;">Tier 1 무료 AI</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
+              <span style="font-size:11.5px; color:#94a3b8; margin-right:4px;">참모 전환:</span>
+              ${buttonsHtml}
+            </div>
+          </div>
+          
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="chip" style="background:#eab308; color:#0f172a; font-weight:800; font-size:11px;">${escapeHtml(res.commander || '지휘관')}</span>
+            <b style="font-size:14.5px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
+          </div>
+          <p style="margin:0; font-size:12.5px; color:#e2e8f0; line-height:1.55; padding:8px 12px; background:rgba(15,23,42,0.5); border-radius:8px; border-left:3px solid #38bdf8;">
+            ${escapeHtml(res.briefing || "")}
+          </p>
+          ${res.tactical_order ? `<div style="font-size:12px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:6px 10px; border-radius:4px;">📜 <b>오늘의 작전 지침:</b> ${escapeHtml(res.tactical_order)}</div>` : ""}
+        </div>
+      `;
+
+      container.querySelectorAll(".yang-deck-persona-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const p = btn.getAttribute("data-persona");
+          if (p && p !== currentSunziPersona) {
+            loadSunziTier1Briefing(p);
+          }
+        });
+      });
+    }
+  } catch (e) {}
+}
+
 async function loadEmptyTier1Briefing() {
   const container = $("#empty-tier1-briefing");
   if (!container) return;
@@ -4591,88 +4650,166 @@ function sunziMiniBars(r) {
 
 let sunziAllRows = [];
 
-function openYangTacticalModal(r) {
+function openYangTacticalModal(r, initialPersona = "yang") {
   const modal = $("#yang-tactical-modal");
   if (!modal) return;
 
-  $("#yang-modal-strategy-tag").textContent = r.strategy_tag || "知彼知己 (지피지기)";
-  $("#yang-modal-title").textContent = `${r.company || r.ticker} (${r.ticker})`;
-  $("#yang-modal-sub").textContent = `${r.market || 'KOSPI'} · ${r.industry || '미분류'} · 퀀트 점수 ${r.quant_score ?? '—'}점 · 참모 점수 ${r.critic_score ?? '—'}점`;
+  let activePersona = initialPersona;
 
-  const sunziInterp = r.sunzi_interpretation || {};
-  const bearListHtml = (r.strongest_bear_evidence || []).map((b) => `<li style="color:#fca5a5; font-size:12.5px; margin-bottom:4px;">${escapeHtml(b)}</li>`).join("");
-  const waitTest = r.waiting_test || {};
+  function renderPersonaContent(aiData, persona) {
+    const personaMeta = {
+      yang: { badge: "🍵 제13함대 양 웬리 기밀 작전 지시서", badgeColor: "#eab308", voiceTitle: "🍵 양 웬리 제독의 실전 총평" },
+      reinhard: { badge: "🦁 은하제국 황제 친정군 칙령", badgeColor: "#f59e0b", voiceTitle: "🦁 라인하르트 황제의 칙령" },
+      oberstein: { badge: "👁️ 군무상서 기밀 리스크 사정서", badgeColor: "#94a3b8", voiceTitle: "👁️ 오베르슈타인 군무상서의 사정" },
+      julian: { badge: "📖 후계자 율리안 퀀트 정석 보고서", badgeColor: "#38bdf8", voiceTitle: "📖 율리안 민츠 참모의 보고" }
+    }[persona] || { badge: "제13함대 기밀 작전 지시서", badgeColor: "#eab308", voiceTitle: "실전 총평" };
 
-  $("#yang-modal-body").innerHTML = `
-    <!-- 1. Top Quote Bar -->
-    <div style="background:linear-gradient(90deg, rgba(56,189,248,0.15), rgba(234,179,8,0.1)); padding:12px 16px; border-radius:12px; border-left:4px solid #38bdf8;">
-      <b style="color:#fff; font-size:14px;">🍵 양 웬리 제독의 실전 총평:</b>
-      <p style="margin:6px 0 0; color:#38bdf8; font-size:14px; font-weight:700; line-height:1.5;">“${escapeHtml(r.one_line_judgment || r.critic_comment || '')}”</p>
-    </div>
+    const badgeEl = $("#yang-modal-badge");
+    if (badgeEl) {
+      badgeEl.textContent = personaMeta.badge;
+      badgeEl.style.background = personaMeta.badgeColor;
+    }
+    $("#yang-modal-strategy-tag").textContent = aiData.strategy_tag || r.strategy_tag || "知彼知己 (지피지기)";
+    $("#yang-modal-title").textContent = `${r.company || r.ticker} (${r.ticker})`;
+    $("#yang-modal-sub").textContent = `${r.market || 'KOSPI'} · ${r.industry || '미분류'} · 퀀트 점수 ${r.quant_score ?? '—'}점 · 참모 점수 ${r.critic_score ?? '—'}점`;
 
-    <!-- 2. 3-Tier Tactical Intelligence -->
-    <div style="display:flex; flex-direction:column; gap:10px;">
-      <div class="yang-tier-box briefing">
-        <b style="font-size:13px; color:#38bdf8;">🔭 1단계: 전황 분석 & 회사의 실체</b>
-        <p style="margin:6px 0 0; color:#e2e8f0;">${escapeHtml(r.tactical_briefing || r.critic_comment || '분석 데이터 집계 중...')}</p>
+    const bearListHtml = (r.strongest_bear_evidence || []).map((b) => `<li style="color:#fca5a5; font-size:12.5px; margin-bottom:4px;">${escapeHtml(b)}</li>`).join("");
+    const waitTest = r.waiting_test || {};
+
+    $("#yang-modal-body").innerHTML = `
+      <!-- 1. Top Quote Bar -->
+      <div style="background:linear-gradient(90deg, rgba(56,189,248,0.15), rgba(234,179,8,0.1)); padding:12px 16px; border-radius:12px; border-left:4px solid #38bdf8;">
+        <b style="color:#fff; font-size:14px;">${personaMeta.voiceTitle}:</b>
+        <p style="margin:6px 0 0; color:#38bdf8; font-size:14px; font-weight:700; line-height:1.5;">“${escapeHtml(aiData.one_line_verdict || r.one_line_judgment || r.critic_comment || '')}”</p>
       </div>
 
-      ${r.maneuver_entry ? `
-      <div class="yang-tier-box maneuver">
-        <b style="font-size:13px; color:#fbbf24;">💡 2단계: 양 웬리의 기책 & 진입/대기 타점</b>
-        <p style="margin:6px 0 0; color:#fef08a;">${escapeHtml(r.maneuver_entry)}</p>
-      </div>` : ''}
+      <!-- 2. 3-Tier Tactical Intelligence -->
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div class="yang-tier-box briefing">
+          <b style="font-size:13px; color:#38bdf8;">🔭 1단계: 전황 분석 & 회사의 실체</b>
+          <p style="margin:6px 0 0; color:#e2e8f0; line-height:1.5;">${escapeHtml(aiData.tactical_briefing || r.tactical_briefing || r.critic_comment || '분석 데이터 집계 중...')}</p>
+        </div>
 
-      ${r.escape_route ? `
-      <div class="yang-tier-box escape">
-        <b style="font-size:13px; color:#f43f5e;">🚪 3단계: 퇴로 확보 & 작전 무효화 조건 (손절 원칙)</b>
-        <p style="margin:6px 0 0; color:#fda4af;">${escapeHtml(r.escape_route)}</p>
-      </div>` : ''}
-    </div>
+        <div class="yang-tier-box maneuver">
+          <b style="font-size:13px; color:#fbbf24;">💡 2단계: 기책 & 진입/대기 타점</b>
+          <p style="margin:6px 0 0; color:#fef08a; line-height:1.5;">${escapeHtml(aiData.maneuver_entry || r.maneuver_entry || '지지선 대기 권장')}</p>
+        </div>
 
-    <!-- 3. Sun Tzu 5 Aspects Detailed Table -->
-    <div style="margin-top:4px;">
-      <b style="color:#fff; font-size:13.5px; margin-bottom:8px; display:block;">📜 손자 五事 (道天地將法) 정밀 점검표</b>
-      <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;">
-        <div class="five-card" style="padding:8px 10px; text-align:center;">
-          <span style="font-size:11px;">道 (정렬)</span>
-          <b class="${sunziTone(r.dao)}" style="font-size:16px;">${fmt(r.dao, 0)}</b>
-        </div>
-        <div class="five-card" style="padding:8px 10px; text-align:center;">
-          <span style="font-size:11px;">天 (시장)</span>
-          <b class="${sunziTone(r.tian)}" style="font-size:16px;">${fmt(r.tian, 0)}</b>
-        </div>
-        <div class="five-card" style="padding:8px 10px; text-align:center;">
-          <span style="font-size:11px;">地 (업종)</span>
-          <b class="${sunziTone(r.di)}" style="font-size:16px;">${fmt(r.di, 0)}</b>
-        </div>
-        <div class="five-card" style="padding:8px 10px; text-align:center;">
-          <span style="font-size:11px;">將 (지휘관)</span>
-          <b class="${sunziTone(r.jiang)}" style="font-size:16px;">${fmt(r.jiang, 0)}</b>
-        </div>
-        <div class="five-card" style="padding:8px 10px; text-align:center;">
-          <span style="font-size:11px;">法 (규율)</span>
-          <b class="${sunziTone(r.fa)}" style="font-size:16px;">${fmt(r.fa, 0)}</b>
+        <div class="yang-tier-box escape">
+          <b style="font-size:13px; color:#f43f5e;">🚪 3단계: 퇴로 확보 & 작전 무효화 조건 (손절 원칙)</b>
+          <p style="margin:6px 0 0; color:#fda4af; line-height:1.5;">${escapeHtml(aiData.escape_route || r.escape_route || '3~5% 손절선 설정')}</p>
         </div>
       </div>
-    </div>
 
-    <!-- 4. Adversarial Skepticism & Waiting Benefit -->
-    <div style="background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px 14px;">
-      <b style="color:#f87171; font-size:12.5px;">⚠️ 참모가 의심하는 가장 강력한 반대 논리:</b>
-      <ul style="margin:6px 0 8px 18px; padding:0;">${bearListHtml || '<li style="color:#94a3b8; font-size:12px;">특이 반대 징후 없음</li>'}</ul>
-      <div style="margin-top:6px; font-size:12px; color:#94a3b8; border-top:1px solid rgba(255,255,255,0.06); padding-top:6px; display:flex; justify-content:space-between;">
-        <span>⏳ <b>기다림의 득:</b> ${escapeHtml(waitTest.benefit_of_waiting || '—')}</span>
-        <span>⌛ <b>기다림의 실:</b> ${escapeHtml(waitTest.cost_of_waiting || '—')}</span>
+      <!-- 3. Sun Tzu 5 Aspects Detailed Table -->
+      <div style="margin-top:4px;">
+        <b style="color:#fff; font-size:13.5px; margin-bottom:8px; display:block;">📜 손자 五事 (道天地將法) 정밀 점검표</b>
+        <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;">
+          <div class="five-card" style="padding:8px 10px; text-align:center;">
+            <span style="font-size:11px;">道 (정렬)</span>
+            <b class="${sunziTone(r.dao)}" style="font-size:16px;">${fmt(r.dao, 0)}</b>
+          </div>
+          <div class="five-card" style="padding:8px 10px; text-align:center;">
+            <span style="font-size:11px;">天 (시장)</span>
+            <b class="${sunziTone(r.tian)}" style="font-size:16px;">${fmt(r.tian, 0)}</b>
+          </div>
+          <div class="five-card" style="padding:8px 10px; text-align:center;">
+            <span style="font-size:11px;">地 (업종)</span>
+            <b class="${sunziTone(r.di)}" style="font-size:16px;">${fmt(r.di, 0)}</b>
+          </div>
+          <div class="five-card" style="padding:8px 10px; text-align:center;">
+            <span style="font-size:11px;">將 (지휘관)</span>
+            <b class="${sunziTone(r.jiang)}" style="font-size:16px;">${fmt(r.jiang, 0)}</b>
+          </div>
+          <div class="five-card" style="padding:8px 10px; text-align:center;">
+            <span style="font-size:11px;">法 (규율)</span>
+            <b class="${sunziTone(r.fa)}" style="font-size:16px;">${fmt(r.fa, 0)}</b>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <!-- Action Footer -->
-    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
-      <button type="button" class="ghost small" onclick="openStock('${escapeHtml(r.ticker)}')">📊 종목 전체 퀀트 분석 →</button>
-      <button type="button" class="primary small" id="btn-modal-close-action" style="background:#38bdf8; color:#0f172a; font-weight:800;">확인 완료</button>
-    </div>
-  `;
+      <!-- 4. Adversarial Skepticism & Waiting Benefit -->
+      <div style="background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px 14px;">
+        <b style="color:#f87171; font-size:12.5px;">⚠️ 참모가 의심하는 가장 강력한 반대 논리:</b>
+        <ul style="margin:6px 0 8px 18px; padding:0;">${bearListHtml || '<li style="color:#94a3b8; font-size:12px;">특이 반대 징후 없음</li>'}</ul>
+        <div style="margin-top:6px; font-size:12px; color:#94a3b8; border-top:1px solid rgba(255,255,255,0.06); padding-top:6px; display:flex; justify-content:space-between;">
+          <span>⏳ <b>기다림의 득:</b> ${escapeHtml(waitTest.benefit_of_waiting || '—')}</span>
+          <span>⌛ <b>기다림의 실:</b> ${escapeHtml(waitTest.cost_of_waiting || '—')}</span>
+        </div>
+      </div>
+
+      <!-- Action Footer -->
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+        <button type="button" class="ghost small" onclick="openStock('${escapeHtml(r.ticker)}')">📊 종목 전체 퀀트 분석 →</button>
+        <button type="button" class="primary small" id="btn-modal-close-action" style="background:#38bdf8; color:#0f172a; font-weight:800;">확인 완료</button>
+      </div>
+    `;
+
+    const closeAction = $("#btn-modal-close-action");
+    if (closeAction) closeAction.onclick = closeYangModal;
+  }
+
+  function fetchPersonaAi(persona) {
+    activePersona = persona;
+    modal.querySelectorAll(".yang-persona-btn").forEach(btn => {
+      if (btn.getAttribute("data-persona") === persona) {
+        btn.classList.add("active");
+        btn.style.background = "#38bdf8";
+        btn.style.color = "#0f172a";
+        btn.style.fontWeight = "800";
+      } else {
+        btn.classList.remove("active");
+        btn.style.background = "";
+        btn.style.color = "";
+        btn.style.fontWeight = "";
+      }
+    });
+
+    if (persona === "yang" && r.tactical_briefing) {
+      renderPersonaContent(r, "yang");
+      return;
+    }
+
+    $("#yang-modal-body").innerHTML = `
+      <div style="text-align:center; padding:30px; color:#94a3b8;">
+        <div class="skeleton-spinner" style="margin:0 auto 10px;"></div>
+        <b style="color:#38bdf8;">지휘관 AI가 '${escapeHtml(r.company || r.ticker)}'의 실전 작전 지시서를 작성 중입니다...</b>
+      </div>
+    `;
+
+    api("/api/sunzi/tactical-ai", {
+      method: "POST",
+      body: JSON.stringify({
+        ticker: r.ticker,
+        company: r.company,
+        quant_score: r.quant_score,
+        sector: r.industry,
+        posture: r.posture,
+        dao_score: r.dao,
+        tian_score: r.tian,
+        di_score: r.di,
+        jiang_score: r.jiang,
+        fa_pass: r.fa_gate_pass,
+        persona: persona
+      })
+    }).then(aiData => {
+      renderPersonaContent(aiData, persona);
+    }).catch(err => {
+      renderPersonaContent(r, persona);
+    });
+  }
+
+  // Initial render
+  fetchPersonaAi(activePersona);
+
+  modal.querySelectorAll(".yang-persona-btn").forEach(btn => {
+    btn.onclick = () => {
+      const p = btn.getAttribute("data-persona");
+      if (p && p !== activePersona) {
+        fetchPersonaAi(p);
+      }
+    };
+  });
 
   modal.classList.remove("hidden");
   modal.style.display = "flex";
@@ -4683,9 +4820,7 @@ function openYangTacticalModal(r) {
   }
 
   const closeBtn = $("#btn-close-yang-modal");
-  const closeAction = $("#btn-modal-close-action");
   if (closeBtn) closeBtn.onclick = closeYangModal;
-  if (closeAction) closeAction.onclick = closeYangModal;
   modal.onclick = (e) => {
     if (e.target === modal) closeYangModal();
   };
@@ -4694,6 +4829,7 @@ function openYangTacticalModal(r) {
 async function loadSunzi() {
   const box = $("#sunzi-box");
   if (!box) return;
+  loadSunziTier1Briefing().catch(() => {});
   box.innerHTML = `
     <div style="text-align:center; padding:40px; color:#94a3b8;">
       <div style="font-size:32px; margin-bottom:12px;">🍵</div>

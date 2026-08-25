@@ -1823,6 +1823,148 @@ def api_sunzi(
     )
 
 
+class SunziTacticalAiIn(BaseModel):
+    ticker: str
+    company: str | None = None
+    quant_score: float | None = None
+    sector: str | None = None
+    posture: str | None = None
+    dao_score: float | None = None
+    tian_score: float | None = None
+    di_score: float | None = None
+    jiang_score: float | None = None
+    fa_pass: bool | None = None
+    persona: str = "yang"
+
+
+@app.get("/api/sunzi/tier1-briefing")
+def api_sunzi_tier1_briefing_get(persona: str = "yang") -> dict[str, Any]:
+    from kr_quant.research.providers import resolve_tier1_endpoint
+    from kr_quant.research.analyze import call_chat, _extract_json
+
+    s = load_settings()
+    endpoint = resolve_tier1_endpoint(s)
+
+    persona_prompts = {
+        "yang": (
+            "당신은 《은하영웅전설》의 자유행성동맹 불패의 지략가 '양 웬리' 제독입니다.\n"
+            "성격 및 말투: 지독한 현실주의자이자 역사학도. '영웅적 돌격'을 혐오하며, 보급선과 잉여현금을 최우선시합니다. 나긋나긋하고 냉철한 1인칭(~하네, ~이지, ~라고 봐)으로 말하며 홍차 한 잔의 여유를 즐깁니다.\n"
+            "현재 매크로 전황을 바탕으로 오늘 전선에 나서는 퀀트 투자자들에게 참모 당직 전술 브리핑을 해주세요.\n"
+            "반드시 JSON 형식으로만 반환하세요: {\"commander\": \"양 웬리 제독\", \"title\": \"제13함대 당직 참모 브리핑\", \"headline\": \"한 줄 전황 요약\", \"briefing\": \"홍차 관망 및 전장 진단 2줄\", \"tactical_order\": \"오늘의 행동 지침\"}"
+        ),
+        "reinhard": (
+            "당신은 《은하영웅전설》의 은하제국 황제 '라인하르트 폰 로엔그람'입니다.\n"
+            "성격 및 말투: 타오르는 패기와 당당한 위엄. 우유부단한 관망을 경멸하며, 압도적인 주도력과 성장 모멘텀으로 전장을 장악하고자 합니다. 결단력 있는 어조(~하라, ~하겠다, ~이다)로 말합니다.\n"
+            "현재 시장 주도 섹터와 상승 모멘텀을 바탕으로 전 함대 돌격 및 주도주 공략 칙령을 내려주세요.\n"
+            "반드시 JSON 형식으로만 반환하세요: {\"commander\": \"라인하르트 폰 로엔그람 황제\", \"title\": \"은하제국 황제 친정군 칙령\", \"headline\": \"한 줄 패도적 헤드라인\", \"briefing\": \"주도 섹터 장악 진단 2줄\", \"tactical_order\": \"제국 함대 출진 명령\"}"
+        ),
+        "oberstein": (
+            "당신은 《은하영웅전설》의 은하제국 군무상서 '파울 폰 오베르슈타인'입니다.\n"
+            "성격 및 말투: 극단적인 냉철함과 수학적 합리주의. 감상적 희망과 주관적 기대를 배제하고, 차가운 기대치와 손익비, 엄격한 리스크 통제만을 중시합니다. 건조하고 절제된 격식체(~입니다, ~하십시오)로 말합니다.\n"
+            "현재 증시의 리스크 요인과 손절선 엄수, 팩터 감점 종목 도려내기 원칙을 냉정하게 브리핑해 주세요.\n"
+            "반드시 JSON 형식으로만 반환하세요: {\"commander\": \"파울 폰 오베르슈타인 군무상서\", \"title\": \"군무상서 기밀 리스크 사정서\", \"headline\": \"한 줄 리스크 통제 헤드라인\", \"briefing\": \"수치와 기대치 기반 냉철 진단 2줄\", \"tactical_order\": \"리스크 도려내기 지침\"}"
+        ),
+        "julian": (
+            "당신은 《은하영웅전설》의 성실하고 총명한 후계자 '율리안 민츠'입니다.\n"
+            "성격 및 말투: 양 웬리 제독을 깊이 존경하며 데이터와 팩트를 성실하게 교차 검증하는 모범생 청년. 예의 바르고 열정적인 어조(~합니다!, ~인 것 같습니다)로 말합니다.\n"
+            "현재 5대 팩터와 수급 데이터를 꼼꼼히 정리하여 투자자들에게 정석 퀀트 대응 가이드를 브리핑해 주세요.\n"
+            "반드시 JSON 형식으로만 반환하세요: {\"commander\": \"율리안 민츠 참모\", \"title\": \"후계자 율리안의 퀀트 정석 보고서\", \"headline\": \"한 줄 정석 헤드라인\", \"briefing\": \"데이터 교차 검증 2줄\", \"tactical_order\": \"정석 분할 대응 지침\"}"
+        ),
+    }
+
+    selected_prompt = persona_prompts.get(persona, persona_prompts["yang"])
+    try:
+        raw_text, _ = call_chat(
+            endpoint,
+            [{"role": "system", "content": "You are a legendary galactic strategist. Output strictly in JSON."},
+             {"role": "user", "content": selected_prompt}],
+            timeout=15,
+            json_mode=True,
+        )
+        return {"ok": True, "model": endpoint.model, "persona": persona, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
+    except Exception:
+        fallbacks = {
+            "yang": {
+                "commander": "양 웬리 제독",
+                "title": "제13함대 당직 참모 브리핑",
+                "headline": "전선 확대 금지… 홍차를 데우며 적의 실수를 기다릴 때일세",
+                "briefing": "시장이 환율과 금리 변동성으로 요동치고 있어. 이런 날엔 무리하게 함포를 쏠 필요가 없지. 이길 수 있는 자리에만 서 있으면 승리는 저절로 굴러들어오는 법이야.",
+                "tactical_order": "좋은 종목이라도 무리한 추격매수는 사양하세. 잉여현금이 든든한 요새에 머물며 분할 매집 기회를 엿보자고.",
+            },
+            "reinhard": {
+                "commander": "라인하르트 폰 로엔그람 황제",
+                "title": "은하제국 황제 친정군 칙령",
+                "headline": "우유부단한 관망은 죄악이다! 시장 주도 섹터의 정면을 돌파하라!",
+                "briefing": "시장의 역풍 따위는 강력한 펀더멘털과 신고가 모멘텀 앞에 흩어질 뿐이다. 주도 섹터의 선봉에 서서 압도적인 승리를 쟁취하라!",
+                "tactical_order": "상대강도(RS) 상위의 1등주에 화력을 집중하라! 망설이는 자에게 은하의 패권은 주어지지 않는다.",
+            },
+            "oberstein": {
+                "commander": "파울 폰 오베르슈타인 군무상서",
+                "title": "군무상서 기밀 리스크 사정서",
+                "headline": "감상적 기대는 자본의 독입니다. 손익비가 음수인 포지션을 즉시 정리하십시오.",
+                "briefing": "주가는 장부의 진실과 수급의 냉정한 계산 결과일 뿐입니다. 데이터 신뢰도가 떨어지거나 감점 페널티가 높은 종목은 가차 없이 포트폴리오에서 제외해야 합니다.",
+                "tactical_order": "모든 포지션에 -3% 손절선을 설정하십시오. 감정 없는 기계적 규율만이 자본을 보전합니다.",
+            },
+            "julian": {
+                "commander": "율리안 민츠 참모",
+                "title": "후계자 율리안의 퀀트 정석 보고서",
+                "headline": "제독님의 가르침대로 5대 팩터와 수급 지표를 꼼꼼히 교차 검증하고 있습니다!",
+                "briefing": "가치와 품질 점수가 모두 높은 우량주들이 눌림목 지지선에 안착하고 있습니다. 데이터가 확실한 신호를 보낼 때까지 차분히 원칙을 지키겠습니다.",
+                "tactical_order": "급격한 몰빵보다는 3회에 걸친 분할 매수로 평균 단가를 안정적으로 관리하세요!",
+            },
+        }
+        fb = fallbacks.get(persona, fallbacks["yang"])
+        return {"ok": True, "model": endpoint.model, "persona": persona, "tier": "Tier 1 (100% 무료 일상 엔진)", **fb}
+
+
+@app.post("/api/sunzi/tactical-ai")
+def api_sunzi_tactical_ai_post(body: SunziTacticalAiIn) -> dict[str, Any]:
+    from kr_quant.research.providers import resolve_tier1_endpoint
+    from kr_quant.research.analyze import call_chat, _extract_json
+
+    s = load_settings()
+    endpoint = resolve_tier1_endpoint(s)
+
+    persona_instruct = {
+        "yang": "양 웬리 제독 페르소나 (나긋나긋한 1인칭, 홍차와 안전마진, 잉여현금과 보급선 중시, 영웅주의 배격)",
+        "reinhard": "라인하르트 황제 페르소나 (당당한 군주 어조, 압도적 모멘텀 돌파, 주도주 정면 돌파)",
+        "oberstein": "오베르슈타인 군무상서 페르소나 (냉혹한 격식체, 감상 배제, 리스크 감점 도려내기, 손절선 엄수)",
+        "julian": "율리안 민츠 페르소나 (성실한 청년 어조, 팩터 데이터 교차 검증, 분할 매집 원칙)"
+    }.get(body.persona, "양 웬리 제독")
+
+    prompt = (
+        f"당신은 《은하영웅전설》의 {persona_instruct}입니다.\n"
+        f"분석 대상 종목: {body.company or body.ticker} ({body.ticker})\n"
+        f"- 업종: {body.sector or '미분류'}\n"
+        f"- 퀀트 종합점수: {body.quant_score or 50.0}점\n"
+        f"- 5사 판정: 道(장부)={body.dao_score or 50}점, 天(시장)={body.tian_score or 50}점, 地(지형)={body.di_score or 50}점, 將(장수)={body.jiang_score or 50}점, 法(규율)={'통과' if body.fa_pass else '미달'}\n"
+        f"- 작전 태세: {body.posture or 'WAIT'}\n\n"
+        f"선택된 지휘관의 독특한 개성과 말투로 이 종목에 대한 실전 작전 지시서를 1인칭으로 작성해 주세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"strategy_tag\": \"4자 사자성어 작전명\", \"tactical_briefing\": \"종목 펀더멘털 및 전황 해설 2줄\", \"maneuver_entry\": \"진입 타점 및 기동 지침\", \"escape_route\": \"퇴로 및 손절 리스크 통제\", \"one_line_verdict\": \"지휘관의 한 줄 촌철살인\"}"
+    )
+    try:
+        raw_text, _ = call_chat(
+            endpoint,
+            [{"role": "system", "content": "You are a character from Legend of Galactic Heroes. Output strictly in JSON."},
+             {"role": "user", "content": prompt}],
+            timeout=15,
+            json_mode=True,
+        )
+        return {"ok": True, "model": endpoint.model, "persona": body.persona, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
+    except Exception:
+        return {
+            "ok": True,
+            "model": endpoint.model,
+            "persona": body.persona,
+            "tier": "Tier 1 (100% 무료 일상 엔진)",
+            "strategy_tag": "先勝求戰 (선승구전)" if (body.quant_score or 0) >= 70 else "以逸待勞 (이일대로)",
+            "tactical_briefing": f"{body.company or body.ticker}의 장부와 전황 지표를 점검해보니 펀더멘털의 기본기는 잡혀 있어. 서두르지 않고 유리한 가격 조건을 기다리는 것이 핵심이야.",
+            "maneuver_entry": "지지선 부근에서의 분할 진입으로 안전마진을 확보할 것을 권장하네.",
+            "escape_route": "전선이 무너지면 지체 없이 퇴각할 수 있도록 3~5% 손절선을 명시해 두게.",
+            "one_line_verdict": "싸우기 전에 이미 이겨놓는 것, 그것이 참모의 일일세.",
+        }
+
+
 @app.get("/api/nps")
 def api_nps() -> dict[str, Any]:
     from kr_quant.ownership.nps import holdings_payload
