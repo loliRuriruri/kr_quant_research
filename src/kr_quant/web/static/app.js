@@ -1308,6 +1308,7 @@ function switchView(name) {
   if (name === "watch") loadWatch().catch((err) => alert(err.message));
   if (name === "reports") loadReportArchive().catch(() => {});
   if (name === "seasonality") {
+    loadSeasonalityTier1Briefing().catch(() => {});
     if (currentV11Subtab === "pre-entry") loadPreEntryView().catch(() => {});
     else if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
     else if (currentV11Subtab === "explanation") loadAIExplanations().catch(() => {});
@@ -3472,9 +3473,135 @@ async function loadFlowTier1Briefing(containerId = "flow-tier1-briefing") {
   } catch (e) {}
 }
 
+async function loadTossTier1Briefing() {
+  const container = $("#toss-tier1-briefing");
+  if (!container) return;
+  try {
+    const res = await api("/api/toss/tier1-briefing");
+    if (res && res.ok && res.headline) {
+      container.innerHTML = `
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">⚡</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">토스 실시간 시장 모멘텀 AI 브리핑</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+            </div>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+          </div>
+          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
+          <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.movers_summary || "")}</p>
+          ${res.trading_tip ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">💡 <b>실전 매매 유의점:</b> ${escapeHtml(res.trading_tip)}</div>` : ""}
+        </div>
+      `;
+    }
+  } catch (e) {}
+}
+
+async function loadSectorTier1Briefing() {
+  const container = $("#sector-tier1-briefing");
+  if (!container) return;
+  try {
+    const res = await api("/api/sector/tier1-briefing");
+    if (res && res.ok && res.headline) {
+      container.innerHTML = `
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">🔄</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">26대 KSIC 업종 순환매 & 주도 섹터 AI 브리핑</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+            </div>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+          </div>
+          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
+          <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.leading_sector_comment || "")}</p>
+          ${res.sector_strategy ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">🎯 <b>섹터 비중 전략:</b> ${escapeHtml(res.sector_strategy)}</div>` : ""}
+        </div>
+      `;
+    }
+  } catch (e) {}
+}
+
+async function loadUs13fTier1Briefing() {
+  const container = $("#us13f-tier1-briefing");
+  if (!container) return;
+  try {
+    const res = await api("/api/us13f/tier1-briefing");
+    if (res && res.ok && res.headline) {
+      container.innerHTML = `
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">🏛️</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">월가 대가 포트폴리오 13F 컨센서스 AI 브리핑</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+            </div>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+          </div>
+          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
+          <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.consensus_insight || "")}</p>
+          ${res.action_tip ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">💡 <b>대가 포트폴리오 벤치마크 팁:</b> ${escapeHtml(res.action_tip)}</div>` : ""}
+        </div>
+      `;
+    }
+  } catch (e) {}
+}
+
+async function loadSeasonalityTier1Briefing() {
+  const container = $("#seasonality-tier1-briefing");
+  if (!container) return;
+  try {
+    const res = await api("/api/seasonality/tier1-briefing");
+    if (res && res.ok && res.headline) {
+      container.innerHTML = `
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">📅</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">30개년 빅데이터 계절성 선취매 AI 브리핑</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+            </div>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+          </div>
+          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
+          <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.seasonality_brief || "")}</p>
+          ${(res.key_catalysts || []).length ? `<div style="display:flex; gap:6px; align-items:center; margin-top:2px;"><span style="font-size:11px; color:#94a3b8;">주요 이벤트:</span> ${res.key_catalysts.map(c => `<span class="chip" style="font-size:10.5px; padding:1px 6px;">${escapeHtml(c)}</span>`).join("")}</div>` : ""}
+        </div>
+      `;
+    }
+  } catch (e) {}
+}
+
+async function loadStrategyTier1Briefing() {
+  const container = $("#strategy-tier1-briefing");
+  if (!container) return;
+  try {
+    const res = await api("/api/strategy/tier1-briefing");
+    if (res && res.ok && res.headline) {
+      container.innerHTML = `
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">🧪</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">4대 퀀트 매매 타이밍 백테스트 AI 브리핑</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+            </div>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+          </div>
+          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
+          <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.strategy_insight || "")}</p>
+          ${res.risk_management ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">🛡️ <b>리스크 관리 팁:</b> ${escapeHtml(res.risk_management)}</div>` : ""}
+        </div>
+      `;
+    }
+  } catch (e) {}
+}
+
 async function loadTossRankings() {
   const box = $("#toss-rankings");
   if (!box) return;
+  loadTossTier1Briefing().catch(() => {});
   const data = await api("/api/toss/rankings");
   if (!data.configured) {
     box.innerHTML = "<p class='hint'>설정에 토스증권 Client ID/Secret을 넣고, Open API 허용 IP를 등록하세요.</p>";
@@ -3484,6 +3611,7 @@ async function loadTossRankings() {
     box.innerHTML = `<p class="hint">${escapeHtml(data.error)}</p>`;
     return;
   }
+  const medalIcons = ["🥇", "🥈", "🥉", "4", "5", "6", "7", "8"];
   box.innerHTML = `${data.selection ? `<p class="hint">${escapeHtml(data.selection)}</p>` : ""}<div class="rank-grid">${(data.groups || [])
     .map((g) => {
       const rows = (g.rows || []).slice(0, 8);
@@ -3499,12 +3627,23 @@ async function loadTossRankings() {
           const chgCls = chgPct == null ? "" : chgPct > 0 ? "up" : chgPct < 0 ? "down" : "";
           const chgTxt = chgPct == null ? "—" : `${chgPct > 0 ? "+" : ""}${chgPct.toFixed(2)}%`;
           const last = r.last == null ? "—" : Number(r.last).toLocaleString("ko-KR");
-          return `<tr class="clickable" data-ticker="${escapeHtml(code)}">
-            <td class="num">${r.rank || i + 1}</td>
-            <td class="name-cell"><b>${escapeHtml(name)}</b><div class="meta">${escapeHtml(code)}</div>${rowNote(r.comment_short || r.comment)}</td>
-            <td class="num ${chgCls}">${escapeHtml(chgTxt)}</td>
-            <td class="num">${escapeHtml(String(last))}</td>
-            <td><a class="ext inline" href="${escapeHtml(r.page || "https://www.tossinvest.com/stocks/A" + code)}" target="_blank" rel="noopener">토스</a></td>
+          const medal = medalIcons[i] || String(i + 1);
+          const isSpecial = Math.abs(chgPct || 0) > 30;
+          const specialBadge = isSpecial ? `<span class="chip" style="font-size:9.5px; padding:1px 4px; background:rgba(239,68,68,0.15); color:#f87171;" title="신규상장 또는 변동성 상품">신규상장/변동성</span>` : "";
+
+          return `<tr class="clickable stock-jump" data-ticker="${escapeHtml(code)}" onclick="openStock('${escapeHtml(code)}')">
+            <td class="num" style="font-weight:700; font-size:13px;">${medal}</td>
+            <td class="name-cell">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <b style="color:#f8fafc; cursor:pointer;">${escapeHtml(name)}</b>
+                ${specialBadge}
+              </div>
+              <div class="meta" style="font-size:11px; color:#94a3b8;">${escapeHtml(code)}</div>
+              ${rowNote(r.comment_short || r.comment)}
+            </td>
+            <td class="num ${chgCls}" style="font-weight:800;">${escapeHtml(chgTxt)}</td>
+            <td class="num" style="font-weight:700;">${escapeHtml(String(last))}원</td>
+            <td><a class="ext inline" href="${escapeHtml(r.page || "https://www.tossinvest.com/stocks/A" + code)}" target="_blank" rel="noopener" onclick="event.stopPropagation();">토스 ↗</a></td>
           </tr>`;
         })
         .join("");
@@ -5598,6 +5737,7 @@ function renderSectors(data) {
 async function loadSectors() {
   const box = $("#sector-box");
   if (!box) return;
+  loadSectorTier1Briefing().catch(() => {});
   box.innerHTML = "<p>업종 점수를 계산하는 중…</p>";
   renderSectors(await api("/api/sectors"));
 }
@@ -5854,6 +5994,7 @@ async function loadPortfolio() {
 async function loadStrategy(force) {
   const box = $("#strategy-box");
   if (!box) return;
+  loadStrategyTier1Briefing().catch(() => {});
   if (!force && strategyCache && !strategyCache.need_run) {
     renderStrategy(strategyCache);
     return;
@@ -6169,6 +6310,7 @@ function renderUs13f(data) {
 async function loadUs13f(force) {
   const box = $("#us13f-box");
   if (!box) return;
+  loadUs13fTier1Briefing().catch(() => {});
   if (!force && us13fCache && !us13fCache.need_refresh) {
     renderUs13f(us13fCache);
     return;
@@ -9676,6 +9818,7 @@ function renderMonthHeatmapBar(months, targetMonth) {
 }
 
 async function loadSeasonality() {
+  loadSeasonalityTier1Briefing().catch(() => {});
   const minWr = parseFloat($("#seasonality-min-wr") ? $("#seasonality-min-wr").value : "0.80");
   const minRet = parseFloat($("#seasonality-min-ret") ? $("#seasonality-min-ret").value : "0.05");
   const q = seasonalitySearchQuery();

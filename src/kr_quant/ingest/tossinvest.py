@@ -104,9 +104,10 @@ def get_investor_trading(client_id: str, client_secret: str, symbol: str) -> dic
 
 
 def _digits_code(symbol: Any) -> str:
-    text = str(symbol or "").replace("A", "")
-    digits = "".join(ch for ch in text if ch.isdigit())
-    return digits.zfill(6) if digits else text
+    text = str(symbol or "").strip()
+    if text.startswith("A") and len(text) == 7:
+        text = text[1:]
+    return text.zfill(6) if len(text) < 6 and text.isdigit() else text
 
 
 def _num(value: Any) -> float | None:
