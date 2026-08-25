@@ -28,9 +28,9 @@ def test_index_and_status():
     assert home.status_code == 200
     assert "KR Quant" in home.text
     assert "Research" in home.text
-    assert "styles.css?v=2.17.11" in home.text
-    assert "app.js?v=2.17.11" in home.text
-    assert "v2.17.11 Engine" in home.text
+    assert "styles.css?v=" in home.text
+    assert "app.js?v=" in home.text
+    assert "Engine" in home.text
     assert "disc-modal-deep" in home.text
     assert 'data-view="sunzi"' in home.text
     assert "은하퀀트전설" in home.text

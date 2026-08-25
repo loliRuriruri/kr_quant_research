@@ -2375,20 +2375,20 @@ async function openStock(ticker) {
 
           <!-- 7. 핵심 재무 팩트 & 기업 백과 & 본사 위치 -->
           <article class="intro" style="margin-top:14px;">
-            <h3>핵심 재무 팩트</h3>
-            <div class="facts-grid">${facts}</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <h3 style="margin:0; font-size:13.5px; color:#38bdf8;">📊 핵심 재무 팩트 & 밸류에이션</h3>
+              <span class="chip" style="font-size:10px;">KRX 팩트</span>
+            </div>
+            ${facts}
           </article>
-          ${encyc ? `<article class="intro"><h3>기업 백과</h3>${encyc}</article>` : ""}
+          ${encyc ? `<article class="intro" style="margin-top:12px;"><h3 style="font-size:13.5px; margin-bottom:6px;">📖 기업 백과</h3>${encyc}</article>` : ""}
           ${locBlock}
-
-          <!-- 8. 실시간 네이버 뉴스 & 웹검색 (좌측 하단 배치로 1:1 완벽 균형) -->
-          ${newsBlock}
         </div>
 
         <!-- COLUMN 2 (RIGHT): 공식 수급 90일, 손자병법 5사 & 참모 분석, 공시 이벤트, Yahoo Financials -->
         <div>
           <!-- 1. 공식 수급 90일 -->
-          ${flow90Block(data.flow90)}
+          ${flow90Block(data.flow90, code)}
 
           <!-- 2. 손자병법 5사 (道天地將法) & 실전 참모 분석 -->
           ${fiveStrip({ dao: data.dao, tian: data.tian, di: data.di, jiang: data.jiang, fa: data.fa })}
@@ -2401,6 +2401,9 @@ async function openStock(ticker) {
           ${yahooBlock}
         </div>
       </div>
+
+      <!-- BOTTOM FULL-WIDTH 2-COLUMN GRID: 네이버 뉴스 & 네이버 웹검색 나란히 배치 -->
+      ${bottomNewsGrid}
     `;
 
     if (!publicShareMode) {
