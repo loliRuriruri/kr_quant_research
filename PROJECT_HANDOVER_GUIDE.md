@@ -12,7 +12,19 @@
 
 ## 2. 🌟 최근 완성 및 배포된 핵심 퀀트 기능들
 
-### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.49)
+### 1. 🎯 UI/UX 전면 개선 (v2.23‑v2.50)
+* **오픈라우터 8대 정예 모델 전면 교체 및 모델별 실시간 토큰 소모량/단가 표시 (v2.50.0)**:
+  - **지정 8대 정예 라인업 적용**:
+    1. deepseek/deepseek-v4-flash-0731 (⭐ 기본 추천 모델)
+    2. deepseek/deepseek-v4-pro-0813
+    3. deepseek/deepseek-v4-flash-vision-exp
+    4. 
+vidia/nemotron-3-ultra-550b-a55b:free (100% 무료 모델)
+    5. openai/gpt-5.6-luna
+    6. google/gemini-3.7-flash
+    7. z-ai/glm-5.2
+    8. upstage/solar-pro4
+  - **토큰 소모량 & 과금 단가 표시 (Token Usage Profile)**: 모델 프리셋 칩마다 1M 토큰당 소모 비용/단가 배지(🪙 초저비용 (.07/1M), 🎁 100% 무료, ⚡ 프로추론 (.27/1M) 등) 표시 및 리포트 뷰어에 실제 소모된 입력/출력 토큰 상세 수치 가시화
 * **OpenRouter 실전 랭킹 인기 모델 완벽 복원 & 기본값 반영 (v2.49.0)**:
   - **deepseek/deepseek-v4-flash-0731 및 실전 랭킹 최상위 모델 전면 배치**: 오픈라우터 공식 랭킹 실사용 1위 플래그십인 deepseek-v4-flash-0731을 최상단 기본 추천 모델로 복원
   - **오픈라우터 12대 정예 랭킹 라인업 탑재**: deepseek-v4-flash-0731, deepseek-v4-flash, deepseek-chat, deepseek-r1, deepseek-reasoner, claude-3.7-sonnet, claude-3.5-sonnet, gemini-2.5-pro, gemini-2.5-flash, gpt-4o, o3-mini, qwen2.5-vl-72b-instruct

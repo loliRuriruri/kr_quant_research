@@ -2832,7 +2832,8 @@ function openReportModal(rec, customTitle = null) {
   const title = customTitle || `📑 ${escapeHtml(company)} (${code}) 심층 리서치 & 인포그래픽 리포트`;
   const md = renderMarkdown(rec.report_markdown || "");
   const usage = rec.usage || {};
-  const meta = `${rec.provider || ""} · ${rec.model || ""} · ${rec.as_of_date || ""} · tokens: ${usage.total_tokens || "—"}`;
+  const tokensStr = usage.total_tokens ? `🪙 소모 토큰: ${Number(usage.total_tokens).toLocaleString()} (입력 ${Number(usage.prompt_tokens || 0).toLocaleString()} / 출력 ${Number(usage.completion_tokens || 0).toLocaleString()})` : "🪙 토큰: 기록 없음";
+  const meta = `${rec.provider || ""} · ${rec.model || ""} · 기준일 ${rec.as_of_date || ""} · ${tokensStr}`;
 
   const infographicUrl = `/api/research/${code}/infographic?as_of=${encodeURIComponent(rec.as_of_date || "")}`;
 
@@ -7708,18 +7709,30 @@ const PROVIDER_MODELS = {
   ],
   openrouter: [
     "deepseek/deepseek-v4-flash-0731",
-    "deepseek/deepseek-v4-flash",
-    "deepseek/deepseek-chat",
-    "deepseek/deepseek-r1",
-    "deepseek/deepseek-reasoner",
-    "anthropic/claude-3.7-sonnet",
-    "anthropic/claude-3.5-sonnet",
-    "google/gemini-2.5-pro",
-    "google/gemini-2.5-flash",
-    "openai/gpt-4o",
-    "openai/o3-mini",
-    "qwen/qwen2.5-vl-72b-instruct",
+    "deepseek/deepseek-v4-pro-0813",
+    "deepseek/deepseek-v4-flash-vision-exp",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "openai/gpt-5.6-luna",
+    "google/gemini-3.7-flash",
+    "z-ai/glm-5.2",
+    "upstage/solar-pro4",
   ],
+};
+
+const MODEL_TOKEN_INFO = {
+  "deepseek/deepseek-v4-flash-0731": { badge: "⭐ 기본추천", tokens: "초저비용 ($0.07 / 1M 토큰)", desc: "OpenRouter 실전 랭킹 1위 기본 모델" },
+  "deepseek/deepseek-v4-pro-0813": { badge: "⚡ 프로추론", tokens: "고효율 ($0.27 / 1M 토큰)", desc: "정밀 퀀트 분석 및 고급 추론" },
+  "deepseek/deepseek-v4-flash-vision-exp": { badge: "👁️ 비전분석", tokens: "저비용 ($0.15 / 1M 토큰)", desc: "차트 및 멀티모달 비전 특화" },
+  "nvidia/nemotron-3-ultra-550b-a55b:free": { badge: "🎁 100% 무료", tokens: "무료 ($0.00 / 1M 토큰)", desc: "NVIDIA 550B 대형 오픈 모델 (0원 과금)" },
+  "openai/gpt-5.6-luna": { badge: "🔮 차세대", tokens: "프리미엄 ($1.25 / 1M 토큰)", desc: "OpenAI 차세대 최고성능 플래그십" },
+  "google/gemini-3.7-flash": { badge: "⚡ 초고속", tokens: "초저비용 ($0.10 / 1M 토큰)", desc: "Google 차세대 초고속 Flash 모델" },
+  "z-ai/glm-5.2": { badge: "🧠 고지능", tokens: "표준 ($0.35 / 1M 토큰)", desc: "GLM-5.2 고지능 퀀트 분석" },
+  "upstage/solar-pro4": { badge: "🇰🇷 한국특화", tokens: "고효율 ($0.20 / 1M 토큰)", desc: "Upstage 한국 금융/공시 특화 모델" },
+  "gemini-2.5-pro": { badge: "⚡ Google agy", tokens: "무료 (CLI 세션 토큰)", desc: "Google Antigravity CLI 세션 무료 제공" },
+  "gemini-2.5-flash": { badge: "⚡ Google agy", tokens: "무료 (CLI 세션 토큰)", desc: "Google Antigravity CLI 세션 무료 제공" },
+  "grok-4.6": { badge: "⚡ xAI 기본", tokens: "표준 요금제", desc: "xAI 최신 Grok 4.6 리서치" },
+  "deepseek-chat": { badge: "🧠 공식 API", tokens: "초저비용 ($0.14 / 1M 토큰)", desc: "DeepSeek 공식 API 직접 연동" },
+  "deepseek-reasoner": { badge: "🧠 공식 API", tokens: "표준 ($0.55 / 1M 토큰)", desc: "DeepSeek R1 공식 추론 직접 연동" },
 };
 
 function applyModelOptions(ids, selected) {
@@ -9907,10 +9920,23 @@ function selectQuickProvider(prov) {
   if (chipsContainer) {
     chipsContainer.innerHTML = models.map((m) => {
       const active = m === currentQuickModel;
-      const bg = active ? "rgba(56,189,248,0.25)" : "#1e293b";
-      const border = active ? "1px solid #38bdf8" : "1px solid rgba(255,255,255,0.1)";
+      const bg = active ? "rgba(56,189,248,0.2)" : "#111c30";
+      const border = active ? "1px solid #38bdf8" : "1px solid rgba(255,255,255,0.08)";
       const color = active ? "#38bdf8" : "#cbd5e1";
-      return `<button type="button" class="tag-btn quick-mod-chip" data-model="${escapeHtml(m)}" style="background:${bg}; border:${border}; color:${color}; font-size:11.5px; padding:4px 9px; cursor:pointer; border-radius:6px;">${escapeHtml(m)}</button>`;
+      const info = MODEL_TOKEN_INFO[m] || { badge: "AI 모델", tokens: "표준 토큰 소모", desc: "" };
+      const isFree = info.badge.includes("무료") || info.badge.includes("CLI");
+      return `
+        <button type="button" class="tag-btn quick-mod-chip" data-model="${escapeHtml(m)}" style="background:${bg}; border:${border}; color:${color}; font-size:12px; padding:8px 12px; cursor:pointer; border-radius:8px; display:flex; justify-content:space-between; align-items:center; width:100%; gap:10px; text-align:left; transition:all 0.15s; box-sizing:border-box;">
+          <div style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+            <b style="font-size:12.5px; color:${active ? '#38bdf8' : '#f8fafc'}; font-family:monospace; word-break:break-all;">${escapeHtml(m)}</b>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(info.desc || "")}</span>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex-shrink:0;">
+            <span style="font-size:10px; font-weight:700; color:${isFree ? '#4ade80' : '#38bdf8'}; background:rgba(0,0,0,0.4); padding:2px 6px; border-radius:4px; border:1px solid ${isFree ? 'rgba(74,222,128,0.3)' : 'rgba(56,189,248,0.3)'};">${escapeHtml(info.badge)}</span>
+            <span style="font-size:10.5px; color:${isFree ? '#86efac' : '#cbd5e1'}; font-weight:600;">🪙 ${escapeHtml(info.tokens)}</span>
+          </div>
+        </button>
+      `;
     }).join("");
     
     $$(".quick-mod-chip").forEach((chip) => {
