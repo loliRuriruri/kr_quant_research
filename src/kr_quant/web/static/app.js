@@ -2173,6 +2173,7 @@ async function openStock(ticker) {
 
     const bottomNewsGrid = `
       <div class="bottom-news-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:14px; margin-top:16px; width:100%;">
+        <div id="tier1-news-container" style="grid-column: 1 / -1;"></div>
         ${newsCard}
         ${webCard}
       </div>
@@ -2456,10 +2457,76 @@ async function openStock(ticker) {
     loadReport(code).catch(() => {
       $("#report-box").innerHTML = "<p style='font-size:12px; color:#64748b;'>저장된 AI 분석 리포트 없음</p>";
     });
+    loadTier1StockInsights(code).catch(() => {});
   } catch (err) {
     $("#drawer-body").innerHTML = `<div style="padding:20px; color:#ef4444;"><h3>❌ 데이터 로딩 실패</h3><p>${escapeHtml(err.message)}</p></div>`;
   } finally {
     if (bar) bar.style.display = "none";
+  }
+}
+
+async function loadTier1StockInsights(code) {
+  try {
+    const res = await api(`/api/research/${code}/tier1-insights`);
+    if (!res) return;
+    
+    // 1. Render News AI Card
+    const newsBox = $("#tier1-news-container");
+    if (newsBox && res.news_analysis && res.news_analysis.summary) {
+      const na = res.news_analysis;
+      const sentCls = na.sentiment === "호재" ? "ok" : na.sentiment === "악재" ? "bad" : "warn";
+      const sentIcon = na.sentiment === "호재" ? "🔥" : na.sentiment === "악재" ? "⚠️" : "⚖️";
+      newsBox.innerHTML = `
+        <div class="tier1-ai-card tier1-news-card" style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border:1px solid rgba(56,189,248,0.4); border-radius:10px; padding:12px 14px; box-shadow:0 4px 14px rgba(0,0,0,0.35);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:12px; font-weight:700; color:#38bdf8; display:flex; align-items:center; gap:6px;">
+              🤖 Tier 1 무료 AI 실시간 뉴스 브리핑
+              <span style="font-size:10px; font-weight:400; color:#94a3b8;">(${escapeHtml(res.model || "NVIDIA 550B")})</span>
+            </span>
+            <span class="chip ${sentCls}" style="font-size:10.5px; font-weight:700; padding:2px 8px;">${sentIcon} ${escapeHtml(na.sentiment || "중립")}</span>
+          </div>
+          <p style="font-size:12.5px; line-height:1.55; color:#f1f5f9; margin:0 0 6px; font-weight:500;">${escapeHtml(na.summary)}</p>
+          ${na.key_driver ? `<div style="font-size:11.5px; color:#cbd5e1; display:flex; align-items:center; gap:4px;">🔑 <b>핵심 요인:</b> <span style="color:#67e8f9;">${escapeHtml(na.key_driver)}</span></div>` : ""}
+        </div>
+      `;
+    }
+
+    // 2. Render DART Events AI Card
+    const dartBox = $("#tier1-dart-container");
+    if (dartBox && res.events_analysis && res.events_analysis.commentary) {
+      const ea = res.events_analysis;
+      const riskCls = ea.risk_level === "주의" ? "bad" : ea.risk_level === "안전" ? "ok" : "warn";
+      const riskIcon = ea.risk_level === "주의" ? "⚠️" : ea.risk_level === "안전" ? "🛡️" : "⚖️";
+      dartBox.innerHTML = `
+        <div class="tier1-ai-card tier1-dart-card" style="margin-top:10px; background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border:1px solid rgba(168,85,247,0.4); border-radius:10px; padding:12px 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:12px; font-weight:700; color:#c084fc;">💡 Tier 1 AI 공시 실전 해설 (지분 희석/오버행)</span>
+            <span class="chip ${riskCls}" style="font-size:10px; font-weight:700; padding:2px 8px;">${riskIcon} 공시 위험도: ${escapeHtml(ea.risk_level || "안전")}</span>
+          </div>
+          <p style="font-size:12px; line-height:1.5; color:#f1f5f9; margin:0 0 4px;">${escapeHtml(ea.commentary)}</p>
+          ${ea.key_point ? `<div style="font-size:11px; color:#e2e8f0;">📌 <b>체크 포인트:</b> ${escapeHtml(ea.key_point)}</div>` : ""}
+        </div>
+      `;
+    }
+
+    // 3. Render Technical & Flow Posture Guide Card
+    const postBox = $("#tier1-posture-container");
+    if (postBox && res.tech_flow_analysis && res.tech_flow_analysis.action_guide) {
+      const tfa = res.tech_flow_analysis;
+      const postCls = tfa.posture === "적극 매수" || tfa.posture === "분할 매수" ? "ok" : tfa.posture === "리스크 관리" ? "bad" : "warn";
+      postBox.innerHTML = `
+        <div class="tier1-ai-card tier1-posture-card" style="margin-top:10px; background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border:1px solid rgba(52,211,153,0.4); border-radius:10px; padding:12px 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:12px; font-weight:700; color:#34d399;">🎯 Tier 1 AI 실전 매매 대응 가이드</span>
+            <span class="chip ${postCls}" style="font-size:10px; font-weight:700; padding:2px 8px;">${escapeHtml(tfa.posture || "분할 매수")}</span>
+          </div>
+          <p style="font-size:12px; line-height:1.5; color:#f1f5f9; margin:0 0 4px;">${escapeHtml(tfa.action_guide)}</p>
+          ${tfa.timing_tip ? `<div style="font-size:11px; color:#cbd5e1;">⏱️ <b>타이밍 팁:</b> <span style="color:#a7f3d0;">${escapeHtml(tfa.timing_tip)}</span></div>` : ""}
+        </div>
+      `;
+    }
+  } catch (e) {
+    console.debug("Tier 1 insights load error:", e);
   }
 }
 
@@ -2577,13 +2644,18 @@ function flow90Block(flow, ticker) {
       <span>90일 <b>${fmtAmt(w.w90)}</b></span>
     </div>
     ${flowSpark(chart, "INSTITUTION_TOTAL") || flowSpark(chart, "FUND")}
+    <div id="tier1-posture-container"></div>
   </article>`;
 }
 
 function eventsBlock(ev) {
   const rows = (ev && ev.rows) || [];
   if (!rows.length) {
-    return `<article class="intro" style="margin-top:12px;"><h3>공시 이벤트</h3><p class="hint">${escapeHtml((ev && ev.error) || "최근 분류 공시가 없습니다.")}</p></article>`;
+    return `<article class="intro" style="margin-top:12px;">
+      <h3>공시 이벤트</h3>
+      <p class="hint">${escapeHtml((ev && ev.error) || "최근 분류 공시가 없습니다.")}</p>
+      <div id="tier1-dart-container"></div>
+    </article>`;
   }
   const lis = rows
     .slice(0, 8)
@@ -2596,6 +2668,7 @@ function eventsBlock(ev) {
   return `<article class="intro" style="margin-top:12px;">
     <h3>공시 이벤트 & DART 캘린더</h3>
     <ul class="intro-facts">${lis}</ul>
+    <div id="tier1-dart-container"></div>
   </article>`;
 }
 
@@ -3786,6 +3859,7 @@ async function loadInvestor() {
 
   box.innerHTML = `
     ${asofBanner(asof)}
+    <div id="tier1-investor-briefing" style="margin-bottom:14px;"></div>
     <div class="kpis" style="grid-template-columns:repeat(4,1fr); margin:0 0 16px;">
       <div class="kpi has-tip" data-tip-title="🏛️ KIS Open API 연동" data-tip="한국투자증권 실거래/모의계좌 OpenAPI를 통한 실시간 수급 적재 상태입니다." tabindex="0">
         <span>KIS Open API</span><b class="${data.configured ? "ok" : "warn"}" style="color:${data.configured ? '#4ade80' : '#f59e0b'};">${data.configured ? "연결 완료" : "미설정 (토스 대체)"}</b>
@@ -3831,6 +3905,32 @@ async function loadInvestor() {
     ${next ? `<div style="margin-top:10px;"><h4 style="margin:0 0 4px; font-size:13px; color:#93c5fd;">🚀 다음 진행 팁</h4><ul style="margin:0; padding-left:20px; font-size:12px; color:#cbd5e1;">${next}</ul></div>` : ""}
     <p class="hint" style="margin-top:12px;">${escapeHtml(data.disclaimer || "")}</p>
   `;
+  loadTier1InvestorBriefing().catch(() => {});
+}
+
+async function loadTier1InvestorBriefing() {
+  const box = $("#tier1-investor-briefing");
+  if (!box) return;
+  try {
+    const data = await api("/api/flow/tier1-briefing");
+    if (!data || !data.ok) return;
+    const sectors = (data.focus_sectors || []).map((s) => `<span class="chip" style="font-size:11px; color:#38bdf8; background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.3); padding:2px 8px; border-radius:4px;">🎯 ${escapeHtml(s)}</span>`).join(" ");
+    box.innerHTML = `
+      <div class="tier1-ai-card" style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border:1px solid rgba(56,189,248,0.4); border-radius:10px; padding:14px 16px; box-shadow:0 4px 16px rgba(0,0,0,0.3);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:12.5px; font-weight:700; color:#38bdf8; display:flex; align-items:center; gap:6px;">
+            🤖 Tier 1 무료 AI 메이저 수급 동향 브리핑
+            <span style="font-size:10.5px; font-weight:400; color:#94a3b8;">(${escapeHtml(data.model || "NVIDIA 550B")})</span>
+          </span>
+          <div style="display:flex; gap:4px;">${sectors}</div>
+        </div>
+        <b style="font-size:13.5px; color:#f8fafc; display:block; margin-bottom:6px;">"${escapeHtml(data.headline || "")}"</b>
+        <p style="font-size:12.5px; line-height:1.55; color:#cbd5e1; margin:0;">${escapeHtml(data.briefing || "")}</p>
+      </div>
+    `;
+  } catch (e) {
+    console.debug("Tier 1 investor briefing error:", e);
+  }
 }
 
 let investorEventTab = "consecutive";

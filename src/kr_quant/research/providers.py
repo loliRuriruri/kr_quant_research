@@ -308,3 +308,44 @@ def fetch_remote_models(endpoint: LlmEndpoint, timeout: int = 20) -> list[str]:
             elif isinstance(item, str):
                 ids.append(item)
     return sorted(set(ids))
+
+
+def resolve_tier1_endpoint(settings: Any) -> LlmEndpoint:
+    """Tier 1: 100% Free Routine AI Model for real-time news, disclosures, and commentary.
+    Priority 1: OpenRouter with nvidia/nemotron-3-ultra-550b-a55b:free
+    Priority 2: Google Antigravity CLI Session (gemini-2.5-flash)
+    Priority 3: DeepSeek Official API (deepseek-chat)
+    Priority 4: Fallback to whatever provider is configured
+    """
+    or_key = getattr(settings, "openrouter_api_key", None)
+    if or_key:
+        return LlmEndpoint(
+            provider="openrouter",
+            label="NVIDIA Nemotron 550B (100% 무료)",
+            base_url="https://openrouter.ai/api/v1",
+            model="nvidia/nemotron-3-ultra-550b-a55b:free",
+            api_key=or_key,
+        )
+    # Check Google agy CLI session
+    try:
+        from kr_quant.research.antigravity_auth import check_agy_auth
+
+        auth = check_agy_auth()
+        if auth.get("connected"):
+            return LlmEndpoint(
+                provider="antigravity",
+                label="Google agy 세션 (무료)",
+                base_url="cli://agy",
+                model="gemini-2.5-flash",
+                api_key="antigravity-cli-cached-session",
+            )
+    except Exception:
+        pass
+    # Fallback to configured user provider
+    return resolve_provider(settings)
+
+
+def resolve_tier2_endpoint(settings: Any) -> LlmEndpoint:
+    """Tier 2: User-selected high-performance model for deep research reports & infographics."""
+    return resolve_provider(settings)
+

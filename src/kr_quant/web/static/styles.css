@@ -5011,5 +5011,25 @@ td.num, th.num, td .meta, th {
   border: 1px solid rgba(245, 158, 11, 0.4);
 }
 
+/* Tier 1 AI Automation Styles */
+.tier1-ai-card {
+  position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
 
+.tier1-ai-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
 
+.tier1-news-card {
+  border-left: 3.5px solid #38bdf8 !important;
+}
+
+.tier1-dart-card {
+  border-left: 3.5px solid #c084fc !important;
+}
+
+.tier1-posture-card {
+  border-left: 3.5px solid #34d399 !important;
+}

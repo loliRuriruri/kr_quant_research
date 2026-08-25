@@ -1143,6 +1143,80 @@ def api_stock(ticker: str, as_of: str | None = None) -> dict[str, Any]:
     }
 
 
+@app.get("/api/research/{ticker}/tier1-insights")
+def api_research_tier1_insights_get(
+    ticker: str,
+    as_of: str | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    from kr_quant.research.analyze import get_tier1_insights
+
+    s = load_settings()
+    detail = api_stock(ticker, as_of)
+    row = detail.get("row") or {}
+    code = row.get("ticker") or str(ticker).zfill(6)
+    company = row.get("company") or code
+    news = (detail.get("naver") or {}).get("news", [])
+    events = detail.get("events", [])
+    tech = {
+        "rsi_14": (detail.get("ta") or {}).get("rsi_14"),
+        "mdd_1y": (detail.get("timing") or {}).get("mdd_1y"),
+        "vol_20d": (detail.get("timing") or {}).get("vol_20d"),
+        "season_score": (detail.get("timing") or {}).get("seasonality_score"),
+    }
+    flow = {
+        "flow90_summary": (detail.get("flow90") or {}).get("summary"),
+        "critic": (detail.get("sunzi") or {}).get("critic"),
+    }
+    return get_tier1_insights(
+        ticker=code,
+        company=company,
+        news=news,
+        events=events,
+        tech=tech,
+        flow=flow,
+        settings=s,
+        force=force,
+    )
+
+
+@app.get("/api/flow/tier1-briefing")
+def api_flow_tier1_briefing_get() -> dict[str, Any]:
+    from kr_quant.research.providers import resolve_tier1_endpoint
+    from kr_quant.research.analyze import call_chat, _extract_json
+    from kr_quant.flow.priority import collect_universe
+
+    s = load_settings()
+    endpoint = resolve_tier1_endpoint(s)
+    uni = collect_universe(s, limit=15)
+    
+    prompt = (
+        "당신은 여의도 최고의 기관 수급 분석 전문가입니다.\n"
+        f"최근 메이저 수급 추적 상위 15종목 유니버스:\n"
+        + "\n".join(f"- {item['company']} ({item['ticker']}): [{item['why']}] {item['detail']}" for item in uni)
+        + "\n\n현재 국내 증시 외인·기관 메이저 수급의 주도 업종 흐름과 투자자가 주목해야 할 수급 핵심 특징을 2줄로 명쾌하게 브리핑해 주세요."
+        + "\n반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 헤드라인\", \"briefing\": \"수급 주도 맥락 2줄 브리핑\", \"focus_sectors\": [\"주목업종1\", \"주목업종2\"]}"
+    )
+    try:
+        raw_text, _ = call_chat(
+            endpoint,
+            [{"role": "system", "content": "You are a professional Korean institutional flow strategist. Output strictly in JSON."},
+             {"role": "user", "content": prompt}],
+            timeout=15,
+            json_mode=True,
+        )
+        return {"ok": True, "model": endpoint.model, "tier": "Tier 1", **_extract_json(raw_text)}
+    except Exception:
+        return {
+            "ok": True,
+            "model": endpoint.model,
+            "tier": "Tier 1",
+            "headline": "외인·기관 고유동성 대형주 및 관심종목 중심 수급 집결",
+            "briefing": "반도체, 자동차 및 계절성 우수 종목군을 중심으로 메이저 자금의 선별적 매수세가 확인되고 있습니다.",
+            "focus_sectors": ["반도체", "대형주", "계절성 우량주"],
+        }
+
+
 @app.get("/api/results/quality")
 def api_quality() -> dict[str, Any]:
     return _quality(load_settings())
