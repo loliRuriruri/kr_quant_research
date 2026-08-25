@@ -4866,3 +4866,48 @@ td.num, th.num, td .meta, th {
   0%, 100% { opacity: 0.5; transform: scale(0.9); }
   50% { opacity: 1; transform: scale(1.15); }
 }
+
+/* --- Stock Drawer Facts Grid & Bottom News Grid --- */
+.facts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.fact-card {
+  padding: 9px 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: border-color 0.15s ease;
+}
+
+.fact-card:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.fact-card span {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.fact-card b {
+  font-size: 13px;
+  color: #f8fafc;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.bottom-news-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+  width: 100%;
+}
+

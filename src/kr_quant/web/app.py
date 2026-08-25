@@ -1081,6 +1081,21 @@ def api_stock(ticker: str, as_of: str | None = None) -> dict[str, Any]:
         from kr_quant.flow.official import ticker_payload
 
         flow90 = ticker_payload(s, code)
+        if not flow90.get("chart") and s.kis_app_key and s.kis_app_secret:
+            try:
+                from kr_quant.ingest.kis import KisInvestorAdapter
+                from kr_quant.flow.store import open_settings, upsert_flows
+
+                adapter = KisInvestorAdapter(s.kis_app_key, s.kis_app_secret, s.kis_base_url)
+                if adapter.configured():
+                    rows = adapter.collect_stock(code)
+                    if rows:
+                        con = open_settings(s)
+                        upsert_flows(con, rows)
+                        con.close()
+                        flow90 = ticker_payload(s, code)
+            except Exception:
+                pass
     except Exception as exc:  # noqa: BLE001
         flow90 = {"used_in_quant": False, "chart": [], "error": str(exc)[:160]}
 
@@ -1488,6 +1503,28 @@ def api_flow_ticker_get(ticker: str, days: int = 5) -> dict[str, Any]:
     from kr_quant.flow.scan import diagnose_ticker_flow
 
     return diagnose_ticker_flow(load_settings(), ticker, days=days)
+
+
+@app.post("/api/flow/collect-ticker/{ticker}")
+def api_flow_collect_ticker_post(ticker: str) -> dict[str, Any]:
+    s = load_settings()
+    code = str(ticker).zfill(6)
+    from kr_quant.ingest.kis import KisInvestorAdapter
+    from kr_quant.flow.store import open_settings, upsert_flows
+    from kr_quant.flow.official import ticker_payload
+
+    adapter = KisInvestorAdapter(s.kis_app_key, s.kis_app_secret, s.kis_base_url)
+    if not adapter.configured():
+        return {"ok": False, "error": adapter.missing_reason(), "flow": ticker_payload(s, code)}
+    try:
+        rows = adapter.collect_stock(code)
+        if rows:
+            con = open_settings(s)
+            upsert_flows(con, rows)
+            con.close()
+        return {"ok": True, "saved": len(rows), "flow": ticker_payload(s, code)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "flow": ticker_payload(s, code)}
 
 
 

@@ -2099,58 +2099,98 @@ async function openStock(ticker) {
     const riskNotes = (data.risk_notes || []).map((x) => x.label).filter(Boolean);
     const dataNotes = (data.data_notes || []).map((x) => x.label).filter(Boolean);
     const brief = data.brief || {};
-    const facts = (brief.facts || [])
-      .map((f) => `<span>${escapeHtml(f.label)}</span><b>${escapeHtml(f.value)}</b>`)
-      .join("");
+    const factItems = [];
+    if (brief.facts && brief.facts.length) {
+      for (const f of brief.facts) {
+        factItems.push(`
+          <div class="fact-card" style="padding:9px 12px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:8px; display:flex; flex-direction:column; gap:2px;">
+            <span style="font-size:11px; color:#94a3b8; font-weight:600;">${escapeHtml(f.label)}</span>
+            <b style="font-size:13px; color:#f8fafc; font-weight:700; word-break:break-all;">${escapeHtml(f.value)}</b>
+          </div>
+        `);
+      }
+    }
+    if (r.per != null) factItems.push(`<div class="fact-card" style="padding:9px 12px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:8px;"><span style="font-size:11px; color:#94a3b8; font-weight:600;">PER</span><b style="font-size:13px; color:#f8fafc; font-weight:700;">${fmt(r.per, 1)}배</b></div>`);
+    if (r.pbr != null) factItems.push(`<div class="fact-card" style="padding:9px 12px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:8px;"><span style="font-size:11px; color:#94a3b8; font-weight:600;">PBR</span><b style="font-size:13px; color:#f8fafc; font-weight:700;">${fmt(r.pbr, 2)}배</b></div>`);
+    if (r.roe != null) factItems.push(`<div class="fact-card" style="padding:9px 12px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:8px;"><span style="font-size:11px; color:#94a3b8; font-weight:600;">ROE</span><b style="font-size:13px; color:#34d399; font-weight:700;">${(r.roe * 100).toFixed(1)}%</b></div>`);
+    if (r.roic != null) factItems.push(`<div class="fact-card" style="padding:9px 12px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:8px;"><span style="font-size:11px; color:#94a3b8; font-weight:600;">ROIC</span><b style="font-size:13px; color:#34d399; font-weight:700;">${(r.roic * 100).toFixed(1)}%</b></div>`);
+    if (r.operating_margin != null) factItems.push(`<div class="fact-card" style="padding:9px 12px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:8px;"><span style="font-size:11px; color:#94a3b8; font-weight:600;">영업이익률</span><b style="font-size:13px; color:#38bdf8; font-weight:700;">${(r.operating_margin * 100).toFixed(1)}%</b></div>`);
+    if (r.fcf_yield != null) factItems.push(`<div class="fact-card" style="padding:9px 12px; background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:8px;"><span style="font-size:11px; color:#94a3b8; font-weight:600;">FCF 수익률</span><b style="font-size:13px; color:#34d399; font-weight:700;">${(r.fcf_yield * 100).toFixed(1)}%</b></div>`);
+
+    const facts = `<div class="facts-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:8px; margin-top:8px;">${factItems.join("")}</div>`;
+
     const naver = data.naver || {};
     const encyc = (naver.encyc || [])
       .slice(0, 1)
-      .map((x) => `<p>${escapeHtml(x.description || x.title || "")}</p>`)
+      .map((x) => `<p style="font-size:12.5px; line-height:1.5; color:#cbd5e1;">${escapeHtml(x.description || x.title || "")}</p>`)
       .join("");
     const newsItems = (naver.news || [])
       .slice(0, 8)
       .map((n) => {
         const sent = classifyNewsSentiment(n.title, n.description);
-        return `<li>
-          <div style="display:flex; align-items:flex-start; gap:4px;">
+        return `<li style="margin-bottom:8px;">
+          <div style="display:flex; align-items:flex-start; gap:6px;">
             <span class="news-badge ${sent.cls}">${sent.icon} ${sent.label}</span>
-            <a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener" style="font-weight:500;">${escapeHtml(n.title)}</a>
+            <a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener" style="font-weight:600; font-size:12.5px; color:#f1f5f9;">${escapeHtml(n.title)}</a>
           </div>
-          <div class="meta" style="margin-top:3px;">${escapeHtml((n.pubDate || "").slice(0, 16))} · ${escapeHtml((n.description || "").slice(0, 95))}</div>
+          <div class="meta" style="margin-top:3px; font-size:11px; color:#94a3b8;">${escapeHtml((n.pubDate || "").slice(0, 16))} · ${escapeHtml((n.description || "").slice(0, 95))}</div>
         </li>`;
       })
       .join("");
-    let newsBlock = "";
+
+    let newsCard = "";
     if (newsItems) {
-      newsBlock = `<article class="intro"><h3>네이버 뉴스</h3><ul class="news-list">${newsItems}</ul></article>`;
+      newsCard = `<article class="intro" style="margin:0; height:100%;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h3 style="margin:0; font-size:13.5px; color:#38bdf8;">📰 네이버 실시간 뉴스</h3>
+          <span class="chip" style="font-size:10px;">실시간 연동</span>
+        </div>
+        <ul class="news-list" style="margin:0; padding-left:0; list-style:none;">${newsItems}</ul>
+      </article>`;
     } else if (!naver.configured) {
-      newsBlock = `<article class="intro"><h3>네이버 뉴스</h3><p class="hint">${publicShareMode ? "공개 스냅샷에는 네이버 뉴스가 포함되지 않습니다." : "설정에서 네이버 Client ID/Secret을 넣으면 최근 뉴스가 나옵니다."}</p></article>`;
+      newsCard = `<article class="intro" style="margin:0; height:100%;"><h3 style="margin:0 0 6px; font-size:13.5px;">📰 네이버 뉴스</h3><p class="hint">${publicShareMode ? "공개 스냅샷에는 네이버 뉴스가 포함되지 않습니다." : "설정에서 네이버 Client ID/Secret을 넣으면 최근 뉴스가 나옵니다."}</p></article>`;
     } else if (naver.error) {
-      newsBlock = `<article class="intro"><h3>네이버 뉴스</h3><p class="hint">${escapeHtml(naver.error)}</p></article>`;
+      newsCard = `<article class="intro" style="margin:0; height:100%;"><h3 style="margin:0 0 6px; font-size:13.5px;">📰 네이버 뉴스</h3><p class="hint">${escapeHtml(naver.error)}</p></article>`;
     }
+
     const webItems = (naver.web || [])
-      .slice(0, 4)
+      .slice(0, 6)
       .map(
-        (n) => `<li><a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener">${escapeHtml(n.title)}</a>
-          <div class="meta">${escapeHtml((n.description || "").slice(0, 90))}</div></li>`
+        (n) => `<li style="margin-bottom:8px;">
+          <a class="ext inline" href="${escapeHtml(n.link)}" target="_blank" rel="noopener" style="font-weight:600; font-size:12.5px; color:#f1f5f9;">${escapeHtml(n.title)}</a>
+          <div class="meta" style="margin-top:3px; font-size:11px; color:#94a3b8;">${escapeHtml((n.description || "").slice(0, 90))}</div>
+        </li>`
       )
       .join("");
-    if (webItems) {
-      newsBlock += `<article class="intro"><h3>네이버 웹검색</h3><ul class="news-list">${webItems}</ul></article>`;
-    }
+
+    let webCard = `<article class="intro" style="margin:0; height:100%;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 style="margin:0; font-size:13.5px; color:#38bdf8;">🔍 네이버 실시간 웹검색</h3>
+        <span class="chip" style="font-size:10px;">테마/공시 검색</span>
+      </div>
+      <ul class="news-list" style="margin:0; padding-left:0; list-style:none;">${webItems || '<p class="hint">검색 결과가 없거나 수집 대기 중입니다.</p>'}</ul>
+    </article>`;
+
+    const bottomNewsGrid = `
+      <div class="bottom-news-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:14px; margin-top:16px; width:100%;">
+        ${newsCard}
+        ${webCard}
+      </div>
+    `;
+
     const loc = data.location || {};
     let locBlock = "";
     if (loc.address || loc.ceo) {
       const mapLink = loc.map_url
-        ? `<p><a class="ext" href="${escapeHtml(loc.map_url)}" target="_blank" rel="noopener">네이버 지도에서 보기</a></p>`
+        ? `<p style="margin:4px 0 0;"><a class="ext" href="${escapeHtml(loc.map_url)}" target="_blank" rel="noopener">네이버 지도에서 보기</a></p>`
         : "";
       const img = loc.static_map && loc.lat && loc.lng
-        ? `<p><img class="hq-map" alt="본사 위치" src="/api/maps/static?lat=${encodeURIComponent(loc.lat)}&lng=${encodeURIComponent(loc.lng)}" /></p>`
+        ? `<p style="margin:6px 0 0;"><img class="hq-map" alt="본사 위치" src="/api/maps/static?lat=${encodeURIComponent(loc.lat)}&lng=${encodeURIComponent(loc.lng)}" /></p>`
         : "";
-      locBlock = `<article class="intro"><h3>본사 위치</h3>
-        ${loc.ceo ? `<p>대표이사 ${escapeHtml(loc.ceo)}</p>` : ""}
-        ${loc.address ? `<p>${escapeHtml(loc.address)}</p>` : ""}
-        ${loc.homepage ? `<p><a class="ext inline" href="${escapeHtml(loc.homepage.startsWith("http") ? loc.homepage : "https://" + loc.homepage)}" target="_blank" rel="noopener">홈페이지</a></p>` : ""}
+      locBlock = `<article class="intro" style="margin-top:12px;"><h3>본사 위치</h3>
+        ${loc.ceo ? `<p style="margin:2px 0; font-size:12px; color:#cbd5e1;"><b>대표이사:</b> ${escapeHtml(loc.ceo)}</p>` : ""}
+        ${loc.address ? `<p style="margin:2px 0; font-size:12px; color:#cbd5e1;"><b>주소:</b> ${escapeHtml(loc.address)}</p>` : ""}
+        ${loc.homepage ? `<p style="margin:4px 0;"><a class="ext inline" href="${escapeHtml(loc.homepage.startsWith("http") ? loc.homepage : "https://" + loc.homepage)}" target="_blank" rel="noopener">공식 홈페이지</a></p>` : ""}
         ${mapLink}${img}</article>`;
     }
     const toss = data.toss || {};
@@ -2158,22 +2198,26 @@ async function openStock(ticker) {
     const tprice = tq.lastPrice ?? tq.price ?? tq.close ?? tq.last ?? tq.currentPrice ?? tq.tradePrice;
     const tchg = tq.changeRate ?? tq.changePct ?? (tq.price && tq.price.changeRate);
     const twarn = (toss.warnings || []).map((w) => (typeof w === "string" ? w : w.type || w.name || w.code || JSON.stringify(w))).join(", ");
-    let tossBlock = "";
-    if (toss.error) {
-      tossBlock = `<article class="intro"><h3>토스증권 시세</h3><p class="hint">${escapeHtml(toss.error)}</p></article>`;
-    } else if (tprice != null || twarn) {
-      const chgTxt = typeof tchg === "number" ? ` · 등락 ${(tchg * (Math.abs(tchg) > 1 ? 1 : 100)).toFixed(2)}%` : "";
-      tossBlock = `<article class="intro"><h3>토스증권 시세</h3>
-        <p>현재가 <b>${escapeHtml(String(typeof tprice === "object" ? (tprice.close ?? tprice.tradePrice ?? "") : tprice))}</b>${escapeHtml(chgTxt)}</p>
-        ${twarn ? `<p>유의: ${escapeHtml(twarn)}</p>` : ""}
-        ${toss.page ? `<p><a class="ext" href="${escapeHtml(toss.page)}" target="_blank" rel="noopener">토스증권에서 보기</a></p>` : ""}
-      </article>`;
-    }
-    const yahoo = data.yahoo || {};
+
     let yahooBlock = "";
-    if (yahoo && (yahoo.forward_pe != null || yahoo.trailing_pe != null || yahoo.peg_ratio != null || yahoo.target_mean_price != null || yahoo.recommendation_key)) {
-      yahooBlock = `<article class="intro"><h3>Yahoo Financials</h3><p>Fwd PER ${fmt(yahoo.forward_pe, 1)} · PEG ${fmt(yahoo.peg_ratio, 2)} · 애널리스트 ${fmt(yahoo.target_mean_price)} (${escapeHtml(yahoo.recommendation_key || "")})</p></article>`;
+    if (data.yahoo && data.yahoo.summary) {
+      const y = data.yahoo;
+      const ys = y.summary || {};
+      yahooBlock = `
+        <article class="intro" style="background:#0f172a; border:1px solid rgba(56,189,248,0.25); border-radius:10px; padding:14px; margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h3 style="margin:0; font-size:14px; color:#38bdf8;">🌐 Yahoo Finance & 컨센서스</h3>
+            <span class="chip" style="font-size:10.5px;">글로벌 데이터</span>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px;">
+            <div class="fact-card" style="padding:8px 10px; background:rgba(15,23,42,0.8); border:1px solid #1e293b; border-radius:8px;"><span style="font-size:11px; color:#94a3b8;">목표주가 평균</span><b style="font-size:12.5px; color:#38bdf8;">${ys.target_mean ? `${fmt(ys.target_mean)}원` : "—"}</b></div>
+            <div class="fact-card" style="padding:8px 10px; background:rgba(15,23,42,0.8); border:1px solid #1e293b; border-radius:8px;"><span style="font-size:11px; color:#94a3b8;">투자의견</span><b style="font-size:12.5px; color:#4ade80;">${ys.recommendation_key ? escapeHtml(ys.recommendation_key.toUpperCase()) : "—"}</b></div>
+            <div class="fact-card" style="padding:8px 10px; background:rgba(15,23,42,0.8); border:1px solid #1e293b; border-radius:8px;"><span style="font-size:11px; color:#94a3b8;">애널리스트 수</span><b style="font-size:12.5px; color:#f1f5f9;">${ys.analysts_count ? `${ys.analysts_count}명` : "—"}</b></div>
+          </div>
+        </article>
+      `;
     }
+
     const ta = data.ta || {};
     let taBlock = "";
     if (ta.ok) {
@@ -2182,7 +2226,6 @@ async function openStock(ticker) {
       const k = kVal != null ? fmt(kVal, 1) : "—";
       const d = dVal != null ? fmt(dVal, 1) : "—";
 
-      // Detailed technical interpretations
       let stochInterp = "";
       if (kVal != null && dVal != null) {
         if (kVal <= 20 && kVal >= dVal) {
@@ -2381,6 +2424,31 @@ async function openStock(ticker) {
         }
       });
       $("#btn-watch")?.addEventListener("click", () => addWatch(code, r.company || "").catch((err) => alert(err.message)));
+      $("#btn-collect-flow-single")?.addEventListener("click", async () => {
+        const btn = $("#btn-collect-flow-single");
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "수집 중…";
+        }
+        try {
+          const res = await api(`/api/flow/collect-ticker/${code}`, { method: "POST" });
+          if (res.ok) {
+            openStock(code);
+          } else {
+            alert(res.error || "수집 실패");
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = "⚡ KIS 공식 수급 즉시 수집";
+            }
+          }
+        } catch (err) {
+          alert(err.message);
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "⚡ KIS 공식 수급 즉시 수집";
+          }
+        }
+      });
     }
     loadReport(code).catch(() => {
       $("#report-box").innerHTML = "<p style='font-size:12px; color:#64748b;'>저장된 AI 분석 리포트 없음</p>";
@@ -2481,18 +2549,30 @@ function flowSpark(chart, key) {
     .join("")}</div>`;
 }
 
-function flow90Block(flow) {
-  if (!flow || flow.error) {
-    return `<article class="intro"><h3>공식 수급 90일</h3><p class="hint">${escapeHtml((flow && flow.error) || "저장된 KIS 행이 없습니다.")}</p></article>`;
-  }
-  const chart = flow.chart || [];
-  const w = flow.windows || {};
+function flow90Block(flow, ticker) {
+  const chart = (flow && flow.chart) || [];
+  const w = (flow && flow.windows) || {};
   if (!chart.length) {
-    return `<article class="intro"><h3>공식 수급 90일</h3><p class="hint">이 종목의 KIS 저장 행이 없습니다. 공식 수급에서 관심·고유동성 수집을 하세요.</p></article>`;
+    return `<article class="intro" style="background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:10px; padding:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 style="margin:0; font-size:13.5px; color:#38bdf8;">📊 공식 수급 90일</h3>
+        <span class="chip" style="font-size:10px;">KIS 기관/외인</span>
+      </div>
+      <p style="font-size:12px; color:#94a3b8; line-height:1.5; margin:0 0 10px;">이 종목의 90일 KIS 공식 수급 내역이 아직 로컬 DB에 수집되지 않았습니다.</p>
+      ${ticker ? `<button type="button" class="primary small" id="btn-collect-flow-single" data-ticker="${ticker}" style="font-size:11px; padding:5px 12px; font-weight:700;">⚡ KIS 공식 수급 즉시 수집</button>` : ""}
+    </article>`;
   }
-  return `<article class="intro">
-    <h3>공식 수급 90일</h3>
-    <p>5일 ${fmtAmt(w.w5)} · 20일 ${fmtAmt(w.w20)} · 60일 ${fmtAmt(w.w60)} · 90일 ${fmtAmt(w.w90)}</p>
+  return `<article class="intro" style="background:rgba(15,23,42,0.85); border:1px solid #1e293b; border-radius:10px; padding:14px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <h3 style="margin:0; font-size:13.5px; color:#38bdf8;">📊 공식 수급 90일</h3>
+      <span class="chip ok" style="font-size:10px;">수집 완료</span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; font-size:12px; color:#cbd5e1; margin-bottom:10px;">
+      <span>5일 <b>${fmtAmt(w.w5)}</b></span>
+      <span>20일 <b>${fmtAmt(w.w20)}</b></span>
+      <span>60일 <b>${fmtAmt(w.w60)}</b></span>
+      <span>90일 <b>${fmtAmt(w.w90)}</b></span>
+    </div>
     ${flowSpark(chart, "INSTITUTION_TOTAL") || flowSpark(chart, "FUND")}
   </article>`;
 }
@@ -2500,7 +2580,7 @@ function flow90Block(flow) {
 function eventsBlock(ev) {
   const rows = (ev && ev.rows) || [];
   if (!rows.length) {
-    return `<article class="intro"><h3>공시 이벤트</h3><p class="hint">${escapeHtml((ev && ev.error) || "최근 분류 공시가 없습니다.")}</p></article>`;
+    return `<article class="intro" style="margin-top:12px;"><h3>공시 이벤트</h3><p class="hint">${escapeHtml((ev && ev.error) || "최근 분류 공시가 없습니다.")}</p></article>`;
   }
   const lis = rows
     .slice(0, 8)
@@ -2510,9 +2590,9 @@ function eventsBlock(ev) {
       return `<li><b>${escapeHtml(r.event_ko || r.event_type)}</b> ${escapeHtml(r.report_date || "")} ${escapeHtml((r.title || "").slice(0, 48))}${ret} ${link}</li>`;
     })
     .join("");
-  return `<article class="intro">
-    <h3>공시 이벤트</h3>
-    <ul>${lis}</ul>
+  return `<article class="intro" style="margin-top:12px;">
+    <h3>공시 이벤트 & DART 캘린더</h3>
+    <ul class="intro-facts">${lis}</ul>
   </article>`;
 }
 
@@ -2530,23 +2610,74 @@ function criticCard(panel) {
     .map(([k, v]) => `${k} ${fmt(v, 0)}`)
     .join(" · ");
   const wait = panel.waiting_test || {};
-  const bear = (panel.strongest_bear_evidence || []).map((t) => `<li>${escapeHtml(t)}</li>`).join("");
+  const bearList = (panel.strongest_bear_evidence || []);
   const variantRaw = String(panel.variant_view || panel.variant || "").trim();
   const variantClean = (!variantRaw || variantRaw.includes("NO_CLEAR") || variantRaw === "NO_CLEAR_VARIANT_VIEW")
     ? "현재 시장 컨센서스와 펀더멘털 지표 간의 정합성을 주시하고 있어."
     : variantRaw;
 
-  return `<article class="intro yang-brief">
-    <h3>🍵 전략검토 · ${escapeHtml(panel.posture_ko || panel.posture)} ${fmt(panel.score, 0)}</h3>
-    <p class="yang-voice">${escapeHtml(panel.one_line_judgment || panel.comment || "")}</p>
-    <p>${escapeHtml(panel.comment || "")}</p>
-    <p class="meta">${escapeHtml(axisLine)}</p>
-    <p><b>이미 가격에 들어간 이야기</b> ${escapeHtml(panel.consensus || "")}</p>
-    <p><b>다른 보기</b> ${escapeHtml(variantClean)}</p>
-    ${bear ? `<p><b>내가 가장 불편하게 보는 점</b></p><ul>${bear}</ul>` : ""}
-    ${wait.cost_of_waiting ? `<p><b>기다리면</b> ${escapeHtml(wait.benefit_of_waiting || "")} / <b>잃는 것</b> ${escapeHtml(wait.cost_of_waiting)}</p>` : ""}
-    ${panel.no_action_required ? "<p><b>지금은 아무것도 하지 않아도 돼.</b></p>" : ""}
-    <p class="hint">${escapeHtml(panel.disclaimer || "")}</p>
+  const post = String(panel.posture_ko || panel.posture || "");
+  const isNegative = /후퇴|퇴로|회피|거부|경고|주의|경계|보수|bear|retreat|avoid/i.test(post);
+  const isPositive = /진격|돌격|선제|공격|적극|bull|advance/i.test(post);
+
+  let cardStyle = "background:rgba(15,23,42,0.9); border:1px solid #1e293b; border-radius:10px; padding:16px; margin-top:12px;";
+  let badgeCls = "background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4);";
+  let badgeIcon = "🍵";
+  let voiceColor = "#93c5fd";
+
+  if (isNegative) {
+    cardStyle = "background:linear-gradient(145deg, rgba(244,63,94,0.12), rgba(15,23,42,0.95)); border:1px solid rgba(244,63,94,0.45); border-left:4px solid #f43f5e; border-radius:10px; padding:16px; margin-top:12px; box-shadow:0 4px 20px rgba(244,63,94,0.08);";
+    badgeCls = "background:rgba(244,63,94,0.25); color:#fda4af; border:1px solid rgba(244,63,94,0.6); font-weight:800;";
+    badgeIcon = "⚠️";
+    voiceColor = "#fda4af";
+  } else if (isPositive) {
+    cardStyle = "background:linear-gradient(145deg, rgba(16,185,129,0.12), rgba(15,23,42,0.95)); border:1px solid rgba(16,185,129,0.45); border-left:4px solid #10b981; border-radius:10px; padding:16px; margin-top:12px;";
+    badgeCls = "background:rgba(16,185,129,0.25); color:#6ee7b7; border:1px solid rgba(16,185,129,0.6); font-weight:800;";
+    badgeIcon = "🟢";
+    voiceColor = "#6ee7b7";
+  }
+
+  const bearHtml = bearList.length ? `
+    <div style="padding:10px 12px; background:rgba(244,63,94,0.14); border:1px solid rgba(244,63,94,0.35); border-radius:8px; margin:10px 0;">
+      <b style="color:#fda4af; font-size:12px; display:block; margin-bottom:5px;">🚨 내가 가장 불편하게 보는 점 (핵심 리스크)</b>
+      <ul style="margin:0; padding-left:14px; font-size:12px; color:#ffe4e6; line-height:1.6;">
+        ${bearList.map(t => `<li style="margin:2px 0;"><b>${escapeHtml(t)}</b></li>`).join("")}
+      </ul>
+    </div>
+  ` : "";
+
+  const waitHtml = (wait.cost_of_waiting || wait.benefit_of_waiting) ? `
+    <div style="padding:9px 12px; background:rgba(15,23,42,0.85); border:1px solid #334155; border-radius:8px; margin-top:10px; font-size:12px; line-height:1.5;">
+      ${wait.benefit_of_waiting ? `<div style="color:#cbd5e1;"><b style="color:#38bdf8;">⏳ 기다리면:</b> ${escapeHtml(wait.benefit_of_waiting)}</div>` : ""}
+      ${wait.cost_of_waiting ? `<div style="color:#cbd5e1; margin-top:4px;"><b style="color:#fb7185;">⚠️ 잃는 것:</b> ${escapeHtml(wait.cost_of_waiting)}</div>` : ""}
+    </div>
+  ` : "";
+
+  const cleanOneLine = (panel.one_line_judgment || "")
+    .replace(/Quant[에와를]?\s*(넣지|합산하지|바꾸지)\s*않습니다\.?[\s]*/gi, "")
+    .replace(/이\s*판단은\s*Quant와\s*합산하지\s*않아\.?[\s]*/gi, "")
+    .trim();
+
+  const cleanComment = (panel.comment || "")
+    .replace(/Quant[에와를]?\s*(넣지|합산하지|바꾸지)\s*않습니다\.?[\s]*/gi, "")
+    .replace(/이\s*판단은\s*Quant와\s*합산하지\s*않아\.?[\s]*/gi, "")
+    .trim();
+
+  return `<article class="intro yang-brief" style="${cardStyle}">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="margin:0; font-size:14px; color:#f8fafc;">🍵 실전 참모 전략검토</h3>
+      <span class="chip" style="${badgeCls}">${badgeIcon} ${escapeHtml(panel.posture_ko || panel.posture)} ${fmt(panel.score, 0)}점</span>
+    </div>
+    ${cleanOneLine ? `<p class="yang-voice" style="color:${voiceColor}; font-weight:700; font-size:12.5px; line-height:1.5; margin:0 0 8px;">"${escapeHtml(cleanOneLine)}"</p>` : ""}
+    ${cleanComment && cleanComment !== cleanOneLine ? `<p style="font-size:12px; color:#cbd5e1; line-height:1.5; margin:0 0 8px;">${escapeHtml(cleanComment)}</p>` : ""}
+    <div style="padding:6px 10px; background:rgba(15,23,42,0.6); border-radius:6px; font-size:11px; color:#94a3b8; margin-bottom:10px;">
+      📐 6대 축 검증: <b>${escapeHtml(axisLine)}</b>
+    </div>
+    ${panel.consensus ? `<p style="font-size:12px; color:#cbd5e1; margin:6px 0;"><b>💡 이미 가격에 들어간 이야기:</b> ${escapeHtml(panel.consensus)}</p>` : ""}
+    <p style="font-size:12px; color:#cbd5e1; margin:6px 0;"><b>🔍 다른 보기 (컨센서스 점검):</b> ${escapeHtml(variantClean)}</p>
+    ${bearHtml}
+    ${waitHtml}
+    ${panel.no_action_required ? `<div style="margin-top:10px; padding:7px 10px; background:rgba(244,63,94,0.18); border-radius:6px; font-weight:700; color:#fca5a5; font-size:12px;">🛑 지금은 무리하게 매수하지 않고 관망/퇴로 확보가 유리합니다.</div>` : ""}
   </article>`;
 }
 
