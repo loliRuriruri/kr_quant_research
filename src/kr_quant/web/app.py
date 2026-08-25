@@ -1909,21 +1909,40 @@ def api_research_infographic_get(ticker: str, as_of: str | None = None) -> Any:
     from fastapi.responses import HTMLResponse
     from kr_quant.research.report import find_report_file
     from kr_quant.research.infographic import generate_infographic_html
+    from kr_quant.timing.snapshot import load_prices
 
     s = load_settings()
     code = str(ticker).zfill(6)
+    row: dict[str, Any] = {}
+    day: str = as_of or ""
+    try:
+        row, day = _load_stock_row(code, as_of)
+    except Exception:
+        pass
+
+    try:
+        px = load_prices(s)
+        if not px.empty:
+            hist = px[px["ticker"].astype(str).str.zfill(6) == code]
+            if not hist.empty:
+                last_row = hist.iloc[-1]
+                row.setdefault("last_close", last_row.get("close"))
+                row.setdefault("market_cap", last_row.get("market_cap"))
+                row.setdefault("volume", last_row.get("volume"))
+                row.setdefault("trading_value", last_row.get("trading_value"))
+                if not row.get("company") and last_row.get("company"):
+                    row["company"] = last_row.get("company")
+    except Exception:
+        pass
+
     path = find_report_file(s.output_dir, code, as_of)
     if not path or not path.exists():
-        row, day = _load_stock_row(code, as_of)
         record = {"ticker": code, "company": row.get("company") or code, "as_of_date": day or as_of}
         html = generate_infographic_html(record, stock_row=row)
         return HTMLResponse(content=html)
 
     record = json.loads(path.read_text(encoding="utf-8"))
-    html = record.get("infographic_html")
-    if not html:
-        row, day = _load_stock_row(code, as_of)
-        html = generate_infographic_html(record, stock_row=row)
+    html = generate_infographic_html(record, stock_row=row)
     return HTMLResponse(content=html)
 
 
