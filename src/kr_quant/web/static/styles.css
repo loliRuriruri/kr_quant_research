@@ -5303,11 +5303,32 @@ td.num, th.num, td .meta, th {
   color: #d8b4fe;
 }
 
-/* Dashboard Expanded Leaderboard & Top N Toggle */
+/* Dashboard Expanded Leaderboard: aligned with right column (~12th rank / 860px) & smooth scroll */
 .dash-table-wrap {
-  max-height: none !important;
+  max-height: 860px !important;
+  overflow-y: auto !important;
   overflow-x: auto;
-  overflow-y: visible;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(56, 189, 248, 0.3) rgba(15, 23, 42, 0.6);
+}
+
+.dash-table-wrap::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.dash-table-wrap::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 4px;
+}
+
+.dash-table-wrap::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.35);
+  border-radius: 4px;
+}
+
+.dash-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.6);
 }
 
 .dash-topn-toggle {
