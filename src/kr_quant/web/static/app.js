@@ -2322,15 +2322,24 @@ async function openStock(ticker) {
           ` : `
             <div class="actions" style="display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 8px;">
               <button class="primary" id="btn-report" data-ticker="${ticker}" style="font-weight:700; padding:8px 16px;">🤖 AI 심층 리포트 생성</button>
+              <button id="btn-infographic-drawer" data-ticker="${ticker}" style="background:linear-gradient(135deg, rgba(6,182,212,0.25), rgba(59,130,246,0.25)); color:#38bdf8; border:1px solid rgba(56,189,248,0.55); font-weight:700; padding:8px 16px; transition:all 0.2s;">🎨 인포그래픽 뷰</button>
               <button id="btn-backtest-stock" data-ticker="${ticker}" style="background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4); font-weight:600; padding:8px 14px;">🧪 4대 전략 백테스트</button>
               <button id="btn-watch" data-ticker="${ticker}" data-company="${escapeHtml(r.company || "")}" style="padding:8px 14px;">⭐ 관심종목</button>
             </div>
-            <p class="hint" style="font-size:11.5px; color:#94a3b8; margin-top:4px;">💡 AI 심층 리포트는 선택한 LLM을 호출하여 5대 팩터, 4대 전략 백테스트, 공시 및 실전 매매 플레이북을 실시간 분석합니다.</p>
+            <p class="hint" style="font-size:11.5px; color:#94a3b8; margin-top:4px;">💡 AI 심층 리포트는 선택한 LLM으로 14대 지침을 분석하며, <b>인포그래픽 뷰</b>로 시각화 덱을 즉시 확인할 수 있습니다.</p>
           `}
-          <div id="report-box"><p>저장된 AI 분석 리포트를 불러오는 중…</p></div>
+          <div id="report-box"><p style="font-size:12px; color:#64748b;">저장된 AI 분석 리포트를 확인하는 중…</p></div>
+
+          <!-- 7. 핵심 재무 팩트 & 기업 백과 & 본사 위치 (좌측 하단 1:1 배치) -->
+          <article class="intro" style="margin-top:14px;">
+            <h3>핵심 재무 팩트</h3>
+            <div class="facts-grid">${facts}</div>
+          </article>
+          ${encyc ? `<article class="intro"><h3>기업 백과</h3>${encyc}</article>` : ""}
+          ${locBlock}
         </div>
 
-        <!-- COLUMN 2 (RIGHT): 공식 수급 90일, 손자병법 5사 & 참모 분석, 공시 이벤트, 재무 팩트 & 기업 정보, 실시간 뉴스 -->
+        <!-- COLUMN 2 (RIGHT): 공식 수급 90일, 손자병법 5사 & 참모 분석, 공시 이벤트, Yahoo, 실시간 뉴스 -->
         <div>
           <!-- 1. 공식 수급 90일 -->
           ${flow90Block(data.flow90)}
@@ -2342,15 +2351,7 @@ async function openStock(ticker) {
           <!-- 3. 공시 이벤트 -->
           ${eventsBlock(data.events)}
 
-          <!-- 4. 핵심 재무 팩트 & 기업 백과 & 본사 위치 -->
-          <article class="intro">
-            <h3>핵심 재무 팩트</h3>
-            <div class="facts-grid">${facts}</div>
-          </article>
-          ${encyc ? `<article class="intro"><h3>기업 백과</h3>${encyc}</article>` : ""}
-          ${locBlock}
-
-          <!-- 5. Yahoo Financials & 실시간 뉴스 & 웹검색 -->
+          <!-- 4. Yahoo Financials & 실시간 뉴스 & 웹검색 -->
           ${yahooBlock}
           ${newsBlock}
         </div>
@@ -2363,10 +2364,24 @@ async function openStock(ticker) {
         openStrategyBacktest(code, r.company || code).catch((err) => alert(err.message));
       });
       $("#btn-report")?.addEventListener("click", () => runReport(code).catch((err) => alert(err.message)));
+      $("#btn-infographic-drawer")?.addEventListener("click", async () => {
+        try {
+          const data = await api(`/api/research/${code}/report`);
+          if (data.exists && data.row) {
+            openReportModal(data.row);
+          } else {
+            if (confirm(`아직 생성된 리포트가 없습니다. 지금 ${r.company || code}의 AI 심층 리포트 및 인포그래픽을 생성할까요?`)) {
+              runReport(code).catch((err) => alert(err.message));
+            }
+          }
+        } catch (err) {
+          window.open(`/api/research/${code}/infographic`, "_blank");
+        }
+      });
       $("#btn-watch")?.addEventListener("click", () => addWatch(code, r.company || "").catch((err) => alert(err.message)));
     }
     loadReport(code).catch(() => {
-      $("#report-box").innerHTML = "<p>저장된 AI 분석 리포트 없음</p>";
+      $("#report-box").innerHTML = "<p style='font-size:12px; color:#64748b;'>저장된 AI 분석 리포트 없음</p>";
     });
   } catch (err) {
     $("#drawer-body").innerHTML = `<div style="padding:20px; color:#ef4444;"><h3>❌ 데이터 로딩 실패</h3><p>${escapeHtml(err.message)}</p></div>`;
@@ -2837,18 +2852,23 @@ function renderReport(rec) {
   const box = $("#report-box");
   if (!box) return;
   if (!rec) {
-    box.innerHTML = "<p>아직 AI 분석 리포트가 없습니다.</p>";
+    box.innerHTML = `<p style="font-size:12px; color:#64748b; margin:6px 0 0;">💡 아직 생성된 AI 리포트가 없습니다. 상단 [AI 심층 리포트 생성] 또는 [인포그래픽 뷰]를 클릭하세요.</p>`;
     return;
   }
   box.innerHTML = `
-    <h3>AI 분석 리포트 · ${rec.provider || ""} ${rec.model || ""}</h3>
-    <p class="hint">옆 칸에서는 읽기 어렵습니다. 큰 창에서 보세요.</p>
-    <div class="actions">
-      <button class="primary" id="btn-report-wide">크게 보기</button>
+    <div style="padding:10px 14px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.3); border-radius:10px; margin-top:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:12px; font-weight:700; color:#38bdf8;">🤖 AI 리포트 (${escapeHtml(rec.provider || "")} ${escapeHtml(rec.model || "")})</span>
+        <span class="chip ok" style="font-size:10.5px;">생성 완료</span>
+      </div>
+      <div style="display:flex; gap:6px; margin-top:8px;">
+        <button class="primary small" id="btn-report-wide" style="font-size:11.5px; padding:5px 12px; font-weight:700;">🎨 인포그래픽 / 리포트 열기</button>
+        <button class="ghost small" id="btn-report-regen" style="font-size:11.5px; padding:5px 10px;">🔄 다시 생성</button>
+      </div>
     </div>
   `;
-  const btn = $("#btn-report-wide");
-  if (btn) btn.addEventListener("click", () => openReportModal(rec));
+  $("#btn-report-wide")?.addEventListener("click", () => openReportModal(rec));
+  $("#btn-report-regen")?.addEventListener("click", () => runReport(rec.ticker).catch((err) => alert(err.message)));
 }
 
 async function loadReport(ticker, asOf) {
