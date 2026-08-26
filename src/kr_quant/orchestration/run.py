@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from kr_quant.atomic_io import write_parquet_atomic
 from kr_quant.calendar import next_trading_day, trading_days_from_dates
 from kr_quant.factors.metrics import make_scored
 from kr_quant.financials.snapshot import build_inputs_for_security
@@ -194,20 +195,20 @@ def run_from_staged(
 
     dated = settings.output_dir / f"as_of_date={as_of.isoformat()}"
     dated.mkdir(parents=True, exist_ok=True)
-    all_df.to_parquet(dated / "all_stocks.parquet", index=False)
-    top100.to_parquet(dated / "top100.parquet", index=False)
-    top20.to_parquet(dated / "top20.parquet", index=False)
+    write_parquet_atomic(all_df, dated / "all_stocks.parquet")
+    write_parquet_atomic(top100, dated / "top100.parquet")
+    write_parquet_atomic(top20, dated / "top20.parquet")
     _csv_ready(top100).to_csv(dated / "top100.csv", index=False, encoding="utf-8-sig")
     _csv_ready(top20).to_csv(dated / "top20.csv", index=False, encoding="utf-8-sig")
     if not events_df.empty:
-        events_df.to_parquet(dated / "change_events.parquet", index=False)
+        write_parquet_atomic(events_df, dated / "change_events.parquet")
 
     persist_history(db, ctx, records)
     hist_path = settings.output_dir / "daily_history.parquet"
     hist_df = db.execute(
         "SELECT * FROM fact_daily_ranking ORDER BY as_of_date, coalesce(quant_rank, 999999)"
     ).fetchdf()
-    hist_df.to_parquet(hist_path, index=False)
+    write_parquet_atomic(hist_df, hist_path)
 
     quality = build_quality_report(
         ctx,
@@ -218,10 +219,10 @@ def run_from_staged(
     write_json(dated / "data_quality_report.json", quality)
 
     if publish_latest and ctx.status in {"success", "partial"}:
-        all_df.to_parquet(settings.output_dir / "latest_all_stocks.parquet", index=False)
+        write_parquet_atomic(all_df, settings.output_dir / "latest_all_stocks.parquet")
         _csv_ready(top100).to_csv(settings.output_dir / "latest_top100.csv", index=False, encoding="utf-8-sig")
         _csv_ready(top20).to_csv(settings.output_dir / "latest_top20.csv", index=False, encoding="utf-8-sig")
-        hist_df.to_parquet(settings.output_dir / "daily_history.parquet", index=False)
+        write_parquet_atomic(hist_df, settings.output_dir / "daily_history.parquet")
         write_json(settings.output_dir / "data_quality_report.json", quality)
 
     manifest = {
@@ -287,9 +288,9 @@ def ingest_krx_day(settings: Settings, as_of: date, markets: list[str] | None = 
         old["trade_date"] = pd.to_datetime(old["trade_date"]).dt.date
         out["trade_date"] = pd.to_datetime(out["trade_date"]).dt.date
         combo = pd.concat([old[old["trade_date"] != as_of], out], ignore_index=True)
-        combo.to_parquet(dest, index=False)
+        write_parquet_atomic(combo, dest)
     else:
-        out.to_parquet(dest, index=False)
+        write_parquet_atomic(out, dest)
     return dest
 
 
@@ -330,7 +331,7 @@ def ingest_dart_financials(
     corp_df = pd.DataFrame(corp_rows)
     dest_dir = settings.staged_dir / "live"
     dest_dir.mkdir(parents=True, exist_ok=True)
-    corp_df.to_parquet(dest_dir / "corp_map.parquet", index=False)
+    write_parquet_atomic(corp_df, dest_dir / "corp_map.parquet")
 
     lookup = load_account_lookup(settings.account_map)
     sign_by_canonical = {
@@ -403,7 +404,7 @@ def ingest_dart_financials(
         if dest.exists():
             old = pd.read_parquet(dest)
             facts_df = pd.concat([old, facts_df], ignore_index=True)
-        facts_df.to_parquet(dest, index=False)
+        write_parquet_atomic(facts_df, dest)
     master_dest = dest_dir / "master.parquet"
     master = mapped.rename(columns={"stock_code": "ticker", "corp_name": "company"})[
         ["ticker", "corp_code", "company"]
@@ -415,5 +416,5 @@ def ingest_dart_financials(
     master["list_date"] = None
     master["induty_code"] = None
     master["acc_mt"] = 12
-    master.to_parquet(master_dest, index=False)
+    write_parquet_atomic(master, master_dest)
     return dest_dir / "financial_facts.parquet"

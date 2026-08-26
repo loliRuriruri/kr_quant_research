@@ -12,6 +12,7 @@ from xml.etree import ElementTree as ET
 
 import pandas as pd
 
+from kr_quant.atomic_io import write_parquet_atomic
 from kr_quant.ingest.krx import KrxOpenApiAdapter
 from kr_quant.ingest.opendart import OpenDartAdapter
 from kr_quant.ingest.store import write_raw_json
@@ -88,7 +89,7 @@ def upsert_parquet(path: Path, new_df: pd.DataFrame, key_cols: list[str]) -> Non
         combo = combo.drop_duplicates(key_cols, keep="last")
     else:
         combo = new_df
-    combo.to_parquet(path, index=False)
+    write_parquet_atomic(combo, path)
 
 
 def fetch_krx_master(settings: Settings, as_of: date) -> pd.DataFrame:
@@ -123,7 +124,7 @@ def fetch_krx_master(settings: Settings, as_of: date) -> pd.DataFrame:
         frames.append(pd.DataFrame(recs))
     master = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     dest = live_dir(settings) / "krx_master.parquet"
-    master.to_parquet(dest, index=False)
+    write_parquet_atomic(master, dest)
     logger.info("KRX master %s rows=%s", as_of, len(master))
     return master
 
@@ -213,7 +214,7 @@ def fetch_dart_corp_map(settings: Settings) -> pd.DataFrame:
         )
     df = pd.DataFrame(rows)
     dest = live_dir(settings) / "corp_map.parquet"
-    df.to_parquet(dest, index=False)
+    write_parquet_atomic(df, dest)
     listed = df[df["stock_code"].str.len() == 6]
     logger.info("DART corp map listed=%s", len(listed))
     return df
@@ -456,7 +457,7 @@ def build_live_master(settings: Settings, as_of: date) -> pd.DataFrame:
         if c in master.columns
     ]
     out = master[keep].drop_duplicates("ticker")
-    out.to_parquet(folder / "master.parquet", index=False)
+    write_parquet_atomic(out, folder / "master.parquet")
     extra = out[["ticker", "listed_shares"]].rename(columns={"listed_shares": "shares_latest"}).copy()
     extra["shares_latest"] = pd.to_numeric(
         extra["shares_latest"].astype(str).str.replace(",", "", regex=False), errors="coerce"
@@ -464,7 +465,7 @@ def build_live_master(settings: Settings, as_of: date) -> pd.DataFrame:
     extra["shares_12m_ago"] = None
     extra["potential_dilution_pct"] = None
     extra["cb_bw_count_24m"] = 0
-    extra.to_parquet(folder / "extra.parquet", index=False)
+    write_parquet_atomic(extra, folder / "extra.parquet")
     return out
 
 
