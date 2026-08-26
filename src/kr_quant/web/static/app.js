@@ -6435,11 +6435,6 @@ function renderStrategy(data) {
       const paramsKo = r.best_params_ko || best.params_ko || "";
       const familyKo = r.best_family_ko || best.family_ko || "";
       const stab = r.stability_label || "LOW";
-      const stabHtml = stab === "HIGH" 
-        ? `<span class="strat-badge-high">🟢 HIGH (최상)</span>`
-        : stab === "MEDIUM"
-        ? `<span class="strat-badge-med">🟡 MED (보통)</span>`
-        : `<span class="strat-badge-low">🟠 LOW (표본부족)</span>`;
 
       const fam = (r.best_family || "").includes("rsi") || (r.best_name || "").includes("RSI")
         ? "rsi"
@@ -6451,24 +6446,62 @@ function renderStrategy(data) {
       const pillClass = fam;
       const icon = fam === "rsi" ? "⚡" : fam === "bb" ? "📊" : fam === "ma" ? "📈" : "📦";
 
+      let stratTipTitle = "";
+      let stratTipDesc = "";
+      let stratTipHint = "";
       let ruleSummary = "";
+
       if (fam === "rsi") {
+        stratTipTitle = "⚡ RSI 평균회귀 (Mean Reversion)";
+        stratTipDesc = "RSI(상대강도지수)가 과매도(≤30) 바닥권에 진입할 때 매수하고, 과매수(≥70) 과열권으로 올라오면 분할 익절하는 단기 반등 전략입니다.";
+        stratTipHint = "우량 대형주 및 박스권 횡보장에서 가장 승률과 샤프지수가 높습니다.";
         ruleSummary = "과매도(≤30) 매수 → 과매수(≥70) 익절";
       } else if (fam === "bb") {
+        stratTipTitle = "📊 볼린저 밴드 하단 반등 (Bollinger Reversion)";
+        stratTipDesc = "주가가 20일 이동평균선 대비 2 표준편차 하단 밴드를 이탈하여 과매도될 때 저점 매수하고, 중심선(20일선)으로 회귀할 때 익절하는 변동성 반등 전략입니다.";
+        stratTipHint = "강력한 실적 펀더멘털을 갖춘 종목의 일시적 패닉 투매 구간에서 강력한 안전마진을 제공합니다.";
         ruleSummary = "하단 밴드 이탈 매수 → 중심선 복귀 익절";
       } else if (fam === "ma") {
+        stratTipTitle = "📈 이동평균 골든크로스 (Trend Following)";
+        stratTipDesc = "단기 이동평균선(예: 10일)이 장기 이동평균선(예: 40일)을 상향 돌파(골든크로스)할 때 매수하여 대세 상승 추세를 추종하고, 데드크로스 발생 시 전량 청산하는 추세추종 전략입니다.";
+        stratTipHint = "대세 상승장 및 실적 턴어라운드 주도주에서 큰 시세 차익을 거둘 수 있습니다.";
         ruleSummary = "단기선 골든크로스 매수 → 데드크로스 청산";
       } else {
+        stratTipTitle = "📦 돈치안 박스권 돌파 (Donchian Breakout)";
+        stratTipDesc = "과거 N일간의 최고가를 상향 돌파할 때 강력한 모멘텀으로 매수하고, N일 최저가를 이탈할 때 손절/익절하는 터틀 트레이딩 기반 돌파 전략입니다.";
+        stratTipHint = "신고가를 갱신하는 강력한 성장주와 역사적 저항선을 뚫은 모멘텀주에 유효합니다.";
         ruleSummary = "전고점 박스권 상단 돌파 매수 → 하단 청산";
+      }
+
+      let stabTipTitle = "";
+      let stabTipDesc = "";
+      let stabTipHint = "";
+      let stabHtml = "";
+
+      if (stab === "HIGH") {
+        stabTipTitle = "🟢 안정성 등급: HIGH (미래·순환 검증 통과)";
+        stabTipDesc = "1) 미래 가상 구간(OOS) 샤프 지수 양수, 2) 3개년 순환 검증(Walk-Forward) 승률 60% 이상을 동시에 통과한 최상위 신뢰도 전략입니다. 과거 과적합(착시)이 없어 실전 매매 적용에 가장 적합합니다.";
+        stabTipHint = "시그널 발생 익일 시가 분할 매수로 적극 활용을 권장합니다.";
+        stabHtml = `<span class="strat-badge-high has-tip" data-tip-title="${escapeHtml(stabTipTitle)}" data-tip="${escapeHtml(stabTipDesc)}" data-tip-hint="${escapeHtml(stabTipHint)}" tabindex="0">🟢 HIGH (최상)</span>`;
+      } else if (stab === "MEDIUM") {
+        stabTipTitle = "🟡 안정성 등급: MED (보통·양호)";
+        stabTipDesc = "과거 백테스트 성과는 양호하나, 특정 시장 국면이나 시기 순환 테스트에서 일시적 수익률 편차가 발생한 전략입니다. 실전 매매 시 비중을 조절하여 분산 투자해야 합니다.";
+        stabTipHint = "포트폴리오 비중 5~10% 이내로 분할 진입을 권장합니다.";
+        stabHtml = `<span class="strat-badge-med has-tip" data-tip-title="${escapeHtml(stabTipTitle)}" data-tip="${escapeHtml(stabTipDesc)}" data-tip-hint="${escapeHtml(stabTipHint)}" tabindex="0">🟡 MED (보통)</span>`;
+      } else {
+        stabTipTitle = "🟠 안정성 등급: LOW (표본 부족 / 연구 후보)";
+        stabTipDesc = "과거 3년간 매매 체결 횟수가 부족하거나(8회 미만), 최근 시장 변동성으로 인해 미래 검증에서 편차가 큰 전략입니다. 맹목적 추종보다는 연구/관찰 후보로 활용해야 합니다.";
+        stabTipHint = "정식 매매보다는 소액 분할 또는 차트 확인 후 보조 지표로 참고하세요.";
+        stabHtml = `<span class="strat-badge-low has-tip" data-tip-title="${escapeHtml(stabTipTitle)}" data-tip="${escapeHtml(stabTipDesc)}" data-tip-hint="${escapeHtml(stabTipHint)}" tabindex="0">🟠 LOW (표본부족)</span>`;
       }
 
       let actionGuideChip = "";
       if (stab === "HIGH") {
-        actionGuideChip = `<span class="chip ok" style="font-size:10.5px; padding:2px 7px; font-weight:700;">✅ 미래 검증 완료 · 시가 분할 매수 적합</span>`;
+        actionGuideChip = `<span class="chip ok has-tip" data-tip-title="🎯 실전 액션 가이드" data-tip="미래/순환 검증을 모두 통과한 종목입니다. 시그널 발생 익일 시가에 분할 매수 진입하기 적합합니다." style="font-size:10.5px; padding:2px 7px; font-weight:700;" tabindex="0">✅ 미래 검증 완료 · 시가 분할 매수 적합</span>`;
       } else if (stab === "MEDIUM") {
-        actionGuideChip = `<span class="chip warn" style="font-size:10.5px; padding:2px 7px; font-weight:700;">⚠️ 구간별 편차 · 비중 분산 권장</span>`;
+        actionGuideChip = `<span class="chip warn has-tip" data-tip-title="🎯 실전 액션 가이드" data-tip="시장 국면에 따라 수익률 편차가 발생할 수 있으므로, 계좌 내 비중을 5% 이내로 분산 진입하세요." style="font-size:10.5px; padding:2px 7px; font-weight:700;" tabindex="0">⚠️ 구간별 편차 · 비중 분산 권장</span>`;
       } else {
-        actionGuideChip = `<span class="chip neutral" style="font-size:10.5px; padding:2px 7px;">🧪 표본 부족 · 소액 분할/관찰</span>`;
+        actionGuideChip = `<span class="chip neutral has-tip" data-tip-title="🎯 실전 액션 가이드" data-tip="표본 데이터가 부족하므로 맹목적 매수보다는 실시간 호가/차트 확인 후 소액 분할로 관찰하세요." style="font-size:10.5px; padding:2px 7px;" tabindex="0">🧪 표본 부족 · 소액 분할/관찰</span>`;
       }
 
       return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker || "")}">
@@ -6482,7 +6515,7 @@ function renderStrategy(data) {
           </div>
         </td>
         <td>
-          <div class="strat-pill-name ${pillClass}">${icon} ${escapeHtml(r.best_name || "—")}</div>
+          <div class="strat-pill-name ${pillClass} has-tip" data-tip-title="${escapeHtml(stratTipTitle)}" data-tip="${escapeHtml(stratTipDesc)}" data-tip-hint="${escapeHtml(stratTipHint)}" tabindex="0">${icon} ${escapeHtml(r.best_name || "—")}</div>
           <div class="params-ko" style="color:#94a3b8; font-size:11px; margin-top:2px;">${escapeHtml(paramsKo || familyKo)}</div>
         </td>
         <td>${stabHtml}</td>
@@ -6549,19 +6582,19 @@ function renderStrategy(data) {
 
     <!-- Strategy Summary KPIs -->
     <div class="strat-summary-row">
-      <div class="strat-summary-item">
+      <div class="strat-summary-item has-tip" data-tip-title="🟢 안정성 최상 (HIGH)" data-tip="미래 가상 구간(OOS) 및 순환 검증(WF)을 모두 통과한 무결점 최고 신뢰도 전략 종목 수입니다." tabindex="0">
         <span>🟢 안정성 최상 (HIGH)</span>
         <b>${highCount} <small style="font-size:12px; color:#94a3b8; font-weight:normal;">개 종목</small></b>
       </div>
-      <div class="strat-summary-item">
+      <div class="strat-summary-item has-tip" data-tip-title="🟡 안정성 보통 (MED)" data-tip="수익성은 양호하나 특정 국면별 편차가 일부 존재하는 전략 종목 수입니다. 분할 분산 진입을 권장합니다." tabindex="0">
         <span>🟡 안정성 보통 (MED)</span>
         <b>${medCount} <small style="font-size:12px; color:#94a3b8; font-weight:normal;">개 종목</small></b>
       </div>
-      <div class="strat-summary-item">
+      <div class="strat-summary-item has-tip" data-tip-title="📊 TOP20 평균 샤프 지수" data-tip="위험 1단위 감수 대비 초과수익 비율의 평균치입니다. 1.0 이상이면 시장 대비 탁월한 초과수익을 의미합니다." tabindex="0">
         <span>📊 TOP20 평균 샤프 지수</span>
         <b>${avgSharpe} <small style="font-size:12px; color:#38bdf8; font-weight:normal;">(위험 대비 초과수익 우수)</small></b>
       </div>
-      <div class="strat-summary-item">
+      <div class="strat-summary-item has-tip" data-tip-title="🛡️ TOP20 평균 최대낙폭 (MDD)" data-tip="전략 보유 기간 중 겪었던 최대 하락폭의 평균치입니다. 낮을수록 하락장 방어력이 견고합니다." tabindex="0">
         <span>🛡️ TOP20 평균 최대낙폭</span>
         <b>${avgMdd} <small style="font-size:12px; color:#34d399; font-weight:normal;">(리스크 방어력 양호)</small></b>
       </div>
