@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,9 @@ import pandas as pd
 
 from kr_quant.settings import Settings
 from kr_quant.strategy.run import _prices
+from kr_quant.universe.tradability import evaluate_candidate_tradability
+
+logger = logging.getLogger("kr_quant.strategy.seasonality")
 
 EVENT_PRESETS: dict[str, dict[str, Any]] = {
     "winter_heater": {
@@ -52,7 +56,13 @@ def cache_path(settings: Settings) -> Path:
 
 _TICKER_META_CACHE: dict[str, Any] = {"ts": 0.0, "map": {}}
 _SEASONALITY_DB_MEM: dict[str, Any] = {"ts": 0.0, "db": None}
-_CLEAN_TICKERS_CACHE: dict[str, Any] = {"ts": 0.0, "tickers": set()}
+_CLEAN_TICKERS_CACHE: dict[str, Any] = {
+    "ts": 0.0,
+    "signature": None,
+    "tickers": set(),
+    "ready": False,
+    "errors": (),
+}
 PRE_ENTRY_STAGE_WEIGHT: dict[str, int] = {
     "TODAY_ENTRY": 100,
     "PRE_ENTRY_15": 80,
@@ -64,55 +74,60 @@ PRE_ENTRY_STAGE_WEIGHT: dict[str, int] = {
 
 
 def _clean_active_tickers(settings: Settings) -> set[str]:
-    """Returns set of clean, active, non-halted, non-penny, non-risk tickers."""
+    """Return a fail-closed candidate set from current official and scored sources."""
     now = time.time()
-    if _CLEAN_TICKERS_CACHE["tickers"] and now - float(_CLEAN_TICKERS_CACHE.get("ts") or 0) < 1800:
-        return _CLEAN_TICKERS_CACHE["tickers"]
 
-    prices = _prices(settings)
-    if prices is None or prices.empty or "ticker" not in prices.columns:
-        return set()
-
-    df = prices.copy()
-    date_col = "trade_date" if "trade_date" in df.columns else "date"
-    df["dt"] = pd.to_datetime(df[date_col], errors="coerce")
-    df = df.dropna(subset=["dt"]).sort_values(["ticker", "dt"])
-    df["ticker"] = df["ticker"].astype(str).str.zfill(6)
-
-    max_date = df["dt"].max()
-    active_cutoff = max_date - pd.Timedelta(days=14)
-    last_rows = df.groupby("ticker").last()
-
-    vol_series = last_rows["volume"] if "volume" in last_rows.columns else pd.Series(1, index=last_rows.index)
-    active_mask = (
-        (last_rows["dt"] >= active_cutoff) &
-        (last_rows["close"] >= 1000.0) &
-        (vol_series > 0)
+    price_path = next(
+        (p for p in (settings.staged_dir / "live" / "prices.parquet", settings.staged_dir / "demo" / "prices.parquet") if p.exists()),
+        None,
     )
-    clean_tickers = set(last_rows[active_mask].index)
+    scored_path = settings.output_dir / "latest_all_stocks.parquet"
+    if not scored_path.exists():
+        scored_path = next(
+            (
+                p / "scored_all.parquet"
+                for p in sorted(settings.output_dir.glob("as_of_date=*"), reverse=True)
+                if (p / "scored_all.parquet").exists()
+            ),
+            scored_path,
+        )
+    master_path = settings.staged_dir / "live" / "krx_master.parquet"
+    if not master_path.exists():
+        master_path = settings.staged_dir / "live" / "master.parquet"
 
-    p_latest = settings.output_dir / "latest_all_stocks.parquet"
-    if not p_latest.exists():
-        for p in sorted(settings.output_dir.glob("as_of_date=*"), reverse=True):
-            if (p / "scored_all.parquet").exists():
-                p_latest = p / "scored_all.parquet"
-                break
-    if p_latest.exists():
-        try:
-            df_latest = pd.read_parquet(p_latest)
-            for _, r_stock in df_latest.iterrows():
-                t = str(r_stock.get("ticker", "")).zfill(6)
-                ex = r_stock.get("exclusion_reasons")
-                ex_l = [str(x) for x in list(ex)] if (ex is not None and hasattr(ex, "__iter__") and not isinstance(ex, str)) else []
-                co = str(r_stock.get("company") or "")
-                if any(k in ex_l for k in ["SPAC", "PREFERRED_SHARE", "NON_COMMON_SECURITY", "REIT_MODEL_NOT_AVAILABLE", "LIQUIDITY_FAIL", "MANAGEMENT_STOCK", "DELISTING_RISK", "TRADING_HALT", "AUDIT_DISQUALIFIED"]) \
-                   or any(k in co for k in ["관리", "정리매매", "환기"]):
-                    clean_tickers.discard(t)
-        except Exception:
-            pass
+    paths = (price_path, scored_path, master_path)
+    signature = tuple(
+        (str(path), path.stat().st_mtime_ns, path.stat().st_size) if path is not None and path.exists() else None
+        for path in paths
+    )
+    if (
+        _CLEAN_TICKERS_CACHE.get("signature") == signature
+        and now - float(_CLEAN_TICKERS_CACHE.get("ts") or 0) < 60
+    ):
+        return set(_CLEAN_TICKERS_CACHE.get("tickers") or set())
 
-    _CLEAN_TICKERS_CACHE["ts"] = now
-    _CLEAN_TICKERS_CACHE["tickers"] = clean_tickers
+    result = None
+    try:
+        prices = pd.read_parquet(price_path) if price_path is not None and price_path.exists() else pd.DataFrame()
+        scored = pd.read_parquet(scored_path) if scored_path.exists() else pd.DataFrame()
+        master = pd.read_parquet(master_path) if master_path.exists() else pd.DataFrame()
+        result = evaluate_candidate_tradability(prices, scored, master)
+    except Exception as exc:  # fail closed on transient/corrupt source reads
+        logger.error("Tradability gate source read failed: %s", exc)
+
+    clean_tickers = set(result.allowed_tickers) if result is not None and result.ready else set()
+    errors = result.errors if result is not None else ("TRADABILITY_SOURCE_READ_FAILED",)
+    if errors:
+        logger.warning("Tradability gate closed candidate output: %s", ",".join(errors))
+    _CLEAN_TICKERS_CACHE.update(
+        {
+            "ts": now,
+            "signature": signature,
+            "tickers": clean_tickers,
+            "ready": bool(result is not None and result.ready),
+            "errors": errors,
+        }
+    )
     return clean_tickers
 
 
@@ -258,8 +273,7 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
     df["month"] = df["date"].dt.month
     df["ticker"] = df["ticker"].astype(str).str.zfill(6)
 
-    if clean_set:
-        df = df[df["ticker"].isin(clean_set)]
+    df = df[df["ticker"].isin(clean_set)]
 
     names_map: dict[str, dict[str, str]] = ticker_meta_map(settings)
     if not names_map and "company" in df.columns:
@@ -380,7 +394,12 @@ def scan_seasonality(
 ) -> list[dict[str, Any]]:
     """Filters and ranks stocks by seasonality criteria."""
     db = get_seasonality_database(settings)
-    stocks = list(db.get("stocks", {}).values())
+    clean_set = _clean_active_tickers(settings)
+    stocks = [
+        stock
+        for stock in db.get("stocks", {}).values()
+        if str(stock.get("ticker") or "").zfill(6) in clean_set
+    ]
 
     t_month = target_month if target_month and 1 <= target_month <= 12 else pd.Timestamp.now().month
 
@@ -497,7 +516,12 @@ def rank_institutional_events(
 ) -> list[dict[str, Any]]:
     """Institutional-grade 3-Pillar Event-Driven Screener (Specification v1.0)."""
     db = build_seasonality_database(settings)
-    stocks_map = db.get("stocks", {})
+    clean_set = _clean_active_tickers(settings)
+    stocks_map = {
+        ticker: stock
+        for ticker, stock in db.get("stocks", {}).items()
+        if str(ticker).zfill(6) in clean_set
+    }
     events = get_upcoming_events(horizon_days=horizon_days)
 
     # Load recent context/snapshot metrics if available for confirmation
@@ -766,8 +790,7 @@ def scan_seasonality_discovery(
 
     meta = ticker_meta_map(settings)
     clean_set = _clean_active_tickers(settings)
-    if clean_set:
-        cached_list = [item for item in cached_list if str(item.get("ticker", "")).zfill(6) in clean_set]
+    cached_list = [item for item in cached_list if str(item.get("ticker", "")).zfill(6) in clean_set]
 
     for item in cached_list:
         _apply_market_meta(item, meta)
@@ -875,7 +898,7 @@ def get_pre_entry_glance(settings: Settings, n: int = 3, lookback_years: int = 5
     valid_rows = []
     for r in rows:
         t = str(r.get("ticker") or "").zfill(6)
-        if clean_set and t not in clean_set:
+        if t not in clean_set:
             continue
         q = quotes.get(t, {})
         close = q.get("last_close")
