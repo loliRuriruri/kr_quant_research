@@ -1535,17 +1535,47 @@
     <!-- Discovery Candidate Detail Modal (mobile playbook order) -->
     <div id="discovery-detail-modal" class="discovery-modal-overlay hidden">
       <div class="discovery-modal-container">
-        <div class="discovery-modal-head">
-          <div>
+        <div class="discovery-modal-head" style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px;">
+          <div style="flex:1;">
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <h2 id="disc-modal-company" style="margin:0; font-size:22px; font-weight:800; color:#fff;">—</h2>
-              <span id="disc-modal-ticker" style="color:#94a3b8; font-size:14px; font-family:monospace;">—</span>
+              <span id="disc-modal-ticker" style="color:#94a3b8; font-size:14px; font-family:monospace; font-weight:700;">—</span>
               <span id="disc-modal-market" class="chip" style="background:#1e293b; color:#cbd5e1;">KOSPI</span>
               <span id="disc-modal-stage-pill" class="stage-pill stage-today">🔥 오늘 진입 D-0</span>
             </div>
             <p id="disc-modal-theme" style="margin:6px 0 0; font-size:12.5px; color:#38bdf8;">—</p>
           </div>
-          <button type="button" class="ghost" id="disc-modal-close-btn" style="font-size:18px; padding:4px 10px; line-height:1;">✕</button>
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <!-- External Chart Verification Buttons -->
+            <a id="disc-modal-naver-link" href="#" target="_blank" class="chart-link-btn chart-link-naver" title="네이버 증권 종합 차트 및 호가/체결 새창 확인">
+              <span style="font-weight:900;">N</span> 네이버 차트 ↗
+            </a>
+            <a id="disc-modal-toss-link" href="#" target="_blank" class="chart-link-btn chart-link-toss" title="토스증권 실시간 차트 및 수급 새창 확인">
+              <span style="font-weight:900;">T</span> 토스 차트 ↗
+            </a>
+            <button type="button" id="disc-modal-chart-toggle-btn" class="chart-link-btn chart-link-embed" title="창 내 실시간 캔들 차트 열기/닫기">
+              📈 캔들차트 보기
+            </button>
+            <button type="button" class="ghost" id="disc-modal-close-btn" style="font-size:20px; padding:6px 12px; line-height:1; border-radius:8px;">✕</button>
+          </div>
+        </div>
+
+        <!-- Embedded Interactive Chart Container (Collapsible) -->
+        <div id="disc-modal-chart-box" class="disc-chart-container hidden" style="margin-top:14px; background:#0b1220; border:1px solid rgba(56,189,248,0.3); border-radius:12px; padding:12px; overflow:hidden;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <b style="color:#38bdf8; font-size:13px;">📈 실시간 시세 & 캔들 차트 검증</b>
+              <span id="disc-modal-chart-sub" style="font-size:11px; color:#94a3b8;">(일봉/주봉 시세 및 계절성 구간 확인)</span>
+            </div>
+            <div class="chart-period-tabs">
+              <button type="button" class="chart-tab-btn active" data-chart-period="day">일봉</button>
+              <button type="button" class="chart-tab-btn" data-chart-period="week">주봉</button>
+              <button type="button" class="chart-tab-btn" data-chart-period="month">월봉</button>
+            </div>
+          </div>
+          <div id="disc-modal-chart-frame-box" style="width:100%; height:320px; position:relative; background:#090d16; border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center;">
+            <img id="disc-modal-chart-img" style="width:100%; height:100%; object-fit:contain;" src="" alt="종목 시세 차트" />
+          </div>
         </div>
 
         <div style="margin-top:14px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:12px 14px;">

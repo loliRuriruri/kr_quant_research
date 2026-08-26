@@ -9630,22 +9630,43 @@ function renderDiscDeepPlaybook(r, months) {
   const sample = r.sample_count || r.years_count || track.length || 0;
   const monthCells = renderPbMonthHeat(months, targetM);
 
+  const winDateStr = r.entry_window_str || r.window_name || "계절성 윈도우";
   const years = track.map((y) => {
     const ret = Number(y.return || 0);
     const loss = !y.is_win;
+    const pct = (ret * 100).toFixed(1);
+    const sign = ret > 0 ? "+" : "";
     const fail = (r.failed_analysis || []).find((f) => String(f).includes(String(y.year)));
-    return `<div class="pb-year-row ${loss ? "loss" : ""}">
-      <div><b>${y.year}년</b> <span class="meta">${escapeHtml(r.entry_window_str || r.window_name || "")}</span>
-        ${fail ? `<div style="color:#fca5a5;font-size:11px;margin-top:2px;">실패 원인: ${escapeHtml(fail)}</div>` : ""}
+    const barWidth = Math.min(Math.max(Math.abs(ret) * 120, 10), 100);
+    return `<div class="pb-year-card ${loss ? "loss-card" : "win-card"}">
+      <div class="pb-year-card-top">
+        <div class="pb-year-info">
+          <span class="pb-year-badge">📅 ${y.year}년</span>
+          <span class="pb-period-badge">🗓️ ${escapeHtml(winDateStr)}</span>
+          <span class="pb-status-badge ${loss ? "loss" : "win"}">${loss ? "하락 마감" : "상승 달성"}</span>
+        </div>
+        <div class="pb-return-pill ${loss ? "loss" : "win"}">
+          <span class="pb-return-val">${sign}${pct}%</span>
+        </div>
       </div>
-      <b style="color:${loss ? "#f87171" : "#34d399"}">${ret > 0 ? "+" : ""}${(ret * 100).toFixed(1)}%</b>
+      <div class="pb-year-progress-wrap">
+        <div class="pb-year-progress-bar ${loss ? "loss" : "win"}" style="width:${barWidth}%;"></div>
+      </div>
+      ${fail ? `<div class="pb-fail-box">
+        <div class="pb-fail-title">⚠️ ${y.year}년 실패 원인 정밀 분석</div>
+        <div class="pb-fail-desc">${escapeHtml(fail)}</div>
+      </div>` : ""}
     </div>`;
   }).join("");
 
   const inv = splitInvalidation(r.invalidating_conditions);
   const invHtml = inv.length
-    ? `<ul style="margin:6px 0 0 18px;padding:0;">${inv.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
-    : `<p class="meta" style="margin:6px 0 0;">${escapeHtml(r.invalidating_conditions || "실적 쇼크 또는 대규모 순매도 전환")}</p>`;
+    ? `<div class="pb-invalidation-grid">${inv.map((x) => `
+        <div class="pb-invalidation-item">
+          <span class="pb-inv-icon">🛑</span>
+          <span class="pb-inv-txt">${escapeHtml(x)}</span>
+        </div>`).join("")}</div>`
+    : `<div class="pb-invalidation-item"><span class="pb-inv-icon">🛑</span><span class="pb-inv-txt">${escapeHtml(r.invalidating_conditions || "FY1 EPS Revision 하향 또는 60일선 이탈")}</span></div>`;
 
   let statsHtml = "";
   let lolli = "";
@@ -9671,12 +9692,12 @@ function renderDiscDeepPlaybook(r, months) {
     const maxAbs = Math.max(...track.map((y) => Math.abs(Number(y.return) || 0)), 0.01);
     lolli = `<div class="pb-lollipop">${track.map((y) => {
       const ret = Number(y.return) || 0;
-      const h = Math.max(6, Math.round((Math.abs(ret) / maxAbs) * 110));
-      return `<i><span style="font-size:10px;color:${ret < 0 ? "#f87171" : "#67e8f9"}">${(ret * 100).toFixed(1)}%</span><em class="${ret < 0 ? "loss" : ""}" style="height:${h}px"></em><small>'${String(y.year).slice(-2)}</small></i>`;
+      const h = Math.max(8, Math.round((Math.abs(ret) / maxAbs) * 110));
+      return `<i><span style="font-size:11px;font-weight:700;color:${ret < 0 ? "#f87171" : "#38bdf8"}">${(ret * 100).toFixed(1)}%</span><em class="${ret < 0 ? "loss" : ""}" style="height:${h}px"></em><small>'${String(y.year).slice(-2)}</small></i>`;
     }).join("")}</div>`;
     const upPct = (stats.upShare * 100).toFixed(0);
     dual = `<div class="pb-bar-dual"><div style="width:${upPct}%;background:#34d399"></div><div style="width:${100 - upPct}%;background:#f87171"></div></div>
-      <div class="meta" style="margin-top:4px;">상방 ${(stats.upVol * 100).toFixed(1)}% (${upPct}%) · 하방 ${(stats.semi * 100).toFixed(1)}% · 비대칭 ${stats.skew.toFixed(2)}x</div>`;
+      <div class="meta" style="margin-top:6px;font-size:12px;">상방 ${(stats.upVol * 100).toFixed(1)}% (${upPct}%) · 하방 ${(stats.semi * 100).toFixed(1)}% · 비대칭 ${stats.skew.toFixed(2)}x</div>`;
     const exp1 = stats.mean;
     const exp2 = stats.mean * 0.7;
     const exp3 = Math.max(stats.mean * 0.05, stats.worst * 0.2);
@@ -9762,12 +9783,20 @@ function renderDiscDeepPlaybook(r, months) {
       <div id="disc-modal-heat" class="pb-month-heat" style="margin-top:10px;">${monthCells}</div>
     </div>
 
-    ${years ? `<div style="margin-top:14px;background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px 16px;">
-      <b>연도별 계절성 수익률 & 실패 연도 분석</b>${years}
+    ${years ? `<div style="margin-top:14px;background:rgba(15,23,42,0.85);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <b style="font-size:14.5px;color:#f8fafc;">📊 연도별 계절성 수익률 & 실패 연도 분석</b>
+        <span class="chip" style="background:rgba(56,189,248,0.15);color:#38bdf8;font-size:11px;">실측 통계 (${track.length}개년)</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">${years}</div>
     </div>` : ""}
 
-    <div style="margin-top:14px;border:1px solid rgba(248,113,113,0.35);border-radius:12px;padding:14px 16px;">
-      <b style="color:#f87171;">전략 무효화 조건 (Invalidating Conditions)</b>
+    <div class="pb-invalidation-card">
+      <div class="pb-invalidation-head">
+        <span style="font-size:16px;">🛑</span>
+        <b class="pb-invalidation-title">전략 무효화 조건 (Invalidating Conditions)</b>
+      </div>
+      <p style="font-size:12px;color:#cbd5e1;margin:0 0 10px 0;">아래 악재 또는 기술적 이탈 신호가 발생할 경우, 계절성 패턴을 무효화하고 즉시 리스크를 방어합니다.</p>
       ${invHtml}
     </div>
 
@@ -9789,6 +9818,51 @@ function renderDiscDeepPlaybook(r, months) {
 }
 
 function bindDiscoveryModalChrome(modal, r) {
+  const code = String(r.ticker || "").padStart(6, "0");
+
+  // Naver & Toss External Chart Links
+  const naverLink = $("#disc-modal-naver-link");
+  if (naverLink) {
+    naverLink.href = `https://finance.naver.com/item/main.naver?code=${code}`;
+  }
+  const tossLink = $("#disc-modal-toss-link");
+  if (tossLink) {
+    tossLink.href = `https://tossinvest.com/stocks/${code}`;
+  }
+
+  // Embedded Chart Toggle & Period Switcher
+  const chartBox = $("#disc-modal-chart-box");
+  const chartToggleBtn = $("#disc-modal-chart-toggle-btn");
+  const chartImg = $("#disc-modal-chart-img");
+
+  let curPeriod = "day";
+  const updateChartSrc = () => {
+    if (!chartImg) return;
+    chartImg.src = `https://ssl.pstatic.net/imgfinance/chart/item/area/${curPeriod}/${code}.png?sidcode=${Date.now()}`;
+  };
+
+  if (chartToggleBtn && chartBox) {
+    chartToggleBtn.onclick = () => {
+      chartBox.classList.toggle("hidden");
+      if (!chartBox.classList.contains("hidden")) {
+        chartToggleBtn.textContent = "📈 차트 닫기 ✕";
+        updateChartSrc();
+      } else {
+        chartToggleBtn.textContent = "📈 캔들차트 보기";
+      }
+    };
+  }
+
+  const periodBtns = modal.querySelectorAll(".chart-tab-btn");
+  periodBtns.forEach((btn) => {
+    btn.onclick = () => {
+      periodBtns.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      curPeriod = btn.getAttribute("data-chart-period") || "day";
+      updateChartSrc();
+    };
+  });
+
   const stockBtn = $("#disc-modal-stock-btn");
   if (stockBtn) {
     stockBtn.onclick = () => {
@@ -9851,6 +9925,12 @@ async function openDiscoveryDetailModal(r) {
   setModalText("disc-modal-mdd-sub", `평균 MDD -${((r.avg_mdd || 0) * 100).toFixed(1)}%`);
   setModalText("disc-modal-entry-win", `📈 진입 권장: ${r.entry_window_str || "—"}`);
   setModalText("disc-modal-exit-win", `➔ 목표 엑시트: ${r.exit_window_str || "—"}`);
+
+  // Reset embedded chart to hidden
+  const chartBox = $("#disc-modal-chart-box");
+  const chartToggleBtn = $("#disc-modal-chart-toggle-btn");
+  if (chartBox) chartBox.classList.add("hidden");
+  if (chartToggleBtn) chartToggleBtn.textContent = "📈 캔들차트 보기";
 
   bindDiscoveryModalChrome(modal, r);
   renderDiscDeepPlaybook(r, r.all_months || []);
