@@ -37,6 +37,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from kr_quant.research.tier1_contract import (
+    tier1_cached_chat_json,
     tier1_deterministic_fallback,
     tier1_success,
     tier1_unavailable,
@@ -1310,7 +1311,6 @@ def _ranking_tier1_snapshot(settings: Any, *, limit: int = 10) -> dict[str, Any]
 @app.get("/api/flow/tier1-briefing")
 def api_flow_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.research.analyze import call_chat, _extract_json
     from kr_quant.flow.priority import collect_universe
 
     s = load_settings()
@@ -1334,35 +1334,24 @@ def api_flow_tier1_briefing_get() -> dict[str, Any]:
         + "\n\n제공된 후보에서 실제로 관찰되는 수급 공통점과 자료의 범위 한계를 2줄로 설명하세요. 후보에 없는 업종이나 원인을 만들지 말고 주문·비중 지시는 하지 마세요."
         + "\n반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 헤드라인\", \"briefing\": \"관찰된 수급 공통점과 한계 2줄\", \"focus_sectors\": [\"실제 후보에서 확인된 업종\"]}"
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are a professional Korean institutional flow strategist. Output strictly in JSON."},
-             {"role": "user", "content": prompt}],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            _extract_json(raw_text),
-            sources=["flow_priority"],
-            evidence_count=len(uni),
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 flow briefing unavailable: {exc}")
-        return tier1_unavailable(
-            endpoint,
-            sources=["flow_priority"],
-            evidence_count=len(uni),
-            prompt_version=prompt_version,
-        )
+    return tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace="flow",
+        prompt_version=prompt_version,
+        evidence=uni,
+        messages=[
+            {"role": "system", "content": "You are a professional Korean institutional flow strategist. Output strictly in JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        sources=["flow_priority"],
+        evidence_count=len(uni),
+    )
 
 
 @app.get("/api/dashboard/tier1-briefing")
 def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.research.analyze import call_chat, _extract_json
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
@@ -1387,38 +1376,25 @@ def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
         "현재 순위·점수·전회 대비 변화·우세/취약 팩터·데이터 신뢰도만 사용하세요. 점수 변화가 특정 팩터 때문에 발생했다고 단정하지 말고, 제공되지 않은 재무 사실이나 주문·비중 지시는 하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 랭킹 변화 헤드라인\", \"champion_focus\": \"1위 종목의 현재 우세/취약 팩터와 변화 1줄\", \"strategy_note\": \"가장 큰 순위 변화와 데이터 주의점 2줄\"}"
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are an elite quantitative fund strategist. Output strictly in JSON."},
-             {"role": "user", "content": prompt}],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            _extract_json(raw_text),
-            as_of=rank_context.get("as_of"),
-            sources=["all_stocks", "daily_rank_change"],
-            evidence_count=len(top_stocks),
-            missing=rank_context.get("missing") or [],
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 dashboard briefing unavailable: {exc}")
-        return tier1_unavailable(
-            endpoint,
-            as_of=rank_context.get("as_of"),
-            sources=["all_stocks", "daily_rank_change"],
-            evidence_count=len(top_stocks),
-            missing=rank_context.get("missing") or [],
-            prompt_version=prompt_version,
-        )
+    return tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace="dashboard",
+        prompt_version=prompt_version,
+        evidence=rank_context,
+        messages=[
+            {"role": "system", "content": "You are an elite quantitative fund strategist. Output strictly in JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        as_of=rank_context.get("as_of"),
+        sources=["all_stocks", "daily_rank_change"],
+        evidence_count=len(top_stocks),
+        missing=rank_context.get("missing") or [],
+    )
 
 
 @app.get("/api/rank/tier1-briefing")
 def api_rank_tier1_briefing_get() -> dict[str, Any]:
-    from kr_quant.research.analyze import _extract_json, call_chat
     from kr_quant.research.providers import resolve_tier1_endpoint
 
     s = load_settings()
@@ -1444,41 +1420,26 @@ def api_rank_tier1_briefing_get() -> dict[str, Any]:
         "현재 점수, 전회 대비 순위·점수 변화, 현재 우세/취약 팩터, 신뢰도만 해설하세요. 이전 팩터 점수가 없으므로 특정 팩터가 점수 변화를 일으켰다고 단정하지 마세요. 매수·매도·비중·목표가를 제시하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 랭킹 변화 요약\", \"changes\": [\"실제 순위 상승·하락 관측\"], \"top_explanations\": [{\"ticker\": \"6자리 코드\", \"summary\": \"현재 우세/취약 팩터와 신뢰도 해설\"}], \"cautions\": [\"데이터 또는 해석 주의점\"]}"
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [
-                {"role": "system", "content": "You are a Korean equity ranking auditor. Output strictly in JSON."},
-                {"role": "user", "content": prompt},
-            ],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            _extract_json(raw_text),
-            as_of=context.get("as_of"),
-            sources=["all_stocks", "daily_rank_change", "factor_scores"],
-            evidence_count=len(top_rows) + len(movers),
-            missing=context.get("missing") or [],
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 rank briefing unavailable: {exc}")
-        return tier1_unavailable(
-            endpoint,
-            as_of=context.get("as_of"),
-            sources=["all_stocks", "daily_rank_change", "factor_scores"],
-            evidence_count=len(top_rows) + len(movers),
-            missing=context.get("missing") or [],
-            prompt_version=prompt_version,
-        )
+    return tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace="rank",
+        prompt_version=prompt_version,
+        evidence=context,
+        messages=[
+            {"role": "system", "content": "You are a Korean equity ranking auditor. Output strictly in JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        as_of=context.get("as_of"),
+        sources=["all_stocks", "daily_rank_change", "factor_scores"],
+        evidence_count=len(top_rows) + len(movers),
+        missing=context.get("missing") or [],
+    )
 
 
 @app.get("/api/market/tier1-briefing")
 def api_market_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.research.analyze import call_chat, _extract_json
     from kr_quant.context.macro_brief import build_macro_dashboard
 
     s = load_settings()
@@ -1552,39 +1513,26 @@ def api_market_tier1_briefing_get() -> dict[str, Any]:
         "금리·장단기 스프레드·환율·VIX·주가지수 중 실제 제공된 지표만 사용해 같은 방향과 충돌을 설명하세요. 누락 지표를 추정하거나 자산 배분·주문·비중을 지시하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 매크로 헤드라인\", \"risk_posture\": \"위험선호 / 중립 / 위험회피 / 판단불가\", \"macro_insight\": \"지표별 방향과 상충 관계 2~3줄\", \"action_tip\": \"누락되거나 추가 확인할 지표\", \"drivers\": [{\"id\": \"실제 지표 id\", \"direction\": \"우호/부담/중립\", \"reason\": \"수치 근거\"}]}"
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are a chief macro strategist. Output strictly in JSON."},
-             {"role": "user", "content": prompt}],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            _extract_json(raw_text),
-            as_of=macro.get("fetched_at"),
-            sources=["FRED", "BOK_ECOS", "Yahoo_comparison"],
-            evidence_count=evidence_count,
-            missing=missing,
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 market briefing unavailable: {exc}")
-        return tier1_unavailable(
-            endpoint,
-            as_of=macro.get("fetched_at"),
-            sources=["FRED", "BOK_ECOS", "Yahoo_comparison"],
-            evidence_count=evidence_count,
-            missing=missing,
-            prompt_version=prompt_version,
-        )
+    return tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace="market",
+        prompt_version=prompt_version,
+        evidence=macro_context,
+        messages=[
+            {"role": "system", "content": "You are a chief macro strategist. Output strictly in JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        as_of=macro.get("fetched_at"),
+        sources=["FRED", "BOK_ECOS", "Yahoo_comparison"],
+        evidence_count=evidence_count,
+        missing=missing,
+    )
 
 
 @app.get("/api/toss/tier1-briefing")
 def api_toss_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.research.analyze import call_chat, _extract_json
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
@@ -1624,35 +1572,25 @@ def api_toss_tier1_briefing_get() -> dict[str, Any]:
         "제공된 순위에서 확인되는 단기 자금 쏠림과 급등락의 공통점을 설명하세요. 원인을 단정하거나 매수·매도·추격 여부를 지시하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 시장 랭킹 헤드라인\", \"movers_summary\": \"급등락 및 거래대금 쏠림 2줄\", \"trading_tip\": \"자료 해석상 주의점\"}"
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are a real-time market momentum analyst. Output strictly in JSON."},
-             {"role": "user", "content": prompt}],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            _extract_json(raw_text),
-            sources=["toss_rankings"],
-            evidence_count=evidence_count,
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 toss briefing unavailable: {exc}")
-        return tier1_unavailable(
-            endpoint,
-            sources=["toss_rankings"],
-            evidence_count=evidence_count,
-            prompt_version=prompt_version,
-        )
+    toss_context = {"gainers": gainers, "losers": losers, "trading_amount": volume}
+    return tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace="toss",
+        prompt_version=prompt_version,
+        evidence=toss_context,
+        messages=[
+            {"role": "system", "content": "You are a real-time market momentum analyst. Output strictly in JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        sources=["toss_rankings"],
+        evidence_count=evidence_count,
+    )
 
 
 @app.get("/api/sector/tier1-briefing")
 def api_sector_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.research.analyze import call_chat, _extract_json
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
@@ -1682,37 +1620,25 @@ def api_sector_tier1_briefing_get() -> dict[str, Any]:
         "제공된 수치만 사용해 주도 업종, 개선 업종, 한 종목 쏠림 가능성을 설명하세요. 비중·매수·매도 지시는 하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 섹터 로테이션 헤드라인\", \"leading_sector_comment\": \"주도 업종 및 개선 업종 분석 2줄\", \"sector_strategy\": \"수치를 읽을 때의 주의점\"}"
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are a sector rotation quant strategist. Output strictly in JSON."},
-             {"role": "user", "content": prompt}],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            _extract_json(raw_text),
-            as_of=sector_data.get("as_of_date"),
-            sources=["sector_ranking"],
-            evidence_count=len(sector_rows),
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 sector briefing unavailable: {exc}")
-        return tier1_unavailable(
-            endpoint,
-            as_of=sector_data.get("as_of_date"),
-            sources=["sector_ranking"],
-            evidence_count=len(sector_rows),
-            prompt_version=prompt_version,
-        )
+    return tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace="sector",
+        prompt_version=prompt_version,
+        evidence={"as_of": sector_data.get("as_of_date"), "rows": sector_rows},
+        messages=[
+            {"role": "system", "content": "You are a sector rotation quant strategist. Output strictly in JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        as_of=sector_data.get("as_of_date"),
+        sources=["sector_ranking"],
+        evidence_count=len(sector_rows),
+    )
 
 
 @app.get("/api/us13f/tier1-briefing")
 def api_us13f_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.research.analyze import call_chat, _extract_json
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
@@ -1756,35 +1682,24 @@ def api_us13f_tier1_briefing_get() -> dict[str, Any]:
         "제공된 공시 집계에 존재하는 종목만 언급하고, 분기말 보유 정보라는 시차를 명시하세요. 매수·매도 지시는 하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 13F 포트폴리오 핵심 헤드라인\", \"consensus_insight\": \"공통 보유와 변화 분석 2~3줄\", \"action_tip\": \"13F 자료 해석상 한계\"}"
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are a Wall Street 13F filing strategist. Output strictly in JSON."},
-             {"role": "user", "content": prompt}],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            _extract_json(raw_text),
-            sources=["sec_13f_cache"],
-            evidence_count=evidence_count,
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 13F briefing unavailable: {exc}")
-        return tier1_unavailable(
-            endpoint,
-            sources=["sec_13f_cache"],
-            evidence_count=evidence_count,
-            prompt_version=prompt_version,
-        )
+    return tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace="us13f",
+        prompt_version=prompt_version,
+        evidence={"new": top_new, "common": top_common, "exits": top_exits},
+        messages=[
+            {"role": "system", "content": "You are a Wall Street 13F filing strategist. Output strictly in JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        sources=["sec_13f_cache"],
+        evidence_count=evidence_count,
+    )
 
 
 @app.get("/api/seasonality/tier1-briefing")
 def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.research.analyze import call_chat, _extract_json
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
@@ -1823,35 +1738,31 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
         "제공된 승률·평균수익률·연도 표본 수만 사용하고 표본 부족과 특정 연도 쏠림 가능성을 설명하세요. 선취매·매집·주문 지시는 하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 계절성 통계 헤드라인\", \"seasonality_brief\": \"당월 및 익월 통계 해설 2줄\", \"key_catalysts\": [\"실제 활성 이벤트\"], \"sample_caution\": \"표본과 재현성 주의점\"}"
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are a stock market seasonality quant specialist. Output strictly in JSON."},
-             {"role": "user", "content": prompt}],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            _extract_json(raw_text),
-            sources=["seasonality_highlights"],
-            evidence_count=evidence_count,
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 seasonality briefing unavailable: {exc}")
-        return tier1_unavailable(
-            endpoint,
-            sources=["seasonality_highlights"],
-            evidence_count=evidence_count,
-            prompt_version=prompt_version,
-        )
+    seasonality_context = {
+        "current_month": highlights.get("current_month"),
+        "next_month": highlights.get("next_month"),
+        "current_champions": current_rows,
+        "upcoming_champions": upcoming_rows,
+        "active_presets": active_presets,
+    }
+    return tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace="seasonality",
+        prompt_version=prompt_version,
+        evidence=seasonality_context,
+        messages=[
+            {"role": "system", "content": "You are a stock market seasonality quant specialist. Output strictly in JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        sources=["seasonality_highlights"],
+        evidence_count=evidence_count,
+    )
 
 
 @app.get("/api/strategy/tier1-briefing")
 def api_strategy_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.research.analyze import call_chat, _extract_json
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
@@ -1896,24 +1807,29 @@ def api_strategy_tier1_briefing_get() -> dict[str, Any]:
         "위 데이터에 실제로 포함된 내용만 사용해 학습·검증·최종검증의 차이와 표본 한계를 설명하세요. 종목 추천, 주문, 비중, 목표가를 제시하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 백테스트 핵심\", \"strategy_insight\": \"검증 결과와 최종검증 일관성 분석 2~3줄\", \"action_guide\": \"HIGH/MED/LOW 등급을 읽는 방법\", \"risk_management\": \"표본·비용·최대낙폭 관련 한계\"}"
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are a quantitative trading strategy auditor. Output strictly in JSON."},
-             {"role": "user", "content": prompt}],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            _extract_json(raw_text),
-            sources=["strategy_lab_cache"],
-            evidence_count=len(rows),
-            missing=[] if rows else ["strategy_rows"],
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 strategy briefing fallback used: {exc}")
+    strategy_context = {
+        "rows": rows,
+        "high_stocks": high_stocks,
+        "medium_stocks": med_stocks,
+        "best_strategies": best_strats,
+        "average_sharpe": avg_sharpe,
+        "average_mdd": avg_mdd,
+    }
+    result = tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace="strategy",
+        prompt_version=prompt_version,
+        evidence=strategy_context,
+        messages=[
+            {"role": "system", "content": "You are a quantitative trading strategy auditor. Output strictly in JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        sources=["strategy_lab_cache"],
+        evidence_count=len(rows),
+        missing=[] if rows else ["strategy_rows"],
+    )
+    if result.get("status") == "UNAVAILABLE":
         return tier1_deterministic_fallback(
             endpoint,
             {
@@ -1932,12 +1848,12 @@ def api_strategy_tier1_briefing_get() -> dict[str, Any]:
             missing=[] if rows else ["strategy_rows"],
             prompt_version=prompt_version,
         )
+    return result
 
 
 @app.get("/api/trade/tier1-briefing")
 def api_trade_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.research.analyze import call_chat, _extract_json
     from kr_quant.flow.scan import load_flow
 
     s = load_settings()
@@ -1963,35 +1879,24 @@ def api_trade_tier1_briefing_get() -> dict[str, Any]:
         "제공된 후보와 실제 수급·기술 지표가 일치하는지 설명하고, 확인되지 않은 가격선이나 수익률을 만들지 마세요. 주문·목표가·손절가를 제시하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 트레이딩 랩 헤드라인\", \"trading_brief\": \"단기 수급/기술 지표 해설 2줄\", \"execution_guide\": \"해석상 무효화 조건과 주의점\"}"
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are a professional quantitative swing trading strategist. Output strictly in JSON."},
-             {"role": "user", "content": prompt}],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            _extract_json(raw_text),
-            sources=["flow_scan_5d"],
-            evidence_count=len(top_trades),
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 trade briefing unavailable: {exc}")
-        return tier1_unavailable(
-            endpoint,
-            sources=["flow_scan_5d"],
-            evidence_count=len(top_trades),
-            prompt_version=prompt_version,
-        )
+    return tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace="trade",
+        prompt_version=prompt_version,
+        evidence=rows[:5],
+        messages=[
+            {"role": "system", "content": "You are a professional quantitative swing trading strategist. Output strictly in JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        sources=["flow_scan_5d"],
+        evidence_count=len(top_trades),
+    )
 
 
 @app.get("/api/empty/tier1-briefing")
 def api_empty_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.research.analyze import call_chat, _extract_json
     from kr_quant.flow.scan import load_flow
 
     s = load_settings()
@@ -2022,29 +1927,19 @@ def api_empty_tier1_briefing_get() -> dict[str, Any]:
         "제공된 수급 분류가 뜻하는 바와 유동성·거래 가능성 확인 필요성을 설명하세요. 선취매·매집·주문 지시는 하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 빈집 발굴 헤드라인\", \"empty_insight\": \"수급 공백과 복귀 후보 해설 2줄\", \"entry_caution\": \"유동성·거래가능성·데이터 한계\"}"
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are a turnaround and unowned stock quant analyst. Output strictly in JSON."},
-             {"role": "user", "content": prompt}],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            _extract_json(raw_text),
-            sources=["flow_scan_5d"],
-            evidence_count=evidence_count,
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 empty briefing unavailable: {exc}")
-        return tier1_unavailable(
-            endpoint,
-            sources=["flow_scan_5d"],
-            evidence_count=evidence_count,
-            prompt_version=prompt_version,
-        )
+    return tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace="empty",
+        prompt_version=prompt_version,
+        evidence={"empty": empty_rows[:4], "comeback": comeback_rows[:4]},
+        messages=[
+            {"role": "system", "content": "You are a turnaround and unowned stock quant analyst. Output strictly in JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        sources=["flow_scan_5d"],
+        evidence_count=evidence_count,
+    )
 
 
 class CustomBacktestAiIn(BaseModel):
@@ -2302,7 +2197,6 @@ class SunziTacticalAiIn(BaseModel):
 @app.get("/api/sunzi/tier1-briefing")
 def api_sunzi_tier1_briefing_get(persona: str = "yang") -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.research.analyze import call_chat, _extract_json
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
@@ -2371,29 +2265,32 @@ def api_sunzi_tier1_briefing_get(persona: str = "yang") -> dict[str, Any]:
         + f"\n\n[실제 시스템 판정]\n{board_context}\n"
         + "제공된 시스템 판정에 없는 시장 사실이나 수치를 만들지 마세요. 캐릭터 말투는 표현에만 사용하고 주문·비중·목표가·손절가를 지시하지 마세요."
     )
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are a character from Legend of Galactic Heroes. Adhere strictly to the requested Korean speech style and persona. Output strictly in JSON."},
-             {"role": "user", "content": selected_prompt}],
-            timeout=15,
-            json_mode=True,
-        )
-        return tier1_success(
-            endpoint,
-            {"persona": persona, **_extract_json(raw_text)},
-            sources=["sunzi_five_board"],
-            evidence_count=len(board_rows),
-            prompt_version=prompt_version,
-        )
-    except Exception as exc:
-        print(f"Tier 1 sunzi briefing unavailable: {exc}")
-        return tier1_unavailable(
-            endpoint,
-            sources=["sunzi_five_board"],
-            evidence_count=len(board_rows),
-            prompt_version=prompt_version,
-        )
+    board_evidence = {
+        "persona": persona,
+        "candidate_count": board.get("n"),
+        "fa_pass_count": board.get("fa_pass_n"),
+        "market": board.get("tian"),
+        "postures": board.get("postures"),
+        "aspects": board.get("aspects"),
+        "top_rows": board_rows[:8],
+    }
+    return tier1_cached_chat_json(
+        s.root,
+        endpoint,
+        namespace=f"sunzi-{persona}",
+        prompt_version=prompt_version,
+        evidence=board_evidence,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a character from Legend of Galactic Heroes. Adhere strictly to the requested Korean speech style and persona. Output strictly in JSON.",
+            },
+            {"role": "user", "content": selected_prompt},
+        ],
+        sources=["sunzi_five_board"],
+        evidence_count=len(board_rows),
+        payload_prefix={"persona": persona},
+    )
 
 
 @app.post("/api/sunzi/tactical-ai")

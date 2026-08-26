@@ -3956,9 +3956,13 @@ function appendTier1Meta(container, res = {}) {
   const coverage = coverageMap[evidence.coverage] || "근거 상태 미상";
   const sourceCount = Array.isArray(evidence.sources) ? evidence.sources.length : 0;
   const fallback = res.status === "DETERMINISTIC_FALLBACK";
+  const cacheLabel = res.cache?.hit === true
+    ? "♻️ 동일 데이터 해설 재사용"
+    : (res.cache?.stored === false ? "⚠️ 새 생성 · 캐시 미저장" : (res.cache ? "✨ 최신 데이터로 새 생성" : ""));
   card.insertAdjacentHTML("beforeend", `
     <div class="tier1-meta-row" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding-top:7px; margin-top:3px; border-top:1px solid rgba(148,163,184,0.16); font-size:10.5px; color:#94a3b8;">
       <span class="chip" style="font-size:10px;">${fallback ? "🧮 규칙 기반 설명" : "🤖 AI 해석"}</span>
+      ${cacheLabel ? `<span class="chip" style="font-size:10px;">${cacheLabel}</span>` : ""}
       <span class="chip" style="font-size:10px;">📌 ${escapeHtml(coverage)} · ${Number(evidence.item_count || 0)}건</span>
       <span>출처 ${sourceCount}개</span>
       ${evidence.as_of ? `<span>기준 ${escapeHtml(String(evidence.as_of))}</span>` : ""}
