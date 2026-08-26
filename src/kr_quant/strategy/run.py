@@ -260,62 +260,59 @@ def generate_plain_strategy_playbook(strategies: list[dict[str, Any]], company: 
     if rev_avg_ret > 0 and trend_avg_ret <= 0:
         archetype = "평균회귀형 (눌림목/과매도 반등 유리)"
         archetype_badge = "🔄 평균회귀형 파동"
-        archetype_desc = f"{company or '해당 종목'}은 고점 돌파 시 차익 실현 매물이 나와 추격 매수는 물리기 쉽고, 단기 악재나 투매로 주가가 과매도권까지 푹 꺼졌을 때 분할 매수하여 반등에 파는 '눌림목/역발상 매매'가 훨씬 유리한 종목입니다."
-        avoid_rule = "신고가 돌파 시 추격 매수, 골든크로스 직후 고점 매수 (추세추종 전략 승률 17~50%로 물릴 확률 극히 높음)"
+        archetype_desc = f"{company or '해당 종목'}의 과거 표본에서는 추세 돌파보다 과매도 뒤 평균 복귀 규칙의 전체기간 성과가 상대적으로 높았습니다. 시장 구조가 바뀌면 재현되지 않을 수 있습니다."
+        avoid_rule = "평균회귀가 작동하지 않는 하락 추세에서는 손실이 누적될 수 있으므로 최종검증 거래 수와 최대낙폭을 함께 확인해야 합니다."
     elif trend_avg_ret > 0 and rev_avg_ret <= 0:
         archetype = "추세추종형 (돌파/모멘텀 유리)"
         archetype_badge = "🚀 추세추종형 파동"
-        archetype_desc = f"{company or '해당 종목'}은 한번 상승 탄력이 붙으면 전고점을 뚫고 연속 시세가 분출되는 성향이 강해, 신고가 돌파나 골든크로스 발생 시 시세에 동승하는 '추세추종 매매'가 유리한 종목입니다."
-        avoid_rule = "떨어지는 칼날(과매도) 잡기, 추세 꺾인 종목 물타기"
+        archetype_desc = f"{company or '해당 종목'}의 과거 표본에서는 평균회귀보다 추세 돌파 규칙의 전체기간 성과가 상대적으로 높았습니다. 횡보장에서는 가짜 신호가 늘 수 있습니다."
+        avoid_rule = "횡보 구간의 반복 돌파 실패와 최종검증 표본 부족은 전체기간 수익률을 그대로 신뢰하면 안 되는 주요 조건입니다."
     elif rev_avg_ret >= trend_avg_ret:
         archetype = "평균회귀 우세형 (눌림목 우선)"
         archetype_badge = "🔄 평균회귀 우세"
-        archetype_desc = f"{company or '해당 종목'}은 박스권 및 진폭 흐름에서 과매도 반등의 수익성과 승률이 추세 돌파보다 우수하게 나타납니다."
-        avoid_rule = "급등 구간에서의 무리한 뇌동 추격 매수"
+        archetype_desc = f"{company or '해당 종목'}의 과거 표본에서는 평균회귀 규칙이 추세 규칙보다 상대적으로 나았지만 차이가 미래에도 유지된다는 뜻은 아닙니다."
+        avoid_rule = "검증·최종검증 수익 방향이 다르거나 거래 수가 적으면 유형 판정을 보류해야 합니다."
     else:
         archetype = "혼합/박스권 진폭형"
         archetype_badge = "⚖️ 혼합 박스권 파동"
-        archetype_desc = f"{company or '해당 종목'}은 추세와 역추세가 혼재되어 있어 특정 단일 전략보다는 철저한 손절선(-5%)을 동반한 보수적 대응이 필요합니다."
-        avoid_rule = "손절 기준 없는 비중 확대"
+        archetype_desc = f"{company or '해당 종목'}은 추세와 평균회귀 결과가 혼재해 한 가지 가격 규칙으로 설명하기 어렵습니다."
+        avoid_rule = "단일 백테스트 결과를 확정적 가격 행동으로 해석하지 말고 추가 표본을 확인해야 합니다."
 
     best_raw = strategies[0]
     best_trades = int(best_raw.get("trade_count") or 0)
 
     actionable = best_raw
     actionable_rank = 1
-    actionable_reason = ""
-
-    if best_trades < 5 and len(strategies) > 1:
-        second = strategies[1]
-        second_trades = int(second.get("trade_count") or 0)
-        if second_trades >= 5 and float(second.get("total_return") or 0) > 0:
-            actionable = second
-            actionable_rank = 2
-            actionable_reason = (
-                f"1위 전략({best_raw.get('name')})은 3년간 매매 횟수가 {best_trades}회로 표본이 부족하여 우연한 수익(과적합) 위험이 있습니다. "
-                f"실전에서는 3년간 {second_trades}회의 충분한 기회를 주며 미래 승률 {int((float(second.get('wf_hit') or 0))*100)}%와 "
-                f"최고 수익률({float(second.get('total_return') or 0)*100:+.1f}%)을 기록한 '{second.get('name')}'이 가장 실효성 높은 실전 1픽입니다."
-            )
-
-    if not actionable_reason:
-        wf_pct = int((float(actionable.get("wf_hit") or 0)) * 100) if actionable.get("wf_hit") is not None else 50
-        actionable_reason = f"3년간 {actionable.get('trade_count', 0)}회의 실전 매매 검증에서 총수익률 {float(actionable.get('total_return') or 0)*100:+.1f}%, Walk-Forward 미래 승률 {wf_pct}%로 가장 안정적인 밸런스를 입증했습니다."
+    val_ret = actionable.get("validation_return")
+    oos_ret = actionable.get("oos_return")
+    val_trades = int(actionable.get("validation_trade_count") or 0)
+    oos_trades = int(actionable.get("oos_trade_count") or 0)
+    wf_windows = int(actionable.get("wf_windows") or 0)
+    wf_pct = int(float(actionable.get("wf_hit") or 0) * 100) if wf_windows else 0
+    actionable_reason = (
+        f"가운데 검증 구간 점수로 선택됐습니다. 검증 수익률 "
+        f"{float(val_ret or 0) * 100:+.1f}%({val_trades}회), 선택에 쓰지 않은 최종검증 수익률 "
+        f"{float(oos_ret or 0) * 100:+.1f}%({oos_trades}회), Walk-Forward 양(+)의 구간 비율 "
+        f"{wf_pct}%({wf_windows}개 구간)입니다."
+    )
+    if str(actionable.get("stability_label") or "") == "LOW" or min(best_trades, oos_trades) < 5:
+        actionable_reason += " 표본 부족 또는 구간 불일치로 안정성 LOW이므로 결론을 보류해야 합니다."
 
     sid = str(actionable.get("strategy_id") or "")
     params_ko = str(actionable.get("params_ko") or "")
 
     if "bollinger" in sid:
-        entry_rule = f"주가가 단기 투매로 볼린저 밴드 하단선({params_ko})을 하향 이탈했다가 다시 복귀할 때 분할 매수"
-        exit_rule = "볼린저 밴드 중심선(20일 이평선) 도달 시 절반 익절, 상단선 도달 시 전량 수익 확정"
+        entry_rule = f"검증한 진입 조건: 종가가 볼린저 하단선({params_ko}) 아래로 내려간 날의 다음 거래일 시가"
+        exit_rule = "검증한 청산 조건: 종가가 볼린저 중심선 위로 복귀한 날의 다음 거래일 시가"
     elif "rsi" in sid:
-        entry_rule = f"RSI 지표가 {params_ko} 과매도권(30 이하)에 진입 후 고개를 들 때 분할 매수"
-        exit_rule = "RSI 70 이상 과매수권 도달 시 또는 직전 고점 도달 시 차익 실현"
+        entry_rule = f"검증한 진입 조건: RSI가 설정 과매도선({params_ko}) 아래인 날의 다음 거래일 시가"
+        exit_rule = "검증한 청산 조건: RSI가 설정 과매수선 위인 날의 다음 거래일 시가"
     elif "donchian" in sid:
-        entry_rule = f"최근 {params_ko} 전고점을 강한 거래량과 함께 양봉으로 상향 돌파할 때 추세 동승 매수"
-        exit_rule = f"청산 채널 저점 이탈 시 또는 20일 이동평균선 하회 시 추세 마감으로 익절/손절"
+        entry_rule = f"검증한 진입 조건: 종가가 과거 돈치안 상단({params_ko})을 돌파한 날의 다음 거래일 시가"
+        exit_rule = "검증한 청산 조건: 종가가 설정 돈치안 하단을 이탈한 날의 다음 거래일 시가"
     else:
-        entry_rule = f"단기 이평선이 장기 이평선({params_ko})을 상향 돌파(골든크로스)할 때 진입"
-        exit_rule = "단기선이 장기선을 하향 이탈(데드크로스)할 때 청산"
+        entry_rule = f"검증한 진입 조건: 단기 이평선이 장기 이평선({params_ko})을 상향 돌파한 날의 다음 거래일 시가"
+        exit_rule = "검증한 청산 조건: 단기 이평선이 장기 이평선을 하향 이탈한 날의 다음 거래일 시가"
 
     return {
         "archetype": archetype,

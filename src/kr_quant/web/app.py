@@ -1549,8 +1549,8 @@ def api_strategy_tier1_briefing_get() -> dict[str, Any]:
     high_stocks: list[str] = []
     med_stocks: list[str] = []
     best_strats: list[str] = []
-    avg_sharpe = 0.67
-    avg_mdd = -30.9
+    avg_sharpe: float | None = None
+    avg_mdd: float | None = None
     if cache_path.exists():
         try:
             sdata = json.loads(cache_path.read_text(encoding="utf-8"))
@@ -1569,18 +1569,18 @@ def api_strategy_tier1_briefing_get() -> dict[str, Any]:
 
     ctx_str = (
         f"TOP20 백테스트 표본: 20개 우량주\n"
-        f"미래/순환 검증 통과(HIGH 안정성) 종목: {', '.join(filter(None, high_stocks)) or 'HD현대마린엔진 (볼린저 평균회귀, 승률 83%, 샤프 1.89)'}\n"
-        f"채택된 4대 주도 전략: {', '.join(filter(None, best_strats)) or '볼린저 평균회귀, RSI 과매도 반등, 이동평균 교차'}\n"
-        f"TOP20 평균 샤프 지수: {avg_sharpe}, 평균 최대낙폭: {avg_mdd}%\n"
-        f"체결 기준: 익일 시가 매수 + 0.05% 슬리피지 선반영"
+        f"최종/순환 검증 기준 충족(HIGH) 종목: {', '.join(filter(None, high_stocks)) or '없음'}\n"
+        f"검증 구간 1위 전략 유형: {', '.join(filter(None, best_strats)) or '집계 결과 없음'}\n"
+        f"전체기간 참고 평균 샤프: {avg_sharpe if avg_sharpe is not None else '집계 없음'}, "
+        f"평균 최대낙폭: {f'{avg_mdd}%' if avg_mdd is not None else '집계 없음'}\n"
+        "체결 가정: 신호 다음 거래일 시가, 설정된 수수료와 슬리피지 반영"
     )
 
     prompt = (
         "당신은 퀀트 기술적 매매 타이밍(RSI 과매도, 볼린저밴드 하단 반등, 이평선 골든크로스, 돈치안 채널 돌파) 및 Walk-Forward 과적합 방지 수석 연구원입니다.\n"
         f"{ctx_str}\n\n"
-        "위 TOP20 실전 백테스트 데이터를 바탕으로 한국 주식 투자자들을 위한 명쾌한 전략 타이밍 AI 브리핑을 작성하세요.\n"
-        "특히 HIGH 등급을 받은 주도 종목의 승률과 실전 분할 매수 타이밍, 슬리피지/손익비 관리 원칙을 강조해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 전략 백테스트 핵심 헤드라인\", \"strategy_insight\": \"4대 타이밍 전략 및 주도 종목(HD현대마린엔진 등) 실전 검증 분석 2~3줄\", \"action_guide\": \"HIGH/MED/LOW 등급별 실전 분할 매수 가이드\", \"risk_management\": \"손익비, 슬리피지 및 손절선(-5%) 리스크 관리 팁\"}"
+        "위 데이터에 실제로 포함된 내용만 사용해 학습·검증·최종검증의 차이와 표본 한계를 설명하세요. 종목 추천, 주문, 비중, 목표가를 제시하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 백테스트 핵심\", \"strategy_insight\": \"검증 결과와 최종검증 일관성 분석 2~3줄\", \"action_guide\": \"HIGH/MED/LOW 등급을 읽는 방법\", \"risk_management\": \"표본·비용·최대낙폭 관련 한계\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1596,10 +1596,15 @@ def api_strategy_tier1_briefing_get() -> dict[str, Any]:
             "ok": True,
             "model": endpoint.model,
             "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "headline": "볼린저밴드 하단 반등 & RSI 과매도 눌림목 전략 최적 샤프지수 기록",
-            "strategy_insight": "HD현대마린엔진(승률 83%, 미래 샤프 1.89) 등 재무 우량주는 단순 추세 돌파보다 과매도 구간(BB하단·RSI 30이하) 평균회귀 전략에서 가장 견고한 초과 성과를 입증했습니다.",
-            "action_guide": "🟢 HIGH 등급 종목은 시그널 발생 익일 시가 분할 진입하고, 🟠 LOW 등급 종목은 최소 3회 이상 분할 매수로 변동성을 제어하세요.",
-            "risk_management": "진입 후 -5% 손절선 원칙을 엄수하고 목표 수익률 10~15% 도달 시 절반 익절로 수익을 확정하세요.",
+            "headline": "전략별 검증 구간과 최종검증 결과를 분리해 확인하세요",
+            "strategy_insight": (
+                f"현재 HIGH 기준 충족 종목은 {len(high_stocks)}개입니다. "
+                f"전체기간 참고 평균 샤프는 {avg_sharpe if avg_sharpe is not None else '집계 없음'}, "
+                f"평균 최대낙폭은 {f'{avg_mdd}%' if avg_mdd is not None else '집계 없음'}이며 "
+                "개별 검증 거래 수를 함께 확인해야 합니다."
+            ),
+            "action_guide": "HIGH는 설정 기준 충족, MEDIUM은 구간 편차, LOW는 표본 부족 또는 검증 불일치를 뜻하며 매수·매도 지시가 아닙니다.",
+            "risk_management": "수수료·슬리피지 가정, 적은 거래 수, 시장 구조 변화 때문에 과거 결과가 재현되지 않을 수 있습니다.",
         }
 
 
@@ -1696,6 +1701,12 @@ class CustomBacktestAiIn(BaseModel):
     profit_factor: float | None = None
     total_return: float | None = None
     trades_count: int | None = None
+    validation_return: float | None = None
+    validation_trades: int | None = None
+    oos_return: float | None = None
+    oos_sharpe: float | None = None
+    oos_trades: int | None = None
+    stability_label: str | None = None
 
 
 @app.post("/api/strategy/custom-ai-diagnosis")
@@ -1712,6 +1723,9 @@ def api_strategy_custom_ai_diagnosis_post(body: CustomBacktestAiIn) -> dict[str,
     wr_str = f"{body.win_rate*100:.1f}%" if body.win_rate is not None else "—"
     pf_str = f"{body.profit_factor:.2f}" if body.profit_factor is not None else "—"
     sh_str = f"{body.sharpe:.2f}" if body.sharpe is not None else "—"
+    validation_str = f"{body.validation_return*100:+.2f}%" if body.validation_return is not None else "—"
+    oos_str = f"{body.oos_return*100:+.2f}%" if body.oos_return is not None else "—"
+    oos_sharpe_str = f"{body.oos_sharpe:.2f}" if body.oos_sharpe is not None else "—"
 
     prompt = (
         "당신은 퀀트 기술적 전략 백테스트 검증 수석 연구원입니다.\n"
@@ -1725,8 +1739,11 @@ def api_strategy_custom_ai_diagnosis_post(body: CustomBacktestAiIn) -> dict[str,
         f"- 손익비(Profit Factor): {pf_str}\n"
         f"- 샤프 지수: {sh_str}\n"
         f"- 총 매매 횟수: {body.trades_count or 0}회\n\n"
-        "이 종목의 백테스트 지표를 종합 평가하여 1) 전략 성향 진단, 2) 파라미터 튜닝 조언, 3) 실전 매매 적용 시 유의점을 3줄로 명쾌하게 진단해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"verdict\": \"강력 추천 / 적합 / 파라미터 보완 필요 / 부적합\", \"diagnosis\": \"전략 성과 종합 진단 2줄\", \"tuning_tip\": \"파라미터/지표 튜닝 개선 팁\", \"execution_risk\": \"실전 적용 시 리스크 통제 팁\"}"
+        f"- 가운데 검증: {validation_str}, {body.validation_trades or 0}회\n"
+        f"- 선택에 쓰지 않은 최종검증: {oos_str}, 샤프 {oos_sharpe_str}, {body.oos_trades or 0}회\n"
+        f"- 안정성 등급: {body.stability_label or '—'}\n\n"
+        "이 지표에서 확인되는 일관성·표본 부족·과적합 가능성을 설명하세요. 종목 추천, 주문, 목표가, 비중을 제시하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"verdict\": \"근거 충분 / 제한적 / 표본 부족 / 구간 불일치\", \"diagnosis\": \"검증과 최종검증 비교 2줄\", \"tuning_tip\": \"추가 검증 또는 파라미터 개선점\", \"execution_risk\": \"해석상 한계와 비용 가정\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1738,15 +1755,17 @@ def api_strategy_custom_ai_diagnosis_post(body: CustomBacktestAiIn) -> dict[str,
         )
         return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
     except Exception:
-        verdict = "적합" if (body.win_rate or 0) >= 0.55 and (body.cagr or 0) > 0 else "파라미터 보완 필요"
+        enough_samples = (body.validation_trades or 0) >= 5 and (body.oos_trades or 0) >= 5
+        same_direction = (body.validation_return or 0) * (body.oos_return or 0) > 0
+        verdict = "근거 충분" if enough_samples and same_direction else "표본 부족" if not enough_samples else "구간 불일치"
         return {
             "ok": True,
             "model": endpoint.model,
             "tier": "Tier 1 (100% 무료 일상 엔진)",
             "verdict": verdict,
-            "diagnosis": f"{body.company or body.ticker}의 주가 변동성 특성상 {body.strategy_name} 전략 적용 시 양호한 위험대비수익률을 기록하고 있습니다.",
-            "tuning_tip": "시장 변동성(VKOSPI) 국면에 따라 진입 오실레이터 기준을 미세 조정하면 승률을 추가 개선할 수 있습니다.",
-            "execution_risk": "실전 진입 시 갭하락 대응을 위한 3~5% 손절 라인과 분할 청산 원칙을 반드시 준수하세요.",
+            "diagnosis": f"{body.strategy_name}의 검증 수익률은 {validation_str}, 최종검증 수익률은 {oos_str}이며 최종검증 거래는 {body.oos_trades or 0}회입니다.",
+            "tuning_tip": "파라미터 수를 늘리기보다 더 긴 기간과 여러 시장 국면에서 같은 방향이 유지되는지 먼저 확인하세요.",
+            "execution_risk": "적은 거래 수, 갭 체결, 수수료·슬리피지 변화로 결과가 크게 달라질 수 있으며 이 결과는 주문 신호가 아닙니다.",
         }
 
 

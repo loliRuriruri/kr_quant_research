@@ -71,7 +71,7 @@ def test_parameter_search_and_walk_forward_do_not_peek_future():
 
 
 def test_displayed_metrics_match_selected_parameters():
-    from kr_quant.strategy.run import evaluate_ticker
+    from kr_quant.strategy.run import evaluate_ticker, generate_plain_strategy_playbook
 
     data = pd.DataFrame(
         {
@@ -99,6 +99,11 @@ def test_displayed_metrics_match_selected_parameters():
         assert "oos_trade_count" in row
     scores = [row["selection_score"] for row in result["strategies"]]
     assert scores == sorted(scores, reverse=True)
+    playbook = generate_plain_strategy_playbook(result["strategies"], "테스트기업")
+    assert "가운데 검증 구간" in playbook["actionable_reason"]
+    assert "최종검증 수익률" in playbook["actionable_reason"]
+    assert "분할 매수" not in playbook["entry_rule"]
+    assert "추천" not in playbook["actionable_reason"]
 
 
 def test_params_and_comments_are_korean():

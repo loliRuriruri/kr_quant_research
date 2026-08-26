@@ -51,6 +51,8 @@ def test_index_and_status():
     assert "function renderDiscDeepPlaybook" in js
     assert "function computeTrackStats" in js
     assert "renderPlaybookHtml(data.playbook)" in js
+    assert "검증 구간 점수 1위" in js
+    assert "👑 최적 추천 전략" not in js
     assert "function applyPublicShareMode" in js
     assert "function bindStockSearchers" in js
     assert "function openStrategyBacktest" in js
@@ -70,6 +72,37 @@ def test_index_and_status():
     assert "opendart" in body["keys"]
     assert "masked" in body["keys"]["opendart"]
     assert body["public_mode"] is False
+
+
+def test_strategy_ai_fallback_uses_real_validation_fields(monkeypatch):
+    from kr_quant.research import analyze
+
+    def fail_chat(*args, **kwargs):
+        raise RuntimeError("offline test")
+
+    monkeypatch.setattr(analyze, "call_chat", fail_chat)
+    response = client.post(
+        "/api/strategy/custom-ai-diagnosis",
+        json={
+            "ticker": "005930",
+            "company": "테스트기업",
+            "strategy_name": "볼린저 평균회귀",
+            "total_return": 0.12,
+            "trades_count": 12,
+            "validation_return": 0.03,
+            "validation_trades": 3,
+            "oos_return": -0.02,
+            "oos_sharpe": -0.4,
+            "oos_trades": 2,
+            "stability_label": "LOW",
+        },
+    )
+    body = response.json()
+    assert response.status_code == 200
+    assert body["verdict"] == "표본 부족"
+    assert "+3.00%" in body["diagnosis"]
+    assert "-2.00%" in body["diagnosis"]
+    assert "주문 신호가 아닙니다" in body["execution_risk"]
 
 
 def test_external_web_is_read_only_and_hides_settings():

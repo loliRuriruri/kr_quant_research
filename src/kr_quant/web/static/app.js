@@ -65,10 +65,10 @@ function renderPlaybookHtml(pb) {
     <div class="strategy-playbook-card">
       <div class="playbook-header">
         <div style="display:flex; align-items:center; gap:8px;">
-          <b style="color:#38bdf8; font-size:14px;">💡 3초 핵심 퀀트 해석 & 실전 매매 플레이북</b>
+          <b style="color:#38bdf8; font-size:14px;">💡 3초 핵심 퀀트 해석 & 검증 요약</b>
           <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:600;">${escapeHtml(pb.archetype_badge || "")}</span>
         </div>
-        <span style="font-size:11.5px; color:#94a3b8;">👑 실전 1픽: <b>${escapeHtml(pb.actionable_name || "")}</b> (${escapeHtml(pb.actionable_params_ko || "")})</span>
+        <span style="font-size:11.5px; color:#94a3b8;">검증 구간 1위: <b>${escapeHtml(pb.actionable_name || "")}</b> (${escapeHtml(pb.actionable_params_ko || "")})</span>
       </div>
 
       <div style="background:rgba(56,189,248,0.06); border-left:3px solid #38bdf8; border-radius:4px; padding:8px 12px; margin-bottom:12px; font-size:12.5px; line-height:1.5; color:#f1f5f9;">
@@ -76,20 +76,20 @@ function renderPlaybookHtml(pb) {
       </div>
 
       <div style="background:rgba(168,85,247,0.06); border-left:3px solid #c084fc; border-radius:4px; padding:8px 12px; margin-bottom:12px; font-size:12px; line-height:1.5; color:#e2e8f0;">
-        <b>🎯 실전 1픽 선정 사유:</b> ${escapeHtml(pb.actionable_reason || "")}
+        <b>🧪 검증 결과 해석:</b> ${escapeHtml(pb.actionable_reason || "")}
       </div>
 
       <div class="playbook-grid">
         <div class="playbook-item" style="border-left:3px solid #22c55e;">
-          <h4 style="color:#4ade80;">⭕ 가장 유리한 매수 타이밍</h4>
+          <h4 style="color:#4ade80;">진입으로 검증한 조건</h4>
           <p>${escapeHtml(pb.entry_rule || "")}</p>
         </div>
         <div class="playbook-item" style="border-left:3px solid #38bdf8;">
-          <h4 style="color:#38bdf8;">🎯 목표가 및 익절 타이밍</h4>
+          <h4 style="color:#38bdf8;">청산으로 검증한 조건</h4>
           <p>${escapeHtml(pb.exit_rule || "")}</p>
         </div>
         <div class="playbook-item" style="border-left:3px solid #ef4444; grid-column: 1 / -1;">
-          <h4 style="color:#f87171;">❌ 절대 피해야 할 매매 (치명적 함정)</h4>
+          <h4 style="color:#f87171;">해석 시 주의할 실패 조건</h4>
           <p>${escapeHtml(pb.avoid_rule || "")}</p>
         </div>
       </div>
@@ -504,6 +504,8 @@ async function runCustomBacktest(query, opts = {}) {
     const rowsHtml = strats.map((s, idx) => {
       const sh = s.sharpe != null ? fmt(s.sharpe, 2) : "—";
       const oosSh = s.oos_sharpe != null ? fmt(s.oos_sharpe, 2) : "—";
+      const valRet = s.validation_return != null ? `${s.validation_return > 0 ? "+" : ""}${(s.validation_return * 100).toFixed(1)}%` : "—";
+      const oosRet = s.oos_return != null ? `${s.oos_return > 0 ? "+" : ""}${(s.oos_return * 100).toFixed(1)}%` : "—";
       const wfHit = s.wf_hit != null ? `${(s.wf_hit * 100).toFixed(0)}%` : "—";
       const mddVal = s.max_drawdown != null ? -Math.abs(s.max_drawdown * 100) : null;
       const mdd = mddVal != null ? `${mddVal.toFixed(1)}%` : "—";
@@ -517,7 +519,8 @@ async function runCustomBacktest(query, opts = {}) {
           <td><span class="chip">${escapeHtml(s.family_ko || s.family || "")}</span></td>
           <td class="${retCls}">${ret}</td>
           <td><b>${sh}</b></td>
-          <td>${oosSh}</td>
+          <td>${valRet}<div class="meta">${s.validation_trade_count ?? 0}회</div></td>
+          <td>${oosRet}<div class="meta">샤프 ${oosSh} · ${s.oos_trade_count ?? 0}회</div></td>
           <td>${wfHit}</td>
           <td class="down">${mdd}</td>
           <td>${s.trade_count || 0}회</td>
@@ -538,8 +541,8 @@ async function runCustomBacktest(query, opts = {}) {
         </div>
 
         <div style="padding:10px 14px; background:rgba(56,189,248,0.12); border:1px solid #38bdf8; border-radius:8px; margin-bottom:12px;">
-          <b style="color:#38bdf8;">👑 최적 추천 전략: ${escapeHtml(data.best_name || "")} (${escapeHtml(data.best_params_ko || "")})</b>
-          <p style="margin:4px 0 0; font-size:12.5px; color:#cbd5e1;">${escapeHtml(data.best_comment || "해당 종목에서 가장 안정적인 샤프 지수와 미래 검증 승률을 기록했습니다.")}</p>
+          <b style="color:#38bdf8;">검증 구간 점수 1위: ${escapeHtml(data.best_name || "")} (${escapeHtml(data.best_params_ko || "")})</b>
+          <p style="margin:4px 0 0; font-size:12.5px; color:#cbd5e1;">${escapeHtml(data.best_comment || "가운데 검증 구간으로 선택했으며 마지막 20% 결과는 선택 이후의 확인 자료입니다.")}</p>
         </div>
 
         <div class="table-wrap">
@@ -548,13 +551,14 @@ async function runCustomBacktest(query, opts = {}) {
               <tr>
                 <th>전략명</th>
                 <th>유형</th>
-                <th>총 수익률</th>
-                <th class="has-tip" data-tip="과거 전체 구간의 위험 대비 보상 비율(Sharpe Ratio)입니다. 1.0 이상 우수.">샤프</th>
-                <th class="has-tip" data-tip="검증 구간(Out-of-Sample)에서 미래 시뮬레이션 샤프 지수입니다.">OOS 샤프</th>
+                <th>전체기간 참고 수익률</th>
+                <th class="has-tip" data-tip="선택된 동일 파라미터를 전체기간에 적용한 참고 샤프입니다. 선택 점수나 미래 보장이 아닙니다.">전체기간 샤프</th>
+                <th class="has-tip" data-tip="학습 다음의 가운데 검증 구간 수익률과 왕복 거래 수입니다. 이 값으로 파라미터와 전략 1위를 정합니다.">검증 수익률</th>
+                <th class="has-tip" data-tip="선택에 사용하지 않은 마지막 20% 최종검증의 수익률·샤프·왕복 거래 수입니다.">최종검증 결과</th>
                 <th class="has-tip" data-tip="Walk-Forward 순환 분할 검증 구간에서 플러스 수익률을 달성한 승률입니다.">WF 승률</th>
                 <th class="has-tip" data-tip="전략 운용 중 최고점 대비 겪을 수 있는 최대 낙폭(MDD)입니다.">최대낙폭</th>
                 <th>매매 횟수</th>
-                <th>최적 파라미터</th>
+                <th>선택 파라미터</th>
               </tr>
             </thead>
             <tbody>
@@ -585,12 +589,18 @@ async function runCustomBacktest(query, opts = {}) {
         win_rate: bestStrat.wf_hit || bestStrat.win_rate,
         profit_factor: bestStrat.profit_factor,
         total_return: bestStrat.total_return,
-        trades_count: bestStrat.trade_count
+        trades_count: bestStrat.trade_count,
+        validation_return: bestStrat.validation_return,
+        validation_trades: bestStrat.validation_trade_count,
+        oos_return: bestStrat.oos_return,
+        oos_sharpe: bestStrat.oos_sharpe,
+        oos_trades: bestStrat.oos_trade_count,
+        stability_label: bestStrat.stability_label
       })
     }).then(aiRes => {
       const diagEl = $("#custom-strat-ai-diag");
       if (!diagEl || !aiRes || !aiRes.ok) return;
-      const verdictColor = aiRes.verdict === "강력 추천" ? "#34d399" : aiRes.verdict === "적합" ? "#38bdf8" : "#f59e0b";
+      const verdictColor = aiRes.verdict === "근거 충분" ? "#34d399" : aiRes.verdict === "제한적" ? "#38bdf8" : "#f59e0b";
       diagEl.innerHTML = `
         <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:10px; padding:14px; margin-top:6px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
@@ -3563,6 +3573,8 @@ function openReportModal(rec, customTitle = null) {
       const isBest = s.strategy_id === bt.best_id;
       const sh = s.sharpe != null ? fmt(s.sharpe, 2) : "—";
       const oosSh = s.oos_sharpe != null ? fmt(s.oos_sharpe, 2) : "—";
+      const valRet = s.validation_return != null ? `${s.validation_return > 0 ? "+" : ""}${(s.validation_return * 100).toFixed(1)}%` : "—";
+      const oosRet = s.oos_return != null ? `${s.oos_return > 0 ? "+" : ""}${(s.oos_return * 100).toFixed(1)}%` : "—";
       const wfHit = s.wf_hit != null ? `${(s.wf_hit * 100).toFixed(0)}%` : "—";
       const mddVal = s.max_drawdown != null ? -Math.abs(s.max_drawdown * 100) : null;
       const mdd = mddVal != null ? `${mddVal.toFixed(1)}%` : "—";
@@ -3574,7 +3586,8 @@ function openReportModal(rec, customTitle = null) {
           <td><span class="chip">${escapeHtml(s.family_ko || s.family || "")}</span></td>
           <td class="${retCls}">${ret}</td>
           <td><b>${sh}</b></td>
-          <td>${oosSh}</td>
+          <td>${valRet}<div class="meta">${s.validation_trade_count ?? 0}회</div></td>
+          <td>${oosRet}<div class="meta">샤프 ${oosSh} · ${s.oos_trade_count ?? 0}회</div></td>
           <td>${wfHit}</td>
           <td class="down">${mdd}</td>
           <td>${s.trade_count || 0}회</td>
@@ -3586,11 +3599,11 @@ function openReportModal(rec, customTitle = null) {
     btHtml = `
       <div style="background:linear-gradient(145deg, #0e172a, #0b1322); border:1px solid rgba(56,189,248,0.35); border-radius:10px; padding:14px; margin-bottom:16px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <b style="color:#38bdf8; font-size:14px;">🧪 4대 전략 백테스트 & 최적 타이밍 검증</b>
+          <b style="color:#38bdf8; font-size:14px;">🧪 4대 가격 규칙 백테스트 검증</b>
           <span style="font-size:11.5px; color:#94a3b8;">${bt.bars || 0}거래일 일봉 검증</span>
         </div>
         <div style="padding:8px 10px; background:rgba(56,189,248,0.1); border-radius:6px; margin-bottom:10px; font-size:12.5px;">
-          <b style="color:#38bdf8;">👑 최적 추천 1위: ${escapeHtml(bt.best_name || "")} (${escapeHtml(bt.best_params_ko || "")})</b>
+          <b style="color:#38bdf8;">검증 구간 점수 1위: ${escapeHtml(bt.best_name || "")} (${escapeHtml(bt.best_params_ko || "")})</b>
           <p style="margin:3px 0 0; color:#cbd5e1; font-size:12px;">${escapeHtml(bt.best_comment || "")}</p>
         </div>
         <div class="table-wrap">
@@ -3599,9 +3612,10 @@ function openReportModal(rec, customTitle = null) {
               <tr>
                 <th>전략명</th>
                 <th>유형</th>
-                <th>총수익률</th>
-                <th>샤프</th>
-                <th>OOS 샤프</th>
+                <th>전체기간 참고 수익률</th>
+                <th>전체기간 샤프</th>
+                <th>검증 수익률</th>
+                <th>최종검증 결과</th>
                 <th>WF 승률</th>
                 <th>최대낙폭</th>
                 <th>매매횟수</th>
@@ -6645,29 +6659,29 @@ function renderStrategy(data) {
       let stabHtml = "";
 
       if (stab === "HIGH") {
-        stabTipTitle = "🟢 안정성 등급: HIGH (미래·순환 검증 통과)";
-        stabTipDesc = "1) 미래 가상 구간(OOS) 샤프 지수 양수, 2) 3개년 순환 검증(Walk-Forward) 승률 60% 이상을 동시에 통과한 최상위 신뢰도 전략입니다. 과거 과적합(착시)이 없어 실전 매매 적용에 가장 적합합니다.";
-        stabTipHint = "시그널 발생 익일 시가 분할 매수로 적극 활용을 권장합니다.";
+        stabTipTitle = "🟢 안정성 등급: HIGH (최종·순환 검증 기준 충족)";
+        stabTipDesc = "최종검증(OOS) 샤프와 Walk-Forward 기준을 충족했습니다. 제한된 과거 표본 결과이며 과적합이 없거나 미래 성과가 보장된다는 뜻은 아닙니다.";
+        stabTipHint = "검증·최종검증 거래 수, 최대낙폭, 비용 가정을 함께 확인하세요.";
         stabHtml = `<span class="strat-badge-high has-tip" data-tip-title="${escapeHtml(stabTipTitle)}" data-tip="${escapeHtml(stabTipDesc)}" data-tip-hint="${escapeHtml(stabTipHint)}" tabindex="0">🟢 HIGH (최상)</span>`;
       } else if (stab === "MEDIUM") {
         stabTipTitle = "🟡 안정성 등급: MED (보통·양호)";
-        stabTipDesc = "과거 백테스트 성과는 양호하나, 특정 시장 국면이나 시기 순환 테스트에서 일시적 수익률 편차가 발생한 전략입니다. 실전 매매 시 비중을 조절하여 분산 투자해야 합니다.";
-        stabTipHint = "포트폴리오 비중 5~10% 이내로 분할 진입을 권장합니다.";
+        stabTipDesc = "일부 검증 기준은 충족했지만 구간별 결과 편차가 있어 추가 표본 확인이 필요한 전략입니다.";
+        stabTipHint = "검증과 최종검증의 수익 방향 및 거래 수가 일치하는지 확인하세요.";
         stabHtml = `<span class="strat-badge-med has-tip" data-tip-title="${escapeHtml(stabTipTitle)}" data-tip="${escapeHtml(stabTipDesc)}" data-tip-hint="${escapeHtml(stabTipHint)}" tabindex="0">🟡 MED (보통)</span>`;
       } else {
         stabTipTitle = "🟠 안정성 등급: LOW (표본 부족 / 연구 후보)";
         stabTipDesc = "과거 3년간 매매 체결 횟수가 부족하거나(8회 미만), 최근 시장 변동성으로 인해 미래 검증에서 편차가 큰 전략입니다. 맹목적 추종보다는 연구/관찰 후보로 활용해야 합니다.";
-        stabTipHint = "정식 매매보다는 소액 분할 또는 차트 확인 후 보조 지표로 참고하세요.";
+        stabTipHint = "성과 결론을 내리지 말고 데이터와 기간을 더 확보하세요.";
         stabHtml = `<span class="strat-badge-low has-tip" data-tip-title="${escapeHtml(stabTipTitle)}" data-tip="${escapeHtml(stabTipDesc)}" data-tip-hint="${escapeHtml(stabTipHint)}" tabindex="0">🟠 LOW (표본부족)</span>`;
       }
 
       let actionGuideChip = "";
       if (stab === "HIGH") {
-        actionGuideChip = `<span class="chip ok has-tip" data-tip-title="🎯 실전 액션 가이드" data-tip="미래/순환 검증을 모두 통과한 종목입니다. 시그널 발생 익일 시가에 분할 매수 진입하기 적합합니다." style="font-size:10.5px; padding:2px 7px; font-weight:700;" tabindex="0">✅ 미래 검증 완료 · 시가 분할 매수 적합</span>`;
+        actionGuideChip = `<span class="chip ok has-tip" data-tip-title="검증 해석" data-tip="설정된 최종검증·순환 기준을 충족했지만 미래 성과를 보장하지 않습니다." style="font-size:10.5px; padding:2px 7px; font-weight:700;" tabindex="0">✅ 검증 기준 충족 · 추가 확인 필요</span>`;
       } else if (stab === "MEDIUM") {
-        actionGuideChip = `<span class="chip warn has-tip" data-tip-title="🎯 실전 액션 가이드" data-tip="시장 국면에 따라 수익률 편차가 발생할 수 있으므로, 계좌 내 비중을 5% 이내로 분산 진입하세요." style="font-size:10.5px; padding:2px 7px; font-weight:700;" tabindex="0">⚠️ 구간별 편차 · 비중 분산 권장</span>`;
+        actionGuideChip = `<span class="chip warn has-tip" data-tip-title="검증 해석" data-tip="검증 구간과 최종검증 결과의 편차를 확인해야 합니다." style="font-size:10.5px; padding:2px 7px; font-weight:700;" tabindex="0">⚠️ 구간별 편차 · 결론 보류</span>`;
       } else {
-        actionGuideChip = `<span class="chip neutral has-tip" data-tip-title="🎯 실전 액션 가이드" data-tip="표본 데이터가 부족하므로 맹목적 매수보다는 실시간 호가/차트 확인 후 소액 분할로 관찰하세요." style="font-size:10.5px; padding:2px 7px;" tabindex="0">🧪 표본 부족 · 소액 분할/관찰</span>`;
+        actionGuideChip = `<span class="chip neutral has-tip" data-tip-title="검증 해석" data-tip="거래 수 또는 순환 검증이 부족해 성과 판단에 사용할 수 없습니다." style="font-size:10.5px; padding:2px 7px;" tabindex="0">🧪 표본 부족 · 판단 보류</span>`;
       }
 
       return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker || "")}">
@@ -6685,11 +6699,13 @@ function renderStrategy(data) {
           <div class="params-ko" style="color:#94a3b8; font-size:11px; margin-top:2px;">${escapeHtml(paramsKo || familyKo)}</div>
         </td>
         <td>${stabHtml}</td>
-        <td class="num has-tip" data-tip="종합 샤프 지수: 위험 1단위당 초과수익 (1.0 이상 우수)">
-          <b style="color:${Number(best.sharpe) >= 1.0 ? '#4ade80' : '#f8fafc'}; font-size:13.5px;">${best.sharpe == null ? "—" : fmt(best.sharpe, 2)}</b>
+        <td class="num has-tip" data-tip="가운데 검증 구간 수익률과 그 구간의 왕복 거래 수입니다. 이 결과가 전략 선택에 사용됩니다.">
+          <b style="color:${Number(best.validation_return) > 0 ? '#4ade80' : '#f8fafc'}; font-size:13.5px;">${pctCell(best.validation_return)}</b>
+          <span class="meta">${best.validation_trade_count ?? 0}회</span>
         </td>
-        <td class="num has-tip" data-tip="미래 검증(OOS) 샤프: 과거 끼워맞추기 없는 순수 미래 성과">
-          <b style="color:${Number(best.oos_sharpe) >= 1.0 ? '#38bdf8' : '#cbd5e1'}; font-size:13.5px;">${best.oos_sharpe == null ? "—" : fmt(best.oos_sharpe, 2)}</b>
+        <td class="num has-tip" data-tip="선택에 쓰지 않은 마지막 20% 최종검증 결과입니다. 수익률·샤프·거래 수를 함께 봐야 합니다.">
+          <b style="color:${Number(best.oos_return) > 0 ? '#38bdf8' : '#cbd5e1'}; font-size:13.5px;">${pctCell(best.oos_return)}</b>
+          <span class="meta">샤프 ${best.oos_sharpe == null ? "—" : fmt(best.oos_sharpe, 2)} · ${best.oos_trade_count ?? 0}회</span>
         </td>
         <td class="num has-tip" data-tip="순환 검증(WF) 승률: 시기를 바꿔가며 테스트했을 때 플러스 수익을 낸 기간 비율">
           <span style="font-weight:800; color:${(best.wf_hit || 0) >= 0.6 ? '#4ade80' : '#f8fafc'}; font-size:13px;">${best.wf_hit == null ? "—" : `${(best.wf_hit * 100).toFixed(0)}%`}</span>
@@ -6701,7 +6717,7 @@ function renderStrategy(data) {
         <td class="num has-tip" data-tip="총 매매 횟수: 왕복 체결 횟수">${best.trade_count ?? "—"}회</td>
         <td class="strat-note" style="min-width:240px;">
           <div style="display:flex; flex-direction:column; gap:4px;">
-            <div style="font-size:11.5px; color:#e2e8f0; font-weight:600;">🎯 ${escapeHtml(ruleSummary)}</div>
+            <div style="font-size:11.5px; color:#e2e8f0; font-weight:600;">규칙: ${escapeHtml(ruleSummary)}</div>
             <div>${actionGuideChip}</div>
           </div>
         </td>
@@ -6730,35 +6746,35 @@ function renderStrategy(data) {
     <div class="strat-guide-grid">
       <div class="strat-guide-card">
         <div class="strat-guide-head"><span class="strat-guide-icon">🎯</span> 1. 백테스트 목적</div>
-        <div class="strat-guide-desc">재무 Quant TOP20 종목별로 과거 3년간 가장 수익성과 안전성이 뛰어났던 <b>최적 매매 타이밍</b>을 발굴합니다.</div>
+        <div class="strat-guide-desc">재무 Quant TOP20 종목별로 네 가격 규칙을 같은 조건에서 비교하고 <b>검증 구간 1위와 최종검증 결과</b>를 분리해 보여줍니다.</div>
       </div>
       <div class="strat-guide-card">
         <div class="strat-guide-head"><span class="strat-guide-icon">🧪</span> 2. 4대 전략 풀</div>
-        <div class="strat-guide-desc"><b>RSI 과매도 반등</b>, <b>볼린저 하단 반등</b>, <b>이평선 골든크로스</b>, <b>돈치안 박스권 돌파</b> 중 최고 성과 규칙을 채택합니다.</div>
+        <div class="strat-guide-desc"><b>RSI</b>, <b>볼린저</b>, <b>이평선 교차</b>, <b>돈치안 돌파</b>를 학습 60%·검증 20%·최종검증 20%로 나눠 비교합니다.</div>
       </div>
       <div class="strat-guide-card">
         <div class="strat-guide-head"><span class="strat-guide-icon">🛡️</span> 3. 과적합 2중 방지</div>
-        <div class="strat-guide-desc">과거에만 반짝 맞춘 착시를 막기 위해, <b>미래 가상 구간(OOS)</b>과 <b>시기 순환(Walk-Forward)</b>을 통과해야 <b>HIGH</b> 등급을 부여합니다.</div>
+        <div class="strat-guide-desc">마지막 20% <b>최종검증(OOS)</b>은 전략 선택에 사용하지 않으며, <b>Walk-Forward</b>와 함께 과적합 위험을 확인합니다.</div>
       </div>
       <div class="strat-guide-card">
         <div class="strat-guide-head"><span class="strat-guide-icon">⏱️</span> 4. 현실적 체결 기준</div>
-        <div class="strat-guide-desc">신호 발생 <b>다음날 시가 매수</b> 및 호가 슬리피지(0.05%)를 선반영하여 실전과 동일한 환경을 모의합니다.</div>
+        <div class="strat-guide-desc">신호 다음 거래일 시가 체결, 설정된 수수료와 슬리피지를 반영한 일봉 모의이며 실제 주문·호가 재현은 아닙니다.</div>
       </div>
     </div>
 
     <!-- Strategy Summary KPIs -->
     <div class="strat-summary-row">
-      <div class="strat-summary-item has-tip" data-tip-title="🟢 안정성 최상 (HIGH)" data-tip="미래 가상 구간(OOS) 및 순환 검증(WF)을 모두 통과한 무결점 최고 신뢰도 전략 종목 수입니다." tabindex="0">
+      <div class="strat-summary-item has-tip" data-tip-title="🟢 안정성 기준 HIGH" data-tip="설정된 최종검증 및 순환 검증 기준을 충족한 종목 수입니다. 무결점이나 미래 성과 보장을 뜻하지 않습니다." tabindex="0">
         <span>🟢 안정성 최상 (HIGH)</span>
         <b>${highCount} <small style="font-size:12px; color:#94a3b8; font-weight:normal;">개 종목</small></b>
       </div>
-      <div class="strat-summary-item has-tip" data-tip-title="🟡 안정성 보통 (MED)" data-tip="수익성은 양호하나 특정 국면별 편차가 일부 존재하는 전략 종목 수입니다. 분할 분산 진입을 권장합니다." tabindex="0">
+      <div class="strat-summary-item has-tip" data-tip-title="🟡 안정성 기준 MED" data-tip="일부 기준만 충족해 구간별 편차와 표본을 더 확인해야 하는 종목 수입니다." tabindex="0">
         <span>🟡 안정성 보통 (MED)</span>
         <b>${medCount} <small style="font-size:12px; color:#94a3b8; font-weight:normal;">개 종목</small></b>
       </div>
       <div class="strat-summary-item has-tip" data-tip-title="📊 TOP20 평균 샤프 지수" data-tip="위험 1단위 감수 대비 초과수익 비율의 평균치입니다. 1.0 이상이면 시장 대비 탁월한 초과수익을 의미합니다." tabindex="0">
-        <span>📊 TOP20 평균 샤프 지수</span>
-        <b>${avgSharpe} <small style="font-size:12px; color:#38bdf8; font-weight:normal;">(위험 대비 초과수익 우수)</small></b>
+        <span>📊 TOP20 전체기간 참고 샤프</span>
+        <b>${avgSharpe} <small style="font-size:12px; color:#38bdf8; font-weight:normal;">(선택 지표 아님)</small></b>
       </div>
       <div class="strat-summary-item has-tip" data-tip-title="🛡️ TOP20 평균 최대낙폭 (MDD)" data-tip="전략 보유 기간 중 겪었던 최대 하락폭의 평균치입니다. 낮을수록 하락장 방어력이 견고합니다." tabindex="0">
         <span>🛡️ TOP20 평균 최대낙폭</span>
@@ -6780,14 +6796,14 @@ function renderStrategy(data) {
     <div class="table-wrap tall"><table>
       <thead><tr>
         ${thTip("종목", "Quant TOP20 종목명과 KRX 일봉 데이터 축적 일수입니다.")}
-        ${thTip("최적 매매 규칙", "해당 종목과 과거 가장 궁합이 좋았던 진입/청산 전략 및 세부 파라미터입니다.")}
-        ${thTip("안정성", "HIGH(미래 검증 완료) / MED(보통) / LOW(데이터 표본 부족).")}
-        ${thTip("종합 샤프", "변동성 대비 초과수익 비율. 1.0 이상이면 우수, 1.5 이상이면 최상급입니다.")}
-        ${thTip("미래 검증 샤프", "AI/모델이 학습하지 않은 별도의 미래 기간(OOS) 성과입니다.")}
+        ${thTip("검증 구간 1위 규칙", "가운데 검증 구간 점수로 선택한 가격 규칙과 파라미터입니다.")}
+        ${thTip("안정성", "HIGH/MED/LOW는 설정된 표본·최종검증·순환검증 기준의 충족 정도입니다.")}
+        ${thTip("검증 수익률", "전략 선택에 사용한 가운데 검증 구간 수익률과 거래 수입니다.")}
+        ${thTip("최종검증 결과", "선택에 쓰지 않은 마지막 20%의 수익률·샤프·거래 수입니다.")}
         ${thTip("순환 검증 승률", "시뮬레이션 구간을 3개월씩 전진시키며(Walk-Forward) 플러스 수익을 낸 기간 비율입니다.")}
         ${thTip("최대 낙폭", "전략 운용 중 겪었던 최대 하락폭(MDD)입니다. 낮을수록 안전합니다.")}
         ${thTip("매매 횟수", "과거 3년간 발생한 총 왕복 매매 횟수입니다.")}
-        ${thTip("전략 분석 & 매매 코멘트", "이 종목에 이 전략을 채택한 배경과 실전 매매 가이드입니다.")}
+        ${thTip("전략 분석", "선택 근거와 표본 부족·구간 불일치 여부를 설명합니다.")}
       </tr></thead>
       <tbody>${body || "<tr><td colspan=9 style='text-align:center; padding:30px; color:#94a3b8;'>해당 조건에 일치하는 종목이 없습니다.</td></tr>"}</tbody>
     </table></div>
