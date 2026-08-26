@@ -140,6 +140,7 @@ def run_from_staged(
         if mrow is not None:
             rec["kind"] = rec.get("kind") or mrow.get("kind") or ""
             rec["secu_group"] = rec.get("secu_group") or mrow.get("secu_group") or ""
+            rec["sect"] = rec.get("sect") or mrow.get("sect") or ""
             rec["company"] = rec.get("company") or mrow.get("company") or ticker
             rec["list_date"] = rec.get("list_date") or mrow.get("list_date")
         induty = None if mrow is None else mrow.get("induty_code")

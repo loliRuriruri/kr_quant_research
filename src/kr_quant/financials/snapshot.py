@@ -370,6 +370,7 @@ def build_inputs_for_security(
         return_12m=extra.get("return_12m"),
         market_return_6m=extra.get("market_return_6m"),
         high_52w=extra.get("high_52w"),
+        krx_risk_class=str(price_row.get("sect") or "") or None,
     )
 
     class_reasons = classify_security(
@@ -377,6 +378,7 @@ def build_inputs_for_security(
             "company": price_row.get("company"),
             "kind": price_row.get("kind"),
             "secu_group": price_row.get("secu_group"),
+            "sect": price_row.get("sect"),
         },
         extra.get("universe_rules") or {},
         industry_info,

@@ -94,6 +94,7 @@ class FactorInputs:
     return_12m: float | None = None
     market_return_6m: float | None = None
     high_52w: float | None = None
+    krx_risk_class: str | None = None
 
 
 @dataclass

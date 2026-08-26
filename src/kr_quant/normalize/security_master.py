@@ -32,6 +32,7 @@ def normalize_krx_rows(rows: list[dict[str, Any]], market: str, as_of: date) -> 
                 "listed_shares": parse_krx_number(raw.get("LIST_SHRS")),
                 "kind": raw.get("KIND_STKCERT_TP_NM") or "",
                 "secu_group": raw.get("SECUGRP_NM") or "",
+                "sect": raw.get("SECT_TP_NM") or "",
             }
         )
     return pd.DataFrame(recs)

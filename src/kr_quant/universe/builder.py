@@ -8,6 +8,7 @@ import pandas as pd
 
 from kr_quant.financials.formulas import bs_identity_ok
 from kr_quant.models import FactorInputs, ScoredName
+from kr_quant.universe.tradability import krx_risk_class_excluded
 
 
 def load_ksic_map(path) -> pd.DataFrame:
@@ -63,6 +64,7 @@ def classify_security(
     name = str(row.get("company") or row.get("isu_nm") or "")
     kind = str(row.get("kind") or row.get("KIND_STKCERT_TP_NM") or "")
     group = str(row.get("secu_group") or row.get("SECUGRP_NM") or "")
+    krx_risk_class = row.get("sect") or row.get("SECT_TP_NM") or ""
     patterns = universe_rules.get("name_patterns", {})
 
     aliases = universe_rules.get("security_types", {})
@@ -85,6 +87,8 @@ def classify_security(
         reasons.append("INFRA_FUND_MODEL_NOT_AVAILABLE")
     if industry_info.get("exclude_model") == "FINANCIAL":
         reasons.append("FINANCIAL_MODEL_NOT_AVAILABLE")
+    if krx_risk_class_excluded(krx_risk_class):
+        reasons.append("TRADING_STATUS_EXCLUDED")
     return list(dict.fromkeys(reasons))
 
 

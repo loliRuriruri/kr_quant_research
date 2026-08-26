@@ -446,6 +446,7 @@ def build_live_master(settings: Settings, as_of: date) -> pd.DataFrame:
             "market",
             "kind",
             "secu_group",
+            "sect",
             "list_date",
             "induty_code",
             "acc_mt",
