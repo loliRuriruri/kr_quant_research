@@ -52,6 +52,7 @@ def cache_path(settings: Settings) -> Path:
 
 _TICKER_META_CACHE: dict[str, Any] = {"ts": 0.0, "map": {}}
 _SEASONALITY_DB_MEM: dict[str, Any] = {"ts": 0.0, "db": None}
+_CLEAN_TICKERS_CACHE: dict[str, Any] = {"ts": 0.0, "tickers": set()}
 PRE_ENTRY_STAGE_WEIGHT: dict[str, int] = {
     "TODAY_ENTRY": 100,
     "PRE_ENTRY_15": 80,
@@ -60,6 +61,59 @@ PRE_ENTRY_STAGE_WEIGHT: dict[str, int] = {
     "RALLY_ACTIVE": 30,
     "EXIT_PEAK": 10,
 }
+
+
+def _clean_active_tickers(settings: Settings) -> set[str]:
+    """Returns set of clean, active, non-halted, non-penny, non-risk tickers."""
+    now = time.time()
+    if _CLEAN_TICKERS_CACHE["tickers"] and now - float(_CLEAN_TICKERS_CACHE.get("ts") or 0) < 1800:
+        return _CLEAN_TICKERS_CACHE["tickers"]
+
+    prices = _prices(settings)
+    if prices is None or prices.empty or "ticker" not in prices.columns:
+        return set()
+
+    df = prices.copy()
+    date_col = "trade_date" if "trade_date" in df.columns else "date"
+    df["dt"] = pd.to_datetime(df[date_col], errors="coerce")
+    df = df.dropna(subset=["dt"]).sort_values(["ticker", "dt"])
+    df["ticker"] = df["ticker"].astype(str).str.zfill(6)
+
+    max_date = df["dt"].max()
+    active_cutoff = max_date - pd.Timedelta(days=14)
+    last_rows = df.groupby("ticker").last()
+
+    vol_series = last_rows["volume"] if "volume" in last_rows.columns else pd.Series(1, index=last_rows.index)
+    active_mask = (
+        (last_rows["dt"] >= active_cutoff) &
+        (last_rows["close"] >= 1000.0) &
+        (vol_series > 0)
+    )
+    clean_tickers = set(last_rows[active_mask].index)
+
+    p_latest = settings.output_dir / "latest_all_stocks.parquet"
+    if not p_latest.exists():
+        for p in sorted(settings.output_dir.glob("as_of_date=*"), reverse=True):
+            if (p / "scored_all.parquet").exists():
+                p_latest = p / "scored_all.parquet"
+                break
+    if p_latest.exists():
+        try:
+            df_latest = pd.read_parquet(p_latest)
+            for _, r_stock in df_latest.iterrows():
+                t = str(r_stock.get("ticker", "")).zfill(6)
+                ex = r_stock.get("exclusion_reasons")
+                ex_l = [str(x) for x in list(ex)] if (ex is not None and hasattr(ex, "__iter__") and not isinstance(ex, str)) else []
+                co = str(r_stock.get("company") or "")
+                if any(k in ex_l for k in ["SPAC", "PREFERRED_SHARE", "NON_COMMON_SECURITY", "REIT_MODEL_NOT_AVAILABLE", "LIQUIDITY_FAIL", "MANAGEMENT_STOCK", "DELISTING_RISK", "TRADING_HALT", "AUDIT_DISQUALIFIED"]) \
+                   or any(k in co for k in ["관리", "정리매매", "환기"]):
+                    clean_tickers.discard(t)
+        except Exception:
+            pass
+
+    _CLEAN_TICKERS_CACHE["ts"] = now
+    _CLEAN_TICKERS_CACHE["tickers"] = clean_tickers
+    return clean_tickers
 
 
 def ticker_meta_map(settings: Settings) -> dict[str, dict[str, str]]:
@@ -195,12 +249,17 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
     if prices.empty:
         return {"updated_at": int(time.time()), "stocks": {}}
 
+    clean_set = _clean_active_tickers(settings)
+
     df = prices.copy()
     df["date"] = pd.to_datetime(df["trade_date"], errors="coerce")
     df = df.dropna(subset=["date"]).sort_values(["ticker", "date"])
     df["year"] = df["date"].dt.year
     df["month"] = df["date"].dt.month
     df["ticker"] = df["ticker"].astype(str).str.zfill(6)
+
+    if clean_set:
+        df = df[df["ticker"].isin(clean_set)]
 
     names_map: dict[str, dict[str, str]] = ticker_meta_map(settings)
     if not names_map and "company" in df.columns:
@@ -228,8 +287,13 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
     ).reset_index()
 
     hist_dict: dict[tuple[str, int], list[float]] = {}
-    for (t, m), sub_ret in monthly.groupby(["ticker", "month"])["ret"]:
-        hist_dict[(t, m)] = [round(float(v), 4) for v in sub_ret.tolist()]
+    hist_recs_dict: dict[tuple[str, int], list[dict[str, Any]]] = {}
+    for (t, m), sub_df in monthly.groupby(["ticker", "month"]):
+        hist_dict[(t, m)] = [round(float(v), 4) for v in sub_df["ret"].tolist()]
+        hist_recs_dict[(t, m)] = [
+            {"year": int(r["year"]), "return": round(float(r["ret"]), 4)}
+            for _, r in sub_df.sort_values("year").iterrows()
+        ]
 
     stocks_db: dict[str, Any] = {}
 
@@ -248,8 +312,9 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
                 med_ret = round(float(r["median_return"]), 4)
                 cnt = int(r["years_count"])
                 hist_vals = hist_dict.get((ticker, m), [])
+                hist_recs = hist_recs_dict.get((ticker, m), [])
             else:
-                wr, avg_ret, med_ret, cnt, hist_vals = 0.0, 0.0, 0.0, 0, []
+                wr, avg_ret, med_ret, cnt, hist_vals, hist_recs = 0.0, 0.0, 0.0, 0, [], []
 
             months_list.append({
                 "month": m,
@@ -258,6 +323,7 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
                 "median_return": med_ret,
                 "years_count": cnt,
                 "history": hist_vals,
+                "history_records": hist_recs,
             })
 
         meta = names_map.get(ticker, {})
@@ -699,6 +765,10 @@ def scan_seasonality_discovery(
             pass
 
     meta = ticker_meta_map(settings)
+    clean_set = _clean_active_tickers(settings)
+    if clean_set:
+        cached_list = [item for item in cached_list if str(item.get("ticker", "")).zfill(6) in clean_set]
+
     for item in cached_list:
         _apply_market_meta(item, meta)
 
@@ -798,9 +868,23 @@ def get_pre_entry_glance(settings: Settings, n: int = 3, lookback_years: int = 5
     )
     allowed = {k for k, w in PRE_ENTRY_STAGE_WEIGHT.items() if w >= 40}
     rows = [r for r in rows if r.get("entry_stage") in allowed]
-    rows.sort(key=cmp_to_key(_pre_entry_cmp))
-    top = rows[: max(0, n)]
-    quotes = _latest_quotes(settings, [r.get("ticker") for r in top])
+    
+    clean_set = _clean_active_tickers(settings)
+    quotes = _latest_quotes(settings, [r.get("ticker") for r in rows])
+    
+    valid_rows = []
+    for r in rows:
+        t = str(r.get("ticker") or "").zfill(6)
+        if clean_set and t not in clean_set:
+            continue
+        q = quotes.get(t, {})
+        close = q.get("last_close")
+        if close is not None and close < 1000.0:
+            continue
+        valid_rows.append(r)
+
+    valid_rows.sort(key=cmp_to_key(_pre_entry_cmp))
+    top = valid_rows[: max(0, n)]
     glance: list[dict[str, Any]] = []
     for idx, r in enumerate(top, start=1):
         q = quotes.get(str(r.get("ticker") or "").zfill(6), {})

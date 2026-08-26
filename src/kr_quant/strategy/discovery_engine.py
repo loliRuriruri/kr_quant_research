@@ -63,14 +63,15 @@ def pattern_from_month_stat(
     if not hist_recs and not history:
         return None
 
+    cur_year = pd.Timestamp.now().year
     years_track = []
     if hist_recs:
-        if lookback_years and lookback_years > 0:
-            hist_slice = hist_recs[-lookback_years:]
-        else:
-            hist_slice = hist_recs
+        min_year = (cur_year - lookback_years) if (lookback_years and lookback_years > 0) else 1900
+        valid_recs = [hr for hr in hist_recs if int(hr.get("year", 0)) >= min_year and int(hr.get("year", 0)) <= cur_year]
+        if not valid_recs and not lookback_years:
+            valid_recs = hist_recs
 
-        for hr in hist_slice:
+        for hr in valid_recs:
             y = int(hr.get("year", 2024))
             r = float(hr.get("return", 0.0))
             years_track.append({
@@ -90,9 +91,7 @@ def pattern_from_month_stat(
         if years_count == 0:
             return None
 
-        cur_year = pd.Timestamp.now().year
         start_year = cur_year - years_count
-
         for i, ret in enumerate(history_slice):
             y = start_year + i
             r = float(ret)
@@ -105,7 +104,7 @@ def pattern_from_month_stat(
             })
 
     years_count = len(years_track)
-    if years_count == 0:
+    if years_count < 2:
         return None
 
     rets = [r["return"] for r in years_track]
