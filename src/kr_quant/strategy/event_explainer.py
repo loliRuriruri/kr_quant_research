@@ -57,17 +57,66 @@ EVENT_KNOWLEDGE_BASE: dict[str, dict[str, Any]] = {
         },
         "invalidating_rules": "부동산 PF 추가 부실로 인한 대손비용 급증, 배당 삭감 공시",
     },
-    # 000100 유한양행
-    "000100": {
-        "common_event": "하반기 글로벌 종양학회(ESMO/WCLC) 렉라자 추가 임상 데이터 공개",
-        "secondary_event": "FDA 승인 이후 글로벌 마일스톤 유입 및 기술료 수취",
+    # 067080 대화제약
+    "067080": {
+        "common_event": "리포락셀(세계 최초 경구용 파클리탁셀 항암제) 중국 NMPA 승인 및 아시아 라이선스아웃 모멘텀",
+        "secondary_event": "하반기 글로벌 종양학회 임상 성과 발표 및 개량신약 처방 확대",
         "confidence": "HIGH",
         "failed_causes": {
-            "2021": "경쟁 약물 대비 우월성 입증 지연에 따른 차익실현",
+            "2022": "바이오 섹터 전반의 고금리 유동성 위축 및 임상 심사 지연",
         },
-        "invalidating_rules": "임상 3상 유효성 지표 미달, FDA 승인 지연",
-    }
-}
+        "invalidating_rules": "중국 규제당국 허가 지연, 기술수출 계약 파기 공시, RS60 < -10% 이탈",
+    },
+    # 000240 한국앤컴퍼니
+    "000240": {
+        "common_event": "한국타이어앤테크 지분법 이익 급증 및 북미/유럽 고수익 교체용(RE) 타이어 성수기",
+        "secondary_event": "차량용/산업용 납축전지(ES) 글로벌 수출 호조 및 주주환원 배당 증액",
+        "confidence": "HIGH",
+        "failed_causes": {
+            "2023": "지배구조 분쟁 및 경영권 분쟁 소송에 따른 변동성",
+        },
+        "invalidating_rules": "원자재(천연고무·유가) 급등으로 인한 타이어 마진 훼손, 배당 축소",
+    },
+    # 006110 삼아알미늄
+    "006110": {
+        "common_event": "LG에너지솔루션·SK온·삼성SDI 3사 2차전지 배터리용 초극박 알루미늄박 공급 확대",
+        "secondary_event": "하반기 글로벌 전기차 신차 출시 사이클 및 양극박 증설 라인 본격 가동",
+        "confidence": "HIGH",
+        "failed_causes": {
+            "2023": "전기차 캐즘(Chasm) 우려 및 배터리사 재고 조정",
+        },
+        "invalidating_rules": "글로벌 배터리 고객사 증설 철회, 알루미늄 판가 급락, 기관 대량 매도",
+    },
+    # 011790 SKC
+    "011790": {
+        "common_event": "앱솔릭스(Absolics) 반도체 글라스 기판(Glass Substrate) 북미 빅테크 공급 가시화",
+        "secondary_event": "하반기 AI 데이터센터 차세대 패키징 기판 양산 및 동박(SK넥실리스) 턴어라운드",
+        "confidence": "HIGH",
+        "failed_causes": {
+            "2023": "동박 초과공급 및 화학 시황 부진 장기화",
+        },
+        "invalidating_rules": "글라스 기판 양산 수율 확보 실패, 동박 판가 추가 하락, 분기 적자 확대",
+    },
+    # 015760 한국전력
+    "015760": {
+        "common_event": "연말 전기요금 누적 인상 효과 및 SMP(전력도매가격) 하향 안정화로 대규모 흑자 전환",
+        "secondary_event": "동절기 난방 전력 수요 급증 및 에너지공기업 재무건전성 개선",
+        "confidence": "HIGH",
+        "failed_causes": {
+            "2022": "우크라이나 전쟁 발 국제 LNG/유가 폭등으로 사상 최대 적자 기록",
+        },
+        "invalidating_rules": "국제 유가 90달러 돌파, 정부 요금 동결 압박, 한전채 발행 한도 이슈",
+    },
+    # 017800 현대엘리베이터
+    "017800": {
+        "common_event": "국내외 초고층 빌딩 및 아파트 입주 마무리 분기 엘리베이터 설치 매출 집중",
+        "secondary_event": "안정적 유지보수(MRO) 현금흐름 및 자사주 소각·고배당 밸류업 프로그램",
+        "confidence": "HIGH",
+        "failed_causes": {
+            "2021": "국내 건설 분양 경기 침체 및 원자재(후판) 단가 인상",
+        },
+        "invalidating_rules": "국내 주택 착공 실적 급감, 경영권 분쟁 리스크 재점화",
+    },
 
 
 def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -2,10 +2,10 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=1200, user-scalable=yes" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%236ee7b7'%3EQ%3C/text%3E%3C/svg%3E" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.69.1" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.69.3" />
 </head>
 <body>
   <aside class="nav">
@@ -1752,100 +1752,6 @@
     </div>
 
 
-    <!-- 📱 Mobile Bottom Navigation Bar (App Style 5 Tabs) -->
-    <nav class="mobile-bottom-nav">
-      <button type="button" class="mobile-nav-btn active" data-mobile-view="dash">
-        <span class="mobile-nav-icon">📊</span>
-        <span class="mobile-nav-label">대시보드</span>
-      </button>
-      <button type="button" class="mobile-nav-btn" data-mobile-view="rank">
-        <span class="mobile-nav-icon">🏆</span>
-        <span class="mobile-nav-label">점수랭킹</span>
-      </button>
-      <button type="button" class="mobile-nav-btn" data-mobile-view="market">
-        <span class="mobile-nav-icon">🌐</span>
-        <span class="mobile-nav-label">매크로</span>
-      </button>
-      <button type="button" class="mobile-nav-btn" data-mobile-view="trade">
-        <span class="mobile-nav-icon">⚡</span>
-        <span class="mobile-nav-label">트레이딩</span>
-      </button>
-      <button type="button" class="mobile-nav-btn" id="btn-mobile-drawer-toggle">
-        <span class="mobile-nav-icon">☰</span>
-        <span class="mobile-nav-label">전체메뉴</span>
-      </button>
-    </nav>
-
-
-    <!-- 📱 Mobile Full-Menu Drawer Modal (Glassmorphic) -->
-    <div id="mobile-menu-drawer" class="mobile-drawer-overlay hidden">
-      <div class="mobile-drawer-container">
-        <div class="mobile-drawer-head">
-          <div style="display:flex; align-items:center; gap:10px;">
-            <div class="mark" style="width:32px; height:32px; font-size:16px;">Q</div>
-            <div>
-              <b style="font-size:15px; color:#fff;">KR Quant 전체 메뉴</b>
-              <span style="display:block; font-size:11px; color:#94a3b8;">원하는 퀀트 리서치 기능을 선택하세요</span>
-            </div>
-          </div>
-          <button type="button" class="ghost" id="btn-mobile-drawer-close" style="font-size:18px; padding:4px 10px; border:none; color:#cbd5e1;">✕</button>
-        </div>
-
-        <div class="mobile-drawer-body">
-          <!-- Group 1: Quant Engine -->
-          <div class="mobile-menu-group">
-            <div class="mobile-group-title">📊 Quant Engine</div>
-            <div class="mobile-menu-grid">
-              <button class="mobile-menu-item" data-mobile-view="dash"><span class="m-icon">📊</span><span class="m-txt">대시보드</span></button>
-              <button class="mobile-menu-item" data-mobile-view="rank"><span class="m-icon">🏆</span><span class="m-txt">점수 랭킹</span></button>
-              <button class="mobile-menu-item" data-mobile-view="strategy"><span class="m-icon">🧪</span><span class="m-txt">전략·백테스트</span></button>
-              <button class="mobile-menu-item" data-mobile-view="screens"><span class="m-icon">🔍</span><span class="m-txt">테마 스크리너</span></button>
-            </div>
-          </div>
-
-          <!-- Group 2: Market & Sector -->
-          <div class="mobile-menu-group">
-            <div class="mobile-group-title">🌐 Market & Sector</div>
-            <div class="mobile-menu-grid">
-              <button class="mobile-menu-item" data-mobile-view="market"><span class="m-icon">🌐</span><span class="m-txt">글로벌 매크로</span></button>
-              <button class="mobile-menu-item" data-mobile-view="sector"><span class="m-icon">🔄</span><span class="m-txt">업종·섹터</span></button>
-            </div>
-          </div>
-
-          <!-- Group 3: Smart Flow -->
-          <div class="mobile-menu-group">
-            <div class="mobile-group-title">⚡ Smart Flow</div>
-            <div class="mobile-menu-grid">
-              <button class="mobile-menu-item" data-mobile-view="investor"><span class="m-icon">👥</span><span class="m-txt">메이저 수급</span></button>
-              <button class="mobile-menu-item" data-mobile-view="flow"><span class="m-icon">⚡</span><span class="m-txt">쌍끌이 수급</span></button>
-              <button class="mobile-menu-item" data-mobile-view="empty"><span class="m-icon">🏚️</span><span class="m-txt">빈집 발굴</span></button>
-              <button class="mobile-menu-item" data-mobile-view="trade"><span class="m-icon">🎯</span><span class="m-txt">트레이딩 랩</span></button>
-              <button class="mobile-menu-item" data-mobile-view="seasonality"><span class="m-icon">📅</span><span class="m-txt">계절성·캘린더</span></button>
-              <button class="mobile-menu-item" data-mobile-view="toss"><span class="m-icon">📱</span><span class="m-txt">토스 랭킹</span></button>
-              <button class="mobile-menu-item" data-mobile-view="watch"><span class="m-icon">⭐</span><span class="m-txt">관심종목 & AI</span></button>
-            </div>
-          </div>
-
-          <!-- Group 4: Global Research -->
-          <div class="mobile-menu-group">
-            <div class="mobile-group-title">🏛️ Global Research</div>
-            <div class="mobile-menu-grid">
-              <button class="mobile-menu-item" data-mobile-view="us13f"><span class="m-icon">🏛️</span><span class="m-txt">월가 대가 (13F)</span></button>
-              <button class="mobile-menu-item" data-mobile-view="sunzi"><span class="m-icon">🍵</span><span class="m-txt">은하퀀트전설</span></button>
-            </div>
-          </div>
-
-          <!-- Group 5: System -->
-          <div class="mobile-menu-group">
-            <div class="mobile-group-title">⚙️ System</div>
-            <div class="mobile-menu-grid">
-              <button class="mobile-menu-item" data-mobile-view="run"><span class="m-icon">⚙️</span><span class="m-txt">실행 파이프라인</span></button>
-              <button class="mobile-menu-item" data-mobile-view="settings"><span class="m-icon">🔑</span><span class="m-txt">API 설정</span></button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
+  <script src="/static/app.js?v=2.69.3"></script>
 </body>
 </html>
