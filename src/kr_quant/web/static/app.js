@@ -1336,9 +1336,11 @@ function switchView(name) {
   if (publicShareMode && name === "settings") name = "dash";
   currentView = name;
   closeDrawer();
+  closeMobileDrawer();
   $$(".view").forEach((el) => el.classList.add("hidden"));
   $(`#view-${name}`).classList.remove("hidden");
   $$(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+  $$("[data-mobile-view]").forEach((b) => b.classList.toggle("active", b.dataset.mobileView === name));
   if (titles[name]) {
     $("#page-title").textContent = titles[name][0];
     $("#page-sub").textContent = titles[name][1];
@@ -8674,7 +8676,23 @@ async function startJob(kind) {
   pollJob();
 }
 
+function openMobileDrawer() {
+  const drawer = $("#mobile-menu-drawer");
+  if (drawer) drawer.classList.remove("hidden");
+}
+function closeMobileDrawer() {
+  const drawer = $("#mobile-menu-drawer");
+  if (drawer) drawer.classList.add("hidden");
+}
+
 $$(".nav-btn").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
+$$("[data-mobile-view]").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.mobileView)));
+$("#btn-mobile-drawer-toggle")?.addEventListener("click", openMobileDrawer);
+$("#btn-mobile-drawer-close")?.addEventListener("click", closeMobileDrawer);
+$("#mobile-menu-drawer")?.addEventListener("click", (e) => {
+  if (e.target === $("#mobile-menu-drawer")) closeMobileDrawer();
+});
+
 if ($("#flow-q")) {
   $("#flow-q").addEventListener("input", (e) => {
     if (!e.target.value.trim() && flowCache) renderFlow(flowCache);
