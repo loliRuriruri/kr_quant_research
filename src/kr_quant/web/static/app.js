@@ -606,8 +606,8 @@ async function runCustomBacktest(query, opts = {}) {
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">🤖</span>
-              <span style="font-size:13px; font-weight:800; color:#38bdf8;">Tier 1 AI 백테스트 정밀 진단 리포트</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">100% 무료 엔진</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">Tier 1 백테스트 정밀 진단 리포트</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">${aiRes.ai_generated ? "무료 AI 해석" : "규칙 기반 대체 설명"}</span>
             </div>
             <span class="chip" style="font-size:11px; font-weight:800; background:rgba(56,189,248,0.15); color:${verdictColor}; border:1px solid ${verdictColor};">
               종합 판정: ${escapeHtml(aiRes.verdict || "적합")}
@@ -616,11 +616,15 @@ async function runCustomBacktest(query, opts = {}) {
           <p style="margin:0 0 6px; font-size:13px; color:#f1f5f9; line-height:1.5;">${escapeHtml(aiRes.diagnosis || "")}</p>
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:8px; margin-top:8px;">
             ${aiRes.tuning_tip ? `<div style="background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:6px 10px; border-radius:4px; font-size:11.5px; color:#cbd5e1;">🎯 <b>파라미터 튜닝:</b> ${escapeHtml(aiRes.tuning_tip)}</div>` : ""}
-            ${aiRes.execution_risk ? `<div style="background:rgba(239, 68, 68, 0.08); border-left:3px solid #ef4444; padding:6px 10px; border-radius:4px; font-size:11.5px; color:#cbd5e1;">🛡️ <b>실전 리스크 관리:</b> ${escapeHtml(aiRes.execution_risk)}</div>` : ""}
+            ${aiRes.execution_risk ? `<div style="background:rgba(239, 68, 68, 0.08); border-left:3px solid #ef4444; padding:6px 10px; border-radius:4px; font-size:11.5px; color:#cbd5e1;">🛡️ <b>해석상 한계:</b> ${escapeHtml(aiRes.execution_risk)}</div>` : ""}
           </div>
         </div>
       `;
-    }).catch(() => {});
+      appendTier1Meta(diagEl, aiRes);
+    }).catch((err) => {
+      const diagEl = $("#custom-strat-ai-diag");
+      if (diagEl) renderTier1Unavailable(diagEl, null, err);
+    });
 
     showToast("백테스트가 완료되었습니다.", "success", 2200);
   } catch (err) {
@@ -3116,13 +3120,18 @@ async function loadTier1StockInsights(code) {
   try {
     const res = await api(`/api/research/${code}/tier1-insights`);
     if (!res) return;
+    const insightBoxes = [$("#tier1-news-container"), $("#tier1-dart-container"), $("#tier1-posture-container")].filter(Boolean);
+    if (!res.ok) {
+      insightBoxes.forEach((box) => renderTier1Unavailable(box, res));
+      return;
+    }
     
     // 1. Render News AI Card
     const newsBox = $("#tier1-news-container");
     if (newsBox && res.news_analysis && res.news_analysis.summary) {
       const na = res.news_analysis;
-      const sentCls = na.sentiment === "호재" ? "ok" : na.sentiment === "악재" ? "bad" : "warn";
-      const sentIcon = na.sentiment === "호재" ? "🔥" : na.sentiment === "악재" ? "⚠️" : "⚖️";
+      const sentCls = ["호재", "긍정"].includes(na.sentiment) ? "ok" : ["악재", "부정"].includes(na.sentiment) ? "bad" : "warn";
+      const sentIcon = ["호재", "긍정"].includes(na.sentiment) ? "🔥" : ["악재", "부정"].includes(na.sentiment) ? "⚠️" : "⚖️";
       newsBox.innerHTML = `
         <div class="tier1-ai-card tier1-news-card" style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border:1px solid rgba(56,189,248,0.4); border-radius:10px; padding:12px 14px; box-shadow:0 4px 14px rgba(0,0,0,0.35);">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
@@ -3148,7 +3157,7 @@ async function loadTier1StockInsights(code) {
         <div class="tier1-ai-card tier1-dart-card" style="margin-top:10px; background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border:1px solid rgba(168,85,247,0.4); border-radius:10px; padding:12px 14px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
             <span style="font-size:12px; font-weight:700; color:#c084fc;">💡 Tier 1 AI 공시 실전 해설 (지분 희석/오버행)</span>
-            <span class="chip ${riskCls}" style="font-size:10px; font-weight:700; padding:2px 8px;">${riskIcon} 공시 위험도: ${escapeHtml(ea.risk_level || "안전")}</span>
+            <span class="chip ${riskCls}" style="font-size:10px; font-weight:700; padding:2px 8px;">${riskIcon} 공시 위험도: ${escapeHtml(ea.risk_level || "판단 불가")}</span>
           </div>
           <p style="font-size:12px; line-height:1.5; color:#f1f5f9; margin:0 0 4px;">${escapeHtml(ea.commentary)}</p>
           ${ea.key_point ? `<div style="font-size:11px; color:#e2e8f0;">📌 <b>체크 포인트:</b> ${escapeHtml(ea.key_point)}</div>` : ""}
@@ -3160,20 +3169,23 @@ async function loadTier1StockInsights(code) {
     const postBox = $("#tier1-posture-container");
     if (postBox && res.tech_flow_analysis && res.tech_flow_analysis.action_guide) {
       const tfa = res.tech_flow_analysis;
-      const postCls = tfa.posture === "적극 매수" || tfa.posture === "분할 매수" ? "ok" : tfa.posture === "리스크 관리" ? "bad" : "warn";
+      const postCls = tfa.posture === "확인" ? "ok" : tfa.posture === "근거 부족" ? "bad" : "warn";
       postBox.innerHTML = `
         <div class="tier1-ai-card tier1-posture-card" style="margin-top:10px; background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border:1px solid rgba(52,211,153,0.4); border-radius:10px; padding:12px 14px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <span style="font-size:12px; font-weight:700; color:#34d399;">🎯 Tier 1 AI 실전 매매 대응 가이드</span>
-            <span class="chip ${postCls}" style="font-size:10px; font-weight:700; padding:2px 8px;">${escapeHtml(tfa.posture || "분할 매수")}</span>
+            <span style="font-size:12px; font-weight:700; color:#34d399;">🎯 Tier 1 AI 기술·수급 교차 해석</span>
+            <span class="chip ${postCls}" style="font-size:10px; font-weight:700; padding:2px 8px;">${escapeHtml(tfa.posture || "판단 불가")}</span>
           </div>
           <p style="font-size:12px; line-height:1.5; color:#f1f5f9; margin:0 0 4px;">${escapeHtml(tfa.action_guide)}</p>
-          ${tfa.timing_tip ? `<div style="font-size:11px; color:#cbd5e1;">⏱️ <b>타이밍 팁:</b> <span style="color:#a7f3d0;">${escapeHtml(tfa.timing_tip)}</span></div>` : ""}
+          ${tfa.timing_tip ? `<div style="font-size:11px; color:#cbd5e1;">🔎 <b>추가 확인:</b> <span style="color:#a7f3d0;">${escapeHtml(tfa.timing_tip)}</span></div>` : ""}
         </div>
       `;
     }
+    insightBoxes.forEach((box) => appendTier1Meta(box, res));
   } catch (e) {
     console.debug("Tier 1 insights load error:", e);
+    const box = $("#tier1-news-container");
+    if (box) renderTier1Unavailable(box, null, e);
   }
 }
 
@@ -3912,11 +3924,53 @@ async function loadDash() {
   loadDashTier1Briefing().catch(() => {});
 }
 
+function renderTier1Unavailable(container, res = {}, err = null) {
+  if (!container) return false;
+  if (res && res.ok) return true;
+  const evidence = res?.evidence || {};
+  const code = res?.error_code || "TIER1_REQUEST_FAILED";
+  const message = res?.message || err?.message || "무료 AI 설명을 불러오지 못했습니다.";
+  const missing = Array.isArray(evidence.missing) && evidence.missing.length
+    ? `<div style="margin-top:5px; font-size:11px; color:#fbbf24;">누락: ${escapeHtml(evidence.missing.join(", "))}</div>`
+    : "";
+  container.innerHTML = `
+    <div class="tier1-briefing-card" style="background:rgba(120,53,15,0.12); border:1px solid rgba(245,158,11,0.45); border-radius:10px; padding:11px 14px; margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+        <b style="font-size:12.5px; color:#fbbf24;">⚠️ Tier 1 설명 사용 불가</b>
+        <span class="chip" style="font-size:10px; color:#fbbf24;">${escapeHtml(code)}</span>
+      </div>
+      <p style="margin:6px 0 0; color:#cbd5e1; font-size:12px; line-height:1.5;">${escapeHtml(message)}</p>
+      <div style="margin-top:4px; color:#94a3b8; font-size:10.5px;">원본 수치와 퀀트 점수에는 영향이 없습니다.</div>
+      ${missing}
+    </div>`;
+  return false;
+}
+
+function appendTier1Meta(container, res = {}) {
+  if (!container || !res) return;
+  const card = container.querySelector(".tier1-briefing-card") || container.firstElementChild;
+  if (!card || card.querySelector(".tier1-meta-row")) return;
+  const evidence = res.evidence || {};
+  const coverageMap = { SUFFICIENT: "근거 충분", PARTIAL: "근거 일부", NONE: "근거 없음" };
+  const coverage = coverageMap[evidence.coverage] || "근거 상태 미상";
+  const sourceCount = Array.isArray(evidence.sources) ? evidence.sources.length : 0;
+  const fallback = res.status === "DETERMINISTIC_FALLBACK";
+  card.insertAdjacentHTML("beforeend", `
+    <div class="tier1-meta-row" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding-top:7px; margin-top:3px; border-top:1px solid rgba(148,163,184,0.16); font-size:10.5px; color:#94a3b8;">
+      <span class="chip" style="font-size:10px;">${fallback ? "🧮 규칙 기반 설명" : "🤖 AI 해석"}</span>
+      <span class="chip" style="font-size:10px;">📌 ${escapeHtml(coverage)} · ${Number(evidence.item_count || 0)}건</span>
+      <span>출처 ${sourceCount}개</span>
+      ${evidence.as_of ? `<span>기준 ${escapeHtml(String(evidence.as_of))}</span>` : ""}
+      <span>🔒 퀀트 점수 미반영</span>
+    </div>`);
+}
+
 async function loadDashTier1Briefing() {
   const container = $("#dash-tier1-briefing");
   if (!container) return;
   try {
     const res = await api("/api/dashboard/tier1-briefing");
+    if (!renderTier1Unavailable(container, res)) return;
     if (res && res.headline) {
       container.innerHTML = `
         <div style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,58,138,0.25)); border:1px solid rgba(56,189,248,0.35); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35);">
@@ -3934,8 +3988,9 @@ async function loadDashTier1Briefing() {
           </div>
         </div>
       `;
+      appendTier1Meta(container, res);
     }
-  } catch (e) {}
+  } catch (e) { renderTier1Unavailable(container, null, e); }
 }
 
 async function loadMarketTier1Briefing() {
@@ -3943,6 +3998,7 @@ async function loadMarketTier1Briefing() {
   if (!container) return;
   try {
     const res = await api("/api/market/tier1-briefing");
+    if (!renderTier1Unavailable(container, res)) return;
     if (res && res.headline) {
       container.innerHTML = `
         <div style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(168,85,247,0.2)); border:1px solid rgba(168,85,247,0.35); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35); margin-bottom:14px;">
@@ -3960,8 +4016,9 @@ async function loadMarketTier1Briefing() {
           </div>
         </div>
       `;
+      appendTier1Meta(container, res);
     }
-  } catch (e) {}
+  } catch (e) { renderTier1Unavailable(container, null, e); }
 }
 
 async function loadFlowTier1Briefing(containerId = "flow-tier1-briefing") {
@@ -3969,6 +4026,7 @@ async function loadFlowTier1Briefing(containerId = "flow-tier1-briefing") {
   if (!container) return;
   try {
     const res = await api("/api/flow/tier1-briefing");
+    if (!renderTier1Unavailable(container, res)) return;
     if (res && res.headline) {
       container.innerHTML = `
         <div style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(52,211,153,0.18)); border:1px solid rgba(52,211,153,0.35); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35); margin-bottom:14px;">
@@ -3985,7 +4043,8 @@ async function loadFlowTier1Briefing(containerId = "flow-tier1-briefing") {
         </div>
       `;
     }
-  } catch (e) {}
+    appendTier1Meta(container, res);
+  } catch (e) { renderTier1Unavailable(container, null, e); }
 }
 
 async function loadTossTier1Briefing() {
@@ -3993,6 +4052,7 @@ async function loadTossTier1Briefing() {
   if (!container) return;
   try {
     const res = await api("/api/toss/tier1-briefing");
+    if (!renderTier1Unavailable(container, res)) return;
     if (res && res.ok && res.headline) {
       container.innerHTML = `
         <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
@@ -4010,7 +4070,8 @@ async function loadTossTier1Briefing() {
         </div>
       `;
     }
-  } catch (e) {}
+    appendTier1Meta(container, res);
+  } catch (e) { renderTier1Unavailable(container, null, e); }
 }
 
 async function loadSectorTier1Briefing() {
@@ -4018,6 +4079,7 @@ async function loadSectorTier1Briefing() {
   if (!container) return;
   try {
     const res = await api("/api/sector/tier1-briefing");
+    if (!renderTier1Unavailable(container, res)) return;
     if (res && res.ok && res.headline) {
       container.innerHTML = `
         <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
@@ -4035,7 +4097,8 @@ async function loadSectorTier1Briefing() {
         </div>
       `;
     }
-  } catch (e) {}
+    appendTier1Meta(container, res);
+  } catch (e) { renderTier1Unavailable(container, null, e); }
 }
 
 async function loadUs13fTier1Briefing() {
@@ -4043,6 +4106,7 @@ async function loadUs13fTier1Briefing() {
   if (!container) return;
   try {
     const res = await api("/api/us13f/tier1-briefing");
+    if (!renderTier1Unavailable(container, res)) return;
     if (res && res.ok && res.headline) {
       container.innerHTML = `
         <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
@@ -4060,7 +4124,8 @@ async function loadUs13fTier1Briefing() {
         </div>
       `;
     }
-  } catch (e) {}
+    appendTier1Meta(container, res);
+  } catch (e) { renderTier1Unavailable(container, null, e); }
 }
 
 async function loadSeasonalityTier1Briefing() {
@@ -4068,6 +4133,7 @@ async function loadSeasonalityTier1Briefing() {
   if (!container) return;
   try {
     const res = await api("/api/seasonality/tier1-briefing");
+    if (!renderTier1Unavailable(container, res)) return;
     if (res && res.ok && res.headline) {
       container.innerHTML = `
         <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
@@ -4091,7 +4157,8 @@ async function loadSeasonalityTier1Briefing() {
         </div>
       `;
     }
-  } catch (e) {}
+    appendTier1Meta(container, res);
+  } catch (e) { renderTier1Unavailable(container, null, e); }
 }
 
 async function loadTradeTier1Briefing() {
@@ -4099,6 +4166,7 @@ async function loadTradeTier1Briefing() {
   if (!container) return;
   try {
     const res = await api("/api/trade/tier1-briefing");
+    if (!renderTier1Unavailable(container, res)) return;
     if (res && res.ok && res.headline) {
       container.innerHTML = `
         <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
@@ -4116,7 +4184,8 @@ async function loadTradeTier1Briefing() {
         </div>
       `;
     }
-  } catch (e) {}
+    appendTier1Meta(container, res);
+  } catch (e) { renderTier1Unavailable(container, null, e); }
 }
 
 const SUNZI_PERSONAS = {
@@ -4174,6 +4243,7 @@ async function loadSunziTier1Briefing(persona = currentSunziPersona) {
   if (!container) return;
   try {
     const res = await api(`/api/sunzi/tier1-briefing?persona=${encodeURIComponent(persona)}`);
+    if (!renderTier1Unavailable(container, res)) return;
     if (res && res.ok && res.headline) {
       const personaBadges = [
         { id: "yang", icon: "🍵", name: "양 웬리", desc: "홍차·안전마진" },
@@ -4224,7 +4294,8 @@ async function loadSunziTier1Briefing(persona = currentSunziPersona) {
         });
       });
     }
-  } catch (e) {}
+    appendTier1Meta(container, res);
+  } catch (e) { renderTier1Unavailable(container, null, e); }
 }
 
 async function loadEmptyTier1Briefing() {
@@ -4232,6 +4303,7 @@ async function loadEmptyTier1Briefing() {
   if (!container) return;
   try {
     const res = await api("/api/empty/tier1-briefing");
+    if (!renderTier1Unavailable(container, res)) return;
     if (res && res.ok && res.headline) {
       container.innerHTML = `
         <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
@@ -4249,7 +4321,8 @@ async function loadEmptyTier1Briefing() {
         </div>
       `;
     }
-  } catch (e) {}
+    appendTier1Meta(container, res);
+  } catch (e) { renderTier1Unavailable(container, null, e); }
 }
 
 async function loadStrategyTier1Briefing() {
@@ -4257,6 +4330,7 @@ async function loadStrategyTier1Briefing() {
   if (!container) return;
   try {
     const res = await api("/api/strategy/tier1-briefing");
+    if (!renderTier1Unavailable(container, res)) return;
     if (res && res.ok && res.headline) {
       container.innerHTML = `
         <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(23, 37, 65, 0.9), rgba(15, 23, 42, 0.95)); border:1px solid rgba(56, 189, 248, 0.35); border-left:4px solid #38bdf8; border-radius:12px; padding:14px 18px; margin-bottom:16px; display:flex; flex-direction:column; gap:8px;">
@@ -4285,7 +4359,8 @@ async function loadStrategyTier1Briefing() {
         </div>
       `;
     }
-  } catch (e) {}
+    appendTier1Meta(container, res);
+  } catch (e) { renderTier1Unavailable(container, null, e); }
 }
 
 async function loadTossRankings() {
@@ -4966,7 +5041,7 @@ async function loadTier1InvestorBriefing() {
   if (!box) return;
   try {
     const data = await api("/api/flow/tier1-briefing");
-    if (!data || !data.ok) return;
+    if (!renderTier1Unavailable(box, data)) return;
     const sectors = (data.focus_sectors || []).map((s) => `<span class="chip" style="font-size:11px; color:#38bdf8; background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.3); padding:2px 8px; border-radius:4px;">🎯 ${escapeHtml(s)}</span>`).join(" ");
     box.innerHTML = `
       <div class="tier1-ai-card" style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border:1px solid rgba(56,189,248,0.4); border-radius:10px; padding:14px 16px; box-shadow:0 4px 16px rgba(0,0,0,0.3);">
@@ -4981,8 +5056,10 @@ async function loadTier1InvestorBriefing() {
         <p style="font-size:12.5px; line-height:1.55; color:#cbd5e1; margin:0;">${escapeHtml(data.briefing || "")}</p>
       </div>
     `;
+    appendTier1Meta(box, data);
   } catch (e) {
     console.debug("Tier 1 investor briefing error:", e);
+    renderTier1Unavailable(box, null, e);
   }
 }
 

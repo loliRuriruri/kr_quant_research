@@ -36,6 +36,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from kr_quant.research.tier1_contract import (
+    tier1_deterministic_fallback,
+    tier1_success,
+    tier1_unavailable,
+)
 from kr_quant.settings import load_settings
 from kr_quant.web.envfile import apply_env_to_process, mask_secret, upsert_env_file
 from kr_quant.web.jobs import RUNNER, job_demo, job_krx_history, job_krx_prices, job_live, job_screen
@@ -1240,13 +1245,23 @@ def api_flow_tier1_briefing_get() -> dict[str, Any]:
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
     uni = collect_universe(s, limit=15)
+    prompt_version = "flow_tier1_v2"
+    if not uni:
+        return tier1_unavailable(
+            endpoint,
+            code="TIER1_EVIDENCE_MISSING",
+            message="수급 브리핑에 사용할 실제 종목 데이터가 없습니다.",
+            sources=["flow_priority"],
+            missing=["flow_candidates"],
+            prompt_version=prompt_version,
+        )
     
     prompt = (
         "당신은 여의도 최고의 기관 수급 분석 전문가입니다.\n"
         f"최근 메이저 수급 추적 상위 15종목 유니버스:\n"
         + "\n".join(f"- {item['company']} ({item['ticker']}): [{item['why']}] {item['detail']}" for item in uni)
-        + "\n\n현재 국내 증시 외인·기관 메이저 수급의 주도 업종 흐름과 투자자가 주목해야 할 수급 핵심 특징을 2줄로 명쾌하게 브리핑해 주세요."
-        + "\n반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 헤드라인\", \"briefing\": \"수급 주도 맥락 2줄 브리핑\", \"focus_sectors\": [\"주목업종1\", \"주목업종2\"]}"
+        + "\n\n제공된 후보에서 실제로 관찰되는 수급 공통점과 자료의 범위 한계를 2줄로 설명하세요. 후보에 없는 업종이나 원인을 만들지 말고 주문·비중 지시는 하지 마세요."
+        + "\n반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 헤드라인\", \"briefing\": \"관찰된 수급 공통점과 한계 2줄\", \"focus_sectors\": [\"실제 후보에서 확인된 업종\"]}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1256,16 +1271,21 @@ def api_flow_tier1_briefing_get() -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "tier": "Tier 1", **_extract_json(raw_text)}
-    except Exception:
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "tier": "Tier 1",
-            "headline": "외인·기관 고유동성 대형주 및 관심종목 중심 수급 집결",
-            "briefing": "반도체, 자동차 및 계절성 우수 종목군을 중심으로 메이저 자금의 선별적 매수세가 확인되고 있습니다.",
-            "focus_sectors": ["반도체", "대형주", "계절성 우량주"],
-        }
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            sources=["flow_priority"],
+            evidence_count=len(uni),
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 flow briefing unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            sources=["flow_priority"],
+            evidence_count=len(uni),
+            prompt_version=prompt_version,
+        )
 
 
 @app.get("/api/dashboard/tier1-briefing")
@@ -1275,6 +1295,7 @@ def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "dashboard_tier1_v2"
 
     top_stocks = []
     try:
@@ -1293,12 +1314,21 @@ def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
         pass
 
     stocks_summary = "\n".join(f"- {st.get('company')} ({st.get('ticker')}): 퀀트점수 {st.get('quant_score')}점, 업종: {st.get('sector')}" for st in top_stocks) or "상위 퀀트 종목 데이터 준비 중"
+    if not top_stocks:
+        return tier1_unavailable(
+            endpoint,
+            code="TIER1_EVIDENCE_MISSING",
+            message="대시보드 브리핑에 사용할 적격 상위 종목 데이터가 없습니다.",
+            sources=["all_stocks"],
+            missing=["top_ranked_stocks"],
+            prompt_version=prompt_version,
+        )
 
     prompt = (
         "당신은 국내 최고 퀀트 펀드매니저입니다.\n"
         f"오늘의 퀀트 랭킹 상위 우량 종목 포트폴리오:\n{stocks_summary}\n\n"
-        "현재 퀀트 랭킹 1위 종목의 매력도와 시장 대응 전략을 2줄로 명쾌하게 브리핑해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 시장 헤드라인\", \"champion_focus\": \"1위 챔피언 핵심 모멘텀 1줄\", \"strategy_note\": \"오늘의 퀀트 대응 전략 2줄\"}"
+        "제공된 상위 종목의 점수와 업종 구성만 사용해 공통 특징과 1위 종목의 상대적 위치를 설명하세요. 제공되지 않은 재무 사실이나 주문·비중 지시는 하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 랭킹 헤드라인\", \"champion_focus\": \"1위 종목의 제공 데이터상 특징 1줄\", \"strategy_note\": \"랭킹을 읽을 때의 주의점 2줄\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1308,17 +1338,23 @@ def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
-        champ = top_stocks[0]["company"] if top_stocks else "퀀트 1위 종목"
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "headline": f"{champ} 중심 5대 팩터(가치·품질·성장·모멘텀·안정) 상위 포트폴리오 우위",
-            "champion_focus": f"{champ}가 펀더멘털 건전성과 밸류에이션 매력으로 종합 1위를 유지하고 있습니다.",
-            "strategy_note": "상위 퀀트 우량주 중심의 분할 접근과 업종별 분산 투자가 유효한 국면입니다.",
-        }
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            sources=["all_stocks"],
+            evidence_count=len(top_stocks),
+            missing=[] if top_stocks else ["top_ranked_stocks"],
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 dashboard briefing unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            sources=["all_stocks"],
+            evidence_count=len(top_stocks),
+            missing=[] if top_stocks else ["top_ranked_stocks"],
+            prompt_version=prompt_version,
+        )
 
 
 @app.get("/api/market/tier1-briefing")
@@ -1329,6 +1365,7 @@ def api_market_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "market_tier1_v2"
 
     macro = get_macro_brief(s)
     fg = macro.get("fear_greed", {})
@@ -1340,8 +1377,8 @@ def api_market_tier1_briefing_get() -> dict[str, Any]:
         f"- 공포/탐욕 지수: {fg.get('score', 50)}점 ({fg.get('label', '중립')})\n"
         f"- 한·미 기준금리차: {spread.get('spread', '—')}%\n"
         f"- 매크로 종합 판정: {macro.get('overall_posture', '중립')}\n\n"
-        "현재 글로벌 매크로 환경에서 국내 주식 투자자가 취해야 할 자산 배분 및 리스크 관리 가이드를 2줄로 요약해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 매크로 헤드라인\", \"risk_posture\": \"공격 투자 / 중립 분할 / 방어적 관망\", \"macro_insight\": \"글로벌 매크로 환경 2줄 해설\", \"action_tip\": \"실전 대응 팁\"}"
+        "제공된 세 지표가 같은 방향인지 충돌하는지 설명하고, 없는 VIX·환율·국채 수치를 추정하지 마세요. 자산 배분·주문·비중 지시는 하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 매크로 헤드라인\", \"risk_posture\": \"위험선호 / 중립 / 위험회피 / 판단불가\", \"macro_insight\": \"제공 지표의 방향과 충돌 2줄\", \"action_tip\": \"추가 확인할 거시 지표\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1351,17 +1388,32 @@ def api_market_tier1_briefing_get() -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "headline": "글로벌 매크로 금리/환율 변동성 속 중립적 분할 전략 유효",
-            "risk_posture": "중립 분할 매수",
-            "macro_insight": "한미 금리차와 달러 환율 흐름을 모니터링하며 실적 기반 밸류에이션 매력주에 주목할 시점입니다.",
-            "action_tip": "지수 변동성 확대 시 분할 매수와 현금 비중 20~30% 유지를 권장합니다.",
-        }
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            as_of=macro.get("as_of") or macro.get("updated_at"),
+            sources=["macro_brief", "fear_greed", "interest_spread"],
+            evidence_count=sum(value not in (None, "", {}) for value in (fg.get("score"), spread.get("spread"), macro.get("overall_posture"))),
+            missing=[
+                name
+                for name, value in (
+                    ("fear_greed", fg.get("score")),
+                    ("interest_spread", spread.get("spread")),
+                    ("overall_posture", macro.get("overall_posture")),
+                )
+                if value in (None, "")
+            ],
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 market briefing unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            as_of=macro.get("as_of") or macro.get("updated_at"),
+            sources=["macro_brief", "fear_greed", "interest_spread"],
+            evidence_count=sum(value not in (None, "", {}) for value in (fg.get("score"), spread.get("spread"), macro.get("overall_posture"))),
+            prompt_version=prompt_version,
+        )
 
 
 @app.get("/api/toss/tier1-briefing")
@@ -1371,6 +1423,7 @@ def api_toss_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "toss_tier1_v2"
 
     toss_data = api_toss_rankings()
     groups = toss_data.get("groups", [])
@@ -1386,14 +1439,25 @@ def api_toss_tier1_briefing_get() -> dict[str, Any]:
         elif "거래대금" in g.get("label", ""):
             volume = [f"{r['name']}({r.get('change_rate',0)*100:+.1f}%)" for r in g.get("rows", [])[:4]]
 
+    evidence_count = len(gainers) + len(losers) + len(volume)
+    if evidence_count <= 0:
+        return tier1_unavailable(
+            endpoint,
+            code="TIER1_EVIDENCE_MISSING",
+            message="토스 랭킹 브리핑에 사용할 실시간 순위 데이터가 없습니다.",
+            sources=["toss_rankings"],
+            missing=["gainers", "losers", "trading_amount"],
+            prompt_version=prompt_version,
+        )
+
     prompt = (
         "당신은 실시간 증시 모멘텀 & 시장 수급 분석가입니다.\n"
         f"현재 토스증권 실시간 시장 랭킹:\n"
         f"- 급상승 상위: {', '.join(gainers) or '데이터 없음'}\n"
         f"- 급하락 상위: {', '.join(losers) or '데이터 없음'}\n"
         f"- 거래대금 쏠림: {', '.join(volume) or '데이터 없음'}\n\n"
-        "현재 시장의 단기 자금 쏠림 특징과 주의해야 할 변동성 포인트를 2줄로 브리핑해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 시장 랭킹 헤드라인\", \"movers_summary\": \"급등락 & 거래대금 쏠림 2줄 브리핑\", \"trading_tip\": \"실전 단기 매매 유의점\"}"
+        "제공된 순위에서 확인되는 단기 자금 쏠림과 급등락의 공통점을 설명하세요. 원인을 단정하거나 매수·매도·추격 여부를 지시하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 시장 랭킹 헤드라인\", \"movers_summary\": \"급등락 및 거래대금 쏠림 2줄\", \"trading_tip\": \"자료 해석상 주의점\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1403,16 +1467,21 @@ def api_toss_tier1_briefing_get() -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "headline": "대형 주도주 거래대금 집중 및 개별 재료주 급등락 양극화",
-            "movers_summary": "거래대금 상위 대형주의 추세 안정성과 중소형 개별 테마주의 단기 변동성이 공존하는 장세입니다.",
-            "trading_tip": "급등 테마 추격매수를 지양하고 거래대금이 실린 주도주 눌림목에 집중하세요.",
-        }
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            sources=["toss_rankings"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 toss briefing unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            sources=["toss_rankings"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
 
 
 @app.get("/api/sector/tier1-briefing")
@@ -1422,11 +1491,31 @@ def api_sector_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "sector_tier1_v2"
+    sector_data = api_sectors()
+    sector_rows = (sector_data.get("rows") or [])[:8]
+    if not sector_rows:
+        return tier1_unavailable(
+            endpoint,
+            code="TIER1_EVIDENCE_MISSING",
+            message="업종 브리핑에 사용할 업종 순위 데이터가 없습니다.",
+            as_of=sector_data.get("as_of_date"),
+            sources=["sector_ranking"],
+            missing=["sector_rows"],
+            prompt_version=prompt_version,
+        )
+
+    sector_summary = "\n".join(
+        f"- {row.get('rank')}위 {row.get('name')}: 종합 {row.get('score')}, RS {row.get('rs')}, "
+        f"확산 {row.get('breadth')}, 실적확산 {row.get('earnings')}, 전회대비 {row.get('delta')}"
+        for row in sector_rows
+    )
 
     prompt = (
         "당신은 섹터 로테이션 및 업종 상대강도(RS) 전문 퀀트 분석가입니다.\n"
-        "현재 한국 증시 26대 KSIC 업종 순환매와 주도 섹터 흐름을 진단해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 섹터 로테이션 헤드라인\", \"leading_sector_comment\": \"주도 업종 및 개선 업종 분석 2줄\", \"sector_strategy\": \"섹터 비중 조절 가이드\"}"
+        f"실제 업종 순위 상위 데이터:\n{sector_summary}\n\n"
+        "제공된 수치만 사용해 주도 업종, 개선 업종, 한 종목 쏠림 가능성을 설명하세요. 비중·매수·매도 지시는 하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 섹터 로테이션 헤드라인\", \"leading_sector_comment\": \"주도 업종 및 개선 업종 분석 2줄\", \"sector_strategy\": \"수치를 읽을 때의 주의점\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1436,16 +1525,23 @@ def api_sector_tier1_briefing_get() -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "headline": "실적 고성장 및 수출 제조업 주도 섹터 상대강도 우위",
-            "leading_sector_comment": "반도체, IT, 자동차 등 핵심 수출 섹터가 상대강도(RS) 상위를 견인하며 순환매를 이끌고 있습니다.",
-            "sector_strategy": "상대강도(RS) 상위 주도 섹터 70%, 턴어라운드 개선 섹터 30% 배분을 추천합니다.",
-        }
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            as_of=sector_data.get("as_of_date"),
+            sources=["sector_ranking"],
+            evidence_count=len(sector_rows),
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 sector briefing unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            as_of=sector_data.get("as_of_date"),
+            sources=["sector_ranking"],
+            evidence_count=len(sector_rows),
+            prompt_version=prompt_version,
+        )
 
 
 @app.get("/api/us13f/tier1-briefing")
@@ -1455,6 +1551,7 @@ def api_us13f_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "us13f_tier1_v2"
 
     # Load 13F context
     cache_path = s.root / "data" / "cache" / "us13f.json"
@@ -1470,18 +1567,29 @@ def api_us13f_tier1_briefing_get() -> dict[str, Any]:
         except Exception:
             pass
 
+    evidence_count = len(top_new) + len(top_common) + len(top_exits)
+    if evidence_count <= 0:
+        return tier1_unavailable(
+            endpoint,
+            code="TIER1_EVIDENCE_MISSING",
+            message="13F 브리핑에 사용할 공시 집계 데이터가 없습니다.",
+            sources=["sec_13f_cache"],
+            missing=["new_positions", "common_holdings", "exits"],
+            prompt_version=prompt_version,
+        )
+
     ctx_str = (
-        f"최근 13F 주요 신규편입: {', '.join(filter(None, top_new)) or 'SpaceX, 세레브라스 등'}\n"
-        f"대가 공통 집중보유: {', '.join(filter(None, top_common)) or 'S&P글로벌, 다나허, 조에티스 등'}\n"
-        f"전량청산: {', '.join(filter(None, top_exits)) or '일부 고평가 빅테크'}"
+        f"최근 13F 주요 신규편입: {', '.join(filter(None, top_new)) or '데이터 없음'}\n"
+        f"대가 공통 집중보유: {', '.join(filter(None, top_common)) or '데이터 없음'}\n"
+        f"전량청산: {', '.join(filter(None, top_exits)) or '데이터 없음'}"
     )
 
     prompt = (
         "당신은 글로벌 슈퍼인베스터(워런 버핏, 마이클 버리, 켄 그리핀, 론 바론 등) SEC 13F 포트폴리오 수석 전략가입니다.\n"
         f"{ctx_str}\n\n"
         "위 월가 대가들의 13F 공시 실전 데이터를 분석하여 한국 투자자들에게 명쾌한 투자 브리핑을 작성하세요.\n"
-        "SpaceX 등 대형 사모/비상장 혁신 기업 지분 편입 및 공통 매수 섹터 트렌드를 반드시 반영해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 13F 대가 포트폴리오 핵심 헤드라인\", \"consensus_insight\": \"대가 공통 매수 및 포지션 분석 2~3줄\", \"action_tip\": \"개인 투자자를 위한 실전 벤치마크 팁\"}"
+        "제공된 공시 집계에 존재하는 종목만 언급하고, 분기말 보유 정보라는 시차를 명시하세요. 매수·매도 지시는 하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 13F 포트폴리오 핵심 헤드라인\", \"consensus_insight\": \"공통 보유와 변화 분석 2~3줄\", \"action_tip\": \"13F 자료 해석상 한계\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1491,16 +1599,21 @@ def api_us13f_tier1_briefing_get() -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "headline": "월가 거장들의 독점적 해자 기업 집중 보유 및 차세대 비상장 혁신 기업(SpaceX 등) 전략적 편입",
-            "consensus_insight": "시타델, 브리지워터 등 주요 헤지펀드는 스페이스X 등 독보적 해자를 지닌 혁신 기업 지분을 확보하는 동시에, S&P글로벌·다나허 등 펀더멘털 우량주 비중을 안정적으로 유지하고 있습니다.",
-            "action_tip": "월가 거물들이 공통으로 사들이는 밸류에이션 안전마진 종목과 우주항공·AI 인프라 주도주를 포트폴리오에 분할 분산 투자하세요.",
-        }
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            sources=["sec_13f_cache"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 13F briefing unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            sources=["sec_13f_cache"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
 
 
 @app.get("/api/seasonality/tier1-briefing")
@@ -1510,11 +1623,40 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "seasonality_tier1_v2"
+    highlights_payload = api_seasonality_highlights_get()
+    highlights = highlights_payload.get("data") or {}
+    current_rows = highlights.get("current_champions") or []
+    upcoming_rows = highlights.get("upcoming_champions") or []
+    active_presets = highlights.get("active_presets") or []
+    evidence_count = len(current_rows) + len(upcoming_rows) + len(active_presets)
+    if evidence_count <= 0:
+        return tier1_unavailable(
+            endpoint,
+            code="TIER1_EVIDENCE_MISSING",
+            message="계절성 브리핑에 사용할 통계 표본이 없습니다.",
+            sources=["seasonality_highlights"],
+            missing=["current_champions", "upcoming_champions", "active_events"],
+            prompt_version=prompt_version,
+        )
+
+    seasonality_summary = json.dumps(
+        {
+            "current_month": highlights.get("current_month"),
+            "next_month": highlights.get("next_month"),
+            "current_champions": current_rows,
+            "upcoming_champions": upcoming_rows,
+            "active_presets": active_presets,
+        },
+        ensure_ascii=False,
+        default=str,
+    )
 
     prompt = (
-        "당신은 코스피 30개년 빅데이터 계절성(Seasonality) 및 캘린더 이상현상 선취매 전문가입니다.\n"
-        "현재 월별 역사적 상승 승률 및 10대 계절성 이벤트(배당, 산타랠리, 언팩, 박람회) 선취매 타이밍을 브리핑해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 계절성 선취매 헤드라인\", \"seasonality_brief\": \"당월 계절성 및 선취매 전략 2줄\", \"key_catalysts\": [\"이벤트1\", \"이벤트2\"]}"
+        "당신은 주식시장 계절성 통계 검증 연구원입니다.\n"
+        f"실제 계절성 집계:\n{seasonality_summary}\n\n"
+        "제공된 승률·평균수익률·연도 표본 수만 사용하고 표본 부족과 특정 연도 쏠림 가능성을 설명하세요. 선취매·매집·주문 지시는 하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 계절성 통계 헤드라인\", \"seasonality_brief\": \"당월 및 익월 통계 해설 2줄\", \"key_catalysts\": [\"실제 활성 이벤트\"], \"sample_caution\": \"표본과 재현성 주의점\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1524,16 +1666,21 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "headline": "30개년 통계 기반 고승률 계절성 선취매 윈도우 진입",
-            "seasonality_brief": "역사적 승률 80% 이상의 이벤트 드리븐 선취매 종목군을 타겟월 1~2개월 전 선제적으로 매집하는 전략이 유효합니다.",
-            "key_catalysts": ["연말 배당 선취매", "난방/냉방 계절성", "글로벌 테크 언팩"],
-        }
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            sources=["seasonality_highlights"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 seasonality briefing unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            sources=["seasonality_highlights"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
 
 
 @app.get("/api/strategy/tier1-briefing")
@@ -1543,12 +1690,14 @@ def api_strategy_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "strategy_tier1_v2"
 
     # Load strategy cache context
     cache_path = s.root / "data" / "cache" / "strategy_lab.json"
     high_stocks: list[str] = []
     med_stocks: list[str] = []
     best_strats: list[str] = []
+    rows: list[dict[str, Any]] = []
     avg_sharpe: float | None = None
     avg_mdd: float | None = None
     if cache_path.exists():
@@ -1590,22 +1739,34 @@ def api_strategy_tier1_briefing_get() -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "headline": "전략별 검증 구간과 최종검증 결과를 분리해 확인하세요",
-            "strategy_insight": (
-                f"현재 HIGH 기준 충족 종목은 {len(high_stocks)}개입니다. "
-                f"전체기간 참고 평균 샤프는 {avg_sharpe if avg_sharpe is not None else '집계 없음'}, "
-                f"평균 최대낙폭은 {f'{avg_mdd}%' if avg_mdd is not None else '집계 없음'}이며 "
-                "개별 검증 거래 수를 함께 확인해야 합니다."
-            ),
-            "action_guide": "HIGH는 설정 기준 충족, MEDIUM은 구간 편차, LOW는 표본 부족 또는 검증 불일치를 뜻하며 매수·매도 지시가 아닙니다.",
-            "risk_management": "수수료·슬리피지 가정, 적은 거래 수, 시장 구조 변화 때문에 과거 결과가 재현되지 않을 수 있습니다.",
-        }
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            sources=["strategy_lab_cache"],
+            evidence_count=len(rows),
+            missing=[] if rows else ["strategy_rows"],
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 strategy briefing fallback used: {exc}")
+        return tier1_deterministic_fallback(
+            endpoint,
+            {
+                "headline": "전략별 검증 구간과 최종검증 결과를 분리해 확인하세요",
+                "strategy_insight": (
+                    f"현재 HIGH 기준 충족 종목은 {len(high_stocks)}개입니다. "
+                    f"전체기간 참고 평균 샤프는 {avg_sharpe if avg_sharpe is not None else '집계 없음'}, "
+                    f"평균 최대낙폭은 {f'{avg_mdd}%' if avg_mdd is not None else '집계 없음'}이며 "
+                    "개별 검증 거래 수를 함께 확인해야 합니다."
+                ),
+                "action_guide": "HIGH는 설정 기준 충족, MEDIUM은 구간 편차, LOW는 표본 부족 또는 검증 불일치를 뜻하며 매수·매도 지시가 아닙니다.",
+                "risk_management": "수수료·슬리피지 가정, 적은 거래 수, 시장 구조 변화 때문에 과거 결과가 재현되지 않을 수 있습니다.",
+            },
+            sources=["strategy_lab_cache"],
+            evidence_count=len(rows),
+            missing=[] if rows else ["strategy_rows"],
+            prompt_version=prompt_version,
+        )
 
 
 @app.get("/api/trade/tier1-briefing")
@@ -1616,16 +1777,26 @@ def api_trade_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "trade_tier1_v2"
 
     flow_data = load_flow(s, days=5)
     rows = flow_data.get("rows") or []
     top_trades = [f"{r.get('company')}({r.get('ticker')})" for r in rows[:5] if r.get("company")]
+    if not top_trades:
+        return tier1_unavailable(
+            endpoint,
+            code="TIER1_EVIDENCE_MISSING",
+            message="트레이딩 랩 설명에 사용할 수급 후보가 없습니다.",
+            sources=["flow_scan_5d"],
+            missing=["trade_candidates"],
+            prompt_version=prompt_version,
+        )
 
     prompt = (
         "당신은 실전 데이트레이딩 및 3~5일 단기 스윙 전략 헤드 트레이더입니다.\n"
         f"현재 단기 트레이딩 랩 포착 종목군: {', '.join(top_trades) or '주요 유니버스 종목'}\n"
-        "현재 시장의 단기 스윙 매매 환경, 수급+기술 지표 컨플루언스 타점, 손익비(Risk/Reward) 원칙을 브리핑해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 트레이딩 랩 헤드라인\", \"trading_brief\": \"단기 수급/기술적 타점 2줄 브리핑\", \"execution_guide\": \"손절/익절 실행 원칙\"}"
+        "제공된 후보와 실제 수급·기술 지표가 일치하는지 설명하고, 확인되지 않은 가격선이나 수익률을 만들지 마세요. 주문·목표가·손절가를 제시하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 트레이딩 랩 헤드라인\", \"trading_brief\": \"단기 수급/기술 지표 해설 2줄\", \"execution_guide\": \"해석상 무효화 조건과 주의점\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1635,16 +1806,21 @@ def api_trade_tier1_briefing_get() -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "headline": "외인·기관 동반 순매수 및 기술적 지지선 안착 종목 단기 타점 유효",
-            "trading_brief": "사모펀드 연속 순매집과 스토캐스틱 과매도 탈출 국면이 겹치는 컨플루언스 종목에 거래량이 실릴 때 진입 승률이 높습니다.",
-            "execution_guide": "5일선 지지 기준 -3% 칼손절 설정 및 1차 목표 수익률 +5~8% 분할 익절 준수",
-        }
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            sources=["flow_scan_5d"],
+            evidence_count=len(top_trades),
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 trade briefing unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            sources=["flow_scan_5d"],
+            evidence_count=len(top_trades),
+            prompt_version=prompt_version,
+        )
 
 
 @app.get("/api/empty/tier1-briefing")
@@ -1655,6 +1831,7 @@ def api_empty_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "empty_tier1_v2"
 
     flow_data = load_flow(s, days=5)
     empty_rows = flow_data.get("empty") or []
@@ -1662,13 +1839,23 @@ def api_empty_tier1_briefing_get() -> dict[str, Any]:
     
     comebacks = [f"{r.get('company')}({r.get('ticker')})" for r in comeback_rows[:4] if r.get("company")]
     empties = [f"{r.get('company')}({r.get('ticker')})" for r in empty_rows[:4] if r.get("company")]
+    evidence_count = len(comebacks) + len(empties)
+    if evidence_count <= 0:
+        return tier1_unavailable(
+            endpoint,
+            code="TIER1_EVIDENCE_MISSING",
+            message="빈집 분석에 사용할 수급 후보가 없습니다.",
+            sources=["flow_scan_5d"],
+            missing=["empty_candidates", "comeback_candidates"],
+            prompt_version=prompt_version,
+        )
 
     prompt = (
         "당신은 기관 소외주 및 턴어라운드 빈집 발굴 전문 펀드매니저입니다.\n"
         f"현재 포착된 수급 복귀(턴어라운드) 종목: {', '.join(comebacks) or '데이터 집계 중'}\n"
         f"현재 외인·기관 쌍매도 빈집 종목: {', '.join(empties) or '데이터 집계 중'}\n\n"
-        "메이저 수급 공백(빈집) 이후 기관 재유입 및 실적 턴어라운드 국면에서의 선취매 전략을 2줄로 브리핑해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 빈집 발굴 헤드라인\", \"empty_insight\": \"소외주 턴어라운드 분석 2줄\", \"entry_caution\": \"유동성 및 매집 유의점\"}"
+        "제공된 수급 분류가 뜻하는 바와 유동성·거래 가능성 확인 필요성을 설명하세요. 선취매·매집·주문 지시는 하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 빈집 발굴 헤드라인\", \"empty_insight\": \"수급 공백과 복귀 후보 해설 2줄\", \"entry_caution\": \"유동성·거래가능성·데이터 한계\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1678,16 +1865,21 @@ def api_empty_tier1_briefing_get() -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "headline": "외인 매도 압력 소진 바닥권 종목 중 기관 재매수 턴어라운드 주목",
-            "empty_insight": "외인 지분율 5% 미만으로 수급 공백이 극대화된 종목 중 최근 기관 순매수가 재유입되는 복귀 종목의 리레이팅 탄력이 가장 강합니다.",
-            "entry_caution": "소외주 특성상 거래량이 적을 수 있으므로 호가 갭을 고려해 호가창 밑단 분할 매집을 권장합니다.",
-        }
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            sources=["flow_scan_5d"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 empty briefing unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            sources=["flow_scan_5d"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
 
 
 class CustomBacktestAiIn(BaseModel):
@@ -1716,6 +1908,19 @@ def api_strategy_custom_ai_diagnosis_post(body: CustomBacktestAiIn) -> dict[str,
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "custom_backtest_diagnosis_v2"
+    evidence_count = sum(
+        value is not None
+        for value in (
+            body.total_return,
+            body.trades_count,
+            body.validation_return,
+            body.validation_trades,
+            body.oos_return,
+            body.oos_sharpe,
+            body.oos_trades,
+        )
+    )
 
     cagr_str = f"{body.cagr*100:+.2f}%" if body.cagr is not None else "—"
     ret_str = f"{body.total_return*100:+.2f}%" if body.total_return is not None else "—"
@@ -1753,20 +1958,30 @@ def api_strategy_custom_ai_diagnosis_post(body: CustomBacktestAiIn) -> dict[str,
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            sources=["custom_strategy_backtest"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 custom backtest diagnosis fallback used: {exc}")
         enough_samples = (body.validation_trades or 0) >= 5 and (body.oos_trades or 0) >= 5
         same_direction = (body.validation_return or 0) * (body.oos_return or 0) > 0
         verdict = "근거 충분" if enough_samples and same_direction else "표본 부족" if not enough_samples else "구간 불일치"
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "tier": "Tier 1 (100% 무료 일상 엔진)",
-            "verdict": verdict,
-            "diagnosis": f"{body.strategy_name}의 검증 수익률은 {validation_str}, 최종검증 수익률은 {oos_str}이며 최종검증 거래는 {body.oos_trades or 0}회입니다.",
-            "tuning_tip": "파라미터 수를 늘리기보다 더 긴 기간과 여러 시장 국면에서 같은 방향이 유지되는지 먼저 확인하세요.",
-            "execution_risk": "적은 거래 수, 갭 체결, 수수료·슬리피지 변화로 결과가 크게 달라질 수 있으며 이 결과는 주문 신호가 아닙니다.",
-        }
+        return tier1_deterministic_fallback(
+            endpoint,
+            {
+                "verdict": verdict,
+                "diagnosis": f"{body.strategy_name}의 검증 수익률은 {validation_str}, 최종검증 수익률은 {oos_str}이며 최종검증 거래는 {body.oos_trades or 0}회입니다.",
+                "tuning_tip": "파라미터 수를 늘리기보다 더 긴 기간과 여러 시장 국면에서 같은 방향이 유지되는지 먼저 확인하세요.",
+                "execution_risk": "적은 거래 수, 갭 체결, 수수료·슬리피지 변화로 결과가 크게 달라질 수 있으며 이 결과는 주문 신호가 아닙니다.",
+            },
+            sources=["custom_strategy_backtest"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
 
 
 @app.get("/api/results/quality")
@@ -1926,6 +2141,30 @@ def api_sunzi_tier1_briefing_get(persona: str = "yang") -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "sunzi_briefing_v2"
+    board = api_sunzi(n=8)
+    board_rows = board.get("rows") or []
+    if not board_rows:
+        return tier1_unavailable(
+            endpoint,
+            code="TIER1_EVIDENCE_MISSING",
+            message="은하퀀트전설 브리핑에 사용할 종목 판정 데이터가 없습니다.",
+            sources=["sunzi_five_board"],
+            missing=["sunzi_rows"],
+            prompt_version=prompt_version,
+        )
+    board_context = json.dumps(
+        {
+            "candidate_count": board.get("n"),
+            "fa_pass_count": board.get("fa_pass_n"),
+            "market": board.get("tian"),
+            "postures": board.get("postures"),
+            "aspects": board.get("aspects"),
+            "top_rows": board_rows[:8],
+        },
+        ensure_ascii=False,
+        default=str,
+    )
 
     persona_prompts = {
         "yang": (
@@ -1948,21 +2187,25 @@ def api_sunzi_tier1_briefing_get(persona: str = "yang") -> dict[str, Any]:
             "당신은 《은하영웅전설》의 은하제국 군무상서 '파울 폰 오베르슈타인'입니다.\n"
             "[말투 및 성격 절대 규칙]\n"
             "- 말투: 극도로 건조하고 서늘한 격식체(~입니다, ~하십시오, ~해야 합니다, 감정은 자본의 독입니다)로 말하세요.\n"
-            "- 내용: 감상적 희망과 주관적 기대를 배제하고, 차가운 기대치와 손익비, 팩터 감점 종목의 가차 없는 도려내기, -3% 칼손절 엄수만을 강조합니다.\n"
-            "현재 증시의 리스크 요인과 손절선 엄수, 팩터 감점 종목 도려내기 원칙을 냉정하게 브리핑해 주세요.\n"
+            "- 내용: 감상적 희망과 주관적 기대를 배제하고, 데이터 신뢰도와 팩터 감점, 판단 무효화 조건을 강조합니다.\n"
+            "제공된 시스템 판정의 리스크 요인과 팩터 감점 근거를 냉정하게 브리핑해 주세요.\n"
             "반드시 JSON 형식으로만 반환하세요: {\"commander\": \"파울 폰 오베르슈타인 군무상서\", \"title\": \"군무상서 기밀 리스크 사정서\", \"headline\": \"한 줄 리스크 통제 헤드라인\", \"briefing\": \"수치와 기대치 기반 냉철 진단 2줄\", \"tactical_order\": \"리스크 도려내기 지침\"}"
         ),
         "julian": (
             "당신은 《은하영웅전설》의 성실하고 총명한 후계자 '율리안 민츠'입니다.\n"
             "[말투 및 성격 절대 규칙]\n"
             "- 말투: 예의 바르고 열정적인 청년 참모 어조(~합니다!, ~인 것 같습니다!, ~하겠습니다!)로 말하세요.\n"
-            "- 내용: 양 웬리 제독님의 가르침을 깊이 새기며 5대 팩터와 재무제표, 수급 데이터를 꼼꼼하게 교차 검증합니다. 팩트 기반의 교과서적인 정석 분할 매수를 제안합니다.\n"
-            "현재 5대 팩터와 수급 데이터를 꼼꼼히 정리하여 투자자들에게 정석 퀀트 대응 가이드를 브리핑해 주세요.\n"
-            "반드시 JSON 형식으로만 반환하세요: {\"commander\": \"율리안 민츠 참모\", \"title\": \"후계자 율리안의 퀀트 정석 보고서\", \"headline\": \"한 줄 정석 헤드라인\", \"briefing\": \"데이터 교차 검증 2줄\", \"tactical_order\": \"정석 분할 대응 지침\"}"
+            "- 내용: 양 웬리 제독님의 가르침을 깊이 새기며 제공된 5대 팩터와 수급 데이터를 꼼꼼하게 교차 검증합니다.\n"
+            "현재 제공된 5대 팩터와 수급 판정을 정리하여 추가 확인이 필요한 항목을 브리핑해 주세요.\n"
+            "반드시 JSON 형식으로만 반환하세요: {\"commander\": \"율리안 민츠 참모\", \"title\": \"후계자 율리안의 퀀트 정석 보고서\", \"headline\": \"한 줄 정석 헤드라인\", \"briefing\": \"데이터 교차 검증 2줄\", \"tactical_order\": \"추가 확인 지침\"}"
         ),
     }
 
-    selected_prompt = persona_prompts.get(persona, persona_prompts["yang"])
+    selected_prompt = (
+        persona_prompts.get(persona, persona_prompts["yang"])
+        + f"\n\n[실제 시스템 판정]\n{board_context}\n"
+        + "제공된 시스템 판정에 없는 시장 사실이나 수치를 만들지 마세요. 캐릭터 말투는 표현에만 사용하고 주문·비중·목표가·손절가를 지시하지 마세요."
+    )
     try:
         raw_text, _ = call_chat(
             endpoint,
@@ -1971,40 +2214,21 @@ def api_sunzi_tier1_briefing_get(persona: str = "yang") -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "persona": persona, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
-        fallbacks = {
-            "yang": {
-                "commander": "양 웬리 제독",
-                "title": "제13함대 당직 참모 브리핑",
-                "headline": "전선 확대 금지… 홍차를 데우며 적의 실수를 기다릴 때일세",
-                "briefing": "시장이 환율과 금리 변동성으로 요동치고 있어. 이런 날엔 무리하게 함포를 쏠 필요가 없지. 이길 수 있는 자리에만 서 있으면 승리는 저절로 굴러들어오는 법이야.",
-                "tactical_order": "좋은 종목이라도 무리한 추격매수는 사양하세. 잉여현금이 든든한 요새에 머물며 분할 매집 기회를 엿보자고.",
-            },
-            "reinhard": {
-                "commander": "라인하르트 폰 로엔그람 황제",
-                "title": "은하제국 황제 친정군 칙령",
-                "headline": "우유부단한 관망은 죄악이다! 시장 주도 섹터의 정면을 돌파하라!",
-                "briefing": "시장의 역풍 따위는 강력한 펀더멘털과 신고가 모멘텀 앞에 흩어질 뿐이다. 주도 섹터의 선봉에 서서 압도적인 승리를 쟁취하라!",
-                "tactical_order": "상대강도(RS) 상위의 1등주에 화력을 집중하라! 망설이는 자에게 은하의 패권은 주어지지 않는다. 전 함대 돌격!",
-            },
-            "oberstein": {
-                "commander": "파울 폰 오베르슈타인 군무상서",
-                "title": "군무상서 기밀 리스크 사정서",
-                "headline": "감상적 기대는 자본의 독입니다. 손익비가 음수인 포지션을 즉시 정리하십시오.",
-                "briefing": "주가는 장부의 진실과 수급의 냉정한 계산 결과일 뿐입니다. 데이터 신뢰도가 떨어지거나 감점 페널티가 높은 종목은 가차 없이 포트폴리오에서 제외해야 합니다.",
-                "tactical_order": "모든 포지션에 -3% 손절선을 설정하십시오. 감정 없는 기계적 규율만이 자본을 보전합니다.",
-            },
-            "julian": {
-                "commander": "율리안 민츠 참모",
-                "title": "후계자 율리안의 퀀트 정석 보고서",
-                "headline": "제독님의 가르침대로 5대 팩터와 수급 지표를 꼼꼼히 교차 검증하고 있습니다!",
-                "briefing": "가치와 품질 점수가 모두 높은 우량주들이 눌림목 지지선에 안착하고 있습니다. 데이터가 확실한 신호를 보낼 때까지 차분히 원칙을 지키겠습니다.",
-                "tactical_order": "급격한 몰빵보다는 3회에 걸친 분할 매수로 평균 단가를 안정적으로 관리하세요!",
-            },
-        }
-        fb = fallbacks.get(persona, fallbacks["yang"])
-        return {"ok": True, "model": endpoint.model, "persona": persona, "tier": "Tier 1 (100% 무료 일상 엔진)", **fb}
+        return tier1_success(
+            endpoint,
+            {"persona": persona, **_extract_json(raw_text)},
+            sources=["sunzi_five_board"],
+            evidence_count=len(board_rows),
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 sunzi briefing unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            sources=["sunzi_five_board"],
+            evidence_count=len(board_rows),
+            prompt_version=prompt_version,
+        )
 
 
 @app.post("/api/sunzi/tactical-ai")
@@ -2014,6 +2238,19 @@ def api_sunzi_tactical_ai_post(body: SunziTacticalAiIn) -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "sunzi_tactical_v2"
+    evidence_count = sum(
+        value is not None
+        for value in (
+            body.quant_score,
+            body.posture,
+            body.dao_score,
+            body.tian_score,
+            body.di_score,
+            body.jiang_score,
+            body.fa_pass,
+        )
+    )
 
     persona_sys_rules = {
         "yang": (
@@ -2050,8 +2287,8 @@ def api_sunzi_tactical_ai_post(body: SunziTacticalAiIn) -> dict[str, Any]:
         f"- 퀀트 종합점수: {body.quant_score or 50.0}점\n"
         f"- 5사 판정: 道(장부)={body.dao_score or 50}점, 天(시장)={body.tian_score or 50}점, 地(지형)={body.di_score or 50}점, 將(장수)={body.jiang_score or 50}점, 法(규율)={'통과' if body.fa_pass else '미달'}\n"
         f"- 작전 태세: {body.posture or 'WAIT'}\n\n"
-        f"위 종목에 대한 실전 작전 지시서를 당신의 고유한 말투와 성격을 극대화하여 1인칭으로 작성해 주세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"strategy_tag\": \"4자 사자성어 작전명\", \"tactical_briefing\": \"종목 펀더멘털 및 전황 해설 2줄\", \"maneuver_entry\": \"진입 타점 및 기동 지침\", \"escape_route\": \"퇴로 및 손절 리스크 통제\", \"one_line_verdict\": \"지휘관의 한 줄 촌철살인\"}"
+        f"위 종목의 시스템 판정을 당신의 고유한 말투로 해설해 주세요. 제공되지 않은 재무·수급·가격 사실을 만들지 마세요. 주문·비중·목표가·손절가를 지시하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"strategy_tag\": \"4자 사자성어 연구 태그\", \"tactical_briefing\": \"제공된 점수와 태세 해설 2줄\", \"maneuver_entry\": \"추가 확인할 조건\", \"escape_route\": \"현재 판단을 무효화할 위험\", \"one_line_verdict\": \"연구 우선순위 한 줄\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -2061,45 +2298,21 @@ def api_sunzi_tactical_ai_post(body: SunziTacticalAiIn) -> dict[str, Any]:
             timeout=15,
             json_mode=True,
         )
-        return {"ok": True, "model": endpoint.model, "persona": body.persona, "tier": "Tier 1 (100% 무료 일상 엔진)", **_extract_json(raw_text)}
-    except Exception:
-        tactical_fallbacks = {
-            "yang": {
-                "strategy_tag": "先勝求戰 (선승구전)" if (body.quant_score or 0) >= 70 else "以逸待勞 (이일대로)",
-                "tactical_briefing": f"{body.company or body.ticker}의 장부와 보급선을 점검해보니 잉여현금은 든든해. 하지만 시장이 시끄러울 땐 굳이 먼저 총을 쏠 필요가 없어. 홍차나 마시며 상대가 실수할 때를 기다리는 게 상책이지.",
-                "maneuver_entry": "남들이 공포에 질려 던지는 눌림목 지지선에서만 3회 분할 진입하세. 절대로 추격 돌격은 금물이야.",
-                "escape_route": "전선이 무너지면 미련 없이 퇴각할 수 있도록 -3% 손절선을 그어두게. 목숨(자본)이 붙어 있어야 다음 전투도 있는 법이니까.",
-                "one_line_verdict": "싸우기 전에 이미 이겨놓는 것, 그것이 게으른 참모의 승리법일세.",
-            },
-            "reinhard": {
-                "strategy_tag": "疾風怒濤 (질풍노도)" if (body.quant_score or 0) >= 70 else "覇道前進 (패도전진)",
-                "tactical_briefing": f"{body.company or body.ticker}의 퀀트 화력은 {body.quant_score or 50:.1f}점으로 전장을 압도하고 있다! 주도 섹터의 선봉에 서서 시세의 중심을 단숨에 꿰뚫어라!",
-                "maneuver_entry": "직전 고점 돌파 확인 즉시 전 함대 일제 진격! 망설이는 자에게 수익의 영광은 돌아가지 않는다. 1등주에 화력을 집중하라!",
-                "escape_route": "주요 지지선 이탈 시 쾌도난마로 전선을 재정비하라. 황제의 칼날은 헛된 고집으로 무뎌지지 않는다.",
-                "one_line_verdict": "내 앞을 가로막는 타협은 없다. 전 함대 돌격하여 승리를 쟁취하라!",
-            },
-            "oberstein": {
-                "strategy_tag": "斷割淘汰 (단할도태)" if (body.fa_pass is False or (body.quant_score or 0) < 60) else "冷徹算定 (냉철산정)",
-                "tactical_briefing": f"{body.company or body.ticker}의 기대치는 수치상 명확합니다. 주관적 감상이나 낙관론은 자본을 파멸시키는 독에 불과하므로 철저한 팩터 기준선만을 적용해야 합니다.",
-                "maneuver_entry": "손익비(Risk/Reward)가 1:2.5 이상 확보되는 정밀 지지선에만 지정가 매수를 집행하십시오. 시장가 추격은 엄금합니다.",
-                "escape_route": "진입가 대비 -3% 도달 시 어떤 감정적 유예도 없이 전량 기계적 손절을 집행하십시오. 예외는 없습니다.",
-                "one_line_verdict": "감정은 자본의 독입니다. 차가운 수학적 기대치만이 생존을 보장합니다.",
-            },
-            "julian": {
-                "strategy_tag": "實事求是 (실사구시)" if (body.quant_score or 0) >= 70 else "精査分買 (정사분매)",
-                "tactical_briefing": f"{body.company or body.ticker}의 5대 팩터와 수급 데이터를 교차 검증한 결과 퀀트 종합 {body.quant_score or 50:.1f}점으로 기본기가 매우 탄탄합니다! 제독님의 가르침대로 서두르지 않고 팩트를 확인했습니다.",
-                "maneuver_entry": "20일 이동평균선 안착을 확인한 후 1차 30%, 눌림목 지지 시 2차 40%로 정석 분할 매수를 추천합니다!",
-                "escape_route": "주요 지지선 -3% 이탈 시 규칙에 따라 단호하게 방어 포지션으로 전환하겠습니다!",
-                "one_line_verdict": "데이터는 거짓말을 하지 않습니다. 철저한 원칙과 정석만이 승리를 가져옵니다!",
-            },
-        }
-        return {
-            "ok": True,
-            "model": endpoint.model,
-            "persona": body.persona,
-            "tier": "Tier 1 (100% 무료 일상 엔진)",
-            **tactical_fallbacks.get(body.persona, tactical_fallbacks["yang"]),
-        }
+        return tier1_success(
+            endpoint,
+            {"persona": body.persona, **_extract_json(raw_text)},
+            sources=["sunzi_tactical_input"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 sunzi tactical analysis unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            sources=["sunzi_tactical_input"],
+            evidence_count=evidence_count,
+            prompt_version=prompt_version,
+        )
 
 
 @app.get("/api/nps")

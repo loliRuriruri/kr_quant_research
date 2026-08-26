@@ -294,13 +294,6 @@ def get_tier1_insights(
     root = getattr(settings, "root", Path("."))
     cache_dir = root / "data" / "cache" / "tier1_insights"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_file = cache_dir / f"{code}_{today}.json"
-
-    if not force and cache_file.exists():
-        try:
-            return json.loads(cache_file.read_text(encoding="utf-8"))
-        except Exception:
-            pass
 
     endpoint = resolve_tier1_endpoint(settings)
 
@@ -311,6 +304,28 @@ def get_tier1_insights(
     events_str = "\n".join(f"- [{e.get('date', '') or e.get('report_date', '')}] {e.get('title', '')} ({e.get('market', '') or e.get('event_ko', '')})" for e in events_list[:4]) or "최근 주요 공시 없음"
     tech_str = json.dumps(tech or {}, ensure_ascii=False)
     flow_str = json.dumps(flow or {}, ensure_ascii=False)
+    evidence_snapshot = {
+        "ticker": code,
+        "news": news_list[:5],
+        "events": events_list[:4],
+        "tech": tech or {},
+        "flow": flow or {},
+    }
+    evidence_hash = sha256_json(evidence_snapshot)
+    cache_file = cache_dir / f"{code}_{today}_{evidence_hash[:12]}.json"
+
+    if not force and cache_file.exists():
+        try:
+            return json.loads(cache_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    evidence_count = (
+        len(news_list[:5])
+        + len(events_list[:4])
+        + sum(value not in (None, "", {}, []) for value in (tech or {}).values())
+        + sum(value not in (None, "", {}, []) for value in (flow or {}).values())
+    )
 
     combined_prompt = f"""당신은 최고 수준의 퀀트/주식 리서치 전략가입니다.
 종목: {company} ({code})
@@ -328,27 +343,34 @@ def get_tier1_insights(
 위 3가지 영역을 종합 분석하여 반드시 아래 JSON 구조로만 응답하세요:
 {{
   "news_analysis": {{
-    "summary": "실시간 뉴스가 실적/주가에 미칠 실질적 영향(호재/악재) 2줄 요약",
-    "sentiment": "호재",
+    "summary": "제공된 뉴스가 실적/사업/가격 기대에 미칠 수 있는 영향을 근거 범위 안에서 2줄 요약",
+    "sentiment": "긍정/부정/혼재/근거 부족",
     "key_driver": "핵심 드라이버 요약"
   }},
   "events_analysis": {{
-    "commentary": "공시가 지분 희석, 오버행, 실적에 미치는 실전 해설 2줄",
-    "risk_level": "안전",
+    "commentary": "제공된 공시가 지분 희석, 오버행, 실적에 미칠 수 있는 영향과 확인 한계 2줄",
+    "risk_level": "낮음/중간/높음/판단 불가",
     "key_point": "핵심 체크 포인트"
   }},
   "tech_flow_analysis": {{
-    "action_guide": "외인/기관 수급과 지표를 고려한 실전 매매 대응 가이드(진입 시점, 눌림목) 2줄",
-    "posture": "분할 매수",
-    "timing_tip": "타이밍 팁"
+    "action_guide": "외인/기관 수급과 기술 지표가 일치하거나 충돌하는 지점 2줄",
+    "posture": "확인/혼재/근거 부족",
+    "timing_tip": "추가 확인할 지표"
   }}
-}}"""
+}}
 
-    news_analysis = {"summary": f"{company}의 실시간 뉴스 모멘텀을 추적 중입니다.", "sentiment": "호재", "key_driver": "뉴스 모니터링"}
-    events_analysis = {"commentary": "최근 공시에서 특이 오버행 리스크는 제한적입니다.", "risk_level": "안전", "key_point": "정기 공시 중심"}
-    tech_flow_analysis = {"action_guide": "메이저 수급 추세 및 20일선 지지선 확인 후 분할 매수가 유효합니다.", "posture": "분할 매수", "timing_tip": "단기 눌림목 지지선 확인"}
+제공되지 않은 사실, 가격선, 수익률, 매수·매도·비중·목표가·손절가를 만들지 마세요."""
+
+    news_analysis = {"summary": "AI 뉴스 해석을 생성하지 못했습니다.", "sentiment": "판단 불가", "key_driver": "원본 뉴스 확인 필요"}
+    events_analysis = {"commentary": "AI 공시 해석을 생성하지 못했습니다.", "risk_level": "판단 불가", "key_point": "원본 공시 확인 필요"}
+    tech_flow_analysis = {"action_guide": "AI 기술·수급 해석을 생성하지 못했습니다.", "posture": "판단 불가", "timing_tip": "원본 지표 확인 필요"}
+    status = "UNAVAILABLE"
+    ai_generated = False
+    error_code: str | None = None
 
     try:
+        if evidence_count <= 0:
+            raise ValueError("tier1 evidence missing")
         raw_text, _ = call_chat(
             endpoint,
             [{"role": "system", "content": "You are a professional Korean equity research analyst. Output strictly in valid JSON."},
@@ -364,8 +386,11 @@ def get_tier1_insights(
                 events_analysis = parsed["events_analysis"]
             if "tech_flow_analysis" in parsed and isinstance(parsed["tech_flow_analysis"], dict):
                 tech_flow_analysis = parsed["tech_flow_analysis"]
+            status = "GENERATED"
+            ai_generated = True
     except Exception as exc:
-        print(f"Tier 1 insight generation fallback used: {exc}")
+        error_code = "TIER1_EVIDENCE_MISSING" if evidence_count <= 0 else "TIER1_GENERATION_FAILED"
+        print(f"Tier 1 insight unavailable: {exc}")
 
     result = {
         "ticker": code,
@@ -374,6 +399,18 @@ def get_tier1_insights(
         "model": endpoint.model,
         "provider": endpoint.provider,
         "tier": "Tier 1 (100% 무료 일상 엔진)",
+        "status": status,
+        "ok": status == "GENERATED",
+        "ai_generated": ai_generated,
+        "used_in_quant": False,
+        "prompt_version": "stock_tier1_insights_v2",
+        "evidence_hash": evidence_hash,
+        "evidence": {
+            "item_count": evidence_count,
+            "coverage": "NONE" if evidence_count <= 0 else "PARTIAL",
+            "sources": ["naver_news", "dart_events", "technical_snapshot", "flow_snapshot"],
+        },
+        "error_code": error_code,
         "news_analysis": news_analysis,
         "events_analysis": events_analysis,
         "tech_flow_analysis": tech_flow_analysis,

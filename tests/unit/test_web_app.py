@@ -100,9 +100,20 @@ def test_strategy_ai_fallback_uses_real_validation_fields(monkeypatch):
     body = response.json()
     assert response.status_code == 200
     assert body["verdict"] == "표본 부족"
+    assert body["status"] == "DETERMINISTIC_FALLBACK"
+    assert body["ai_generated"] is False
+    assert body["used_in_quant"] is False
     assert "+3.00%" in body["diagnosis"]
     assert "-2.00%" in body["diagnosis"]
     assert "주문 신호가 아닙니다" in body["execution_risk"]
+
+
+def test_tier1_ui_exposes_failure_and_provenance_states():
+    js = client.get("/static/app.js").text
+    assert "function renderTier1Unavailable" in js
+    assert "function appendTier1Meta" in js
+    assert "퀀트 점수 미반영" in js
+    assert "DETERMINISTIC_FALLBACK" in js
 
 
 def test_external_web_is_read_only_and_hides_settings():
