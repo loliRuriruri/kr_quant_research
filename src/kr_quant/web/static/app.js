@@ -4070,13 +4070,12 @@ async function loadEmptyTier1Briefing() {
 }
 
 async function loadStrategyTier1Briefing() {
-  const container = $("#strategy-tier1-briefing");
-  const lowerContainer = $("#strategy-lab-tier1-briefing");
-  if (!container && !lowerContainer) return;
+  const container = $("#strategy-lab-tier1-briefing");
+  if (!container) return;
   try {
     const res = await api("/api/strategy/tier1-briefing");
     if (res && res.ok && res.headline) {
-      const briefingHtml = `
+      container.innerHTML = `
         <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(23, 37, 65, 0.9), rgba(15, 23, 42, 0.95)); border:1px solid rgba(56, 189, 248, 0.35); border-left:4px solid #38bdf8; border-radius:12px; padding:14px 18px; margin-bottom:16px; display:flex; flex-direction:column; gap:8px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
@@ -4102,8 +4101,6 @@ async function loadStrategyTier1Briefing() {
           </div>
         </div>
       `;
-      if (container) container.innerHTML = briefingHtml;
-      if (lowerContainer) lowerContainer.innerHTML = briefingHtml;
     }
   } catch (e) {}
 }
