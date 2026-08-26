@@ -121,7 +121,7 @@ def job_screen(as_of: str, source: str) -> dict[str, Any]:
     folder = s.staged_dir / ("live" if source == "live" else "demo")
     if not (folder / "prices.parquet").exists():
         raise FileNotFoundError(f"{folder} 에 시세가 없습니다. 먼저 데모 또는 실데이터 수집을 실행하세요.")
-    result = run_from_staged(s, d, folder)
+    result = run_from_staged(s, d, folder, source_mode=source)
     return _summarize(result)
 
 
@@ -137,7 +137,7 @@ def job_live(as_of: str, lookback_days: int, max_corps: int, skip_ingest: bool) 
             raise RuntimeError("실데이터 수집에는 KRX와 OpenDART 키가 필요합니다.")
         info["ingest"] = bootstrap_live(s, d, lookback_days=lookback_days, max_corps=max_corps)
     folder = s.staged_dir / "live"
-    result = run_from_staged(s, d, folder)
+    result = run_from_staged(s, d, folder, source_mode="live")
     out = _summarize(result)
     out["ingest"] = info.get("ingest")
     return out

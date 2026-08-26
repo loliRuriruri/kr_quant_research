@@ -5,6 +5,11 @@ minute: 30
 lookback_days: 80
 official_flow: true
 timezone: Asia/Seoul
+publish_public:
+  enabled: true
+  after_jobs: [live, screen]
+  project: korea-quant-research
+  branch: main
 krx_prices:
   hour: 18
   minute: 30

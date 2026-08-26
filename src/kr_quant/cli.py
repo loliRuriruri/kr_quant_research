@@ -89,7 +89,7 @@ def screen(
         folder = staged_dir or (s.staged_dir / ("live" if source == "live" else "demo"))
         if not (folder / "prices.parquet").exists():
             raise typer.BadParameter(f"prices.parquet 없음: {folder}. 먼저 demo 또는 ingest-krx를 실행하세요.")
-        result = run_from_staged(s, d, folder)
+        result = run_from_staged(s, d, folder, source_mode=source)
     _print_result(result)
 
 
@@ -225,7 +225,7 @@ def live(
         console.print(f"ingest as_of={d}")
         console.print(bootstrap_live(s, d, lookback_days=lookback_days, max_corps=max_corps))
     folder = s.staged_dir / "live"
-    result = run_from_staged(s, d, folder)
+    result = run_from_staged(s, d, folder, source_mode="live")
     _print_result(result)
 
 

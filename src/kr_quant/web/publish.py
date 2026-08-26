@@ -16,8 +16,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import yaml
 
+from kr_quant.freshness import freshness_snapshot
 from kr_quant.settings import load_settings
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -74,7 +76,7 @@ def load_publish_config() -> dict[str, Any]:
     env_off = os.environ.get("KR_QUANT_PUBLISH", "").strip().lower() in {"0", "false", "no", "off"}
     return {
         "enabled": (not env_off) and bool(pub.get("enabled", True)),
-        "after_jobs": [str(x) for x in (pub.get("after_jobs") or ["live", "screen", "demo"])],
+        "after_jobs": [str(x) for x in (pub.get("after_jobs") or ["live", "screen"])],
         "project": str(pub.get("project") or "korea-quant-research"),
         "branch": str(pub.get("branch") or "main"),
     }
@@ -143,9 +145,91 @@ def _node() -> str:
     return _which("node.exe") or _which("node") or "node"
 
 
+def evaluate_publication_readiness(
+    quality: dict[str, Any],
+    freshness: dict[str, Any],
+    *,
+    eligible_rows: int,
+) -> dict[str, Any]:
+    """Return a deterministic, fail-closed decision for public publication."""
+    errors: list[str] = []
+    if str(quality.get("source_mode") or "").lower() != "live":
+        errors.append("SOURCE_MODE_NOT_LIVE")
+    if str(quality.get("status") or "").lower() != "success":
+        errors.append("QUALITY_NOT_SUCCESS")
+    if quality.get("warnings"):
+        errors.append("QUALITY_WARNINGS_PRESENT")
+    if freshness.get("stale_price"):
+        errors.append("PRICE_DATA_STALE")
+    if freshness.get("stale_screen"):
+        errors.append("SCREEN_DATA_STALE")
+
+    expected = str(freshness.get("expected_price_date") or "")
+    price_max = str(freshness.get("price_max_date") or "")
+    screen_as_of = str(quality.get("as_of_date") or freshness.get("screen_as_of") or "")
+    if not expected or price_max != expected or screen_as_of != expected:
+        errors.append("AS_OF_DATE_MISMATCH")
+    if eligible_rows <= 0:
+        errors.append("NO_ELIGIBLE_CANDIDATES")
+    return {
+        "ready": not errors,
+        "errors": list(dict.fromkeys(errors)),
+        "source_mode": quality.get("source_mode"),
+        "quality_status": quality.get("status"),
+        "as_of_date": screen_as_of or None,
+        "expected_price_date": expected or None,
+        "price_max_date": price_max or None,
+        "eligible_rows": int(eligible_rows),
+    }
+
+
+def publication_readiness(root: Path | None = None) -> dict[str, Any]:
+    project = root or _root()
+    settings = load_settings(project)
+    quality_path = settings.output_dir / "data_quality_report.json"
+    latest_path = settings.output_dir / "latest_all_stocks.parquet"
+    if not quality_path.exists() or not latest_path.exists():
+        missing = []
+        if not quality_path.exists():
+            missing.append("QUALITY_REPORT_MISSING")
+        if not latest_path.exists():
+            missing.append("LATEST_RESULTS_MISSING")
+        return {"ready": False, "errors": missing, "eligible_rows": 0}
+    try:
+        quality = json.loads(quality_path.read_text(encoding="utf-8"))
+        latest = pd.read_parquet(latest_path, columns=["universe_eligible"])
+        eligible_rows = int(
+            latest["universe_eligible"]
+            .map(lambda value: value is True or str(value).strip().lower() in {"1", "true", "yes"})
+            .sum()
+        )
+        fresh = freshness_snapshot(settings, screen_as_of=quality.get("as_of_date"))
+    except Exception as exc:
+        return {
+            "ready": False,
+            "errors": ["PUBLICATION_SOURCE_READ_FAILED"],
+            "detail": str(exc),
+            "eligible_rows": 0,
+        }
+    return evaluate_publication_readiness(quality, fresh, eligible_rows=eligible_rows)
+
+
 def publish_public_snapshot(*, deploy: bool = True) -> dict[str, Any]:
     cfg = load_publish_config()
     root = _root()
+    readiness = publication_readiness(root)
+    if not readiness.get("ready"):
+        error = "PUBLICATION_BLOCKED: " + ", ".join(readiness.get("errors") or ["UNKNOWN_GUARD_FAILURE"])
+        _safe_print("[BLOCKED] " + error, flush=True)
+        _STATE.update(
+            {
+                "last_ok": False,
+                "last_at": datetime.now(timezone.utc).isoformat(),
+                "last_error": error,
+                "last_log": json.dumps(readiness, ensure_ascii=False),
+            }
+        )
+        return {"ok": False, "step": "guard", "error": error, "readiness": readiness, "cfg": cfg}
     _safe_print("[1/2] 로컬 스냅샷 생성 중 (1분 안팎 걸릴 수 있습니다)...", flush=True)
     build = _run([_node(), str(root / "scripts" / "build-public.mjs")], root, timeout=300)
     log = (build.stdout or "") + "\n" + (build.stderr or "")
@@ -287,4 +371,3 @@ def start_manual_deploy() -> dict[str, Any]:
     thread = threading.Thread(target=_deploy_worker, daemon=True)
     thread.start()
     return get_deploy_status()
-

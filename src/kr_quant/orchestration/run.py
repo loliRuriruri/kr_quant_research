@@ -75,6 +75,7 @@ def run_from_staged(
     staged_dir: Path,
     status_path: Path | None = None,
     publish_latest: bool = True,
+    source_mode: str = "staged",
 ) -> dict[str, Any]:
     cfg = settings.config
     tz = ZoneInfo(settings.timezone)
@@ -214,11 +215,16 @@ def run_from_staged(
         ctx,
         names,
         records,
-        extra={"event_counts": events_df["event"].value_counts().to_dict() if not events_df.empty else {}},
+        extra={
+            "event_counts": events_df["event"].value_counts().to_dict() if not events_df.empty else {},
+            "source_mode": source_mode,
+        },
     )
     write_json(dated / "data_quality_report.json", quality)
 
-    if publish_latest and ctx.status in {"success", "partial"}:
+    # Keep the last known-good local snapshot intact when a run is partial.
+    # Dated outputs above remain available for diagnosis and audit.
+    if publish_latest and ctx.status == "success":
         write_parquet_atomic(all_df, settings.output_dir / "latest_all_stocks.parquet")
         _csv_ready(top100).to_csv(settings.output_dir / "latest_top100.csv", index=False, encoding="utf-8-sig")
         _csv_ready(top20).to_csv(settings.output_dir / "latest_top20.csv", index=False, encoding="utf-8-sig")
@@ -234,6 +240,7 @@ def run_from_staged(
         "config_hash": ctx.config_hash,
         "source_bundle_hash": ctx.source_bundle_hash,
         "warnings": ctx.warnings,
+        "source_mode": source_mode,
         "output_dir": str(dated),
     }
     write_json(dated / "run_manifest.json", manifest)
@@ -254,7 +261,7 @@ def run_demo(settings: Settings, as_of: date | None = None) -> dict[str, Any]:
     staged = settings.data_dir / "staged" / "demo"
     generate_demo_dataset(staged, as_of=as_of)
     status = staged / "manual_status.csv"
-    return run_from_staged(settings, as_of, staged, status_path=status)
+    return run_from_staged(settings, as_of, staged, status_path=status, source_mode="demo")
 
 
 def ingest_krx_day(settings: Settings, as_of: date, markets: list[str] | None = None) -> Path:
