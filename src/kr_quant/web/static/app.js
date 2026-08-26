@@ -4033,7 +4033,13 @@ async function loadSeasonalityTier1Briefing() {
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.seasonality_brief || "")}</p>
-          ${(res.key_catalysts || []).length ? `<div style="display:flex; gap:6px; align-items:center; margin-top:2px;"><span style="font-size:11px; color:#94a3b8;">주요 이벤트:</span> ${res.key_catalysts.map(c => `<span class="chip" style="font-size:10.5px; padding:1px 6px;">${escapeHtml(c)}</span>`).join("")}</div>` : ""}
+          ${(res.key_catalysts || []).length ? `
+            <div style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; margin-top:4px;">
+              <span class="chip" style="font-size:11px; font-weight:700; color:#38bdf8; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.25); padding:2px 8px; border-radius:6px; white-space:nowrap; flex-shrink:0;">📌 주요 캘린더 이벤트</span>
+              <div style="display:flex; flex-wrap:wrap; gap:6px; flex:1;">
+                ${res.key_catalysts.map(c => `<span class="chip" style="font-size:11px; padding:2px 8px; background:rgba(30,41,59,0.85); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1);">${escapeHtml(c)}</span>`).join("")}
+              </div>
+            </div>` : ""}
         </div>
       `;
     }
@@ -10363,6 +10369,9 @@ async function loadDiscoveryRanked() {
 
   const res = await api(`/api/seasonality/discovery?${params.toString()}`);
   discoveryRows = res.rows || [];
+
+  const countBadge = $("#discovery-count-val");
+  if (countBadge) countBadge.textContent = `${discoveryRows.length.toLocaleString()}개`;
 
   if (!discoveryRows.length) {
     tbody.innerHTML = `<tr><td colspan="12" class="text-center text-slate-400 py-8">조건에 부합하는 디스커버리 후보가 없습니다.</td></tr>`;

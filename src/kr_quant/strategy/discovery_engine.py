@@ -66,10 +66,14 @@ def pattern_from_month_stat(
     cur_year = pd.Timestamp.now().year
     years_track = []
     if hist_recs:
-        min_year = (cur_year - lookback_years) if (lookback_years and lookback_years > 0) else 1900
-        valid_recs = [hr for hr in hist_recs if int(hr.get("year", 0)) >= min_year and int(hr.get("year", 0)) <= cur_year]
-        if not valid_recs and not lookback_years:
-            valid_recs = hist_recs
+        sorted_recs = sorted(
+            [hr for hr in hist_recs if int(hr.get("year", 0)) <= cur_year],
+            key=lambda x: int(x.get("year", 0))
+        )
+        if lookback_years and lookback_years > 0:
+            valid_recs = sorted_recs[-lookback_years:]
+        else:
+            valid_recs = sorted_recs
 
         for hr in valid_recs:
             y = int(hr.get("year", 2024))

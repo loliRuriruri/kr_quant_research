@@ -644,50 +644,72 @@
 
         <!-- PANE 1: v1.1 Price Discovery Ranked Candidates -->
         <div id="pane-v11-discovery" class="hidden">
-          <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:12px; background:rgba(15,23,42,0.4); padding:8px 12px; border-radius:8px;">
-            <!-- Lookback Period Tabs -->
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span style="font-size:12px; font-weight:700; color:#38bdf8;">분석 기간:</span>
-              <div id="discovery-lookback-tabs" style="display:flex; gap:4px;">
-                <button type="button" class="preset-chip-btn" data-lookback="3">⚡ 최근 3개년 (단기)</button>
-                <button type="button" class="preset-chip-btn active" data-lookback="5">⭐ 최근 5개년 (균형형)</button>
-                <button type="button" class="preset-chip-btn" data-lookback="8">👑 장기 8개년 (고신뢰)</button>
-                <button type="button" class="preset-chip-btn" data-lookback="0">🌐 전체 기간</button>
+          <div class="disc-filter-bar" style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px; background:linear-gradient(135deg, rgba(15,23,42,0.7), rgba(30,41,59,0.5)); border:1px solid rgba(255,255,255,0.08); padding:10px 14px; border-radius:10px;">
+            <!-- Row 1: Period & Horizon & Exclude Expired Controls (Dense & Clean) -->
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+              <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+                <!-- Lookback Period Tabs -->
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:12px; font-weight:800; color:#38bdf8; white-space:nowrap;">⏱️ 분석 기간:</span>
+                  <div id="discovery-lookback-tabs" style="display:flex; gap:4px;">
+                    <button type="button" class="preset-chip-btn" data-lookback="2">⚡ 최근 2개년 (모멘텀)</button>
+                    <button type="button" class="preset-chip-btn" data-lookback="3">🔥 최근 3개년 (단기)</button>
+                    <button type="button" class="preset-chip-btn active" data-lookback="5">⭐ 최근 5개년 (균형형)</button>
+                    <button type="button" class="preset-chip-btn" data-lookback="0">🌐 전체 기간</button>
+                  </div>
+                </div>
+
+                <!-- Horizon Tabs -->
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:12px; font-weight:800; color:#94a3b8; white-space:nowrap;">🎯 진입 윈도우:</span>
+                  <div id="discovery-horizon-tabs" style="display:flex; gap:4px;">
+                    <button type="button" class="preset-chip-btn active" data-horizon="90">🌐 전체 90일</button>
+                    <button type="button" class="preset-chip-btn" data-horizon="7">⚡ 7일 (임박)</button>
+                    <button type="button" class="preset-chip-btn" data-horizon="30">🚀 30일 (선취매)</button>
+                  </div>
+                </div>
               </div>
+
+              <!-- Right Side: Exclude Expired Pill -->
+              <button type="button" id="btn-toggle-exclude-expired" class="preset-chip-btn active" style="border:1.5px solid #38bdf8; background:rgba(56,189,248,0.18); color:#38bdf8; font-weight:800; padding:5px 12px; border-radius:8px; cursor:pointer; white-space:nowrap;" title="클릭하여 시즌 종료 종목 포함/제외 토글">
+                ☑️ 시즌 종료 제외 (진입 유효만)
+              </button>
             </div>
 
-            <!-- Horizon Tabs -->
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span style="font-size:12px; font-weight:700; color:#94a3b8;">진입 윈도우:</span>
-              <div id="discovery-horizon-tabs" style="display:flex; gap:4px;">
-                <button type="button" class="preset-chip-btn active" data-horizon="90">🌐 전체 90일</button>
-                <button type="button" class="preset-chip-btn" data-horizon="7">⚡ 7일 (임박)</button>
-                <button type="button" class="preset-chip-btn" data-horizon="30">🚀 30일 (선취매)</button>
+            <!-- Row 2: Secondary Filter Controls (Full width row, evenly distributed, zero empty gap) -->
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">
+              <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; flex:1;">
+                <span style="font-size:12px; font-weight:700; color:#cbd5e1; white-space:nowrap;">🔍 상세 필터:</span>
+                
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:11.5px; color:#94a3b8; white-space:nowrap;">등급:</span>
+                  <select id="discovery-grade-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:5px 10px; font-size:12px; min-width:140px;">
+                    <option value="">전체 등급 (S ~ D)</option>
+                    <option value="S">👑 S등급 (85점+)</option>
+                    <option value="A">⭐ A등급 이상 (75점+)</option>
+                    <option value="B">B등급 이상 (65점+)</option>
+                  </select>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-size:11.5px; color:#94a3b8; white-space:nowrap;">상태:</span>
+                  <select id="discovery-status-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:5px 10px; font-size:12px; min-width:150px;">
+                    <option value="all">전체 상태</option>
+                    <option value="ACTIVE">🟢 ACTIVE (강력 추천)</option>
+                    <option value="WATCH">🟡 WATCH (관찰)</option>
+                    <option value="DISCOVERY">🟣 DISCOVERY (발견)</option>
+                    <option value="WEAKENING">🟠 WEAKENING (약화)</option>
+                    <option value="BROKEN">🔴 BROKEN (진입 금지)</option>
+                  </select>
+                </div>
+
+                <button type="button" id="btn-status-guide" class="ghost" style="height:30px; padding:0 10px; font-size:12px; color:#38bdf8; border:1px solid rgba(56,189,248,0.35); border-radius:6px; cursor:pointer; white-space:nowrap;" title="상태 판정 기준 가이드 열기">ℹ️ 상태 가이드</button>
               </div>
-            </div>
 
-            <!-- 🌟 EXCLUDE EXPIRED BUTTON (Prominent Cyan Pill) -->
-            <button type="button" id="btn-toggle-exclude-expired" class="preset-chip-btn active" style="border:1.5px solid #38bdf8; background:rgba(56,189,248,0.2); color:#38bdf8; font-weight:800; padding:6px 14px; border-radius:8px; cursor:pointer;" title="클릭하여 시즌 종료 종목 포함/제외 토글">
-              ☑️ 시즌 종료 제외 (진입 유효만)
-            </button>
-
-            <!-- Dropdown Filters & Status Guide -->
-            <div style="margin-left:auto; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <select id="discovery-grade-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;">
-                <option value="">전체 등급 (S ~ D)</option>
-                <option value="S">👑 S등급 (85점+)</option>
-                <option value="A">⭐ A등급 이상 (75점+)</option>
-                <option value="B">B등급 이상 (65점+)</option>
-              </select>
-              <select id="discovery-status-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;">
-                <option value="all">전체 상태</option>
-                <option value="ACTIVE">🟢 ACTIVE (강력 추천)</option>
-                <option value="WATCH">🟡 WATCH (관찰)</option>
-                <option value="DISCOVERY">🟣 DISCOVERY (발견)</option>
-                <option value="WEAKENING">🟠 WEAKENING (약화)</option>
-                <option value="BROKEN">🔴 BROKEN (진입 금지)</option>
-              </select>
-              <button type="button" id="btn-status-guide" class="ghost" style="height:34px; padding:0 10px; font-size:12px; color:#38bdf8; border:1px solid rgba(56,189,248,0.3); border-radius:6px; cursor:pointer;" title="상태 판정 기준 가이드 열기">ℹ️ 상태 가이드</button>
+              <!-- Active Count Badge -->
+              <div id="discovery-stat-badge" style="font-size:12px; color:#94a3b8; background:rgba(15,23,42,0.8); padding:4px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); white-space:nowrap;">
+                발굴된 종목: <b id="discovery-count-val" style="color:#38bdf8;">—</b>
+              </div>
             </div>
           </div>
 
