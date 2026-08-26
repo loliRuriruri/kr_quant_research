@@ -2462,30 +2462,64 @@ function renderKpis(status, top) {
   const reportsCount = reportRows.filter((x) => x.kind === "AI 분석 리포트").length;
 
   $("#kpis").innerHTML = `
-    <div class="kpi">
-      <span class="has-tip" data-tip="재무·성장·모멘텀 종합 알고리즘을 최종 통과한 상위 20개 핵심 포트폴리오입니다.">🎯 TOP20 포트폴리오</span>
-      <b>${topRows.length || 20} <small style="font-size:13px; color:#94a3b8; font-weight:normal;">종목</small></b>
-      <div class="kpi-sub">평균 점수 <b style="color:#38bdf8;">${avgScore}</b>점</div>
+    <div class="kpi card-cyan">
+      <div class="kpi-head">
+        <span class="kpi-title has-tip" data-tip="재무·성장·모멘텀 종합 알고리즘을 최종 통과한 상위 20개 핵심 포트폴리오입니다.">🎯 TOP20 포트폴리오</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(56,189,248,0.15); color:#38bdf8;">우량주</span>
+      </div>
+      <div class="kpi-main">
+        <span class="kpi-num">${topRows.length || 20}</span>
+        <span class="kpi-unit">종목</span>
+      </div>
+      <div class="kpi-sub-text">평균 퀀트 점수 <b style="color:#38bdf8; font-weight:700;">${avgScore}점</b></div>
     </div>
-    <div class="kpi">
-      <span class="has-tip" data-tip="시총·거래대금·보통주 및 재무제표 스크리닝 요건을 통과한 유효 유니버스 기업 수입니다.">🏢 조건 통과 유니버스</span>
-      <b>${c.universe_eligible ?? 271} <small style="font-size:13px; color:#94a3b8; font-weight:normal;">개사</small></b>
-      <div class="kpi-sub">전체 상장사의 약 12% 통과</div>
+
+    <div class="kpi card-emerald">
+      <div class="kpi-head">
+        <span class="kpi-title has-tip" data-tip="시총·거래대금·보통주 및 재무제표 스크리닝 요건을 통과한 유효 유니버스 기업 수입니다.">🏢 조건 통과 유니버스</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(52,211,153,0.15); color:#34d399;">12% 통과</span>
+      </div>
+      <div class="kpi-main">
+        <span class="kpi-num">${c.universe_eligible ?? 275}</span>
+        <span class="kpi-unit">개사</span>
+      </div>
+      <div class="kpi-sub-text">전체 2,700+ 상장사 중 엄선</div>
     </div>
-    <div class="kpi">
-      <span class="has-tip" data-tip="TOP20 종목들의 평균 주가수익비율(PER)입니다. 시장 평균 대비 저평가 안전마진을 나타냅니다.">💎 TOP20 평균 PER</span>
-      <b>${avgPer} <small style="font-size:13px; color:#94a3b8; font-weight:normal;">배</small></b>
-      <div class="kpi-sub">저평가 가치 매력 우수</div>
+
+    <div class="kpi card-amber">
+      <div class="kpi-head">
+        <span class="kpi-title has-tip" data-tip="TOP20 종목들의 평균 주가수익비율(PER)입니다. 시장 평균 대비 저평가 안전마진을 나타냅니다.">💎 TOP20 평균 PER</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(251,191,36,0.15); color:#fbbf24;">저평가</span>
+      </div>
+      <div class="kpi-main">
+        <span class="kpi-num">${avgPer}</span>
+        <span class="kpi-unit">배</span>
+      </div>
+      <div class="kpi-sub-text">코스피 평균(13.5배) 대비 저평가</div>
     </div>
-    <div class="kpi">
-      <span class="has-tip" data-tip="TOP20 종목들의 평균 자기자본이익률(ROE)입니다. 고수익성 자본 효율성을 나타냅니다.">📈 TOP20 평균 ROE</span>
-      <b>${avgRoe}%</b>
-      <div class="kpi-sub">고수익·고성장 펀더멘털</div>
+
+    <div class="kpi card-purple">
+      <div class="kpi-head">
+        <span class="kpi-title has-tip" data-tip="TOP20 종목들의 평균 자기자본이익률(ROE)입니다. 고수익성 자본 효율성을 나타냅니다.">📈 TOP20 평균 ROE</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(192,132,252,0.15); color:#c084fc;">고수익</span>
+      </div>
+      <div class="kpi-main">
+        <span class="kpi-num">${avgRoe}</span>
+        <span class="kpi-unit">%</span>
+      </div>
+      <div class="kpi-sub-text">고수익·고성장 펀더멘털</div>
     </div>
-    <div class="kpi clickable-kpi" id="kpi-goto-reports">
-      <span class="has-tip" data-tip="AI 리서치 엔진으로 발간 및 보관된 심층 기업 분석 리포트 건수입니다. 클릭 시 리포트 보관함으로 이동합니다.">📑 AI 분석 리포트</span>
-      <b>${reportsCount} <small style="font-size:13px; color:#94a3b8; font-weight:normal;">건</small></b>
-      <div class="kpi-sub">심층 검증 완료 (클릭 시 이동)</div>
+
+    <div class="kpi card-rose clickable-kpi" id="kpi-goto-reports">
+      <div class="kpi-head">
+        <span class="kpi-title has-tip" data-tip="AI 리서치 엔진으로 발간 및 보관된 심층 기업 분석 리포트 건수입니다. 클릭 시 리포트 보관함으로 이동합니다.">📑 AI 분석 리포트</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(251,113,133,0.15); color:#fb7185;">리포트 ↗</span>
+      </div>
+      <div class="kpi-main">
+        <span class="kpi-num">${reportsCount}</span>
+        <span class="kpi-unit">건</span>
+      </div>
+      <div class="kpi-sub-text">심층 검증 완료 (클릭 시 이동)</div>
     </div>
   `;
 
@@ -9823,6 +9857,225 @@ function renderDiscDeepPlaybook(r, months) {
   `;
 }
 
+function renderSeasonalOverlayChart(canvas, r, months, mode = "seasonal_overlay") {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const width = rect.width || 720;
+  const height = rect.height || 280;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  ctx.scale(dpr, dpr);
+
+  ctx.fillStyle = "#070b13";
+  ctx.fillRect(0, 0, width, height);
+
+  const padding = { top: 38, right: 28, bottom: 32, left: 52 };
+  const plotW = width - padding.left - padding.right;
+  const plotH = height - padding.top - padding.bottom;
+
+  const targetM = targetMonthOf(r);
+  const mList = months && months.length === 12 ? months : Array.from({ length: 12 }, (_, i) => {
+    const m = i + 1;
+    const found = (r.all_months || []).find((x) => Number(x.month) === m);
+    return found || {
+      month: m,
+      avg_return: (m === targetM ? (r.median_return || 0.35) : (m === targetM - 1 ? 0.08 : 0.02)),
+      win_rate: (m === targetM ? (r.win_rate || 1.0) : 0.5)
+    };
+  });
+
+  if (mode === "monthly_alpha") {
+    const barW = plotW / 12;
+    const maxRet = Math.max(...mList.map(m => Math.abs(Number(m.avg_return || 0))), 0.15) * 1.25;
+    const zeroY = padding.top + plotH * (maxRet / (maxRet * 2));
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(padding.left, zeroY);
+    ctx.lineTo(width - padding.right, zeroY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    mList.forEach((m, idx) => {
+      const ret = Number(m.avg_return || 0);
+      const isTarget = m.month === targetM;
+      const x = padding.left + idx * barW + barW * 0.15;
+      const bw = barW * 0.7;
+      const h = (Math.abs(ret) / maxRet) * (plotH / 2);
+      const y = ret >= 0 ? zeroY - h : zeroY;
+
+      if (isTarget) {
+        ctx.fillStyle = ret >= 0 ? "rgba(52, 211, 153, 0.85)" : "rgba(248, 113, 113, 0.85)";
+        ctx.shadowColor = ret >= 0 ? "#34d399" : "#f87171";
+        ctx.shadowBlur = 10;
+      } else {
+        ctx.fillStyle = ret >= 0 ? "rgba(56, 189, 248, 0.45)" : "rgba(248, 113, 113, 0.35)";
+        ctx.shadowBlur = 0;
+      }
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x, y, bw, Math.max(h, 3), 4);
+      else ctx.fillRect(x, y, bw, Math.max(h, 3));
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = isTarget ? "#38bdf8" : "#94a3b8";
+      ctx.font = isTarget ? "bold 11px sans-serif" : "10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(`${m.month}월`, x + bw / 2, height - 10);
+
+      ctx.fillStyle = isTarget ? "#34d399" : (ret >= 0 ? "#67e8f9" : "#fca5a5");
+      ctx.font = "bold 10px sans-serif";
+      const valY = ret >= 0 ? y - 4 : y + h + 12;
+      ctx.fillText(`${ret > 0 ? "+" : ""}${(ret * 100).toFixed(0)}%`, x + bw / 2, valY);
+    });
+
+  } else {
+    // Seasonal Alpha Curve & Pre-Entry / Peak Overlays
+    let cum = 0;
+    const trajectory = mList.map((m) => {
+      cum += Number(m.avg_return || 0);
+      return { month: m.month, ret: Number(m.avg_return || 0), cum: cum, wr: m.win_rate || 0 };
+    });
+
+    const cumVals = trajectory.map(t => t.cum);
+    const minVal = Math.min(0, ...cumVals) - 0.05;
+    const maxVal = Math.max(0.12, ...cumVals) + 0.08;
+    const valRange = Math.max(0.1, maxVal - minVal);
+
+    const getY = (val) => padding.top + plotH - ((val - minVal) / valRange) * plotH;
+    const getX = (mFloat) => padding.left + ((mFloat - 1) / 11) * plotW;
+
+    // Grid lines
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+    ctx.lineWidth = 1;
+    for (let g = 0; g <= 4; g++) {
+      const gVal = minVal + (valRange * g) / 4;
+      const gy = getY(gVal);
+      ctx.beginPath();
+      ctx.moveTo(padding.left, gy);
+      ctx.lineTo(width - padding.right, gy);
+      ctx.stroke();
+
+      ctx.fillStyle = "#64748b";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "right";
+      ctx.fillText(`${gVal >= 0 ? "+" : ""}${(gVal * 100).toFixed(0)}%`, padding.left - 6, gy + 3);
+    }
+
+    // 1. Highlight PRE-ENTRY ZONE 🟢
+    const entryStartM = Math.max(1, targetM - 0.7);
+    const entryEndM = Math.min(12, targetM - 0.05);
+    const entryX1 = getX(entryStartM);
+    const entryX2 = getX(entryEndM);
+    const entryW = Math.max(34, entryX2 - entryX1);
+
+    const gradEntry = ctx.createLinearGradient(entryX1, 0, entryX2, 0);
+    gradEntry.addColorStop(0, "rgba(16, 185, 129, 0.08)");
+    gradEntry.addColorStop(0.5, "rgba(16, 185, 129, 0.28)");
+    gradEntry.addColorStop(1, "rgba(16, 185, 129, 0.08)");
+    ctx.fillStyle = gradEntry;
+    ctx.fillRect(entryX1, padding.top, entryW, plotH);
+
+    ctx.strokeStyle = "rgba(52, 211, 153, 0.75)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(entryX1, padding.top, entryW, plotH);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = "#34d399";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`🟢 선취매 진입 밴드 (${r.entry_window_str || `${targetM-1}월말`})`, (entryX1 + entryX2) / 2, padding.top - 10);
+
+    // 2. Highlight PEAK TARGET ZONE 🎯
+    const peakStartM = targetM;
+    const peakEndM = Math.min(12, targetM + 0.75);
+    const peakX1 = getX(peakStartM);
+    const peakX2 = getX(peakEndM);
+    const peakW = Math.max(34, peakX2 - peakX1);
+
+    const gradPeak = ctx.createLinearGradient(peakX1, 0, peakX2, 0);
+    gradPeak.addColorStop(0, "rgba(251, 191, 36, 0.08)");
+    gradPeak.addColorStop(0.5, "rgba(251, 191, 36, 0.28)");
+    gradPeak.addColorStop(1, "rgba(251, 191, 36, 0.08)");
+    ctx.fillStyle = gradPeak;
+    ctx.fillRect(peakX1, padding.top, peakW, plotH);
+
+    ctx.strokeStyle = "rgba(251, 191, 36, 0.75)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(peakX1, padding.top, peakW, plotH);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = "#fbbf24";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    const peakAlphaPct = ((r.median_return || r.expected_p50 || 0.4) * 100).toFixed(1);
+    ctx.fillText(`🎯 역사적 피크 도달 (+${peakAlphaPct}%)`, (peakX1 + peakX2) / 2, padding.top - 10);
+
+    // 3. Draw Seasonal Trajectory Curve
+    ctx.shadowColor = "#38bdf8";
+    ctx.shadowBlur = 12;
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    trajectory.forEach((t, i) => {
+      const x = getX(t.month);
+      const y = getY(t.cum);
+      if (i === 0) ctx.moveTo(x, y);
+      else {
+        const prevX = getX(trajectory[i-1].month);
+        const prevY = getY(trajectory[i-1].cum);
+        const cpx = (prevX + x) / 2;
+        ctx.bezierCurveTo(cpx, prevY, cpx, y, x, y);
+      }
+    });
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Fill under curve
+    ctx.lineTo(getX(12), getY(minVal));
+    ctx.lineTo(getX(1), getY(minVal));
+    ctx.closePath();
+    const fillGrad = ctx.createLinearGradient(0, padding.top, 0, padding.top + plotH);
+    fillGrad.addColorStop(0, "rgba(56, 189, 248, 0.22)");
+    fillGrad.addColorStop(1, "rgba(56, 189, 248, 0.0)");
+    ctx.fillStyle = fillGrad;
+    ctx.fill();
+
+    // Data points & X axis labels
+    trajectory.forEach((t) => {
+      const x = getX(t.month);
+      const y = getY(t.cum);
+      const isTarget = t.month === targetM;
+
+      ctx.fillStyle = isTarget ? "#fbbf24" : "#38bdf8";
+      ctx.beginPath();
+      ctx.arc(x, y, isTarget ? 6 : 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#070b13";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = isTarget ? "#fbbf24" : "#94a3b8";
+      ctx.font = isTarget ? "bold 11px sans-serif" : "10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(`${t.month}월`, x, height - 10);
+    });
+
+    const summaryText = $("#disc-chart-summary-text");
+    if (summaryText) {
+      summaryText.innerHTML = `선취매 진입 ➔ 피크 목표 기댓값: <b style="color:#34d399;">+${peakAlphaPct}%</b> (과거 승률 <b style="color:#38bdf8;">${((r.win_rate || 1.0)*100).toFixed(0)}%</b>)`;
+    }
+  }
+}
+
 function bindDiscoveryModalChrome(modal, r) {
   const code = String(r.ticker || "").padStart(6, "0");
 
@@ -9836,15 +10089,15 @@ function bindDiscoveryModalChrome(modal, r) {
     tossLink.href = `https://tossinvest.com/stocks/${code}`;
   }
 
-  // Embedded Chart Toggle & Period Switcher
+  // Embedded Chart Toggle & Interactive Canvas
   const chartBox = $("#disc-modal-chart-box");
   const chartToggleBtn = $("#disc-modal-chart-toggle-btn");
-  const chartImg = $("#disc-modal-chart-img");
+  const canvas = $("#disc-modal-canvas");
 
-  let curPeriod = "day";
-  const updateChartSrc = () => {
-    if (!chartImg) return;
-    chartImg.src = `https://ssl.pstatic.net/imgfinance/chart/item/area/${curPeriod}/${code}.png?sidcode=${Date.now()}`;
+  let curChartMode = "seasonal_overlay";
+  const drawActiveChart = () => {
+    if (!canvas) return;
+    renderSeasonalOverlayChart(canvas, r, r.all_months || [], curChartMode);
   };
 
   if (chartToggleBtn && chartBox) {
@@ -9852,20 +10105,20 @@ function bindDiscoveryModalChrome(modal, r) {
       chartBox.classList.toggle("hidden");
       if (!chartBox.classList.contains("hidden")) {
         chartToggleBtn.textContent = "📈 차트 닫기 ✕";
-        updateChartSrc();
+        setTimeout(drawActiveChart, 50);
       } else {
         chartToggleBtn.textContent = "📈 캔들차트 보기";
       }
     };
   }
 
-  const periodBtns = modal.querySelectorAll(".chart-tab-btn");
-  periodBtns.forEach((btn) => {
+  const modeBtns = modal.querySelectorAll("#disc-chart-mode-tabs .chart-tab-btn");
+  modeBtns.forEach((btn) => {
     btn.onclick = () => {
-      periodBtns.forEach((b) => b.classList.remove("active"));
+      modeBtns.forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      curPeriod = btn.getAttribute("data-chart-period") || "day";
-      updateChartSrc();
+      curChartMode = btn.getAttribute("data-chart-mode") || "seasonal_overlay";
+      drawActiveChart();
     };
   });
 

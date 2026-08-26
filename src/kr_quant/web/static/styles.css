@@ -221,7 +221,13 @@ h2 { margin: 0; font-size: 17px; font-weight: 700; }
 }
 .chip.stale { color: var(--warn); border-color: rgba(240, 180, 41, 0.55); }
 .chip.fresh { color: var(--good); border-color: rgba(61, 207, 142, 0.4); }
-.kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 18px 0 16px; }
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin: 14px 0 16px;
+  width: 100%;
+}
 .kpi, .card {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -229,47 +235,70 @@ h2 { margin: 0; font-size: 17px; font-weight: 700; }
   box-shadow: var(--shadow);
 }
 .kpi {
-  background: linear-gradient(145deg, #111a2e 0%, #0c1424 100%);
+  background: linear-gradient(145deg, rgba(17, 26, 46, 0.9) 0%, rgba(12, 20, 36, 0.95) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 14px 16px;
+  border-radius: 12px;
+  padding: 12px 14px;
   position: relative;
   overflow: hidden;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 98px;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .kpi:hover {
   transform: translateY(-2px);
-  border-color: rgba(59, 130, 246, 0.35);
+  border-color: rgba(56, 189, 248, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
-.kpi::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, #3b82f6, #10b981);
-  opacity: 0.8;
-}
+.kpi.card-cyan::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #38bdf8, #0284c7); }
+.kpi.card-emerald::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #34d399, #059669); }
+.kpi.card-amber::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #fbbf24, #d97706); }
+.kpi.card-purple::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #c084fc, #9333ea); }
+.kpi.card-rose::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #fb7185, #e11d48); }
 .kpi.clickable-kpi { cursor: pointer; }
-.kpi span {
+.kpi-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
+}
+.kpi-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   color: #94a3b8;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.01em;
+  white-space: nowrap;
 }
-.kpi b {
-  display: block;
+.kpi-main {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 4px 0 2px;
+}
+.kpi-num {
   font-size: 22px;
-  font-weight: 800;
-  margin-top: 6px;
-  color: #fff;
-  letter-spacing: -0.02em;
+  font-weight: 900;
+  color: #f8fafc;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
-.kpi-sub {
+.kpi-unit {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 600;
+}
+.kpi-sub-text {
   font-size: 11px;
   color: #64748b;
-  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 /* Dashboard Champions Showcase */
