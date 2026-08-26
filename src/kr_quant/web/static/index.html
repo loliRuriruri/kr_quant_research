@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%236ee7b7'%3EQ%3C/text%3E%3C/svg%3E" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.67.1" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.68.0" />
 </head>
 <body>
   <aside class="nav">
@@ -1048,47 +1048,149 @@
     </section>
 
     <section id="view-run" class="view hidden">
-      <div class="grid-2">
-        <article class="card">
-          <h2>작업 실행</h2>
-          <p class="hint">실데이터 수집은 OpenDART 한도 때문에 수 분 걸릴 수 있습니다. <b>KRX 시세만 갱신</b>은 장 마감 후 최근 일봉만 받습니다. <b>시세 이력 확장</b>은 이미 있는 날짜는 건너뛰고 약 3년(750거래일)까지 채웁니다.<br>
-          <span style="display:inline-block; margin-top:6px; color:#34d399; font-weight:600;">💡 작업을 시작한 후 브라우저를 닫거나 다른 페이지로 이동하더라도 서버 백그라운드에서 계속 안전하게 실행됩니다.</span></p>
-          <label>기준일
-            <input id="run-asof" value="auto" />
-          </label>
-          <div class="row">
-            <label>lookback 일
-              <input id="run-lookback" type="number" value="80" min="20" max="1250" />
-            </label>
-            <label>최대 종목
-              <input id="run-max" type="number" value="400" min="10" max="3000" />
-            </label>
+      <!-- 1. Live Data Sync Status Diagnostic Bar -->
+      <div class="run-diag-grid">
+        <div class="run-diag-card">
+          <div class="run-diag-head">
+            <span class="run-diag-icon">📈</span>
+            <span class="run-diag-title">KRX 일봉 시세 데이터</span>
+            <span id="run-status-price-badge" class="chip ok">정상</span>
           </div>
-          <div class="actions">
-            <button class="primary" data-job="demo">데모 실행</button>
-            <button data-job="krx-prices" data-tip="최근 10거래일 일봉 시세를 동기화하여 빈 날짜를 채웁니다.">KRX 시세만 갱신</button>
-            <button data-job="krx-history" data-tip="과거 최대 750거래일 시세 데이터를 수집합니다. 10~30분 소요되며, 백테스트 전략 검증에 활용됩니다.">시세 이력 확장 (750일)</button>
-            <button data-job="screen">재계산만</button>
-            <button data-job="live-skip">실데이터 재계산</button>
-            <button class="danger" data-job="live">실데이터 수집+계산</button>
-          </div>
-          <p class="hint" id="sched-line">스케줄 확인 중…</p>
+          <div class="run-diag-val" id="run-diag-price-date">2026-08-25</div>
+          <div class="run-diag-meta" id="run-diag-price-meta">754거래일 일봉 축적 완료</div>
+        </div>
 
-          <div style="margin-top:20px; border-top:1px solid #1e293b; padding-top:14px;">
-            <div class="card-h" style="margin-bottom:8px;">
-              <h3 style="margin:0; font-size:15px; color:#fff;">⏰ 매일 자동 실행 스케줄러</h3>
-              <div class="actions">
-                <span class="chip" id="sched-badge">확인 중</span>
-                <button class="primary" id="save-sched-btn">스케줄 저장</button>
+        <div class="run-diag-card">
+          <div class="run-diag-head">
+            <span class="run-diag-icon">📑</span>
+            <span class="run-diag-title">OpenDART 기업 재무공시</span>
+            <span id="run-status-dart-badge" class="chip ok">정상</span>
+          </div>
+          <div class="run-diag-val" id="run-diag-dart-date">2026-08-19</div>
+          <div class="run-diag-meta">최신 분기 재무제표 적재 완료</div>
+        </div>
+
+        <div class="run-diag-card">
+          <div class="run-diag-head">
+            <span class="run-diag-icon">🧬</span>
+            <span class="run-diag-title">퀀트 종합 스코어 & 랭킹</span>
+            <span class="chip ok">적용 중</span>
+          </div>
+          <div class="run-diag-val">2,700여 개 전 종목</div>
+          <div class="run-diag-meta">5대 팩터 DNA 평가 완료</div>
+        </div>
+
+        <div class="run-diag-card">
+          <div class="run-diag-head">
+            <span class="run-diag-icon">⏰</span>
+            <span class="run-diag-title">매일 자동 스케줄러</span>
+            <span id="run-diag-sched-badge" class="chip ok">가동 중</span>
+          </div>
+          <div class="run-diag-val" id="run-diag-sched-time">매일 18:30 KST</div>
+          <div class="run-diag-meta" id="run-diag-sched-next">다음: 2026-08-26 18:30</div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top:16px;">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <!-- 2. The 3 Primary Intuitive Action Cards -->
+          <article class="card">
+            <div class="card-h">
+              <div>
+                <h2 style="margin:0;">🎯 상황별 원클릭 실행 작업</h2>
+                <p class="hint" style="margin-top:2px;">원하는 목적에 맞는 카드의 실행 버튼을 한 번만 클릭하세요. 백그라운드에서 안전하게 진행됩니다.</p>
               </div>
             </div>
-            <p class="hint">서버가 켜져 있으면 매일 설정된 시각에 백그라운드에서 자동으로 시세 수집 및 퀀트 계산을 수행합니다.</p>
+
+            <div class="run-action-cards">
+              <!-- Action Card 1: Fast Price Sync -->
+              <div class="run-action-box highlight-blue">
+                <div class="run-action-box-left">
+                  <div class="run-action-badge">⚡ 추천 (매일 15:30 이후)</div>
+                  <div class="run-action-name">1. 빠른 일봉 시세 동기화 (Quick Sync)</div>
+                  <div class="run-action-desc">
+                    <b>어떤 상황에 누르나요?</b> 매일 장 마감(15:30) 후 또는 아침에 전 종목의 최신 주가와 일봉을 빠르게 받아오고 싶을 때 누릅니다.<br>
+                    <span class="run-action-detail">⏱️ 약 15~30초 소요 · API 한도 소모 없음 · 2,700여 개 전 종목 KRX 일봉 최신 갱신</span>
+                  </div>
+                </div>
+                <div class="run-action-box-right">
+                  <button class="primary" data-job="krx-prices" style="white-space:nowrap; padding:10px 18px; font-weight:700;">⚡ 지금 즉시 일봉 시세 갱신</button>
+                </div>
+              </div>
+
+              <!-- Action Card 2: Full Ingest & Quant Score Re-rank -->
+              <div class="run-action-box highlight-green">
+                <div class="run-action-box-left">
+                  <div class="run-action-badge ok">🚀 주 1회 / 실적 발표기 추천</div>
+                  <div class="run-action-name">2. 실데이터 풀스캔 + 퀀트 전체 재계산 (Full Update)</div>
+                  <div class="run-action-desc">
+                    <b>어떤 상황에 누르나요?</b> 최신 기업 실적 공시(OpenDART)와 최신 수급을 전 종목 풀스캔하여 퀀트 순위와 리포트를 완전히 새로 뽑고 싶을 때 누릅니다.<br>
+                    <span class="run-action-detail">⏱️ 약 3~5분 소요 · KRX 일봉 + DART 재무제표 2중 수집 · 5대 팩터 종합 재산출</span>
+                  </div>
+                </div>
+                <div class="run-action-box-right">
+                  <button class="btn-action-green" data-job="live" style="white-space:nowrap; padding:10px 18px; font-weight:700;">🚀 실데이터 풀스캔 + 재계산</button>
+                </div>
+              </div>
+
+              <!-- Action Card 3: Deep Backtest History -->
+              <div class="run-action-box highlight-purple">
+                <div class="run-action-box-left">
+                  <div class="run-action-badge purple">📦 백테스트용 (최초 1회)</div>
+                  <div class="run-action-name">3. 3개년 백테스트 시세 이력 확장 (750일)</div>
+                  <div class="run-action-desc">
+                    <b>어떤 상황에 누르나요?</b> '전략·백테스트 랩'에서 4대 매매 타이밍(RSI, 볼린저 등)을 3년간의 방대한 빅데이터로 정밀 검증하고 싶을 때 누릅니다.<br>
+                    <span class="run-action-detail">⏱️ 약 10~20분 소요 · 이미 있는 일자는 건너뛰고 750거래일(3년) 과거 일봉을 채움</span>
+                  </div>
+                </div>
+                <div class="run-action-box-right">
+                  <button class="ghost" data-job="krx-history" style="white-space:nowrap; padding:10px 18px; font-weight:700; border-color:#a855f7; color:#c084fc;">📦 3개년 시세 이력 채우기</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Advanced Collapsible Settings -->
+            <details class="run-advanced-details" style="margin-top:16px;">
+              <summary style="cursor:pointer; color:#94a3b8; font-size:12.5px; font-weight:600; padding:6px 0;">⚙️ 고급 수동 설정 & 데모 모드 (전문가용)</summary>
+              <div class="settings-grid" style="margin-top:10px; background:#0f172a; padding:14px; border-radius:8px; border:1px solid #1e293b;">
+                <label>기준일 (기본 auto)
+                  <input id="run-asof" value="auto" />
+                </label>
+                <div class="row">
+                  <label>lookback 일수
+                    <input id="run-lookback" type="number" value="80" min="20" max="1250" />
+                  </label>
+                  <label>최대 수집 종목 수
+                    <input id="run-max" type="number" value="400" min="10" max="3000" />
+                  </label>
+                </div>
+                <div class="actions" style="grid-column:span 2; margin-top:8px; display:flex; gap:8px;">
+                  <button class="ghost" data-job="demo" style="font-size:11.5px;">🧪 가상 데모 데이터 실행</button>
+                  <button class="ghost" data-job="live-skip" style="font-size:11.5px;">⚡ 수집 없이 기존 파일로만 재계산</button>
+                  <button class="ghost" data-job="screen" style="font-size:11.5px;">📊 스크리닝 점수만 재계산</button>
+                </div>
+              </div>
+            </details>
+          </article>
+
+          <!-- 3. Daily Auto-Scheduler Card -->
+          <article class="card">
+            <div class="card-h">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <h3 style="margin:0; font-size:15px; color:#fff;">⏰ 매일 자동 실행 스케줄러 (무인 자동화)</h3>
+                <span class="chip" id="sched-badge">확인 중</span>
+              </div>
+              <div class="actions">
+                <button class="primary" id="save-sched-btn">스케줄 설정 저장</button>
+              </div>
+            </div>
+            <p class="hint">PC나 서버가 켜져 있으면 매일 정해진 시각에 사람이 버튼을 누르지 않아도 백그라운드에서 자동으로 최신 시세를 수집하고 퀀트를 계산합니다.</p>
             <div class="settings-grid" style="margin-top:10px;">
               <label style="display:flex; align-items:center; gap:8px; cursor:pointer; grid-column:span 2;">
                 <input type="checkbox" id="sched-enabled" style="width:16px; height:16px;" />
                 <b style="color:#fff;">매일 자동 실행 활성화 (Auto-Schedule ON)</b>
               </label>
-              <label>자동 실행 작업
+              <label>자동 실행 작업 종류
                 <select id="sched-kind">
                   <option value="krx-prices" selected>🟢 KRX 시세만 갱신 (평일 18:30 추천, 약 30초)</option>
                   <option value="live">🚀 실데이터 수집 + 퀀트 전체 계산 (평일 19:00 추천, 약 3~5분)</option>
@@ -1107,14 +1209,19 @@
               <div>다음 실행 예정: <b id="sched-next" style="color:#60a5fa;">—</b></div>
               <div style="margin-top:4px;">마지막 실행: <span id="sched-last" class="meta">—</span></div>
             </div>
-          </div>
-        </article>
+          </article>
+        </div>
+
+        <!-- 4. Real-time Live Job Output Log Viewer -->
         <article class="card">
           <div class="card-h">
-            <h2>작업 로그</h2>
+            <div>
+              <h2 style="margin:0;">📜 실시간 작업 로그 (Live Terminal)</h2>
+              <p class="hint" style="margin-top:2px;">수집 및 계산 작업의 세부 진행 로그입니다.</p>
+            </div>
             <span class="chip" id="job-chip">idle</span>
           </div>
-          <pre id="job-log" class="log"></pre>
+          <pre id="job-log" class="log" style="height:600px; max-height:75vh;"></pre>
         </article>
       </div>
     </section>
@@ -1476,7 +1583,7 @@
       </div>
     </div>
 
-  <script src="/static/app.js?v=2.67.1"></script>
+  <script src="/static/app.js?v=2.68.0"></script>
 
 
     <!-- Status Guide Modal (Mobile Dashboard Integration) -->

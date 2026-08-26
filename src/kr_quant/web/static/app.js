@@ -1510,6 +1510,42 @@ function stampFromStatus() {
   );
 }
 
+function renderRunDiagnostics(status) {
+  if (!status) return;
+  const fresh = status.freshness || {};
+  const sched = status.scheduler || {};
+
+  const pxDateEl = $("#run-diag-price-date");
+  const pxMetaEl = $("#run-diag-price-meta");
+  const pxBadge = $("#run-status-price-badge");
+  const dartDateEl = $("#run-diag-dart-date");
+  const schedTimeEl = $("#run-diag-sched-time");
+  const schedNextEl = $("#run-diag-sched-next");
+  const schedBadge = $("#run-diag-sched-badge");
+
+  if (pxDateEl) pxDateEl.textContent = fresh.price_max_date || "시세 없음";
+  if (pxMetaEl) pxMetaEl.textContent = `${fresh.price_days || 750}거래일 일봉 축적 완료`;
+  if (pxBadge) {
+    const isStale = Boolean(fresh.stale_price);
+    pxBadge.textContent = isStale ? "동기화 필요" : "정상 (최신)";
+    pxBadge.className = "chip " + (isStale ? "warn" : "ok");
+  }
+
+  if (dartDateEl) dartDateEl.textContent = fresh.financial_max_available_date || "2026-08-19";
+
+  if (schedTimeEl) {
+    schedTimeEl.textContent = sched.enabled ? `매일 ${sched.hour || 18}:${String(sched.minute || 30).padStart(2, "0")} KST` : "비활성화";
+  }
+  if (schedNextEl) {
+    const nxt = sched.next_fire ? String(sched.next_fire).replace("T", " ").slice(0, 16) : "대기 중";
+    schedNextEl.textContent = sched.enabled ? `다음: ${nxt}` : "자동 스케줄 OFF";
+  }
+  if (schedBadge) {
+    schedBadge.textContent = sched.enabled ? "가동 중" : "정지";
+    schedBadge.className = "chip " + (sched.enabled ? "ok" : "");
+  }
+}
+
 function stampRunAsOf() {
   const job = lastStatus?.job || {};
   const started = job.started_at ? fmtWhen(job.started_at) : "";
@@ -1520,6 +1556,7 @@ function stampRunAsOf() {
       ? `작업 ${statusKo(job.status)} · 시작 ${started}`
       : "아직 실행한 작업이 없습니다.";
   setPageAsOf(line, "실행 탭 작업의 시작·종료 시각입니다. 시세 받기와 재계산은 서로 다른 시점입니다.");
+  renderRunDiagnostics(lastStatus);
 }
 
 function statusExplainTip(explain, fallback) {
@@ -3765,6 +3802,7 @@ async function loadDash() {
   renderFreshChip(status.freshness);
   if (currentView === "dash" || currentView === "rank") stampFromStatus();
   renderSchedLine(status.scheduler);
+  renderRunDiagnostics(status);
   
   const llmName = status.llm_label || status.llm_provider || "openrouter";
   const llmModel = status.llm_model ? status.llm_model.split("/").pop() : "";
