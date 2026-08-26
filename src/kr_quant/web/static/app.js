@@ -1963,6 +1963,24 @@ async function loadReportArchive() {
   }
 }
 
+function getMarketSessionInfo() {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const kst = new Date(utc + (9 * 3600000));
+  const day = kst.getDay(); // 0: Sun, 6: Sat
+  const hour = kst.getHours();
+  const min = kst.getMinutes();
+  const timeNum = hour * 100 + min;
+
+  const isWeekend = day === 0 || day === 6;
+  const isMarketOpen = !isWeekend && timeNum >= 900 && timeNum < 1530;
+  const isPostMarket = !isWeekend && timeNum >= 1530;
+  const isPreMarket = !isWeekend && timeNum < 900;
+  const todayStr = kst.toISOString().slice(0, 10);
+
+  return { isWeekend, isMarketOpen, isPostMarket, isPreMarket, todayStr };
+}
+
 function renderFreshChip(fresh) {
   const el = $("#chip-fresh");
   if (!el) return;
@@ -1972,17 +1990,48 @@ function renderFreshChip(fresh) {
     return;
   }
   const px = fresh.price_max_date || "시세 없음";
+  const expected = fresh.expected_price_date || px;
+  const session = getMarketSessionInfo();
   const stale = Boolean(fresh.stale_price || fresh.stale_screen);
-  const label = stale
-    ? `📅 최근 종가 ${px}`
-    : `📅 시세 ${px} (최신)`;
-  const tip = stale
-    ? `최근 KRX 종가 기준일: ${px}. 장 마감(15:30) 후 우측 상단의 [시세 받기]를 누르시면 당일 최신 종가로 즉시 동기화됩니다.`
-    : `최근 KRX 종가 기준일: ${px}. 당일 장 마감 종가까지 최신 상태입니다.`;
+
+  let label = "";
+  let tip = "";
+
+  if (session.isMarketOpen) {
+    if (!stale) {
+      label = `📅 전일 종가 ${px} · 🟢 장중 실시간`;
+      tip = `최근 공식 일봉 종가: ${px}. 현재는 당일(${session.todayStr}) 정규장 진행 중이며, 오늘 종가는 15:30 장 마감 후 최종 확정됩니다. 개별 종목 현재가 및 매크로 지표는 실시간 틱으로 작동 중입니다.`;
+    } else {
+      label = `📅 종가 ${px} (시세 동기화 필요)`;
+      tip = `최근 수집된 종가: ${px}. 직전 영업일(${expected}) 시세를 받으려면 상단의 [시세 받기]를 누르세요. (클릭 시 자동 수집)`;
+    }
+  } else if (session.isPostMarket) {
+    if (px === session.todayStr) {
+      label = `📅 시세 ${px} (당일 마감 최신)`;
+      tip = `오늘(${px}) KRX 정규장 마감 종가까지 100% 최신 반영되었습니다.`;
+    } else {
+      label = `📅 최근 종가 ${px} (당일 마감분 수집 대기)`;
+      tip = `오늘(${session.todayStr}) 장이 마감되었습니다. 상단의 [시세 받기]를 누르시면 오늘 마감 종가가 즉시 반영됩니다.`;
+    }
+  } else if (session.isWeekend) {
+    label = `📅 최근 종가 ${px} (주말 휴장)`;
+    tip = `주말/휴일 휴장 상태입니다. 최근 영업일(${px}) 종가 기준 퀀트 지표가 유지됩니다.`;
+  } else {
+    label = `📅 전일 종가 ${px} (개장 전)`;
+    tip = `오늘(${session.todayStr}) 정규장 개장(09:00) 전입니다. 최근 영업일(${px}) 종가 기준입니다.`;
+  }
+
   setChip(el, label, tip);
   el.classList.toggle("stale", stale);
-  el.classList.toggle("fresh", fresh.status === "fresh");
+  el.classList.toggle("fresh", !stale && fresh.status === "fresh");
   if (btn) btn.classList.toggle("primary", Boolean(fresh.stale_price));
+
+  el.onclick = () => {
+    if (stale && btn) {
+      btn.click();
+    }
+  };
+
   applyPriceChrome(currentView);
 }
 
