@@ -44,7 +44,7 @@ def test_registry_has_research_strategies():
 
 
 def test_parameter_search_and_walk_forward_do_not_peek_future():
-    from kr_quant.strategy.search import chronological_splits, parameter_combinations, walk_forward
+    from kr_quant.strategy.search import chronological_splits, parameter_combinations, search_strategy, walk_forward
 
     spec = strategy_registry()["ma_cross"]
     combos = parameter_combinations(spec)
@@ -61,9 +61,44 @@ def test_parameter_search_and_walk_forward_do_not_peek_future():
         }
     )
     splits = chronological_splits(data)
-    assert splits["TRAIN"]["date"].max() < splits["OOS"]["date"].min()
+    assert splits["TRAIN"]["date"].max() < splits["VALIDATION"]["date"].min()
+    assert splits["VALIDATION"]["date"].max() < splits["OOS"]["date"].min()
+    searched = search_strategy(data, spec, commission_bps=1, slippage_bps=2)
+    assert searched.validation
+    assert searched.oos
     windows = walk_forward(data, spec, train_days=40, test_days=15, step_days=15, slippage_bps=0)
     assert len(windows) >= 1
+
+
+def test_displayed_metrics_match_selected_parameters():
+    from kr_quant.strategy.run import evaluate_ticker
+
+    data = pd.DataFrame(
+        {
+            "date": pd.date_range("2024-01-01", periods=180, freq="B"),
+            "open": [100 + (i % 30) * 0.7 + i * 0.03 for i in range(180)],
+            "high": [102 + (i % 30) * 0.7 + i * 0.03 for i in range(180)],
+            "low": [98 + (i % 30) * 0.7 + i * 0.03 for i in range(180)],
+            "close": [100 + (i % 30) * 0.7 + i * 0.03 for i in range(180)],
+            "volume": [1000 + i for i in range(180)],
+        }
+    )
+    result = evaluate_ticker(data, commission_bps=3, slippage_bps=4, oos_ratio=0.2, min_days=40)
+    registry = strategy_registry()
+    for row in result["strategies"]:
+        spec = registry[row["strategy_id"]]
+        expected = run_backtest(
+            data,
+            spec.generate_signals(data, row["params"]),
+            commission_bps=3,
+            slippage_bps=4,
+        )
+        assert row["total_return"] == expected.metrics["total_return"]
+        assert row["trade_count"] == expected.metrics["trade_count"]
+        assert row["selection_basis"] == "validation"
+        assert "oos_trade_count" in row
+    scores = [row["selection_score"] for row in result["strategies"]]
+    assert scores == sorted(scores, reverse=True)
 
 
 def test_params_and_comments_are_korean():

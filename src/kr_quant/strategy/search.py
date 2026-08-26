@@ -61,39 +61,99 @@ def parameter_stability(scores: list[float]) -> float:
 class SearchResult:
     parameters: dict[str, object]
     train_score: float
+    selection_score: float
+    train: dict[str, Any]
+    validation: dict[str, Any]
     oos: dict[str, Any]
     stability: float
     n_combos: int
+
+
+def _backtest_period(
+    history: pd.DataFrame,
+    period: pd.DataFrame,
+    spec: StrategyDefinition,
+    params: dict[str, object],
+    *,
+    commission_bps: float,
+    slippage_bps: float,
+) -> BacktestResult | None:
+    """Calculate indicators with prior history, but trade only inside period."""
+    if period is None or len(period) < 2:
+        return None
+    prior = history.sort_values("date").reset_index(drop=True)
+    target = period.sort_values("date").reset_index(drop=True)
+    combined = pd.concat([prior, target], ignore_index=True)
+    signals = spec.generate_signals(combined, params).iloc[len(prior) :].reset_index(drop=True)
+    return run_backtest(
+        target,
+        signals,
+        commission_bps=commission_bps,
+        slippage_bps=slippage_bps,
+    )
 
 
 def search_strategy(
     data: pd.DataFrame,
     spec: StrategyDefinition,
     *,
+    commission_bps: float = 0,
     slippage_bps: float = 5,
     minimum_trades: int = 8,
 ) -> SearchResult:
     splits = chronological_splits(data)
     train = splits["TRAIN"]
+    validation = splits["VALIDATION"]
     oos = splits["OOS"]
-    ranked: list[tuple[float, dict[str, object], BacktestResult]] = []
+    ranked: list[tuple[float, float, dict[str, object], BacktestResult, BacktestResult | None]] = []
     for params in parameter_combinations(spec):
         try:
-            result = run_backtest(train, spec.generate_signals(train, params), slippage_bps=slippage_bps)
+            train_result = run_backtest(
+                train,
+                spec.generate_signals(train, params),
+                commission_bps=commission_bps,
+                slippage_bps=slippage_bps,
+            )
+            validation_result = _backtest_period(
+                train,
+                validation,
+                spec,
+                params,
+                commission_bps=commission_bps,
+                slippage_bps=slippage_bps,
+            )
         except Exception:  # noqa: BLE001
             continue
-        ranked.append((_score(result, minimum_trades), params, result))
+        train_score = _score(train_result, minimum_trades)
+        validation_score = _score(validation_result, minimum_trades) if validation_result else float("-inf")
+        ranked.append((validation_score, train_score, params, train_result, validation_result))
     if not ranked:
-        return SearchResult(dict(spec.defaults), 0.0, {}, 0.0, 0)
-    ranked.sort(key=lambda x: x[0], reverse=True)
-    best_score, best_params, _train = ranked[0]
-    oos_bt = run_backtest(oos, spec.generate_signals(oos, best_params), slippage_bps=slippage_bps) if len(oos) >= 8 else None
+        return SearchResult(dict(spec.defaults), 0.0, 0.0, {}, {}, {}, 0.0, 0)
+    # Parameter selection ends at validation. Final OOS is never part of ranking.
+    ranked.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    _validation_score, best_score, best_params, best_train, best_validation = ranked[0]
+    history = pd.concat([train, validation], ignore_index=True)
+    oos_bt = (
+        _backtest_period(
+            history,
+            oos,
+            spec,
+            best_params,
+            commission_bps=commission_bps,
+            slippage_bps=slippage_bps,
+        )
+        if len(oos) >= 8
+        else None
+    )
     oos_metrics = dict(oos_bt.metrics) if oos_bt else {}
     return SearchResult(
         best_params,
         float(best_score),
+        float(_validation_score),
+        dict(best_train.metrics),
+        dict(best_validation.metrics) if best_validation else {},
         oos_metrics,
-        parameter_stability([s for s, _, _ in ranked]),
+        parameter_stability([train_score for _, train_score, _, _, _ in ranked]),
         len(ranked),
     )
 
@@ -105,6 +165,7 @@ def walk_forward(
     train_days: int = 40,
     test_days: int = 15,
     step_days: int = 15,
+    commission_bps: float = 0,
     slippage_bps: float = 5,
 ) -> list[dict[str, Any]]:
     ordered = data.sort_values("date").reset_index(drop=True)
@@ -114,8 +175,24 @@ def walk_forward(
     while start + train_days + test_days <= len(ordered):
         train = ordered.iloc[start : start + train_days].reset_index(drop=True)
         test = ordered.iloc[start + train_days : start + train_days + test_days].reset_index(drop=True)
-        picked = search_strategy(train, spec, slippage_bps=slippage_bps, minimum_trades=3)
-        oos = run_backtest(test, spec.generate_signals(test, picked.parameters), slippage_bps=slippage_bps)
+        picked = search_strategy(
+            train,
+            spec,
+            commission_bps=commission_bps,
+            slippage_bps=slippage_bps,
+            minimum_trades=3,
+        )
+        oos = _backtest_period(
+            train,
+            test,
+            spec,
+            picked.parameters,
+            commission_bps=commission_bps,
+            slippage_bps=slippage_bps,
+        )
+        if oos is None:
+            start += max(1, step_days)
+            continue
         rows.append(
             {
                 "window": window,

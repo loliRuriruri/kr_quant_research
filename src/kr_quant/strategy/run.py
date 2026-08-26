@@ -9,7 +9,7 @@ import pandas as pd
 import yaml
 
 from kr_quant.settings import Settings
-from kr_quant.strategy.engine import oos_return, run_backtest
+from kr_quant.strategy.engine import run_backtest
 from kr_quant.strategy.registry import FAMILY_KO, SELECTION_KO, format_params_ko, strategy_comment, strategy_registry
 from kr_quant.strategy.search import search_strategy, stability_label, walk_forward, walk_forward_score
 
@@ -48,17 +48,36 @@ def ohlc_for(prices: pd.DataFrame, ticker: str) -> pd.DataFrame:
     return hist[["date", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
 
 
-def evaluate_ticker(data: pd.DataFrame, *, slippage_bps: float, oos_ratio: float, min_days: int) -> dict[str, Any]:
+def evaluate_ticker(
+    data: pd.DataFrame,
+    *,
+    commission_bps: float = 0,
+    slippage_bps: float,
+    oos_ratio: float,
+    min_days: int,
+) -> dict[str, Any]:
     if data is None or len(data) < min_days:
         return {"ok": False, "bars": 0 if data is None else int(len(data)), "strategies": [], "warning": "가격 이력 부족"}
     rows: list[dict[str, Any]] = []
     min_trades = 8
     for spec in strategy_registry().values():
-        signals = spec.generate_signals(data)
-        result = run_backtest(data, signals, commission_bps=0, slippage_bps=slippage_bps)
+        searched = search_strategy(
+            data,
+            spec,
+            commission_bps=commission_bps,
+            slippage_bps=slippage_bps,
+            minimum_trades=min_trades,
+        )
+        # Descriptive full-history metrics and displayed parameters must describe
+        # the same selected strategy. Final OOS metrics remain separate below.
+        signals = spec.generate_signals(data, searched.parameters)
+        result = run_backtest(
+            data,
+            signals,
+            commission_bps=commission_bps,
+            slippage_bps=slippage_bps,
+        )
         metrics = dict(result.metrics)
-        metrics["oos_return"] = None if oos_return(result.equity_curve, oos_ratio) is None else round(float(oos_return(result.equity_curve, oos_ratio)), 4)
-        searched = search_strategy(data, spec, slippage_bps=slippage_bps, minimum_trades=min_trades)
         n_bars = int(len(data))
         if n_bars >= 500:
             train_d, test_d, step_d = 250, 60, 60
@@ -67,14 +86,24 @@ def evaluate_ticker(data: pd.DataFrame, *, slippage_bps: float, oos_ratio: float
         else:
             train_d, test_d, step_d = 40, 15, 15
         windows = (
-            walk_forward(data, spec, train_days=train_d, test_days=test_d, step_days=step_d, slippage_bps=slippage_bps)
+            walk_forward(
+                data,
+                spec,
+                train_days=train_d,
+                test_days=test_d,
+                step_days=step_d,
+                commission_bps=commission_bps,
+                slippage_bps=slippage_bps,
+            )
             if n_bars >= train_d + test_d
             else []
         )
         wf = walk_forward_score(windows)
+        final_oos_sharpe = float(searched.oos.get("sharpe") or 0) if searched.oos else 0.0
+        final_oos_trades = int(searched.oos.get("trade_count", 0)) if searched.oos else 0
         label = stability_label(
-            sharpe=float(searched.oos.get("sharpe") or metrics.get("sharpe") or 0),
-            trades=int(searched.oos.get("trade_count") or metrics.get("trade_count") or 0),
+            sharpe=final_oos_sharpe,
+            trades=final_oos_trades,
             wf_score=wf,
             min_trades=min_trades,
         )
@@ -89,7 +118,15 @@ def evaluate_ticker(data: pd.DataFrame, *, slippage_bps: float, oos_ratio: float
                 "wf_score": round(wf, 1),
                 "wf_windows": len(windows),
                 "wf_hit": None if not windows else round(sum(1 for w in windows if float(w.get("oos_return") or 0) > 0) / len(windows), 3),
+                "train_score": round(searched.train_score, 4),
+                "selection_score": round(searched.selection_score, 4),
+                "validation_return": searched.validation.get("total_return"),
+                "validation_sharpe": searched.validation.get("sharpe"),
+                "validation_trade_count": searched.validation.get("trade_count"),
+                "oos_return": searched.oos.get("total_return"),
                 "oos_sharpe": searched.oos.get("sharpe"),
+                "oos_trade_count": searched.oos.get("trade_count"),
+                "selection_basis": "validation",
                 "n_combos": searched.n_combos,
                 **metrics,
             }
@@ -97,9 +134,10 @@ def evaluate_ticker(data: pd.DataFrame, *, slippage_bps: float, oos_ratio: float
         rows[-1]["params_ko"] = format_params_ko(rows[-1].get("params") if isinstance(rows[-1].get("params"), dict) else None)
         rows[-1]["family_ko"] = FAMILY_KO.get(str(rows[-1].get("family") or ""), "")
         rows[-1]["comment"] = strategy_comment(rows[-1])
-    rows.sort(key=lambda r: (0 if r.get("stability_label") == "LOW" else 1, float(r.get("oos_sharpe") or r.get("sharpe") or 0)), reverse=True)
-    shown = [r for r in rows if r.get("stability_label") != "LOW"] or rows
-    best = shown[0] if shown else {}
+    # The final OOS and walk-forward results are evidence, not selectors.
+    # Rank strategy families only by the already-designated validation score.
+    rows.sort(key=lambda r: float(r.get("selection_score") or 0), reverse=True)
+    best = rows[0] if rows else {}
     warn = "표본이 짧아 과적합 위험이 큽니다. 연구용입니다."
     if len(data) < 200:
         pass
@@ -164,6 +202,7 @@ def load_strategy(settings: Settings) -> dict[str, Any]:
 def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None = None) -> dict[str, Any]:
     cfg = _cfg(settings)
     costs = cfg.get("costs") or {}
+    commission = float(costs.get("commission_bps") or 0)
     slippage = float(costs.get("slippage_bps") or 5)
     oos_ratio = float((cfg.get("splits") or {}).get("oos_ratio") or 0.2)
     min_days = int(cfg.get("minimum_history_days") or 40)
@@ -177,13 +216,20 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
     rows: list[dict[str, Any]] = []
     for code, company in names[:20]:
         data = ohlc_for(prices, code)
-        ev = evaluate_ticker(data, slippage_bps=slippage, oos_ratio=oos_ratio, min_days=min_days)
+        ev = evaluate_ticker(
+            data,
+            commission_bps=commission,
+            slippage_bps=slippage,
+            oos_ratio=oos_ratio,
+            min_days=min_days,
+        )
         rows.append({"ticker": code, "company": company or code, **ev})
     out = {
         "configured": True,
         "used_in_quant": False,
         "need_run": False,
         "fetched_at": time.time(),
+        "commission_bps": commission,
         "slippage_bps": slippage,
         "execution": "next-bar open",
         "selection": SELECTION_KO,
@@ -336,12 +382,19 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
 
     cfg = _cfg(settings)
     costs = cfg.get("costs") or {}
+    commission = float(costs.get("commission_bps") or 0)
     slippage = float(costs.get("slippage_bps") or 5)
     oos_ratio = float((cfg.get("splits") or {}).get("oos_ratio") or 0.2)
     min_days = int(cfg.get("minimum_history_days") or 40)
 
     try:
-        ev = evaluate_ticker(data, slippage_bps=slippage, oos_ratio=oos_ratio, min_days=min_days)
+        ev = evaluate_ticker(
+            data,
+            commission_bps=commission,
+            slippage_bps=slippage,
+            oos_ratio=oos_ratio,
+            min_days=min_days,
+        )
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "ticker": code, "company": company or code, "error": f"백테스트 연산 실패: {exc}"}
 
