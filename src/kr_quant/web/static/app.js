@@ -8621,7 +8621,8 @@ async function startJob(kind) {
   }
   if (kind === "krx-history") {
     payload.kind = "krx-history";
-    payload.lookback_days = 750;
+    const selectedDays = Number($("#run-history-duration")?.value || 1250);
+    payload.lookback_days = selectedDays;
   }
 
   const krxBtn = $("#btn-krx-now");

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%236ee7b7'%3EQ%3C/text%3E%3C/svg%3E" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.68.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.68.1" />
 </head>
 <body>
   <aside class="nav">
@@ -1136,15 +1136,24 @@
               <!-- Action Card 3: Deep Backtest History -->
               <div class="run-action-box highlight-purple">
                 <div class="run-action-box-left">
-                  <div class="run-action-badge purple">📦 백테스트용 (최초 1회)</div>
-                  <div class="run-action-name">3. 3개년 백테스트 시세 이력 확장 (750일)</div>
+                  <div class="run-action-badge purple">📦 백테스트 시세 이력 확장 (3·5·7·10년 선택)</div>
+                  <div class="run-action-name">3. 백테스트 시세 빅데이터 이력 확장 (장기 정밀 검증)</div>
                   <div class="run-action-desc">
-                    <b>어떤 상황에 누르나요?</b> '전략·백테스트 랩'에서 4대 매매 타이밍(RSI, 볼린저 등)을 3년간의 방대한 빅데이터로 정밀 검증하고 싶을 때 누릅니다.<br>
-                    <span class="run-action-detail">⏱️ 약 10~20분 소요 · 이미 있는 일자는 건너뛰고 750거래일(3년) 과거 일봉을 채움</span>
+                    <b>어떤 상황에 누르나요?</b> '전략·백테스트 랩'에서 4대 매매 타이밍(RSI, 볼린저 등)을 3~10년 장기 사이클(상승·하락·위기 국면)로 정밀 검증할 때 누릅니다.<br>
+                    <span class="run-action-detail">💡 이미 수집된 일자는 건너뛰며, 한 번 채워두면 로컬에 영구 보존되어 다음부터 0초로 즉시 분석됩니다.</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
+                    <span style="font-size:12px; font-weight:700; color:#c084fc;">📅 수집 기간 선택:</span>
+                    <select id="run-history-duration" style="background:#1e1b4b; color:#e0e7ff; border:1px solid #6366f1; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600;">
+                      <option value="750">3년 (750거래일) · 스윙·단기 전략 적합 (약 8분)</option>
+                      <option value="1250" selected>5년 (1,250거래일) ⭐ 골든 스탠다드 (추천, 약 15분)</option>
+                      <option value="1750">7년 (1,750거래일) · 미중 무역분쟁 포함 장기 검증 (약 22분)</option>
+                      <option value="2500">10년 (2,500거래일) · 10년 풀사이클 거시 검증 (약 30분)</option>
+                    </select>
                   </div>
                 </div>
                 <div class="run-action-box-right">
-                  <button class="ghost" data-job="krx-history" style="white-space:nowrap; padding:10px 18px; font-weight:700; border-color:#a855f7; color:#c084fc;">📦 3개년 시세 이력 채우기</button>
+                  <button class="ghost" data-job="krx-history" style="white-space:nowrap; padding:10px 18px; font-weight:700; border-color:#a855f7; color:#c084fc; background:rgba(168,85,247,0.12);">📦 선택 기간 시세 이력 채우기</button>
                 </div>
               </div>
             </div>
@@ -1583,7 +1592,7 @@
       </div>
     </div>
 
-  <script src="/static/app.js?v=2.68.0"></script>
+  <script src="/static/app.js?v=2.68.1"></script>
 
 
     <!-- Status Guide Modal (Mobile Dashboard Integration) -->

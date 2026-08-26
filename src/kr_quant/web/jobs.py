@@ -180,7 +180,7 @@ def job_krx_history(as_of: str = "auto", lookback_days: int = HISTORY_DAYS) -> d
     if not s.krx_api_key:
         raise RuntimeError("KRX_API_KEY가 없습니다.")
     d = resolve_as_of(as_of)
-    days = max(80, min(int(lookback_days or HISTORY_DAYS), 1250))
+    days = max(80, min(int(lookback_days or HISTORY_DAYS), 2600))
     master = fetch_krx_master(s, d)
     prices = fetch_krx_prices_range(s, d, lookback_days=days, sleep_sec=0.08)
     fresh = freshness_snapshot(s)
