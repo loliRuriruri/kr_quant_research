@@ -16,6 +16,15 @@ KRX_EXCLUDED_RISK_TOKENS = (
     "상장폐지",
 )
 
+TRADING_EXCLUDED_STATUSES = frozenset(
+    {
+        "SUSPENDED",
+        "ADMIN_ISSUE",
+        "DELIST_PROCESS",
+        "INVESTMENT_INELIGIBLE",
+    }
+)
+
 CANDIDATE_HARD_EXCLUSIONS = frozenset(
     {
         "AUDIT_OPINION_FAIL",
@@ -63,6 +72,21 @@ def krx_risk_class_excluded(value: object) -> bool:
     """Return True only for explicit KRX risk classifications we must hard-block."""
     normalized = normalize_krx_risk_class(value)
     return any(token in normalized for token in KRX_EXCLUDED_RISK_TOKENS)
+
+
+def trading_status_exclusion_reason(
+    status: object,
+    *,
+    status_available: bool,
+    required: bool,
+) -> str | None:
+    """Return an explicit hard reason; a required but missing feed must never pass."""
+    if required and not status_available:
+        return "TRADING_STATUS_UNVERIFIED"
+    normalized = str(status or "").strip().upper()
+    if status_available and normalized in TRADING_EXCLUDED_STATUSES:
+        return "TRADING_STATUS_EXCLUDED"
+    return None
 
 
 def parse_exclusion_reasons(value: Any) -> set[str]:

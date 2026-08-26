@@ -39,6 +39,7 @@ exclude_reasons:
   stale: STALE_FINANCIALS
   core: CORE_DATA_INCOMPLETE
   status: TRADING_STATUS_EXCLUDED
+  status_unverified: TRADING_STATUS_UNVERIFIED
   liquidity: LIQUIDITY_FAIL
   market_cap: MARKET_CAP_FAIL
   not_common: NOT_COMMON_STOCK

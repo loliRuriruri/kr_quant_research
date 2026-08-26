@@ -8,7 +8,7 @@ import pandas as pd
 
 from kr_quant.financials.formulas import bs_identity_ok
 from kr_quant.models import FactorInputs, ScoredName
-from kr_quant.universe.tradability import krx_risk_class_excluded
+from kr_quant.universe.tradability import krx_risk_class_excluded, trading_status_exclusion_reason
 
 
 def load_ksic_map(path) -> pd.DataFrame:
@@ -165,13 +165,13 @@ def apply_universe_gates(
         name.inputs.recon_score = 0.0
         reasons.append("RECONCILIATION_FAIL")
 
-    if status_available and status in {
-        "SUSPENDED",
-        "ADMIN_ISSUE",
-        "DELIST_PROCESS",
-        "INVESTMENT_INELIGIBLE",
-    }:
-        reasons.append("TRADING_STATUS_EXCLUDED")
+    status_reason = trading_status_exclusion_reason(
+        status,
+        status_available=status_available,
+        required=bool(cfg.get("status_feed", {}).get("required_for_success", True)),
+    )
+    if status_reason:
+        reasons.append(status_reason)
 
     hard = set(cfg.get("_hard_exclusions", []))
     # default hard set from spec
@@ -181,6 +181,7 @@ def apply_universe_gates(
             "AUDIT_OPINION_FAIL",
             "DISTRESS_STATUS",
             "TRADING_STATUS_EXCLUDED",
+            "TRADING_STATUS_UNVERIFIED",
             "CORE_DATA_INCOMPLETE",
             "FINANCIAL_MODEL_NOT_AVAILABLE",
             "REIT_MODEL_NOT_AVAILABLE",

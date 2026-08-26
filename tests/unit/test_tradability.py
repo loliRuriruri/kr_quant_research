@@ -7,11 +7,12 @@ import pandas as pd
 import pytest
 
 from kr_quant.ingest.live import build_live_master
-from kr_quant.universe.builder import classify_security
+from kr_quant.universe.builder import apply_universe_gates, classify_security
 from kr_quant.universe.tradability import (
     evaluate_candidate_tradability,
     krx_risk_class_excluded,
     normalize_krx_risk_class,
+    trading_status_exclusion_reason,
 )
 
 
@@ -126,3 +127,59 @@ def test_candidate_gate_fails_closed_when_required_source_is_missing():
     assert not result.ready
     assert result.allowed_tickers == frozenset()
     assert "KRX_RISK_MASTER_NOT_READY" in result.errors
+
+
+def test_required_status_feed_fails_closed_when_missing():
+    assert trading_status_exclusion_reason(None, status_available=False, required=True) == "TRADING_STATUS_UNVERIFIED"
+    assert trading_status_exclusion_reason(None, status_available=False, required=False) is None
+
+
+@pytest.mark.parametrize("status", ["SUSPENDED", "ADMIN_ISSUE", "DELIST_PROCESS", "INVESTMENT_INELIGIBLE"])
+def test_explicit_trading_status_is_excluded(status: str):
+    assert trading_status_exclusion_reason(status, status_available=True, required=True) == "TRADING_STATUS_EXCLUDED"
+
+
+def test_universe_gate_blocks_candidate_when_required_status_feed_is_missing():
+    inputs = SimpleNamespace(
+        ticker="005930",
+        market="KOSPI",
+        market_cap=1_000_000_000_000,
+        close=70_000,
+        equity=60,
+        equity_owners=60,
+        latest_period_end=date(2026, 6, 30),
+        revenue_ttm=100,
+        op_ttm=10,
+        nio_ttm=8,
+        assets=100,
+        liabilities=40,
+        cfo_ttm=12,
+        capex_ttm=3,
+        recon_score=1.0,
+    )
+    name = SimpleNamespace(
+        inputs=inputs,
+        exclusion_reasons=[],
+        hard_reasons=[],
+        universe_eligible=True,
+        top100_eligible=True,
+        top20_eligible=True,
+        coverage=1.0,
+        data_confidence=100.0,
+    )
+    cfg = {
+        "status_feed": {"required_for_success": True},
+        "universe": {
+            "markets": ["KOSPI", "KOSDAQ"],
+            "min_market_cap_krw": 30_000_000_000,
+            "top100": {"min_weighted_coverage": 0.8, "min_data_confidence": 70},
+            "top20": {"min_weighted_coverage": 0.9, "min_data_confidence": 80},
+        },
+        "point_in_time": {"stale_financial_days": 270, "accounting_identity_tol": 0.005},
+    }
+
+    apply_universe_gates(name, cfg, date(2026, 8, 26), None, False)
+
+    assert not name.universe_eligible
+    assert "TRADING_STATUS_UNVERIFIED" in name.exclusion_reasons
+    assert "TRADING_STATUS_UNVERIFIED" in name.hard_reasons

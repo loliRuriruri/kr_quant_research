@@ -18,13 +18,14 @@ EXCLUSION_KO = {
     "AUDIT_OPINION_FAIL": "감사의견 부적정·의견거절 등",
     "DISTRESS_STATUS": "파산·회생·영업정지",
     "TRADING_STATUS_EXCLUDED": "거래정지·관리·상장폐지 절차",
+    "TRADING_STATUS_UNVERIFIED": "거래 가능 여부 피드가 없어 후보 선정을 보류함",
     "FILING_LINEAGE_CONFLICT": "정정·철회 공시 이력을 확정할 수 없음",
     "MARKET_EXCLUDED": "KOSPI/KOSDAQ이 아님",
     "RECONCILIATION_FAIL": "자산 = 부채 + 자본 검증 실패",
 }
 
 WARNING_KO = {
-    "STATUS_FEED_MISSING": "거래정지·관리종목 일별 피드가 없어 완전 자동 운영으로 보지 않음 (partial)",
+    "STATUS_FEED_MISSING": "거래정지·관리종목 일별 피드가 없어 후보 선정을 보류함 (partial)",
     "MODEL_BREAK": "모델 버전이 바뀌어 전일 점수와 비교하지 않음",
     "SOURCE_NOT_READY": "당일 KRX 시세가 준비되지 않아 점수를 내지 않음",
 }
@@ -33,7 +34,7 @@ WARNING_FIX = {
     "STATUS_FEED_MISSING": (
         "config의 status_feed.path(기본 data/raw/status/manual_status.csv)에 "
         "ticker, as_of_date, status 열을 채워 거래정지·관리종목을 넣으세요. "
-        "파일이 없으면 정지 종목이 랭킹에 섞일 수 있어 일부 완료로 둡니다."
+        "파일이 없으면 거래 가능 여부를 확인할 수 없어 모든 후보 선정을 보류합니다."
     ),
     "MODEL_BREAK": "모델 버전이 바뀐 실행입니다. 전일과 점수 비교는 하지 말고 이번 결과만 보세요. 별도 수정은 필요 없습니다.",
     "SOURCE_NOT_READY": "장 마감 후 오른쪽 위 '시세 받기'로 KRX 일봉을 받은 뒤 실행 탭에서 재계산하세요.",
