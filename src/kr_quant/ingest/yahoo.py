@@ -202,6 +202,87 @@ def fetch_chart(symbol: str, range_: str = "1y", *, refresh: bool = False) -> di
     return data
 
 
+def fetch_realtime_override(symbol: str) -> dict[str, Any]:
+    """0-second real-time live quotes from direct exchange providers (Naver, Hana Bank, Binance)."""
+    import requests
+
+    sym = str(symbol or "").strip().upper()
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
+    # 1. KOSPI 0-second live
+    if sym in ("^KS11", "KOSPI"):
+        try:
+            r = requests.get("https://polling.finance.naver.com/api/realtime/domestic/index/KOSPI", headers=headers, timeout=2.5).json()
+            data = (r.get("datas") or [{}])[0]
+            last = float(data.get("closePriceRaw", 0))
+            delta = float(data.get("compareToPreviousClosePriceRaw", 0))
+            ret = float(data.get("fluctuationsRatioRaw", 0)) / 100.0
+            prev = last - delta
+            if last > 0:
+                return {"last": last, "prev": prev, "delta_1d": delta, "ret_1d": ret, "source": "naver-live-0s"}
+        except Exception:
+            pass
+
+    # 2. KOSDAQ 0-second live
+    if sym in ("^KQ11", "KOSDAQ"):
+        try:
+            r = requests.get("https://polling.finance.naver.com/api/realtime/domestic/index/KOSDAQ", headers=headers, timeout=2.5).json()
+            data = (r.get("datas") or [{}])[0]
+            last = float(data.get("closePriceRaw", 0))
+            delta = float(data.get("compareToPreviousClosePriceRaw", 0))
+            ret = float(data.get("fluctuationsRatioRaw", 0)) / 100.0
+            prev = last - delta
+            if last > 0:
+                return {"last": last, "prev": prev, "delta_1d": delta, "ret_1d": ret, "source": "naver-live-0s"}
+        except Exception:
+            pass
+
+    # 3. USD/KRW 0-second live
+    if sym in ("KRW=X", "USDKRW=X", "USD/KRW"):
+        try:
+            r = requests.get("https://api.stock.naver.com/marketindex/exchange/FX_USDKRW", headers=headers, timeout=2.5).json()
+            ex = r.get("exchangeInfo") or {}
+            last = float(str(ex.get("calcPrice") or ex.get("closePrice") or "0").replace(",", ""))
+            delta_str = str(ex.get("fluctuations") or "0").replace(",", "")
+            fluc_type = (ex.get("fluctuationsType") or {}).get("name")
+            delta = float(delta_str) if fluc_type != "FALLING" else -float(delta_str)
+            ret_str = str(ex.get("fluctuationsRatio") or "0").replace(",", "")
+            ret = (float(ret_str) if fluc_type != "FALLING" else -float(ret_str)) / 100.0
+            prev = last - delta
+            if last > 0:
+                return {"last": last, "prev": prev, "delta_1d": delta, "ret_1d": ret, "source": "hana-live-0s"}
+        except Exception:
+            pass
+
+    # 4. BTC in USD 0-second live
+    if sym in ("BTC-USD", "BTC"):
+        try:
+            r = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT", headers=headers, timeout=2.5).json()
+            last = float(r.get("lastPrice", 0))
+            delta = float(r.get("priceChange", 0))
+            ret = float(r.get("priceChangePercent", 0)) / 100.0
+            prev = float(r.get("prevClosePrice", 0))
+            if last > 0:
+                return {"last": last, "prev": prev, "delta_1d": delta, "ret_1d": ret, "source": "binance-live-0s"}
+        except Exception:
+            pass
+
+    # 5. ETH in USD 0-second live
+    if sym in ("ETH-USD", "ETH"):
+        try:
+            r = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT", headers=headers, timeout=2.5).json()
+            last = float(r.get("lastPrice", 0))
+            delta = float(r.get("priceChange", 0))
+            ret = float(r.get("priceChangePercent", 0)) / 100.0
+            prev = float(r.get("prevClosePrice", 0))
+            if last > 0:
+                return {"last": last, "prev": prev, "delta_1d": delta, "ret_1d": ret, "source": "binance-live-0s"}
+        except Exception:
+            pass
+
+    return {}
+
+
 def snapshot_from_chart(
     symbol: str,
     label: str | None = None,
@@ -215,6 +296,22 @@ def snapshot_from_chart(
     bars = raw.get("bars") or []
     spark = [float(b["close"]) for b in bars[-60:] if b.get("close") is not None]
     bars_30d = [{"date": b["date"], "close": float(b["close"])} for b in bars[-30:] if b.get("close") is not None]
+
+    # Inject 0-second real-time override for KOSPI, KOSDAQ, USD/KRW, BTC, ETH
+    rt = fetch_realtime_override(symbol)
+    if rt and rt.get("last") is not None:
+        stats["last"] = rt["last"]
+        if rt.get("prev") is not None:
+            stats["prev"] = rt["prev"]
+        if rt.get("delta_1d") is not None:
+            stats["delta_1d"] = rt["delta_1d"]
+        if rt.get("ret_1d") is not None:
+            stats["ret_1d"] = rt["ret_1d"]
+        if spark:
+            spark[-1] = float(rt["last"])
+        if bars_30d:
+            bars_30d[-1]["close"] = float(rt["last"])
+
     stats.update(
         {
             "symbol": raw.get("symbol") or symbol,
@@ -223,7 +320,7 @@ def snapshot_from_chart(
             "unit": unit or "pt",
             "currency": raw.get("currency"),
             "exchange": raw.get("exchange"),
-            "source": raw.get("source"),
+            "source": rt.get("source") if rt else raw.get("source"),
             "page": yahoo_quote_url(symbol),
             "spark": spark,
             "bars_30d": bars_30d,
@@ -278,16 +375,23 @@ def live_ticker_snapshot(*, refresh: bool = False) -> dict[str, Any]:
     for r in res.get("indexes") or []:
         if not r or r.get("error") or r.get("last") is None:
             continue
+        sym = r.get("symbol")
+        rt = fetch_realtime_override(sym) if sym else {}
+        last = rt.get("last") if rt.get("last") is not None else r.get("last")
+        prev = rt.get("prev") if rt.get("prev") is not None else r.get("prev")
+        delta = rt.get("delta_1d") if rt.get("delta_1d") is not None else r.get("delta_1d")
+        ret = rt.get("ret_1d") if rt.get("ret_1d") is not None else r.get("ret_1d")
+
         items.append(
             {
-                "symbol": r.get("symbol"),
+                "symbol": sym,
                 "label": r.get("label"),
                 "category": r.get("category"),
                 "unit": r.get("unit"),
-                "last": r.get("last"),
-                "prev": r.get("prev"),
-                "delta_1d": r.get("delta_1d"),
-                "ret_1d": r.get("ret_1d"),
+                "last": last,
+                "prev": prev,
+                "delta_1d": delta,
+                "ret_1d": ret,
                 "high_52w": r.get("high_52w"),
                 "high_52w_distance": r.get("high_52w_distance"),
                 "as_of": r.get("as_of"),
