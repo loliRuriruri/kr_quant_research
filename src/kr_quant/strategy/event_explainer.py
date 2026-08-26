@@ -117,6 +117,7 @@ EVENT_KNOWLEDGE_BASE: dict[str, dict[str, Any]] = {
         },
         "invalidating_rules": "국내 주택 착공 실적 급감, 경영권 분쟁 리스크 재점화",
     },
+}
 
 
 def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, Any] | None = None) -> dict[str, Any]:
