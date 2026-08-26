@@ -441,7 +441,7 @@ def diagnose_ticker_flow(settings: Settings, query: str, days: int = 5) -> dict[
     records = []
     if settings.toss_client_id and settings.toss_client_secret:
         try:
-            from kr_quant.ingest.toss import get_investor_trading
+            from kr_quant.ingest.tossinvest import get_investor_trading
             payload = get_investor_trading(settings.toss_client_id, settings.toss_client_secret, code)
             records = payload.get("records") if isinstance(payload, dict) else []
         except Exception:

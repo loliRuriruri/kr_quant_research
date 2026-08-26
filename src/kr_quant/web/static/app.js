@@ -40,6 +40,11 @@ async function fetchOnDemandFlow(query, boxTarget, scope = "trade") {
           await addWatch(b.dataset.watchStock, b.dataset.company);
         });
       });
+      box.querySelectorAll("[data-ai-trigger]").forEach((b) => {
+        b.addEventListener("click", () => {
+          generateAiReport(b.dataset.aiTrigger, b.dataset.aiCompany || b.dataset.aiTrigger);
+        });
+      });
     } else {
       box.innerHTML = `
         <div class="flow-diag-card" style="border-color:#ef4444; text-align:center; padding:20px;">
@@ -140,8 +145,18 @@ function renderFlowDiagCard(row, query) {
   const setups = (row.setups || []).join(" · ") || "일반 수급";
 
   const ta = row.ta || {};
-  const stoch = ta.stoch_k != null ? `%K ${ta.stoch_k.toFixed(0)}` : "—";
+  const stoch = ta.stoch_k != null ? `%K ${ta.stoch_k.toFixed(1)} (%D ${ta.stoch_d != null ? ta.stoch_d.toFixed(1) : "—"})` : "—";
   const cloud = ta.ichi_cloud ? `구름대 ${ta.ichi_cloud === "above" ? "상회 (강세)" : ta.ichi_cloud === "below" ? "하회 (약세)" : "내부"}` : "—";
+
+  const dailyRows = (row.daily || []).slice(0, 5).map(d => `
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+      <td style="color:#94a3b8; font-size:11.5px; padding:5px 8px;">${escapeHtml(d.date || "")}</td>
+      <td class="num ${d.foreign > 0 ? 'text-emerald-400 font-bold' : d.foreign < 0 ? 'text-rose-400' : ''}" style="padding:5px 8px;">${signedInt(d.foreign)}</td>
+      <td class="num ${d.institution > 0 ? 'text-emerald-400 font-bold' : d.institution < 0 ? 'text-rose-400' : ''}" style="padding:5px 8px;">${signedInt(d.institution)}</td>
+      <td class="num ${d.pension > 0 ? 'text-emerald-400 font-bold' : d.pension < 0 ? 'text-rose-400' : ''}" style="padding:5px 8px;">${signedInt(d.pension || 0)}</td>
+      <td class="num ${d.pe > 0 ? 'text-purple-400 font-bold' : d.pe < 0 ? 'text-rose-400' : ''}" style="padding:5px 8px;">${signedInt(d.pe || 0)}</td>
+    </tr>
+  `).join("");
 
   return `
     <div class="flow-diag-card">
@@ -176,6 +191,28 @@ function renderFlowDiagCard(row, query) {
         </div>
       </div>
 
+      ${dailyRows ? `
+      <div style="margin-bottom:12px; background:#0f172a; border:1px solid #1e293b; border-radius:8px; overflow:hidden;">
+        <div style="padding:6px 12px; background:rgba(30,41,59,0.7); font-size:11.5px; font-weight:700; color:#38bdf8;">
+          📅 최근 5거래일 일자별 스마트머니 수급 추이 (토스증권 실시간)
+        </div>
+        <table style="width:100%; border-collapse:collapse; font-size:11.5px; margin:0;">
+          <thead>
+            <tr style="border-bottom:1px solid #1e293b; color:#94a3b8;">
+              <th style="text-align:left; padding:5px 8px;">일자</th>
+              <th style="text-align:right; padding:5px 8px;">외국인</th>
+              <th style="text-align:right; padding:5px 8px;">기관계</th>
+              <th style="text-align:right; padding:5px 8px;">연기금</th>
+              <th style="text-align:right; padding:5px 8px;">사모펀드</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${dailyRows}
+          </tbody>
+        </table>
+      </div>
+      ` : ""}
+
       <div style="background:#111a2e; padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:12.5px;">
         <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:12px; color:#94a3b8;">
           <span>⚡ 기술적 셋업: ${escapeHtml(stoch)} · ${escapeHtml(cloud)}</span>
@@ -184,7 +221,7 @@ function renderFlowDiagCard(row, query) {
         <p style="margin:4px 0 0; color:#cbd5e1;">💡 ${escapeHtml(row.comment || "외인·기관의 최근 수급 동향과 기술적 위치를 점검했습니다.")}</p>
       </div>
 
-      <div style="display:flex; gap:8px;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="primary" data-open="${code}">🔍 심층 리서치</button>
         <button data-backtest-stock="${code}" data-company="${escapeHtml(company)}" style="background:rgba(56,189,248,0.15); color:#38bdf8; border-color:rgba(56,189,248,0.4);">🧪 전략 백테스트</button>
         <button class="btn-ai-mini" data-ai-trigger="${code}" data-ai-company="${escapeHtml(company)}" style="padding:0 14px; height:32px; font-size:12px;">🤖 AI 리포트 발간</button>
