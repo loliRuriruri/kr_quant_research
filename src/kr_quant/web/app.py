@@ -1779,6 +1779,13 @@ def api_macro(refresh: bool = False) -> dict[str, Any]:
     return build_macro_dashboard(load_settings(), refresh=refresh)
 
 
+@app.get("/api/macro/live-ticker")
+def api_macro_live_ticker(refresh: bool = False) -> dict[str, Any]:
+    from kr_quant.ingest.yahoo import live_ticker_snapshot
+
+    return live_ticker_snapshot(refresh=refresh)
+
+
 @app.get("/api/macro/margin-debt")
 def api_macro_margin_debt(refresh: bool = False) -> dict[str, Any]:
     from kr_quant.context.margin_debt import get_margin_debt_snapshot

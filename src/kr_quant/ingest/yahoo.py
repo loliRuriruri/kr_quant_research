@@ -241,33 +241,64 @@ def _as_float(value: Any) -> float | None:
     return num if math.isfinite(num) else None
 
 
+def _fetch_single_index(spec: dict[str, Any], refresh: bool) -> dict[str, Any]:
+    try:
+        return snapshot_from_chart(
+            spec["symbol"],
+            spec["label"],
+            spec.get("category"),
+            spec.get("unit"),
+            refresh=refresh,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "symbol": spec["symbol"],
+            "label": spec["label"],
+            "category": spec.get("category", "index"),
+            "unit": spec.get("unit", "pt"),
+            "error": str(exc)[:180],
+            "used_in_quant": False,
+        }
+
+
 def index_snapshot(*, refresh: bool = False) -> dict[str, Any]:
-    rows: list[dict[str, Any]] = []
-    error = None
-    for spec in INDEXES:
-        try:
-            rows.append(
-                snapshot_from_chart(
-                    spec["symbol"],
-                    spec["label"],
-                    spec.get("category"),
-                    spec.get("unit"),
-                    refresh=refresh,
-                )
-            )
-        except Exception as exc:  # noqa: BLE001
-            error = str(exc)[:180]
-            rows.append(
-                {
-                    "symbol": spec["symbol"],
-                    "label": spec["label"],
-                    "category": spec.get("category", "index"),
-                    "unit": spec.get("unit", "pt"),
-                    "error": error,
-                    "used_in_quant": False,
-                }
-            )
-    return {"configured": True, "used_in_quant": False, "error": error, "indexes": rows}
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=min(12, len(INDEXES))) as pool:
+        rows = list(pool.map(lambda s: _fetch_single_index(s, refresh), INDEXES))
+
+    first_err = next((r.get("error") for r in rows if r.get("error")), None)
+    return {"configured": True, "used_in_quant": False, "error": first_err, "indexes": rows}
+
+
+def live_ticker_snapshot(*, refresh: bool = False) -> dict[str, Any]:
+    """Ultra-fast, lightweight real-time quote feed for frontend macro barometer."""
+    res = index_snapshot(refresh=refresh)
+    items = []
+    for r in res.get("indexes") or []:
+        if not r or r.get("error") or r.get("last") is None:
+            continue
+        items.append(
+            {
+                "symbol": r.get("symbol"),
+                "label": r.get("label"),
+                "category": r.get("category"),
+                "unit": r.get("unit"),
+                "last": r.get("last"),
+                "prev": r.get("prev"),
+                "delta_1d": r.get("delta_1d"),
+                "ret_1d": r.get("ret_1d"),
+                "high_52w": r.get("high_52w"),
+                "high_52w_distance": r.get("high_52w_distance"),
+                "as_of": r.get("as_of"),
+            }
+        )
+    return {
+        "ok": True,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "count": len(items),
+        "items": items,
+    }
 
 
 def stock_research_quote(ticker: str, market: str | None = None) -> dict[str, Any]:

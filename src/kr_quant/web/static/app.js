@@ -1347,6 +1347,9 @@ function switchView(name) {
   if (name === "market") {
     loadMarket().catch((err) => alert(err.message));
     loadMacro().catch(() => {});
+    if (typeof startMacroLivePolling === "function") startMacroLivePolling();
+  } else {
+    if (typeof stopMacroLivePolling === "function") stopMacroLivePolling();
   }
   if (name === "strategy") {
     loadStrategy().catch((err) => alert(err.message));
@@ -7545,6 +7548,7 @@ function renderTradingEconomicsMacroCards(grouped, cc) {
 
     return `
       <div class="macro-card has-tip"
+           data-macro-card="${escapeHtml(item.symbol)}"
            data-tip-title="${escapeHtml(guide.name || item.label || item.symbol)}"
            data-tip="${escapeHtml(guide.tip)}"
            data-tip-up="${escapeHtml(guide.up)}"
@@ -7557,10 +7561,10 @@ function renderTradingEconomicsMacroCards(grouped, cc) {
             <div class="macro-card-sym">${escapeHtml(item.symbol)} · ${escapeHtml(item.unit || "")}</div>
           </div>
           <div style="text-align:right">
-            <div class="macro-card-price">${priceFmt}</div>
-            <div class="macro-card-chg ${isUp ? "up" : "down"}">
-              <span>${chgTxt}</span>
-              ${deltaTxt ? `<small style="font-size:10px; margin-left:3px; opacity:0.9;">(${deltaTxt})</small>` : ""}
+            <div class="macro-card-price" data-macro-price="${escapeHtml(item.symbol)}" data-current-val="${item.last}">${priceFmt}</div>
+            <div class="macro-card-chg ${isUp ? "up" : "down"}" data-macro-chg="${escapeHtml(item.symbol)}">
+              <span data-macro-ret="${escapeHtml(item.symbol)}">${chgTxt}</span>
+              ${deltaTxt ? `<small data-macro-delta="${escapeHtml(item.symbol)}" style="font-size:10px; margin-left:3px; opacity:0.9;">(${deltaTxt})</small>` : ""}
             </div>
           </div>
         </div>
@@ -7578,6 +7582,7 @@ function renderTradingEconomicsMacroCards(grouped, cc) {
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <h3 style="margin:0;">글로벌 매크로 바로미터 (지수 · 환율 · 금·원유 · 비트코인 · 금리)</h3>
             <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:10.5px; padding:2px 7px;">Yahoo Finance 실시간</span>
+            <span class="live-ticker-badge"><span class="live-pulse-dot"></span><span>실시간 라이브 틱 스트리밍</span></span>
           </div>
           <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:4px; font-size:12px; color:#94a3b8;">
             <span>TradingEconomics 스타일 30일/60일 시계열 차트 및 실시간 등락률</span>
@@ -8053,7 +8058,115 @@ function renderMacroData(data) {
       `;
     }
   }
+
+  const btnRefresh = $("#btn-barometer-refresh");
+  if (btnRefresh) {
+    btnRefresh.onclick = async () => {
+      btnRefresh.disabled = true;
+      btnRefresh.innerHTML = "<span>⏳</span><span>수집 중...</span>";
+      try {
+        await loadMacro(true);
+      } finally {
+        btnRefresh.disabled = false;
+        btnRefresh.innerHTML = "<span>🔄</span><span>실시간 새로고침</span>";
+      }
+    };
+  }
+  startMacroLivePolling();
 }
+
+let macroLiveTimer = null;
+let isMacroLiveFetching = false;
+
+function updateMacroLiveCard(it) {
+  if (!it || !it.symbol) return;
+  const sym = CSS.escape(it.symbol);
+  const priceEl = document.querySelector(`[data-macro-price="${sym}"]`);
+  const chgEl = document.querySelector(`[data-macro-chg="${sym}"]`);
+  const retEl = document.querySelector(`[data-macro-ret="${sym}"]`);
+  const deltaEl = document.querySelector(`[data-macro-delta="${sym}"]`);
+
+  if (!priceEl || it.last == null) return;
+
+  const oldVal = parseFloat(priceEl.dataset.currentVal);
+  const newVal = parseFloat(it.last);
+
+  const priceFmt = fmt(it.last, it.category === "fx" && it.last < 10 ? 3 : 2);
+  const chg = Number(it.ret_1d);
+  const delta = it.delta_1d != null ? Number(it.delta_1d) : null;
+  const isUp = chg >= 0;
+  const chgTxt = chg == null || Number.isNaN(chg) ? "—" : `${isUp ? "+" : ""}${(chg * 100).toFixed(2)}%`;
+  const deltaTxt = delta != null && Number.isFinite(delta)
+    ? `${delta > 0 ? "+" : ""}${fmt(delta, it.category === "fx" && Math.abs(delta) < 1 ? 4 : 2)}`
+    : "";
+
+  if (!Number.isNaN(oldVal) && Math.abs(oldVal - newVal) > 0.0001) {
+    priceEl.textContent = priceFmt;
+    priceEl.dataset.currentVal = newVal;
+
+    priceEl.classList.remove("price-flash-up", "price-flash-down");
+    void priceEl.offsetWidth; // Force CSS reflow
+    if (newVal > oldVal) {
+      priceEl.classList.add("price-flash-up");
+    } else {
+      priceEl.classList.add("price-flash-down");
+    }
+  }
+
+  if (chgEl) {
+    chgEl.className = `macro-card-chg ${isUp ? "up" : "down"}`;
+  }
+  if (retEl) {
+    retEl.textContent = chgTxt;
+  }
+  if (deltaEl && deltaTxt) {
+    deltaEl.textContent = `(${deltaTxt})`;
+  }
+}
+
+async function pollMacroLiveTicker() {
+  if (isMacroLiveFetching) return;
+  if (currentView !== "market" || document.hidden) return;
+
+  isMacroLiveFetching = true;
+  try {
+    const res = await api("/api/macro/live-ticker");
+    if (res && res.ok && Array.isArray(res.items)) {
+      res.items.forEach(updateMacroLiveCard);
+      const badge = $("#barometer-synced-badge");
+      if (badge && res.fetched_at) {
+        badge.textContent = formatSyncTime(res.fetched_at);
+      }
+    }
+  } catch (e) {
+    // Ignore ticker polling errors
+  } finally {
+    isMacroLiveFetching = false;
+  }
+}
+
+function startMacroLivePolling() {
+  stopMacroLivePolling();
+  if (currentView === "market" && !document.hidden) {
+    macroLiveTimer = setInterval(pollMacroLiveTicker, 4500);
+  }
+}
+
+function stopMacroLivePolling() {
+  if (macroLiveTimer) {
+    clearInterval(macroLiveTimer);
+    macroLiveTimer = null;
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    stopMacroLivePolling();
+  } else if (currentView === "market") {
+    startMacroLivePolling();
+    pollMacroLiveTicker().catch(() => {});
+  }
+});
 
 function metaLine(el, info) {
   el.textContent = info.configured ? `${info.masked} (${info.length}자)` : "미설정";

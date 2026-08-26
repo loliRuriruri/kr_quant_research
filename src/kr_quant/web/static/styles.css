@@ -491,6 +491,77 @@ tr.clickable { cursor: pointer; }
 .float-tip-impact .hint-impact { color: #fbbf24; line-height: 1.4; }
 .macro-card.has-tip { cursor: help; transition: transform 0.15s ease, border-color 0.15s ease; }
 .macro-card.has-tip:hover { transform: translateY(-2px); border-color: #3b82f6; box-shadow: 0 6px 18px rgba(59, 130, 246, 0.18); }
+
+/* Live Ticker Flash Animations (HTS / Toss Style) */
+@keyframes price-flash-up {
+  0% {
+    background-color: rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+    text-shadow: 0 0 10px rgba(239, 68, 68, 0.9);
+    border-radius: 4px;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes price-flash-down {
+  0% {
+    background-color: rgba(59, 130, 246, 0.45);
+    color: #93c5fd;
+    text-shadow: 0 0 10px rgba(59, 130, 246, 0.9);
+    border-radius: 4px;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.price-flash-up {
+  animation: price-flash-up 0.9s ease-out;
+}
+
+.price-flash-down {
+  animation: price-flash-down 0.9s ease-out;
+}
+
+.live-pulse-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 rgba(34, 197, 94, 0.7);
+  animation: pulse-green 2s infinite;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+@keyframes pulse-green {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.8);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+.live-ticker-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
 .tag.hot { color: var(--warn); border-color: rgba(240, 180, 41, 0.5); }
 .tag.up { color: #ef4b6a; border-color: rgba(239, 75, 106, 0.45); }
 .tag.down { color: #4c8dff; border-color: rgba(76, 141, 255, 0.45); }
