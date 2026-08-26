@@ -1236,6 +1236,77 @@ def api_research_tier1_insights_get(
     )
 
 
+TIER1_FACTOR_LABELS = {
+    "value_score": "가치",
+    "quality_score": "품질",
+    "growth_score": "성장",
+    "momentum_score": "모멘텀",
+    "financial_score": "재무안정",
+}
+
+
+def _ranking_tier1_snapshot(settings: Any, *, limit: int = 10) -> dict[str, Any]:
+    folder = _run_dir(settings)
+    path = folder / "all_stocks.parquet"
+    if not path.exists():
+        path = settings.output_dir / "latest_all_stocks.parquet"
+    if not path.exists():
+        return {"as_of": None, "top_rows": [], "movers": [], "universe_count": 0, "missing": ["all_stocks"]}
+
+    df = pd.read_parquet(path)
+    if "universe_eligible" in df.columns:
+        eligible = df[df["universe_eligible"].fillna(False).astype(bool)].copy()
+    else:
+        eligible = df.copy()
+    if "quant_rank" in eligible.columns:
+        eligible = eligible.sort_values("quant_rank", na_position="last")
+
+    def compact_row(rec: dict[str, Any]) -> dict[str, Any]:
+        factors = []
+        for column, label in TIER1_FACTOR_LABELS.items():
+            value = rec.get(column)
+            if value is not None and not pd.isna(value):
+                factors.append({"factor": label, "score": round(float(value), 1)})
+        factors.sort(key=lambda item: item["score"], reverse=True)
+        return {
+            "ticker": str(rec.get("ticker") or "").zfill(6),
+            "company": rec.get("company"),
+            "sector": rec.get("sector"),
+            "rank": rec.get("quant_rank"),
+            "previous_rank": rec.get("previous_rank"),
+            "rank_change": rec.get("rank_change"),
+            "score": rec.get("quant_score"),
+            "previous_score": rec.get("previous_score"),
+            "score_change": rec.get("score_change"),
+            "dominant_factors": factors[:2],
+            "weak_factors": list(reversed(factors[-2:])),
+            "data_confidence": rec.get("data_confidence"),
+            "coverage": rec.get("weighted_metric_coverage"),
+            "risk_flags": _clean(rec.get("risk_flags")) if rec.get("risk_flags") is not None else [],
+        }
+
+    top_rows = [compact_row(rec) for rec in eligible.head(max(1, limit)).to_dict("records")]
+    movers: list[dict[str, Any]] = []
+    if "rank_change" in eligible.columns:
+        changed = eligible[eligible["rank_change"].notna()].copy()
+        if not changed.empty:
+            changed["abs_rank_change"] = changed["rank_change"].abs()
+            movers = [compact_row(rec) for rec in changed.sort_values("abs_rank_change", ascending=False).head(8).to_dict("records")]
+
+    as_of = folder.name.split("=", 1)[-1] if folder.name.startswith("as_of_date=") else None
+    low_confidence_count = 0
+    if "data_confidence" in eligible.columns:
+        low_confidence_count = int((pd.to_numeric(eligible["data_confidence"], errors="coerce") < 60).sum())
+    return {
+        "as_of": as_of,
+        "top_rows": _clean(top_rows),
+        "movers": _clean(movers),
+        "universe_count": int(len(eligible)),
+        "low_confidence_count": low_confidence_count,
+        "missing": [] if top_rows else ["eligible_rank_rows"],
+    }
+
+
 @app.get("/api/flow/tier1-briefing")
 def api_flow_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
@@ -1297,23 +1368,9 @@ def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
     endpoint = resolve_tier1_endpoint(s)
     prompt_version = "dashboard_tier1_v2"
 
-    top_stocks = []
-    try:
-        folder = _run_dir(s)
-        path = folder / "all_stocks.parquet"
-        if path.exists():
-            import pandas as pd
-
-            df = pd.read_parquet(path)
-            if "universe_eligible" in df.columns:
-                df = df[df["universe_eligible"]]
-            if "quant_rank" in df.columns:
-                df = df.sort_values("quant_rank", na_position="last")
-            top_stocks = df.head(5)[["ticker", "company", "quant_score", "sector"]].to_dict("records")
-    except Exception:
-        pass
-
-    stocks_summary = "\n".join(f"- {st.get('company')} ({st.get('ticker')}): 퀀트점수 {st.get('quant_score')}점, 업종: {st.get('sector')}" for st in top_stocks) or "상위 퀀트 종목 데이터 준비 중"
+    rank_context = _ranking_tier1_snapshot(s, limit=8)
+    top_stocks = rank_context.get("top_rows") or []
+    stocks_summary = json.dumps(rank_context, ensure_ascii=False, default=str)
     if not top_stocks:
         return tier1_unavailable(
             endpoint,
@@ -1326,9 +1383,9 @@ def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
 
     prompt = (
         "당신은 국내 최고 퀀트 펀드매니저입니다.\n"
-        f"오늘의 퀀트 랭킹 상위 우량 종목 포트폴리오:\n{stocks_summary}\n\n"
-        "제공된 상위 종목의 점수와 업종 구성만 사용해 공통 특징과 1위 종목의 상대적 위치를 설명하세요. 제공되지 않은 재무 사실이나 주문·비중 지시는 하지 마세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 랭킹 헤드라인\", \"champion_focus\": \"1위 종목의 제공 데이터상 특징 1줄\", \"strategy_note\": \"랭킹을 읽을 때의 주의점 2줄\"}"
+        f"오늘의 퀀트 랭킹 및 전회 대비 변화 데이터:\n{stocks_summary}\n\n"
+        "현재 순위·점수·전회 대비 변화·우세/취약 팩터·데이터 신뢰도만 사용하세요. 점수 변화가 특정 팩터 때문에 발생했다고 단정하지 말고, 제공되지 않은 재무 사실이나 주문·비중 지시는 하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 랭킹 변화 헤드라인\", \"champion_focus\": \"1위 종목의 현재 우세/취약 팩터와 변화 1줄\", \"strategy_note\": \"가장 큰 순위 변화와 데이터 주의점 2줄\"}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1341,18 +1398,79 @@ def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
         return tier1_success(
             endpoint,
             _extract_json(raw_text),
-            sources=["all_stocks"],
+            as_of=rank_context.get("as_of"),
+            sources=["all_stocks", "daily_rank_change"],
             evidence_count=len(top_stocks),
-            missing=[] if top_stocks else ["top_ranked_stocks"],
+            missing=rank_context.get("missing") or [],
             prompt_version=prompt_version,
         )
     except Exception as exc:
         print(f"Tier 1 dashboard briefing unavailable: {exc}")
         return tier1_unavailable(
             endpoint,
-            sources=["all_stocks"],
+            as_of=rank_context.get("as_of"),
+            sources=["all_stocks", "daily_rank_change"],
             evidence_count=len(top_stocks),
-            missing=[] if top_stocks else ["top_ranked_stocks"],
+            missing=rank_context.get("missing") or [],
+            prompt_version=prompt_version,
+        )
+
+
+@app.get("/api/rank/tier1-briefing")
+def api_rank_tier1_briefing_get() -> dict[str, Any]:
+    from kr_quant.research.analyze import _extract_json, call_chat
+    from kr_quant.research.providers import resolve_tier1_endpoint
+
+    s = load_settings()
+    endpoint = resolve_tier1_endpoint(s)
+    prompt_version = "rank_tier1_v1"
+    context = _ranking_tier1_snapshot(s, limit=12)
+    top_rows = context.get("top_rows") or []
+    movers = context.get("movers") or []
+    if not top_rows:
+        return tier1_unavailable(
+            endpoint,
+            code="TIER1_EVIDENCE_MISSING",
+            message="점수 랭킹 해설에 사용할 적격 종목 데이터가 없습니다.",
+            as_of=context.get("as_of"),
+            sources=["all_stocks", "daily_rank_change"],
+            missing=context.get("missing") or ["rank_rows"],
+            prompt_version=prompt_version,
+        )
+
+    prompt = (
+        "당신은 한국 주식 퀀트 랭킹 결과를 검수하는 연구원입니다.\n"
+        f"실제 랭킹 스냅샷:\n{json.dumps(context, ensure_ascii=False, default=str)}\n\n"
+        "현재 점수, 전회 대비 순위·점수 변화, 현재 우세/취약 팩터, 신뢰도만 해설하세요. 이전 팩터 점수가 없으므로 특정 팩터가 점수 변화를 일으켰다고 단정하지 마세요. 매수·매도·비중·목표가를 제시하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 랭킹 변화 요약\", \"changes\": [\"실제 순위 상승·하락 관측\"], \"top_explanations\": [{\"ticker\": \"6자리 코드\", \"summary\": \"현재 우세/취약 팩터와 신뢰도 해설\"}], \"cautions\": [\"데이터 또는 해석 주의점\"]}"
+    )
+    try:
+        raw_text, _ = call_chat(
+            endpoint,
+            [
+                {"role": "system", "content": "You are a Korean equity ranking auditor. Output strictly in JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            timeout=15,
+            json_mode=True,
+        )
+        return tier1_success(
+            endpoint,
+            _extract_json(raw_text),
+            as_of=context.get("as_of"),
+            sources=["all_stocks", "daily_rank_change", "factor_scores"],
+            evidence_count=len(top_rows) + len(movers),
+            missing=context.get("missing") or [],
+            prompt_version=prompt_version,
+        )
+    except Exception as exc:
+        print(f"Tier 1 rank briefing unavailable: {exc}")
+        return tier1_unavailable(
+            endpoint,
+            as_of=context.get("as_of"),
+            sources=["all_stocks", "daily_rank_change", "factor_scores"],
+            evidence_count=len(top_rows) + len(movers),
+            missing=context.get("missing") or [],
             prompt_version=prompt_version,
         )
 
@@ -1361,24 +1479,78 @@ def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
 def api_market_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
     from kr_quant.research.analyze import call_chat, _extract_json
-    from kr_quant.context.macro_brief import get_macro_brief
+    from kr_quant.context.macro_brief import build_macro_dashboard
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
     prompt_version = "market_tier1_v2"
 
-    macro = get_macro_brief(s)
-    fg = macro.get("fear_greed", {})
-    spread = macro.get("interest_spread", {})
+    macro = build_macro_dashboard(s, refresh=False)
+    brief = macro.get("brief") or {}
+    selected_ids = {"bok_rate", "kr_us_diff", "ktb3y", "usdkrw_bok", "FEDFUNDS", "DGS10", "DGS2", "T10Y2Y", "CPIAUCSL", "UNRATE", "DEXKOUS"}
+    indicator_rows = []
+    for group_name in ("domestic", "international"):
+        for row in ((brief.get(group_name) or {}).get("items") or []):
+            if row.get("id") in selected_ids:
+                indicator_rows.append(
+                    {
+                        "id": row.get("id"),
+                        "value": row.get("value"),
+                        "unit": row.get("unit"),
+                        "delta": row.get("delta"),
+                        "tone": row.get("tone"),
+                        "as_of": row.get("as_of"),
+                    }
+                )
+    yahoo_symbols = {"^VIX", "^KS11", "^KQ11", "^GSPC", "^IXIC", "KRW=X"}
+    market_rows = [
+        {
+            "symbol": row.get("symbol"),
+            "last": row.get("last"),
+            "ret_1d": row.get("ret_1d"),
+            "ret_1m": row.get("ret_1m"),
+            "ret_1y": row.get("ret_1y"),
+            "as_of": row.get("as_of"),
+        }
+        for row in ((macro.get("yahoo") or {}).get("indexes") or [])
+        if row.get("symbol") in yahoo_symbols and not row.get("error")
+    ]
+    macro_context = {
+        "overall": brief.get("overall"),
+        "domestic_stance": (brief.get("domestic") or {}).get("stance"),
+        "international_stance": (brief.get("international") or {}).get("stance"),
+        "yield_comparison": brief.get("yield_comparison"),
+        "indicators": indicator_rows,
+        "market_indexes": market_rows,
+        "yen_carry": macro.get("yencarry"),
+        "margin_debt": macro.get("margin_debt"),
+        "source_as_of": brief.get("as_of"),
+    }
+    evidence_count = sum(row.get("value") is not None for row in indicator_rows) + sum(row.get("last") is not None for row in market_rows)
+    missing = []
+    available_ids = {row.get("id") for row in indicator_rows if row.get("value") is not None}
+    available_symbols = {row.get("symbol") for row in market_rows if row.get("last") is not None}
+    for required in ("DGS10", "DGS2", "T10Y2Y", "DEXKOUS"):
+        if required not in available_ids:
+            missing.append(required)
+    if "^VIX" not in available_symbols:
+        missing.append("VIX")
+    if evidence_count <= 0:
+        return tier1_unavailable(
+            endpoint,
+            code="TIER1_EVIDENCE_MISSING",
+            message="시장 브리핑에 사용할 금리·환율·지수 관측값이 없습니다.",
+            as_of=macro.get("fetched_at"),
+            sources=["FRED", "BOK_ECOS", "Yahoo_comparison"],
+            missing=missing or ["macro_indicators"],
+            prompt_version=prompt_version,
+        )
 
     prompt = (
         "당신은 글로벌 거시경제(Macro) 및 증시 리스크 전문 수석 이코노미스트입니다.\n"
-        f"현재 거시 지표 요약:\n"
-        f"- 공포/탐욕 지수: {fg.get('score', 50)}점 ({fg.get('label', '중립')})\n"
-        f"- 한·미 기준금리차: {spread.get('spread', '—')}%\n"
-        f"- 매크로 종합 판정: {macro.get('overall_posture', '중립')}\n\n"
-        "제공된 세 지표가 같은 방향인지 충돌하는지 설명하고, 없는 VIX·환율·국채 수치를 추정하지 마세요. 자산 배분·주문·비중 지시는 하지 마세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 매크로 헤드라인\", \"risk_posture\": \"위험선호 / 중립 / 위험회피 / 판단불가\", \"macro_insight\": \"제공 지표의 방향과 충돌 2줄\", \"action_tip\": \"추가 확인할 거시 지표\"}"
+        f"실제 거시·시장 관측 데이터:\n{json.dumps(macro_context, ensure_ascii=False, default=str)}\n\n"
+        "금리·장단기 스프레드·환율·VIX·주가지수 중 실제 제공된 지표만 사용해 같은 방향과 충돌을 설명하세요. 누락 지표를 추정하거나 자산 배분·주문·비중을 지시하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 매크로 헤드라인\", \"risk_posture\": \"위험선호 / 중립 / 위험회피 / 판단불가\", \"macro_insight\": \"지표별 방향과 상충 관계 2~3줄\", \"action_tip\": \"누락되거나 추가 확인할 지표\", \"drivers\": [{\"id\": \"실제 지표 id\", \"direction\": \"우호/부담/중립\", \"reason\": \"수치 근거\"}]}"
     )
     try:
         raw_text, _ = call_chat(
@@ -1391,27 +1563,20 @@ def api_market_tier1_briefing_get() -> dict[str, Any]:
         return tier1_success(
             endpoint,
             _extract_json(raw_text),
-            as_of=macro.get("as_of") or macro.get("updated_at"),
-            sources=["macro_brief", "fear_greed", "interest_spread"],
-            evidence_count=sum(value not in (None, "", {}) for value in (fg.get("score"), spread.get("spread"), macro.get("overall_posture"))),
-            missing=[
-                name
-                for name, value in (
-                    ("fear_greed", fg.get("score")),
-                    ("interest_spread", spread.get("spread")),
-                    ("overall_posture", macro.get("overall_posture")),
-                )
-                if value in (None, "")
-            ],
+            as_of=macro.get("fetched_at"),
+            sources=["FRED", "BOK_ECOS", "Yahoo_comparison"],
+            evidence_count=evidence_count,
+            missing=missing,
             prompt_version=prompt_version,
         )
     except Exception as exc:
         print(f"Tier 1 market briefing unavailable: {exc}")
         return tier1_unavailable(
             endpoint,
-            as_of=macro.get("as_of") or macro.get("updated_at"),
-            sources=["macro_brief", "fear_greed", "interest_spread"],
-            evidence_count=sum(value not in (None, "", {}) for value in (fg.get("score"), spread.get("spread"), macro.get("overall_posture"))),
+            as_of=macro.get("fetched_at"),
+            sources=["FRED", "BOK_ECOS", "Yahoo_comparison"],
+            evidence_count=evidence_count,
+            missing=missing,
             prompt_version=prompt_version,
         )
 

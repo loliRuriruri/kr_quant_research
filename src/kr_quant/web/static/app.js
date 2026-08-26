@@ -1384,6 +1384,7 @@ function switchView(name) {
   applyPriceChrome(name);
   startLiveSync(name);
   if (name === "dash" || name === "rank") stampFromStatus();
+  if (name === "rank") loadRankTier1Briefing().catch(() => {});
   if (name === "investor") {
     loadInvestor().catch((err) => alert(err.message));
     loadInvestorEvents().catch(() => {});
@@ -3984,13 +3985,43 @@ async function loadDashTier1Briefing() {
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <div style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#cbd5e1; line-height:1.5;">
             ${res.champion_focus ? `<div>👑 <b>1위 챔피언 모멘텀:</b> ${escapeHtml(res.champion_focus)}</div>` : ""}
-            ${res.strategy_note ? `<div>💡 <b>퀀트 실전 전략:</b> ${escapeHtml(res.strategy_note)}</div>` : ""}
+            ${res.strategy_note ? `<div>💡 <b>랭킹 해석 주의:</b> ${escapeHtml(res.strategy_note)}</div>` : ""}
           </div>
         </div>
       `;
       appendTier1Meta(container, res);
     }
   } catch (e) { renderTier1Unavailable(container, null, e); }
+}
+
+async function loadRankTier1Briefing() {
+  const container = $("#rank-tier1-briefing");
+  if (!container) return;
+  try {
+    const res = await api("/api/rank/tier1-briefing");
+    if (!renderTier1Unavailable(container, res)) return;
+    const changes = (res.changes || []).slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+    const explanations = (res.top_explanations || []).slice(0, 4).map((item) => `
+      <div style="padding:7px 9px; border-radius:7px; background:rgba(15,23,42,0.55); border:1px solid rgba(148,163,184,0.14);">
+        <b style="color:#67e8f9;">${escapeHtml(item.ticker || "종목")}</b>
+        <span style="color:#cbd5e1;"> · ${escapeHtml(item.summary || "")}</span>
+      </div>`).join("");
+    const cautions = (res.cautions || []).slice(0, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+    container.innerHTML = `
+      <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(14,116,144,0.16)); border:1px solid rgba(34,211,238,0.32); border-radius:12px; padding:13px 16px; display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+          <b style="color:#67e8f9; font-size:13px;">🔎 점수·순위 변화 AI 해설</b>
+          <span style="font-size:10.5px; color:#94a3b8;">${escapeHtml(res.model || "Tier 1 무료 모델")}</span>
+        </div>
+        <strong style="color:#f8fafc; font-size:14px;">${escapeHtml(res.headline || "")}</strong>
+        ${changes ? `<div><b style="font-size:11.5px; color:#38bdf8;">전회 대비 관측</b><ul style="margin:4px 0 0; padding-left:19px; color:#cbd5e1; font-size:12px; line-height:1.5;">${changes}</ul></div>` : ""}
+        ${explanations ? `<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:6px; font-size:11.5px;">${explanations}</div>` : ""}
+        ${cautions ? `<div style="background:rgba(245,158,11,0.08); border-left:3px solid #f59e0b; padding:6px 9px; border-radius:5px;"><b style="font-size:11px; color:#fbbf24;">해석 주의</b><ul style="margin:3px 0 0; padding-left:18px; color:#cbd5e1; font-size:11px;">${cautions}</ul></div>` : ""}
+      </div>`;
+    appendTier1Meta(container, res);
+  } catch (e) {
+    renderTier1Unavailable(container, null, e);
+  }
 }
 
 async function loadMarketTier1Briefing() {
@@ -4012,7 +4043,8 @@ async function loadMarketTier1Briefing() {
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)} <span class="chip" style="font-size:11px; margin-left:6px; color:#38bdf8;">${escapeHtml(res.risk_posture || "중립 대응")}</span></b>
           <div style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#cbd5e1; line-height:1.5;">
             ${res.macro_insight ? `<div>📊 <b>거시 환경 진단:</b> ${escapeHtml(res.macro_insight)}</div>` : ""}
-            ${res.action_tip ? `<div>💡 <b>자산 배분 가이드:</b> ${escapeHtml(res.action_tip)}</div>` : ""}
+            ${res.action_tip ? `<div>🔎 <b>추가 확인할 지표:</b> ${escapeHtml(res.action_tip)}</div>` : ""}
+            ${(res.drivers || []).length ? `<div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:3px;">${res.drivers.slice(0, 6).map((d) => `<span class="chip" style="font-size:10px;">${escapeHtml(d.id || "지표")} · ${escapeHtml(d.direction || "중립")} · ${escapeHtml(d.reason || "")}</span>`).join("")}</div>` : ""}
           </div>
         </div>
       `;
@@ -4066,7 +4098,7 @@ async function loadTossTier1Briefing() {
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.movers_summary || "")}</p>
-          ${res.trading_tip ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">💡 <b>실전 매매 유의점:</b> ${escapeHtml(res.trading_tip)}</div>` : ""}
+          ${res.trading_tip ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">💡 <b>순위 자료 해석 주의:</b> ${escapeHtml(res.trading_tip)}</div>` : ""}
         </div>
       `;
     }
@@ -4093,7 +4125,7 @@ async function loadSectorTier1Briefing() {
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.leading_sector_comment || "")}</p>
-          ${res.sector_strategy ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">🎯 <b>섹터 비중 전략:</b> ${escapeHtml(res.sector_strategy)}</div>` : ""}
+          ${res.sector_strategy ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">🔎 <b>업종 점수 해석 주의:</b> ${escapeHtml(res.sector_strategy)}</div>` : ""}
         </div>
       `;
     }
@@ -4120,7 +4152,7 @@ async function loadUs13fTier1Briefing() {
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.consensus_insight || "")}</p>
-          ${res.action_tip ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">💡 <b>대가 포트폴리오 벤치마크 팁:</b> ${escapeHtml(res.action_tip)}</div>` : ""}
+          ${res.action_tip ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">💡 <b>13F 해석상 한계:</b> ${escapeHtml(res.action_tip)}</div>` : ""}
         </div>
       `;
     }
@@ -4154,6 +4186,7 @@ async function loadSeasonalityTier1Briefing() {
                 ${res.key_catalysts.map(c => `<span class="chip" style="font-size:11px; padding:2px 8px; background:rgba(30,41,59,0.85); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1);">${escapeHtml(c)}</span>`).join("")}
               </div>
             </div>` : ""}
+          ${res.sample_caution ? `<div style="font-size:11.5px; color:#fbbf24; background:rgba(245,158,11,0.08); border-left:3px solid #f59e0b; padding:5px 9px; border-radius:4px;">⚠️ <b>표본·재현성:</b> ${escapeHtml(res.sample_caution)}</div>` : ""}
         </div>
       `;
     }
@@ -4180,7 +4213,7 @@ async function loadTradeTier1Briefing() {
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.trading_brief || "")}</p>
-          ${res.execution_guide ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">🎯 <b>실전 매매 원칙:</b> ${escapeHtml(res.execution_guide)}</div>` : ""}
+          ${res.execution_guide ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">🔎 <b>판단 무효화·주의:</b> ${escapeHtml(res.execution_guide)}</div>` : ""}
         </div>
       `;
     }
@@ -4317,7 +4350,7 @@ async function loadEmptyTier1Briefing() {
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.empty_insight || "")}</p>
-          ${res.entry_caution ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">💡 <b>선취매 및 매집 유의점:</b> ${escapeHtml(res.entry_caution)}</div>` : ""}
+          ${res.entry_caution ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">💡 <b>유동성·거래가능성 주의:</b> ${escapeHtml(res.entry_caution)}</div>` : ""}
         </div>
       `;
     }
@@ -4347,7 +4380,7 @@ async function loadStrategyTier1Briefing() {
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:8px; margin-top:4px;">
             ${res.action_guide ? `
               <div style="font-size:11.5px; color:#34d399; background:rgba(52, 211, 153, 0.08); border-left:3px solid #34d399; padding:6px 10px; border-radius:4px;">
-                🎯 <b>실전 매수 가이드:</b> ${escapeHtml(res.action_guide)}
+                🔎 <b>등급 읽는 방법:</b> ${escapeHtml(res.action_guide)}
               </div>
             ` : ""}
             ${res.risk_management ? `
