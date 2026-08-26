@@ -8678,19 +8678,37 @@ async function startJob(kind) {
 
 function openMobileDrawer() {
   const drawer = $("#mobile-menu-drawer");
-  if (drawer) drawer.classList.remove("hidden");
+  if (drawer) {
+    drawer.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+  }
 }
 function closeMobileDrawer() {
   const drawer = $("#mobile-menu-drawer");
-  if (drawer) drawer.classList.add("hidden");
+  if (drawer) {
+    drawer.classList.add("hidden");
+    document.body.style.overflow = "";
+  }
 }
 
 $$(".nav-btn").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
-$$("[data-mobile-view]").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.mobileView)));
-$("#btn-mobile-drawer-toggle")?.addEventListener("click", openMobileDrawer);
-$("#btn-mobile-drawer-close")?.addEventListener("click", closeMobileDrawer);
-$("#mobile-menu-drawer")?.addEventListener("click", (e) => {
-  if (e.target === $("#mobile-menu-drawer")) closeMobileDrawer();
+
+// Delegated Touch & Click handler for 100% instant response on all mobile devices
+document.addEventListener("click", (e) => {
+  const mobileBtn = e.target.closest("[data-mobile-view]");
+  if (mobileBtn) {
+    const view = mobileBtn.getAttribute("data-mobile-view");
+    if (view) switchView(view);
+    return;
+  }
+  if (e.target.closest("#btn-mobile-drawer-toggle")) {
+    openMobileDrawer();
+    return;
+  }
+  if (e.target.closest("#btn-mobile-drawer-close") || e.target.id === "mobile-menu-drawer") {
+    closeMobileDrawer();
+    return;
+  }
 });
 
 if ($("#flow-q")) {
