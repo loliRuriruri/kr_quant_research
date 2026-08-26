@@ -4071,25 +4071,39 @@ async function loadEmptyTier1Briefing() {
 
 async function loadStrategyTier1Briefing() {
   const container = $("#strategy-tier1-briefing");
-  if (!container) return;
+  const lowerContainer = $("#strategy-lab-tier1-briefing");
+  if (!container && !lowerContainer) return;
   try {
     const res = await api("/api/strategy/tier1-briefing");
     if (res && res.ok && res.headline) {
-      container.innerHTML = `
-        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8)); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px;">
+      const briefingHtml = `
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(23, 37, 65, 0.9), rgba(15, 23, 42, 0.95)); border:1px solid rgba(56, 189, 248, 0.35); border-left:4px solid #38bdf8; border-radius:12px; padding:14px 18px; margin-bottom:16px; display:flex; flex-direction:column; gap:8px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-size:16px;">🧪</span>
-              <span style="font-size:13px; font-weight:800; color:#38bdf8;">4대 퀀트 매매 타이밍 백테스트 AI 브리핑</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+              <span style="font-size:18px;">🧪</span>
+              <span style="font-size:14px; font-weight:800; color:#38bdf8;">4대 퀀트 매매 타이밍 백테스트 AI 컨센서스 브리핑</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10.5px; padding:1px 7px; font-weight:700;">Tier 1 무료 엔진</span>
             </div>
             <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
           </div>
-          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
-          <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.strategy_insight || "")}</p>
-          ${res.risk_management ? `<div style="margin-top:2px; font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:4px 8px; border-radius:4px;">🛡️ <b>리스크 관리 팁:</b> ${escapeHtml(res.risk_management)}</div>` : ""}
+          <b style="font-size:14.5px; color:#f8fafc; line-height:1.4;">${escapeHtml(res.headline)}</b>
+          <p style="margin:0; font-size:12.5px; color:#cbd5e1; line-height:1.55;">${escapeHtml(res.strategy_insight || "")}</p>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:8px; margin-top:4px;">
+            ${res.action_guide ? `
+              <div style="font-size:11.5px; color:#34d399; background:rgba(52, 211, 153, 0.08); border-left:3px solid #34d399; padding:6px 10px; border-radius:4px;">
+                🎯 <b>실전 매수 가이드:</b> ${escapeHtml(res.action_guide)}
+              </div>
+            ` : ""}
+            ${res.risk_management ? `
+              <div style="font-size:11.5px; color:#38bdf8; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; padding:6px 10px; border-radius:4px;">
+                🛡️ <b>리스크 관리 팁:</b> ${escapeHtml(res.risk_management)}
+              </div>
+            ` : ""}
+          </div>
         </div>
       `;
+      if (container) container.innerHTML = briefingHtml;
+      if (lowerContainer) lowerContainer.innerHTML = briefingHtml;
     }
   } catch (e) {}
 }
@@ -6387,24 +6401,39 @@ async function loadScreens(id) {
 
 let strategyCache = null;
 let portfolioCache = null;
+let currentStrategyFilter = "all";
 
 function renderStrategy(data) {
   const box = $("#strategy-box");
   if (!box) return;
-  const rows = data.rows || [];
-  const highCount = rows.filter(r => r.stability_label === "HIGH").length;
-  const medCount = rows.filter(r => r.stability_label === "MEDIUM").length;
-  const allSharpes = rows.map(r => ((r.strategies || [])[0] || {}).sharpe).filter(v => v != null);
+  const allRows = data.rows || [];
+  const highCount = allRows.filter(r => r.stability_label === "HIGH").length;
+  const medCount = allRows.filter(r => r.stability_label === "MEDIUM").length;
+  const rsiCount = allRows.filter(r => (r.best_family || "").includes("rsi") || (r.best_name || "").includes("RSI")).length;
+  const bbCount = allRows.filter(r => (r.best_family || "").includes("bb") || (r.best_name || "").includes("볼린저")).length;
+  const maCount = allRows.filter(r => (r.best_family || "").includes("ma") || (r.best_name || "").includes("이동평균")).length;
+  const donchianCount = allRows.filter(r => (r.best_family || "").includes("donchian") || (r.best_name || "").includes("돈치안")).length;
+
+  const filteredRows = allRows.filter(r => {
+    if (currentStrategyFilter === "high") return r.stability_label === "HIGH";
+    if (currentStrategyFilter === "med") return r.stability_label === "HIGH" || r.stability_label === "MEDIUM";
+    if (currentStrategyFilter === "rsi") return (r.best_family || "").includes("rsi") || (r.best_name || "").includes("RSI");
+    if (currentStrategyFilter === "bb") return (r.best_family || "").includes("bb") || (r.best_name || "").includes("볼린저");
+    if (currentStrategyFilter === "ma") return (r.best_family || "").includes("ma") || (r.best_name || "").includes("이동평균");
+    if (currentStrategyFilter === "donchian") return (r.best_family || "").includes("donchian") || (r.best_name || "").includes("돈치안");
+    return true;
+  });
+
+  const allSharpes = allRows.map(r => ((r.strategies || [])[0] || {}).sharpe).filter(v => v != null);
   const avgSharpe = allSharpes.length ? (allSharpes.reduce((a, b) => a + b, 0) / allSharpes.length).toFixed(2) : "—";
-  const allMdds = rows.map(r => ((r.strategies || [])[0] || {}).max_drawdown).filter(v => v != null);
+  const allMdds = allRows.map(r => ((r.strategies || [])[0] || {}).max_drawdown).filter(v => v != null);
   const avgMdd = allMdds.length ? ((allMdds.reduce((a, b) => a + b, 0) / allMdds.length) * 100).toFixed(1) + "%" : "—";
 
-  const body = rows
+  const body = filteredRows
     .map((r) => {
       const best = (r.strategies || [])[0] || {};
       const paramsKo = r.best_params_ko || best.params_ko || "";
       const familyKo = r.best_family_ko || best.family_ko || "";
-      const comment = r.best_comment || best.comment || r.warning || "";
       const stab = r.stability_label || "LOW";
       const stabHtml = stab === "HIGH" 
         ? `<span class="strat-badge-high">🟢 HIGH (최상)</span>`
@@ -6412,19 +6441,71 @@ function renderStrategy(data) {
         ? `<span class="strat-badge-med">🟡 MED (보통)</span>`
         : `<span class="strat-badge-low">🟠 LOW (표본부족)</span>`;
 
+      const fam = (r.best_family || "").includes("rsi") || (r.best_name || "").includes("RSI")
+        ? "rsi"
+        : (r.best_family || "").includes("bb") || (r.best_name || "").includes("볼린저")
+        ? "bb"
+        : (r.best_family || "").includes("ma") || (r.best_name || "").includes("이동평균")
+        ? "ma"
+        : "donchian";
+      const pillClass = fam;
+      const icon = fam === "rsi" ? "⚡" : fam === "bb" ? "📊" : fam === "ma" ? "📈" : "📦";
+
+      let ruleSummary = "";
+      if (fam === "rsi") {
+        ruleSummary = "과매도(≤30) 매수 → 과매수(≥70) 익절";
+      } else if (fam === "bb") {
+        ruleSummary = "하단 밴드 이탈 매수 → 중심선 복귀 익절";
+      } else if (fam === "ma") {
+        ruleSummary = "단기선 골든크로스 매수 → 데드크로스 청산";
+      } else {
+        ruleSummary = "전고점 박스권 상단 돌파 매수 → 하단 청산";
+      }
+
+      let actionGuideChip = "";
+      if (stab === "HIGH") {
+        actionGuideChip = `<span class="chip ok" style="font-size:10.5px; padding:2px 7px; font-weight:700;">✅ 미래 검증 완료 · 시가 분할 매수 적합</span>`;
+      } else if (stab === "MEDIUM") {
+        actionGuideChip = `<span class="chip warn" style="font-size:10.5px; padding:2px 7px; font-weight:700;">⚠️ 구간별 편차 · 비중 분산 권장</span>`;
+      } else {
+        actionGuideChip = `<span class="chip neutral" style="font-size:10.5px; padding:2px 7px;">🧪 표본 부족 · 소액 분할/관찰</span>`;
+      }
+
       return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker || "")}">
-        <td><b>${escapeHtml(r.company || "")}</b><div class="meta">${escapeHtml(r.ticker || "")} · ${r.bars || 0}거래일</div></td>
         <td>
-          <div class="strat-pill-name">${escapeHtml(r.best_name || "—")}</div>
-          <div class="params-ko">${escapeHtml(paramsKo || familyKo)}</div>
+          <div style="display:flex; flex-direction:column; gap:2px;">
+            <b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b>
+            <div class="meta" style="color:#94a3b8; font-size:11px; display:flex; align-items:center; gap:5px;">
+              <span class="tag" style="background:#1e293b; color:#38bdf8; font-family:monospace; font-weight:700; font-size:10.5px; padding:1px 5px; border:1px solid rgba(56,189,248,0.25); border-radius:4px;">${escapeHtml(r.ticker || "")}</span>
+              <span>${r.bars || 0}거래일</span>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="strat-pill-name ${pillClass}">${icon} ${escapeHtml(r.best_name || "—")}</div>
+          <div class="params-ko" style="color:#94a3b8; font-size:11px; margin-top:2px;">${escapeHtml(paramsKo || familyKo)}</div>
         </td>
         <td>${stabHtml}</td>
-        <td class="num has-tip" data-tip="종합 샤프 지수: 위험 1단위당 초과수익 (1.0 이상 우수)">${best.sharpe == null ? "—" : fmt(best.sharpe, 2)}</td>
-        <td class="num has-tip" data-tip="미래 검증(OOS) 샤프: 과거 끼워맞추기 없는 순수 미래 성과">${best.oos_sharpe == null ? "—" : fmt(best.oos_sharpe, 2)}</td>
-        <td class="num has-tip" data-tip="순환 검증(WF) 승률: 시기를 바꿔가며 테스트했을 때 플러스 수익을 낸 기간 비율">${best.wf_hit == null ? "—" : `${(best.wf_hit * 100).toFixed(0)}%`} <span class="meta">${best.wf_windows || 0}구간</span></td>
-        <td class="num has-tip" data-tip="최대 낙폭(MDD): 보유 기간 중 겪었던 최대 하락폭">${pctCell(best.max_drawdown)}</td>
+        <td class="num has-tip" data-tip="종합 샤프 지수: 위험 1단위당 초과수익 (1.0 이상 우수)">
+          <b style="color:${Number(best.sharpe) >= 1.0 ? '#4ade80' : '#f8fafc'}; font-size:13.5px;">${best.sharpe == null ? "—" : fmt(best.sharpe, 2)}</b>
+        </td>
+        <td class="num has-tip" data-tip="미래 검증(OOS) 샤프: 과거 끼워맞추기 없는 순수 미래 성과">
+          <b style="color:${Number(best.oos_sharpe) >= 1.0 ? '#38bdf8' : '#cbd5e1'}; font-size:13.5px;">${best.oos_sharpe == null ? "—" : fmt(best.oos_sharpe, 2)}</b>
+        </td>
+        <td class="num has-tip" data-tip="순환 검증(WF) 승률: 시기를 바꿔가며 테스트했을 때 플러스 수익을 낸 기간 비율">
+          <span style="font-weight:800; color:${(best.wf_hit || 0) >= 0.6 ? '#4ade80' : '#f8fafc'}; font-size:13px;">${best.wf_hit == null ? "—" : `${(best.wf_hit * 100).toFixed(0)}%`}</span>
+          <span class="meta" style="font-size:10.5px; color:#94a3b8;">${best.wf_windows || 0}구간</span>
+        </td>
+        <td class="num has-tip" data-tip="최대 낙폭(MDD): 보유 기간 중 겪었던 최대 하락폭">
+          <b style="color:#f87171; font-size:13px;">${pctCell(best.max_drawdown)}</b>
+        </td>
         <td class="num has-tip" data-tip="총 매매 횟수: 왕복 체결 횟수">${best.trade_count ?? "—"}회</td>
-        <td class="strat-note">${escapeHtml(comment)}</td>
+        <td class="strat-note" style="min-width:240px;">
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <div style="font-size:11.5px; color:#e2e8f0; font-weight:600;">🎯 ${escapeHtml(ruleSummary)}</div>
+            <div>${actionGuideChip}</div>
+          </div>
+        </td>
       </tr>`;
     })
     .join("");
@@ -6442,6 +6523,9 @@ function renderStrategy(data) {
 
   box.innerHTML = `
     ${asofBanner(asof)}
+
+    <!-- Tier 1 AI Strategy Timing Synthesis Briefing (100% Free Engine) -->
+    <div id="strategy-lab-tier1-briefing" style="margin: 12px 0 14px;"></div>
 
     <!-- 4-Step Intuitive Guide Deck -->
     <div class="strat-guide-grid">
@@ -6483,6 +6567,17 @@ function renderStrategy(data) {
       </div>
     </div>
 
+    <!-- Interactive Strategy Filter Bar -->
+    <div class="strat-filter-bar">
+      <button type="button" class="strat-filter-btn ${currentStrategyFilter === 'all' ? 'active' : ''}" data-strat-filter="all">전체 (20)</button>
+      <button type="button" class="strat-filter-btn ${currentStrategyFilter === 'high' ? 'active' : ''}" data-strat-filter="high">🟢 HIGH 최상 (${highCount})</button>
+      <button type="button" class="strat-filter-btn ${currentStrategyFilter === 'med' ? 'active' : ''}" data-strat-filter="med">🟡 MED/HIGH (${highCount + medCount})</button>
+      <button type="button" class="strat-filter-btn ${currentStrategyFilter === 'rsi' ? 'active' : ''}" data-strat-filter="rsi">⚡ RSI 과매도 (${rsiCount})</button>
+      <button type="button" class="strat-filter-btn ${currentStrategyFilter === 'bb' ? 'active' : ''}" data-strat-filter="bb">📊 볼린저 밴드 (${bbCount})</button>
+      <button type="button" class="strat-filter-btn ${currentStrategyFilter === 'ma' ? 'active' : ''}" data-strat-filter="ma">📈 이평선 교차 (${maCount})</button>
+      <button type="button" class="strat-filter-btn ${currentStrategyFilter === 'donchian' ? 'active' : ''}" data-strat-filter="donchian">📦 돈치안 박스권 (${donchianCount})</button>
+    </div>
+
     <div class="table-wrap tall"><table>
       <thead><tr>
         ${thTip("종목", "Quant TOP20 종목명과 KRX 일봉 데이터 축적 일수입니다.")}
@@ -6495,7 +6590,7 @@ function renderStrategy(data) {
         ${thTip("매매 횟수", "과거 3년간 발생한 총 왕복 매매 횟수입니다.")}
         ${thTip("전략 분석 & 매매 코멘트", "이 종목에 이 전략을 채택한 배경과 실전 매매 가이드입니다.")}
       </tr></thead>
-      <tbody>${body || "<tr><td colspan=9>TOP20 백테스트를 실행하세요.</td></tr>"}</tbody>
+      <tbody>${body || "<tr><td colspan=9 style='text-align:center; padding:30px; color:#94a3b8;'>해당 조건에 일치하는 종목이 없습니다.</td></tr>"}</tbody>
     </table></div>
 
     <!-- Friendly Glossary Box -->
@@ -6517,6 +6612,24 @@ function renderStrategy(data) {
       </div>
     </div>
   `;
+
+  box.querySelectorAll("[data-strat-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      currentStrategyFilter = btn.dataset.stratFilter;
+      renderStrategy(data);
+    });
+  });
+
+  box.querySelectorAll("tr.clickable").forEach((row) => {
+    row.addEventListener("click", () => {
+      const ticker = row.dataset.ticker;
+      if (ticker && typeof showStockPopup === "function") {
+        showStockPopup(ticker);
+      }
+    });
+  });
+
+  loadStrategyTier1Briefing().catch(() => {});
 }
 
 function renderPortfolio(data) {
