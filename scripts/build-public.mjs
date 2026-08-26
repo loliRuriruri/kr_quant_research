@@ -6,7 +6,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, copyFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, copyFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +15,8 @@ const dist = join(root, "dist-public");
 const publicDir = join(root, "public");
 const staticDir = join(root, "src", "kr_quant", "web", "static");
 const py = join(root, ".venv", "Scripts", "python.exe");
+const reuseExistingData = process.argv.includes("--reuse-data");
+const preservedData = join(root, ".runtime", "public-data-reuse");
 
 const FRONTEND_FILES = ["index.html", "styles.css", "app.js"];
 const PUBLIC_META_FILES = ["_headers", "_redirects", "robots.txt"];
@@ -158,10 +160,26 @@ function writeBuildInfo() {
   writeFileSync(join(dist, "build.json"), JSON.stringify(info, null, 2));
 }
 
+if (reuseExistingData) {
+  const currentData = join(dist, "data");
+  const manifest = join(currentData, "api", "manifest.json");
+  if (!existsSync(manifest)) {
+    throw new Error("code-only build requires an existing dist-public/data/api/manifest.json snapshot");
+  }
+  rmSync(preservedData, { recursive: true, force: true });
+  mkdirSync(dirname(preservedData), { recursive: true });
+  cpSync(currentData, preservedData, { recursive: true });
+}
 if (existsSync(dist)) rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 copyAllowlisted();
-exportSnapshot();
+if (reuseExistingData) {
+  cpSync(preservedData, join(dist, "data"), { recursive: true });
+  rmSync(preservedData, { recursive: true, force: true });
+  console.log("reused existing public data snapshot; frontend files refreshed");
+} else {
+  exportSnapshot();
+}
 writeBuildInfo();
 scanSecrets();
 console.log(`dist-public ready (${walk(dist).length} files)`);

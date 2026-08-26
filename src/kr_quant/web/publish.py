@@ -214,24 +214,71 @@ def publication_readiness(root: Path | None = None) -> dict[str, Any]:
     return evaluate_publication_readiness(quality, fresh, eligible_rows=eligible_rows)
 
 
-def publish_public_snapshot(*, deploy: bool = True) -> dict[str, Any]:
+def evaluate_manual_override(readiness: dict[str, Any]) -> dict[str, Any]:
+    """Allow an explicit local override for warnings, never for unusable data."""
+    errors = list(readiness.get("errors") or [])
+    hard_errors = {
+        "QUALITY_REPORT_MISSING",
+        "LATEST_RESULTS_MISSING",
+        "PUBLICATION_SOURCE_READ_FAILED",
+        "NO_ELIGIBLE_CANDIDATES",
+    }
+    blocking = [error for error in errors if error in hard_errors]
+    source_mode = str(readiness.get("source_mode") or "").strip().lower()
+    if source_mode and source_mode != "live":
+        blocking.append("EXPLICIT_NON_LIVE_SOURCE")
+    return {
+        "allowed": not blocking,
+        "blocking_errors": list(dict.fromkeys(blocking)),
+        "accepted_warnings": errors if not blocking else [],
+        "legacy_source_unknown": not source_mode,
+    }
+
+
+def publish_public_snapshot(
+    *,
+    deploy: bool = True,
+    allow_warnings: bool = False,
+    code_only: bool = False,
+) -> dict[str, Any]:
     cfg = load_publish_config()
     root = _root()
     readiness = publication_readiness(root)
-    if not readiness.get("ready"):
-        error = "PUBLICATION_BLOCKED: " + ", ".join(readiness.get("errors") or ["UNKNOWN_GUARD_FAILURE"])
-        _safe_print("[BLOCKED] " + error, flush=True)
-        _STATE.update(
-            {
-                "last_ok": False,
-                "last_at": datetime.now(timezone.utc).isoformat(),
-                "last_error": error,
-                "last_log": json.dumps(readiness, ensure_ascii=False),
+    override = evaluate_manual_override(readiness) if allow_warnings else None
+    if not code_only and not readiness.get("ready"):
+        if allow_warnings and override and override.get("allowed"):
+            accepted = ", ".join(override.get("accepted_warnings") or [])
+            _safe_print("[MANUAL OVERRIDE] 경고 포함 수동 배포: " + accepted, flush=True)
+        else:
+            errors = readiness.get("errors") or ["UNKNOWN_GUARD_FAILURE"]
+            if allow_warnings and override and override.get("blocking_errors"):
+                errors = override["blocking_errors"]
+            error = "PUBLICATION_BLOCKED: " + ", ".join(errors)
+            _safe_print("[BLOCKED] " + error, flush=True)
+            _STATE.update(
+                {
+                    "last_ok": False,
+                    "last_at": datetime.now(timezone.utc).isoformat(),
+                    "last_error": error,
+                    "last_log": json.dumps({"readiness": readiness, "override": override}, ensure_ascii=False),
+                }
+            )
+            return {
+                "ok": False,
+                "step": "guard",
+                "error": error,
+                "readiness": readiness,
+                "override": override,
+                "cfg": cfg,
             }
-        )
-        return {"ok": False, "step": "guard", "error": error, "readiness": readiness, "cfg": cfg}
-    _safe_print("[1/2] 로컬 스냅샷 생성 중 (1분 안팎 걸릴 수 있습니다)...", flush=True)
-    build = _run([_node(), str(root / "scripts" / "build-public.mjs")], root, timeout=300)
+    if code_only:
+        _safe_print("[1/2] 기존 공개 데이터를 유지하고 웹 패치만 빌드 중...", flush=True)
+    else:
+        _safe_print("[1/2] 로컬 스냅샷 생성 중 (1분 안팎 걸릴 수 있습니다)...", flush=True)
+    build_cmd = [_node(), str(root / "scripts" / "build-public.mjs")]
+    if code_only:
+        build_cmd.append("--reuse-data")
+    build = _run(build_cmd, root, timeout=300)
     log = (build.stdout or "") + "\n" + (build.stderr or "")
     if build.stdout:
         _safe_print(build.stdout.strip()[-500:], flush=True)
@@ -243,7 +290,15 @@ def publish_public_snapshot(*, deploy: bool = True) -> dict[str, Any]:
 
     if not deploy:
         _STATE.update({"last_ok": True, "last_at": datetime.now(timezone.utc).isoformat(), "last_error": None, "last_log": log[-2000:]})
-        return {"ok": True, "step": "build", "deployed": False, "log": log[-400:]}
+        return {
+            "ok": True,
+            "step": "build",
+            "deployed": False,
+            "forced": bool(allow_warnings and not readiness.get("ready")),
+            "code_only": code_only,
+            "readiness": readiness,
+            "log": log[-400:],
+        }
 
     _safe_print("[2/2] Cloudflare Pages 업로드 중...", flush=True)
     deploy_cmd = [
@@ -282,7 +337,15 @@ def publish_public_snapshot(*, deploy: bool = True) -> dict[str, Any]:
     status_path = root / "logs" / "public_publish.json"
     status_path.parent.mkdir(parents=True, exist_ok=True)
     status_path.write_text(json.dumps(publish_status(), ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"ok": ok, "step": "deploy", "url": url if ok else None, "error": err}
+    return {
+        "ok": ok,
+        "step": "deploy",
+        "url": url if ok else None,
+        "error": err,
+        "forced": bool(allow_warnings and not readiness.get("ready")),
+        "code_only": code_only,
+        "readiness": readiness,
+    }
 
 
 def maybe_publish_after_job(kind: str) -> dict[str, Any] | None:
@@ -320,23 +383,39 @@ def get_deploy_status() -> dict[str, Any]:
     return status
 
 
-def _deploy_worker() -> None:
+def _deploy_worker(allow_warnings: bool = False, code_only: bool = False) -> None:
     try:
         with _DEPLOY_LOCK:
             _DEPLOY_STATUS.update({
                 "state": "running",
-                "message": "로컬 스냅샷 생성 및 검증 중...",
-                "detail": "2,700여 개 전 종목 및 퀀트 API 스냅샷을 생성하고 있습니다.",
+                "message": "웹 패치 빌드 중..." if code_only else "로컬 스냅샷 생성 및 검증 중...",
+                "detail": (
+                    "기존 공개 데이터는 유지하고 HTML/CSS/JavaScript만 최신화합니다."
+                    if code_only
+                    else "2,700여 개 전 종목 및 퀀트 API 스냅샷을 생성하고 있습니다."
+                ),
                 "started_at": datetime.now(timezone.utc).isoformat(),
                 "finished_at": None,
             })
-        result = publish_public_snapshot(deploy=True)
+        result = publish_public_snapshot(
+            deploy=True,
+            allow_warnings=allow_warnings,
+            code_only=code_only,
+        )
         with _DEPLOY_LOCK:
             if result.get("ok"):
                 _DEPLOY_STATUS.update({
                     "state": "success",
                     "message": "공개판 갱신 완료",
-                    "detail": "공개 사이트에서 최신 버전을 확인할 수 있습니다.",
+                    "detail": (
+                        "웹 코드 패치를 배포했습니다. 공개 데이터 기준일은 기존과 동일합니다."
+                        if result.get("code_only")
+                        else (
+                            "경고를 확인한 수동 예외 배포입니다. 공개 화면의 기준일과 품질 경고를 확인하세요."
+                            if result.get("forced")
+                            else "공개 사이트에서 최신 버전을 확인할 수 있습니다."
+                        )
+                    ),
                     "finished_at": datetime.now(timezone.utc).isoformat(),
                     "last_url": result.get("url"),
                 })
@@ -357,17 +436,25 @@ def _deploy_worker() -> None:
             })
 
 
-def start_manual_deploy() -> dict[str, Any]:
+def start_manual_deploy(*, allow_warnings: bool = False, code_only: bool = False) -> dict[str, Any]:
     with _DEPLOY_LOCK:
         if _DEPLOY_STATUS.get("state") == "running":
             return get_deploy_status()
         _DEPLOY_STATUS.update({
             "state": "running",
             "message": "갱신·배포 작업을 시작합니다...",
-            "detail": "작업이 백그라운드에서 진행됩니다.",
+            "detail": (
+                "기존 공개 데이터는 유지하고 웹 코드만 최신화합니다."
+                if code_only
+                else (
+                    "품질 경고를 사용자가 확인한 수동 예외 배포입니다."
+                    if allow_warnings
+                    else "작업이 백그라운드에서 진행됩니다."
+                )
+            ),
             "started_at": datetime.now(timezone.utc).isoformat(),
             "finished_at": None,
         })
-    thread = threading.Thread(target=_deploy_worker, daemon=True)
+    thread = threading.Thread(target=_deploy_worker, args=(allow_warnings, code_only), daemon=True)
     thread.start()
     return get_deploy_status()

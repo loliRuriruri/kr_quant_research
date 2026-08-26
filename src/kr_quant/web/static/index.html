@@ -1275,9 +1275,12 @@
           <span>4 · Cloudflare 공개 배포</span>
         </div>
         <div class="manual-deploy-actions">
-          <button class="primary" type="button" id="run-manual-deploy">다시 갱신·배포</button>
+          <button class="primary" type="button" id="run-manual-deploy">웹 패치만 배포</button>
+          <button class="ghost-btn" type="button" id="run-manual-deploy-data">최신 데이터 검사·배포</button>
+          <button class="ghost-btn" type="button" id="run-manual-deploy-force">경고 확인 후 수동 배포</button>
           <a class="ghost-btn" href="https://korea-quant-research.pages.dev/" target="_blank" rel="noopener noreferrer">공개 사이트 열기</a>
         </div>
+        <p class="hint" style="margin-top:8px;">웹 패치만 배포하면 기존 공개 데이터는 유지하고 화면 코드만 최신화합니다. 데이터 배포는 품질 검사를 적용하며, 수동 예외도 데모·빈 결과는 차단합니다.</p>
         <div class="deploy-progress" id="deploy-progress" data-state="idle">
           <span class="deploy-progress-dot"></span>
           <div class="deploy-progress-info">

@@ -407,3 +407,7 @@ def test_deploy_status_and_public_block():
     # Test blocked in public mode
     blocked = client.post('/api/deploy/run', headers={'cf-connecting-ip': '203.0.113.10'})
     assert blocked.status_code == 403
+    blocked_force = client.post('/api/deploy/run?force=true', headers={'cf-connecting-ip': '203.0.113.10'})
+    assert blocked_force.status_code == 403
+    blocked_code = client.post('/api/deploy/run?code_only=true', headers={'cf-connecting-ip': '203.0.113.10'})
+    assert blocked_code.status_code == 403

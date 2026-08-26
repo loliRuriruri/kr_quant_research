@@ -11618,6 +11618,8 @@ let deployPollTimer = null;
 async function refreshDeployStatus() {
   const elProgress = document.querySelector("#deploy-progress");
   const elBtn = document.querySelector("#run-manual-deploy");
+  const elDataBtn = document.querySelector("#run-manual-deploy-data");
+  const elForceBtn = document.querySelector("#run-manual-deploy-force");
   const elTitle = document.querySelector("#deploy-status-title");
   const elDetail = document.querySelector("#deploy-status-detail");
   if (!elProgress || !elBtn) return;
@@ -11637,6 +11639,8 @@ async function refreshDeployStatus() {
 function renderDeployStatus(payload) {
   const elProgress = document.querySelector("#deploy-progress");
   const elBtn = document.querySelector("#run-manual-deploy");
+  const elDataBtn = document.querySelector("#run-manual-deploy-data");
+  const elForceBtn = document.querySelector("#run-manual-deploy-force");
   const elTitle = document.querySelector("#deploy-status-title");
   const elDetail = document.querySelector("#deploy-status-detail");
   const stepList = document.querySelectorAll(".deploy-step-list span");
@@ -11665,16 +11669,18 @@ function renderDeployStatus(payload) {
   }
 
   const detail = state === "success"
-    ? `${formattedTime ? formattedTime + " · " : ""}공개 사이트에서 최신 버전을 확인할 수 있습니다.`
+    ? `${formattedTime ? formattedTime + " · " : ""}${payload.detail || "공개 사이트에서 최신 버전을 확인할 수 있습니다."}`
     : state === "running"
-      ? `${formattedTime ? formattedTime + " · " : ""}스냅샷 생성 및 Cloudflare 업로드가 진행 중입니다 (약 1분 소요).`
+      ? `${formattedTime ? formattedTime + " · " : ""}${payload.detail || "빌드 및 Cloudflare 업로드가 진행 중입니다 (약 1분 소요)."}`
       : payload.detail || payload.message || "자동 갱신과 별도로 필요할 때 언제든 실행할 수 있습니다.";
 
   if (elTitle) elTitle.textContent = stateLabel;
   if (elDetail) elDetail.textContent = detail;
 
   elBtn.disabled = state === "running";
-  elBtn.textContent = state === "running" ? "갱신·배포 진행 중..." : state === "success" ? "다시 갱신·배포" : "지금 갱신·배포";
+  if (elDataBtn) elDataBtn.disabled = state === "running";
+  if (elForceBtn) elForceBtn.disabled = state === "running";
+  elBtn.textContent = state === "running" ? "배포 진행 중..." : "웹 패치만 배포";
 
   stepList.forEach((sp, idx) => {
     sp.classList.remove("active");
@@ -11686,13 +11692,27 @@ function renderDeployStatus(payload) {
   });
 }
 
-async function runManualDeploy() {
+async function runManualDeploy(mode = "code") {
   const elBtn = document.querySelector("#run-manual-deploy");
+  const elDataBtn = document.querySelector("#run-manual-deploy-data");
+  const elForceBtn = document.querySelector("#run-manual-deploy-force");
+  const force = mode === "force";
+  const codeOnly = mode === "code";
+  if (force) {
+    const accepted = window.confirm(
+      "현재 품질 경고와 오래된 기준일을 그대로 공개합니다. 자동 배포 안전기준은 유지되며, 데모·빈 결과는 계속 차단됩니다. 경고 포함 수동 배포를 진행할까요?"
+    );
+    if (!accepted) return;
+  }
   if (elBtn) elBtn.disabled = true;
-  renderDeployStatus({ state: "running", message: "배포 요청 중...", started_at: new Date().toISOString(), running: true });
+  if (elDataBtn) elDataBtn.disabled = true;
+  if (elForceBtn) elForceBtn.disabled = true;
+  const message = codeOnly ? "웹 패치 배포 요청 중..." : force ? "경고 포함 데이터 배포 요청 중..." : "최신 데이터 배포 요청 중...";
+  renderDeployStatus({ state: "running", message, started_at: new Date().toISOString(), running: true });
 
   try {
-    const payload = await api("/api/deploy/run", { method: "POST" });
+    const query = codeOnly ? "?code_only=true" : force ? "?force=true" : "";
+    const payload = await api(`/api/deploy/run${query}`, { method: "POST" });
     renderDeployStatus(payload);
     clearTimeout(deployPollTimer);
     deployPollTimer = setTimeout(refreshDeployStatus, 1500);
@@ -11703,8 +11723,16 @@ async function runManualDeploy() {
 
 document.addEventListener("DOMContentLoaded", () => {
   const btn = document.querySelector("#run-manual-deploy");
+  const dataBtn = document.querySelector("#run-manual-deploy-data");
+  const forceBtn = document.querySelector("#run-manual-deploy-force");
   if (btn) {
-    btn.addEventListener("click", () => runManualDeploy().catch((err) => alert(err.message)));
+    btn.addEventListener("click", () => runManualDeploy("code").catch((err) => alert(err.message)));
+  }
+  if (dataBtn) {
+    dataBtn.addEventListener("click", () => runManualDeploy("data").catch((err) => alert(err.message)));
+  }
+  if (forceBtn) {
+    forceBtn.addEventListener("click", () => runManualDeploy("force").catch((err) => alert(err.message)));
   }
 });
 

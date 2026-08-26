@@ -2964,12 +2964,12 @@ def api_deploy_status() -> dict[str, Any]:
 
 @app.post("/api/deploy/run")
 @app.post("/api/publish/run")
-def api_deploy_run(request: Request) -> dict[str, Any]:
+def api_deploy_run(request: Request, force: bool = False, code_only: bool = False) -> dict[str, Any]:
     if public_share_mode(request):
         raise HTTPException(403, "공개 웹에서는 수동 배포를 실행할 수 없습니다.")
     from kr_quant.web.publish import start_manual_deploy
 
-    return start_manual_deploy()
+    return start_manual_deploy(allow_warnings=force, code_only=code_only)
 
 
 def port_in_use(host: str, port: int) -> bool:

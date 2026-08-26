@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
+from types import SimpleNamespace
+
 import pytest
 
 from kr_quant.web import publish
-from kr_quant.web.publish import URL_RE, evaluate_publication_readiness, load_publish_config
+from kr_quant.web.publish import URL_RE, evaluate_manual_override, evaluate_publication_readiness, load_publish_config
 
 
 def test_publish_config_defaults_to_pages_project():
@@ -101,3 +103,54 @@ def test_publication_guard_stops_before_build_or_deploy(monkeypatch, tmp_path):
     assert result["ok"] is False
     assert result["step"] == "guard"
     assert "SOURCE_MODE_NOT_LIVE" in result["error"]
+
+
+def test_manual_override_accepts_legacy_stale_warning_but_not_empty_or_demo():
+    legacy = evaluate_manual_override(
+        {
+            "ready": False,
+            "errors": ["SOURCE_MODE_NOT_LIVE", "QUALITY_NOT_SUCCESS", "PRICE_DATA_STALE"],
+            "source_mode": None,
+            "eligible_rows": 275,
+        }
+    )
+    assert legacy["allowed"] is True
+    assert legacy["legacy_source_unknown"] is True
+
+    empty = evaluate_manual_override(
+        {"ready": False, "errors": ["NO_ELIGIBLE_CANDIDATES"], "source_mode": "live", "eligible_rows": 0}
+    )
+    assert empty["allowed"] is False
+
+    demo = evaluate_manual_override(
+        {"ready": False, "errors": ["SOURCE_MODE_NOT_LIVE"], "source_mode": "demo", "eligible_rows": 10}
+    )
+    assert demo["allowed"] is False
+    assert "EXPLICIT_NON_LIVE_SOURCE" in demo["blocking_errors"]
+
+
+def test_code_only_build_reuses_public_data_and_bypasses_data_guard(monkeypatch, tmp_path):
+    commands = []
+    monkeypatch.setattr(publish, "_root", lambda: tmp_path)
+    monkeypatch.setattr(publish, "load_publish_config", lambda: {"project": "test", "branch": "main"})
+    monkeypatch.setattr(
+        publish,
+        "publication_readiness",
+        lambda root=None: {
+            "ready": False,
+            "errors": ["PRICE_DATA_STALE", "AS_OF_DATE_MISMATCH"],
+            "source_mode": "live",
+            "eligible_rows": 10,
+        },
+    )
+
+    def fake_run(cmd, cwd, timeout):
+        commands.append(cmd)
+        return SimpleNamespace(returncode=0, stdout="dist-public ready", stderr="")
+
+    monkeypatch.setattr(publish, "_run", fake_run)
+    result = publish.publish_public_snapshot(deploy=False, code_only=True)
+
+    assert result["ok"] is True
+    assert result["code_only"] is True
+    assert "--reuse-data" in commands[0]
