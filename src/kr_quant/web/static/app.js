@@ -2332,7 +2332,7 @@ function glanceRankBadge(rank) {
 async function loadGlanceTop3() {
   const box = $("#dash-seasonality-banner");
   if (!box) return;
-  box.innerHTML = `<div class="hint" style="margin:0;">오늘의 통계적 관찰 Top 3를 불러오는 중…</div>`;
+  box.innerHTML = `<div class="hint" style="margin:0;">오늘의 시즌 모멘텀 Top 3를 불러오는 중…</div>`;
   try {
     const res = await api("/api/seasonality/highlights");
     const data = res.data || {};
@@ -2346,10 +2346,10 @@ async function loadGlanceTop3() {
     if (!picks.length) {
       box.innerHTML = `
         <div class="seasonality-widget-head">
-          <div class="seasonality-widget-title">⚡ 오늘의 통계적 관찰 Top 3</div>
+          <div class="seasonality-widget-title">⚡ 오늘의 시즌 모멘텀 Top 3</div>
           <button type="button" class="ghost small" id="btn-open-seasonality-from-glance">계절성 화면 →</button>
         </div>
-        <p class="hint" style="margin:0;">진입 유효 관찰 종목이 없습니다. 계절성 화면에서 필터를 완화해 보세요.</p>
+        <p class="hint" style="margin:0;">진입 유효 시즌 모멘텀 종목이 없습니다. 계절성 화면에서 필터를 완화해 보세요.</p>
       `;
       $("#btn-open-seasonality-from-glance")?.addEventListener("click", () => switchView("seasonality"));
       return;
@@ -2386,7 +2386,7 @@ async function loadGlanceTop3() {
 
     box.innerHTML = `
       <div class="seasonality-widget-head">
-        <div class="seasonality-widget-title">⚡ 오늘의 통계적 관찰 Top 3</div>
+        <div class="seasonality-widget-title">⚡ 오늘의 시즌 모멘텀 Top 3</div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">전종목 스캔 ${scanned.toLocaleString("ko-KR")}/${listed.toLocaleString("ko-KR")}${mktBits ? ` · ${mktBits}` : ""}</span>
           ${asOf ? `<span class="meta">시세 ${escapeHtml(asOf)}</span>` : ""}
@@ -2400,7 +2400,7 @@ async function loadGlanceTop3() {
       card.addEventListener("click", () => openGlancePlaybook(card.dataset.ticker, card.dataset.patternId));
     });
   } catch (err) {
-    box.innerHTML = `<p class="hint" style="margin:0;">통계적 관찰 Top 3를 불러오지 못했습니다. ${escapeHtml(err.message || "")}</p>`;
+    box.innerHTML = `<p class="hint" style="margin:0;">시즌 모멘텀 Top 3를 불러오지 못했습니다. ${escapeHtml(err.message || "")}</p>`;
   }
 }
 
@@ -4248,7 +4248,7 @@ async function loadSeasonalityTier1Briefing() {
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">📅</span>
-              <span style="font-size:13px; font-weight:800; color:#38bdf8;">30개년 빅데이터 계절성 & 캘린더 모멘텀 AI 브리핑</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">30개년 빅데이터 시즌 모멘텀 AI 브리핑</span>
               <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
             </div>
             <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
@@ -10495,7 +10495,7 @@ async function loadPreEntryView() {
   if (!container) return;
   bindPreEntryClicks();
 
-  container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">오늘의 통계적 관찰 최우수 종목 및 테마 기여도 분석 중...</div>`;
+  container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">오늘의 시즌 모멘텀 최우수 종목 및 테마 기여도 분석 중...</div>`;
 
   // TOP 10 is a market-wide canonical list. A stock search belongs to the
   // discovery detail tabs and must not silently narrow this list.

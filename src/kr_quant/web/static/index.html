@@ -29,7 +29,7 @@
     <button class="nav-btn" data-view="flow" data-tip="토스 투자자 매매에서 외인·기관이 같이 산 쌍끌이와 사모펀드 순매수입니다."><span class="nav-icon">⚡</span><span>쌍끌이 수급</span></button>
     <button class="nav-btn" data-view="empty" data-tip="외인·기관 빈집 털이 및 수급 복귀 조짐 종목 발굴입니다."><span class="nav-icon">🏚️</span><span>빈집 발굴</span></button>
     <button class="nav-btn" data-view="trade" data-tip="퀀트 TOP100 밖 수급 후보에 일봉 스토캐스틱·일목을 붙인 연구 화면입니다."><span class="nav-icon">🎯</span><span>트레이딩 랩</span></button>
-    <button class="nav-btn" data-view="seasonality" data-tip="12개월 계절성 캘린더 아노말리 및 이벤트 드리븐(폭염/난방/갤럭시/배당) 고승률 선취매 스크리너입니다."><span class="nav-icon">📅</span><span>계절성·캘린더</span></button>
+    <button class="nav-btn" data-view="seasonality" data-tip="12개월 캘린더 모멘텀 아노말리 및 이벤트 드리븐(폭염/난방/갤럭시/배당) 고승률 스크리너입니다."><span class="nav-icon">📅</span><span>시즌 모멘텀·캘린더</span></button>
     <button class="nav-btn" data-view="toss" data-tip="토스 급상승·급하락·거래대금 시세 랭킹입니다."><span class="nav-icon">📱</span><span>토스 랭킹</span></button>
     <button class="nav-btn" data-view="watch" data-tip="나만의 포트폴리오 팩터 분석 및 발간된 AI 심층 리포트 통합 보관함입니다."><span class="nav-icon">⭐</span><span>관심종목 & AI리포트</span></button>
     <div class="nav-group">🏛️ Global Research</div>
@@ -569,7 +569,7 @@
       <article class="card">
         <div class="card-h">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <h2 style="margin:0;">📅 계절성 탐색 & AI 역추적 스크리너 (Specification v1.1)</h2>
+            <h2 style="margin:0;">📅 시즌 모멘텀 & AI 역추적 스크리너 (Specification v1.1)</h2>
             <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">가격 선행형 Discovery · AI 원인 규명</span>
             <button type="button" id="btn-open-momentum-manager" class="primary" style="height:32px; padding:0 12px; font-size:12px; font-weight:800; border-radius:6px; background:linear-gradient(135deg, #0284c7, #0369a1); border:1px solid #38bdf8; color:#fff; display:inline-flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.3);">
               <span>🎯</span>
@@ -585,10 +585,10 @@
 
         <!-- 5 Subtabs Bar (Strict single line, no wrapping) -->
         <div class="inst-subtabs-bar" id="seasonality-subtabs" style="display:flex; gap:8px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px; margin-bottom:16px; overflow-x:auto; flex-wrap:nowrap;">
-          <button type="button" class="inst-subtab-btn active" id="tab-v11-pre-entry" data-subtab="pre-entry" style="font-weight:800; border-color:rgba(234,179,8,0.5); color:#facc15;">🏆 오늘의 관찰 TOP 10</button>
+          <button type="button" class="inst-subtab-btn active" id="tab-v11-pre-entry" data-subtab="pre-entry" style="font-weight:800; border-color:rgba(234,179,8,0.5); color:#facc15;">🏆 오늘의 시즌 모멘텀 TOP 10</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-discovery" data-subtab="discovery">🚀 90일 진입 디스커버리</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-explanation" data-subtab="explanation">🤖 AI 이벤트 역추적</button>
-          <button type="button" class="inst-subtab-btn" id="tab-v11-calendar" data-subtab="calendar">📅 이벤트 캘린더 (18개)</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-calendar" data-subtab="calendar">📅 시즌 이벤트 캘린더 (18개)</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-heatmap" data-subtab="heatmap">📊 12개월 히트맵</button>
         </div>
 
