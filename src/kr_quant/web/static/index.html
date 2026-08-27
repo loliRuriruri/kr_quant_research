@@ -568,9 +568,13 @@
 
       <article class="card">
         <div class="card-h">
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <h2 style="margin:0;">📅 계절성 탐색 & AI 역추적 스크리너 (Specification v1.1)</h2>
-            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">가격 선행형 Discovery · AI 원인 규명</span>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">가격 선행형 Discovery · AI 원인 규명</span>
+            <button type="button" id="btn-open-momentum-manager" class="primary" style="height:32px; padding:0 12px; font-size:12px; font-weight:800; border-radius:6px; background:linear-gradient(135deg, #0284c7, #0369a1); border:1px solid #38bdf8; color:#fff; display:inline-flex; align-items:center; gap:6px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+              <span>🎯</span>
+              <span>종목 관리 (캘린더 모멘텀)</span>
+            </button>
           </div>
           <div class="autocomplete-wrap" style="max-width: 260px;">
             <input id="seasonality-q" type="text" autocomplete="off" placeholder="KOSPI/KOSDAQ 전종목 검색" />
@@ -579,18 +583,17 @@
         </div>
         <p class="hint">가격 데이터가 먼저 말하게 하고, 반복 상승 구간의 공통 이벤트를 AI가 역추적하여 올해 유효성과 무효화 조건을 도출합니다.</p>
 
-        <!-- 6 Subtabs Bar -->
-        <div class="inst-subtabs-bar" id="seasonality-subtabs" style="display:flex; gap:8px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:12px; margin-bottom:16px; overflow-x:auto;">
-          <button type="button" class="inst-subtab-btn active" id="tab-v11-momentum" data-subtab="momentum" style="font-weight:800; border-color:rgba(56,189,248,0.5); color:#38bdf8;">🎯 캘린더 모멘텀 포트폴리오 & 엑시트 관리</button>
-          <button type="button" class="inst-subtab-btn" id="tab-v11-pre-entry" data-subtab="pre-entry" style="font-weight:800; border-color:rgba(234,179,8,0.5); color:#facc15;">🏆 오늘의 통계적 관찰 후보 TOP 10</button>
-          <button type="button" class="inst-subtab-btn" id="tab-v11-discovery" data-subtab="discovery">🚀 90일 진입 디스커버리 TOP</button>
-          <button type="button" class="inst-subtab-btn" id="tab-v11-explanation" data-subtab="explanation">🤖 AI 이벤트 역추적 & 설명</button>
-          <button type="button" class="inst-subtab-btn" id="tab-v11-calendar" data-subtab="calendar">📅 10개 분야 · 18개 이벤트 캘린더</button>
-          <button type="button" class="inst-subtab-btn" id="tab-v11-heatmap" data-subtab="heatmap">📊 12개월 히트맵 스크리너</button>
+        <!-- 5 Subtabs Bar (Strict single line, no wrapping) -->
+        <div class="inst-subtabs-bar" id="seasonality-subtabs" style="display:flex; gap:8px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px; margin-bottom:16px; overflow-x:auto; flex-wrap:nowrap;">
+          <button type="button" class="inst-subtab-btn active" id="tab-v11-pre-entry" data-subtab="pre-entry" style="font-weight:800; border-color:rgba(234,179,8,0.5); color:#facc15;">🏆 오늘의 관찰 TOP 10</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-discovery" data-subtab="discovery">🚀 90일 진입 디스커버리</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-explanation" data-subtab="explanation">🤖 AI 이벤트 역추적</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-calendar" data-subtab="calendar">📅 이벤트 캘린더 (18개)</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-heatmap" data-subtab="heatmap">📊 12개월 히트맵</button>
         </div>
 
         <!-- PANE -1: Calendar Momentum Real-Money Portfolio Tracker -->
-        <div id="pane-v11-momentum">
+        <div id="pane-v11-momentum" class="hidden">
           <!-- Top 4 KPIs -->
           <div class="kpis" id="momentum-kpis" style="margin:0 0 16px;"></div>
 
@@ -666,7 +669,7 @@
         </div>
 
         <!-- PANE 0: Today's Pre-Entry TOP 10 Recommendation Hero View -->
-        <div id="pane-v11-pre-entry" class="hidden">
+        <div id="pane-v11-pre-entry">
           <!-- Theme Seasonality Return Contribution Donut Widget -->
           <div id="theme-donut-widget-card" class="theme-donut-container">
             <div class="donut-chart-box">

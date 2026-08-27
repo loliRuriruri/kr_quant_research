@@ -11094,7 +11094,7 @@ async function loadAIExplanations() {
 }
 
 function setupV11SeasonalityUI() {
-  const tabMom = $("#tab-v11-momentum");
+  const btnMom = $("#btn-open-momentum-manager");
   const tabPre = $("#tab-v11-pre-entry");
   const tabDisc = $("#tab-v11-discovery");
   const tabExpl = $("#tab-v11-explanation");
@@ -11110,11 +11110,22 @@ function setupV11SeasonalityUI() {
 
   function switchV11Subtab(subtab) {
     currentV11Subtab = subtab;
-    [tabMom, tabPre, tabDisc, tabExpl, tabCal, tabHeat].forEach((t) => t?.classList.remove("active"));
+    [tabPre, tabDisc, tabExpl, tabCal, tabHeat].forEach((t) => t?.classList.remove("active"));
     [paneMom, panePre, paneDisc, paneExpl, paneCal, paneHeat].forEach((p) => p?.classList.add("hidden"));
 
+    if (btnMom) {
+      if (subtab === "momentum") {
+        btnMom.style.background = "linear-gradient(135deg, #0ea5e9, #0284c7)";
+        btnMom.style.borderColor = "#38bdf8";
+        btnMom.style.boxShadow = "0 0 12px rgba(56, 189, 248, 0.5)";
+      } else {
+        btnMom.style.background = "linear-gradient(135deg, #0284c7, #0369a1)";
+        btnMom.style.borderColor = "#38bdf8";
+        btnMom.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)";
+      }
+    }
+
     if (subtab === "momentum") {
-      tabMom?.classList.add("active");
       paneMom?.classList.remove("hidden");
       loadCalendarMomentumPortfolio().catch(() => {});
     } else if (subtab === "pre-entry") {
@@ -11140,7 +11151,13 @@ function setupV11SeasonalityUI() {
     }
   }
 
-  tabMom?.addEventListener("click", () => switchV11Subtab("momentum"));
+  btnMom?.addEventListener("click", () => {
+    if (currentV11Subtab === "momentum") {
+      switchV11Subtab("pre-entry");
+    } else {
+      switchV11Subtab("momentum");
+    }
+  });
   tabPre?.addEventListener("click", () => switchV11Subtab("pre-entry"));
   tabDisc?.addEventListener("click", () => switchV11Subtab("discovery"));
   tabExpl?.addEventListener("click", () => switchV11Subtab("explanation"));
