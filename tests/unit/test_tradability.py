@@ -10,6 +10,7 @@ from kr_quant.ingest.live import build_live_master
 from kr_quant.universe.builder import apply_universe_gates, classify_security
 from kr_quant.universe.tradability import (
     evaluate_candidate_tradability,
+    evaluate_event_universe_tradability,
     krx_risk_class_excluded,
     normalize_krx_risk_class,
     trading_status_exclusion_reason,
@@ -127,6 +128,40 @@ def test_candidate_gate_fails_closed_when_required_source_is_missing():
     assert not result.ready
     assert result.allowed_tickers == frozenset()
     assert "KRX_RISK_MASTER_NOT_READY" in result.errors
+
+
+def test_event_universe_keeps_incomplete_research_rows_but_blocks_halts():
+    prices = pd.DataFrame(
+        [
+            {"ticker": "060720", "trade_date": date(2026, 8, 25), "close": 12_000, "volume": 100},
+            {"ticker": "085670", "trade_date": date(2026, 8, 25), "close": 7_000, "volume": 100},
+        ]
+    )
+    scored = pd.DataFrame(
+        [
+            {
+                "ticker": "060720",
+                "universe_eligible": False,
+                "exclusion_reasons": ["CORE_DATA_INCOMPLETE", "RECONCILIATION_FAIL"],
+            },
+            {
+                "ticker": "085670",
+                "universe_eligible": False,
+                "exclusion_reasons": ["TRADING_HALT", "CORE_DATA_INCOMPLETE"],
+            },
+        ]
+    )
+    master = pd.DataFrame(
+        [
+            {"ticker": "060720", "sect": "중견기업부"},
+            {"ticker": "085670", "sect": "우량기업부"},
+        ]
+    )
+
+    result = evaluate_event_universe_tradability(prices, scored, master)
+
+    assert result.ready
+    assert result.allowed_tickers == frozenset({"060720"})
 
 
 def test_required_status_feed_fails_closed_when_missing():

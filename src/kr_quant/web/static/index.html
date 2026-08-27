@@ -584,7 +584,7 @@
           <button type="button" class="inst-subtab-btn active" id="tab-v11-pre-entry" data-subtab="pre-entry" style="font-weight:800; border-color:rgba(234,179,8,0.5); color:#facc15;">🏆 오늘의 선취매 TOP 10</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-discovery" data-subtab="discovery">🚀 90일 진입 디스커버리 TOP</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-explanation" data-subtab="explanation">🤖 AI 이벤트 역추적 & 설명</button>
-          <button type="button" class="inst-subtab-btn" id="tab-v11-calendar" data-subtab="calendar">📅 10대 정량 이벤트 캘린더</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-calendar" data-subtab="calendar">📅 10개 분야 · 18개 이벤트 캘린더</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-heatmap" data-subtab="heatmap">📊 12개월 히트맵 스크리너</button>
         </div>
 
@@ -751,7 +751,7 @@
               <button type="button" class="preset-chip-btn" data-cal-horizon="90">🚀 90일 이내 (3분기)</button>
               <button type="button" class="preset-chip-btn" data-cal-horizon="365">👑 연간 전체 (365일)</button>
             </div>
-            <span class="chip" style="margin-left:auto; background:rgba(56,189,248,0.15); color:#38bdf8;">10대 이벤트 · 연말 배당 · 산타 · CES · JPMHC</span>
+            <span class="chip" style="margin-left:auto; background:rgba(56,189,248,0.15); color:#38bdf8;">10개 분야 · 18개 이벤트 · 연말 배당 · 산타 · CES · JPMHC</span>
           </div>
           <div id="seasonality-calendar-list" style="display:flex; flex-direction:column; gap:12px;"></div>
         </div>
@@ -759,7 +759,7 @@
         <!-- PANE 4: Monthly Heatmap Screener -->
         <div id="pane-v11-heatmap" class="hidden">
           <div class="month-tabs-bar" id="seasonality-month-tabs"></div>
-          <div class="event-preset-chips" id="seasonality-presets">
+          <div class="event-preset-chips" id="seasonality-presets" aria-label="계절성 탐색 모드">
             <button type="button" class="preset-chip-btn active" data-preset="">✨ 전체 고승률 탐색</button>
             <button type="button" class="preset-chip-btn" data-preset="winter_heater">❄️ 겨울 난방/보일러 (7~8월 선취매)</button>
             <button type="button" class="preset-chip-btn" data-preset="summer_heat">☀️ 여름 폭염/냉방 (4~6월 선취매)</button>
@@ -767,8 +767,11 @@
             <button type="button" class="preset-chip-btn" data-preset="dividend_play">💰 연말 고배당 선취매 (9~11월)</button>
             <button type="button" class="preset-chip-btn" data-preset="shopping_frenzy">🛍️ 광군제/블프/콘텐츠</button>
           </div>
+          <div id="seasonality-filter-mode-note" class="meta" style="margin:8px 2px 10px; color:#94a3b8;">
+            월 탐색 모드 · 선택 월의 승률과 평균수익률 조건으로 전 종목을 검색합니다.
+          </div>
           <div class="filters" style="margin-bottom: 16px; background: rgba(15, 23, 42, 0.6); padding: 10px 16px; border-radius: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; border: 1px solid rgba(255,255,255,0.08);">
-            <label style="display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:#cbd5e1; white-space:nowrap; margin:0;">
+            <label id="seasonality-min-wr-wrap" style="display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:#cbd5e1; white-space:nowrap; margin:0;">
               <span style="font-weight:700; color:#94a3b8; white-space:nowrap;">최소 승률:</span>
               <select id="seasonality-min-wr" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12.5px;">
                 <option value="0.5">50% 이상</option>
@@ -778,7 +781,7 @@
                 <option value="1.0">100% (전승)</option>
               </select>
             </label>
-            <label style="display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:#cbd5e1; white-space:nowrap; margin:0;">
+            <label id="seasonality-min-ret-wrap" style="display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:#cbd5e1; white-space:nowrap; margin:0;">
               <span style="font-weight:700; color:#94a3b8; white-space:nowrap;">최소 평균수익률:</span>
               <select id="seasonality-min-ret" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 8px; font-size:12.5px;">
                 <option value="0.0">0% 이상</option>

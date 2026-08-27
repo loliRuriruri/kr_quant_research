@@ -293,8 +293,8 @@ EVENT_CATALOG: list[dict[str, Any]] = [
         "beneficiary_sectors": ["폴더블 힌지(Hinge)", "초박막강화유리(UTG)", "FPCB", "AI 스마트폰 부품"],
         "beneficiary_stocks": [
             {"ticker": "441270", "company": "파인엠텍", "role": "삼성 내장 힌지 독점 공급"},
-            {"ticker": "060250", "company": "KH바텍", "role": "외장 힌지 전통 공급사"},
-            {"ticker": "085370", "company": "뉴프렉스", "role": "스마트폰 카메라 FPCB 공급"},
+            {"ticker": "060720", "company": "KH바텍", "role": "외장 힌지 전통 공급사"},
+            {"ticker": "085670", "company": "뉴프렉스", "role": "스마트폰 카메라 FPCB 공급"},
             {"ticker": "005930", "company": "삼성전자", "role": "MX 사업부 플래그십 론칭 주체"}
         ],
         "default_entry_window": "D-60 ~ D-25 (11월 ~ 12월)",
@@ -316,7 +316,7 @@ EVENT_CATALOG: list[dict[str, Any]] = [
         "beneficiary_stocks": [
             {"ticker": "000100", "company": "유한양행", "role": "렉라자(레이저티닙) 글로벌 1차 병용 초록 발표"},
             {"ticker": "196170", "company": "알테오젠", "role": "SC 제형 피하주사 플랫폼 추가 파트너십"},
-            {"ticker": "141080", "company": "레고켐바이오", "role": "차세대 ADC 항암 파이프라인 데이터 공개"}
+            {"ticker": "141080", "company": "리가켐바이오", "role": "차세대 ADC 항암 파이프라인 데이터 공개"}
         ],
         "default_entry_window": "D-50 ~ D-20 (8월 말 ~ 9월)",
         "default_exit_window": "D-5 ~ D-1 (학회 개막 직전 매도)",
@@ -356,7 +356,7 @@ EVENT_CATALOG: list[dict[str, Any]] = [
         "beneficiary_sectors": ["글로벌 PC/콘솔 대작 게임", "모바일 MMORPG", "웹툰/IP 게임화"],
         "beneficiary_stocks": [
             {"ticker": "259960", "company": "크래프톤", "role": "배틀그라운드 IP 및 신작 쇼케이스"},
-            {"ticker": "036570", "company": "엔씨소프트", "role": "차세대 대작 게임 시연 및 티징"},
+            {"ticker": "036570", "company": "NC", "role": "차세대 대작 게임 시연 및 티징"},
             {"ticker": "134580", "company": "탑코미디어", "role": "인기 웹툰 IP 게임화 및 콘텐츠 밸류체인"}
         ],
         "default_entry_window": "D-60 ~ D-20",

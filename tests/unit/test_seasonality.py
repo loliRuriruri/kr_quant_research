@@ -11,6 +11,7 @@ from kr_quant.strategy.seasonality import (
     get_pre_entry_glance,
 )
 from kr_quant.settings import load_settings
+from kr_quant.strategy.event_calendar import EVENT_CATALOG
 
 client = TestClient(app)
 
@@ -39,6 +40,14 @@ def test_event_presets_structure():
     assert "dividend_play" in EVENT_PRESETS
     assert "shopping_frenzy" in EVENT_PRESETS
     assert "009450" in EVENT_PRESETS["winter_heater"]["tickers"]
+    assert len(EVENT_PRESETS) >= 12
+    assert "index_rebalance" in EVENT_PRESETS
+    assert "bio_conference" in EVENT_PRESETS
+    assert "ipo_lockup" in EVENT_PRESETS
+    for preset in EVENT_PRESETS.values():
+        assert preset["label"]
+        assert 1 <= int(preset["analysis_month"]) <= 12
+        assert preset["tickers"]
 
 
 def test_seasonality_scan_api():
@@ -62,6 +71,33 @@ def test_seasonality_preset_api():
     data = res.json()
     assert data["ok"] is True
     assert any(r["ticker"] == "009450" for r in data["rows"])
+
+
+def test_special_event_mode_ignores_month_and_generic_thresholds():
+    january = client.get(
+        "/api/seasonality/scan?month=1&preset=winter_heater&min_win_rate=1.1&min_avg_return=9.0"
+    )
+    december = client.get(
+        "/api/seasonality/scan?month=12&preset=winter_heater&min_win_rate=0&min_avg_return=-1"
+    )
+    assert january.status_code == 200
+    assert december.status_code == 200
+
+    jan_data = january.json()
+    dec_data = december.json()
+    assert jan_data["filter_mode"] == "event"
+    assert jan_data["generic_thresholds_applied"] is False
+    assert jan_data["target_month"] == EVENT_PRESETS["winter_heater"]["analysis_month"]
+    assert {row["ticker"] for row in jan_data["rows"]} == {row["ticker"] for row in dec_data["rows"]}
+    assert all(row["event_mode"] is True for row in jan_data["rows"])
+    assert all(row["target_month"] == 8 for row in jan_data["rows"])
+
+
+def test_galaxy_event_catalog_uses_current_krx_tickers():
+    galaxy = next(event for event in EVENT_CATALOG if event["event_id"] == "galaxy_s27_cycle")
+    mapping = {stock["company"]: stock["ticker"] for stock in galaxy["beneficiary_stocks"]}
+    assert mapping["KH바텍"] == "060720"
+    assert mapping["뉴프렉스"] == "085670"
 
 
 def test_seasonality_ticker_api():

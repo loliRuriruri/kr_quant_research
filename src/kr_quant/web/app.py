@@ -2928,6 +2928,7 @@ def api_seasonality_scan_get(
     from kr_quant.strategy.seasonality import scan_seasonality, EVENT_PRESETS, seasonality_universe_stats
 
     s = load_settings()
+    active_preset = EVENT_PRESETS.get(str(preset or ""))
 
     rows = scan_seasonality(
         s,
@@ -2938,9 +2939,16 @@ def api_seasonality_scan_get(
         query=query,
     )
     stats = seasonality_universe_stats(s)
+    resolved_month = int(active_preset.get("analysis_month")) if active_preset else (month or pd.Timestamp.now().month)
     return {
         "ok": True,
-        "target_month": month or pd.Timestamp.now().month,
+        "filter_mode": "event" if active_preset else "month",
+        "target_month": resolved_month,
+        "requested_month": month,
+        "active_preset_key": str(preset or "") if active_preset else None,
+        "active_preset": active_preset,
+        "event_mapped_count": len(active_preset.get("tickers", [])) if active_preset else None,
+        "generic_thresholds_applied": active_preset is None,
         "count": len(rows),
         "presets": EVENT_PRESETS,
         "rows": rows,

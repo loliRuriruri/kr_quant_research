@@ -996,7 +996,7 @@ const titles = {
   investor: ["메이저 수급 & 지분", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
   sunzi: ["은하퀀트전설 (Legend of Galactic Quant)", "제13함대 기함 히페리온 작전 회의실 · 손자 오사(道天地將法) 기반 실전 전술 참모"],
   nps: ["국민연금 5%", "OpenDART 국민연금 5% 이상 대량보유 공시 추적"],
-  seasonality: ["계절성·캘린더 퀀트", "가격 선행형 Discovery · 10대 정량 이벤트 · AI 원인 역추적 스크리너"],
+  seasonality: ["계절성·캘린더 퀀트", "가격 선행형 Discovery · 10개 분야 18개 이벤트 · AI 원인 역추적 스크리너"],
 };
 
 let rankRows = [];
@@ -1173,6 +1173,60 @@ function filterPublicRows(data, url) {
   let rows = [...(data.rows || [])];
   const q = (url.searchParams.get("query") || "").trim().toLowerCase();
   if (q) rows = rows.filter((r) => `${r.company || ""} ${r.ticker || ""}`.toLowerCase().includes(q));
+
+  if (url.pathname === "/api/seasonality/scan") {
+    const presetKey = url.searchParams.get("preset") || "";
+    const preset = data.presets?.[presetKey] || null;
+    const requestedMonth = Number(url.searchParams.get("month")) || Number(data.target_month) || new Date().getMonth() + 1;
+    const resolvedMonth = preset ? Number(preset.analysis_month || requestedMonth) : requestedMonth;
+
+    rows = rows.map((row) => {
+      const monthStat = (row.all_months || []).find((item) => Number(item.month) === resolvedMonth);
+      if (!monthStat) return { ...row, target_month: resolvedMonth };
+      const winRate = Number(monthStat.win_rate || 0);
+      const avgReturn = Number(monthStat.avg_return || 0);
+      const years = Number(monthStat.years_count || 0);
+      return {
+        ...row,
+        target_month: resolvedMonth,
+        win_rate: winRate,
+        avg_return: avgReturn,
+        median_return: Number(monthStat.median_return || 0),
+        years_count: years,
+        history: monthStat.history || [],
+        seasonality_score: Math.round(((winRate * 50) + (Math.min(avgReturn, 0.40) * 100) + (Math.min(years, 4) * 2.5)) * 10) / 10,
+        event_mode: Boolean(preset),
+        event_key: preset ? presetKey : null,
+        event_title: preset?.title || null,
+        event_description: preset?.description || null,
+        event_peak_months: preset?.peak_months || [],
+      };
+    });
+
+    if (preset) {
+      const tickers = new Set((preset.tickers || []).map((ticker) => padTicker(ticker)));
+      rows = rows.filter((row) => tickers.has(padTicker(row.ticker)));
+    } else {
+      const minWinRate = Number(url.searchParams.get("min_win_rate"));
+      if (Number.isFinite(minWinRate) && url.searchParams.has("min_win_rate")) rows = rows.filter((r) => Number(r.win_rate || 0) >= minWinRate);
+      const minAvgReturn = Number(url.searchParams.get("min_avg_return"));
+      if (Number.isFinite(minAvgReturn) && url.searchParams.has("min_avg_return")) rows = rows.filter((r) => Number(r.avg_return ?? r.median_return ?? 0) >= minAvgReturn);
+    }
+    rows.sort((a, b) => Number(b.seasonality_score || 0) - Number(a.seasonality_score || 0));
+    return {
+      ...data,
+      filter_mode: preset ? "event" : "month",
+      target_month: resolvedMonth,
+      requested_month: url.searchParams.has("month") ? requestedMonth : null,
+      active_preset_key: preset ? presetKey : null,
+      active_preset: preset,
+      event_mapped_count: preset ? (preset.tickers || []).length : null,
+      generic_thresholds_applied: !preset,
+      rows,
+      count: rows.length,
+    };
+  }
+
   const minGrade = url.searchParams.get("min_grade");
   if (minGrade) {
     const gradeOrder = { "S+": 5, S: 4, "A+": 3, A: 2, B: 1, C: 0 };
@@ -11439,6 +11493,7 @@ function setupInstitutionalSeasonalityUI() {
 let currentSeasonalityMonth = new Date().getMonth() + 1; // 1-12
 let currentSeasonalityPreset = "";
 let seasonalityRows = [];
+let seasonalityPresetCatalog = {};
 
 function renderMonthHeatmapBar(months, targetMonth) {
   if (!months || months.length < 12) return "—";
@@ -11461,22 +11516,88 @@ function renderMonthHeatmapBar(months, targetMonth) {
   `;
 }
 
+function syncSeasonalityModeControls() {
+  const eventMode = Boolean(currentSeasonalityPreset);
+  const preset = seasonalityPresetCatalog[currentSeasonalityPreset] || null;
+
+  $("#seasonality-month-tabs")?.querySelectorAll(".month-tab-btn").forEach((btn) => {
+    btn.disabled = eventMode;
+    btn.setAttribute("aria-disabled", eventMode ? "true" : "false");
+    btn.style.opacity = eventMode ? "0.45" : "1";
+    btn.style.cursor = eventMode ? "not-allowed" : "pointer";
+  });
+
+  ["seasonality-min-wr", "seasonality-min-ret"].forEach((id) => {
+    const control = $(`#${id}`);
+    if (control) control.disabled = eventMode;
+  });
+  ["seasonality-min-wr-wrap", "seasonality-min-ret-wrap"].forEach((id) => {
+    const wrap = $(`#${id}`);
+    if (wrap) wrap.style.opacity = eventMode ? "0.45" : "1";
+  });
+
+  const note = $("#seasonality-filter-mode-note");
+  if (note) {
+    note.innerHTML = eventMode && preset
+      ? `<b style="color:#fbbf24;">특수 이벤트 종목군 모드</b> · ${escapeHtml(preset.title || preset.label || currentSeasonalityPreset)} 관련 거래 가능 종목을 월·최소조건과 관계없이 표시합니다. 표의 수치는 이벤트 비교 기준 ${Number(preset.analysis_month || currentSeasonalityMonth)}월 통계입니다.`
+      : "월 탐색 모드 · 선택 월의 승률과 평균수익률 조건으로 전 종목을 검색합니다.";
+  }
+}
+
+function bindSeasonalityPresetControls() {
+  const presetContainer = $("#seasonality-presets");
+  if (!presetContainer) return;
+  presetContainer.querySelectorAll(".preset-chip-btn").forEach((btn) => {
+    btn.onclick = () => {
+      currentSeasonalityPreset = btn.dataset.preset || "";
+      presetContainer.querySelectorAll(".preset-chip-btn").forEach((item) => {
+        item.classList.toggle("active", (item.dataset.preset || "") === currentSeasonalityPreset);
+      });
+      syncSeasonalityModeControls();
+      loadSeasonality().catch(() => {});
+    };
+  });
+}
+
+function renderSeasonalityPresetControls(presets) {
+  if (!presets || typeof presets !== "object") return;
+  seasonalityPresetCatalog = presets;
+  const presetContainer = $("#seasonality-presets");
+  if (!presetContainer) return;
+
+  const controls = Object.entries(presets).map(([key, preset]) => {
+    const active = currentSeasonalityPreset === key ? "active" : "";
+    const label = preset.label || preset.title || key;
+    const tip = `${preset.title || label} · ${preset.description || "특수 이벤트 종목군"}`;
+    return `<button type="button" class="preset-chip-btn ${active}" data-preset="${escapeHtml(key)}" title="${escapeHtml(tip)}">${escapeHtml(label)}</button>`;
+  }).join("");
+  presetContainer.innerHTML = `
+    <button type="button" class="preset-chip-btn ${currentSeasonalityPreset ? "" : "active"}" data-preset="">✨ 전체 고승률 탐색</button>
+    ${controls}
+  `;
+  bindSeasonalityPresetControls();
+  syncSeasonalityModeControls();
+}
+
 async function loadSeasonality() {
   loadSeasonalityTier1Briefing().catch(() => {});
   const minWr = parseFloat($("#seasonality-min-wr") ? $("#seasonality-min-wr").value : "0.80");
   const minRet = parseFloat($("#seasonality-min-ret") ? $("#seasonality-min-ret").value : "0.05");
   const q = seasonalitySearchQuery();
 
-  const params = new URLSearchParams({
-    month: currentSeasonalityMonth,
-    min_win_rate: minWr,
-    min_avg_return: minRet,
-  });
-  if (currentSeasonalityPreset) params.set("preset", currentSeasonalityPreset);
+  const params = new URLSearchParams();
+  if (currentSeasonalityPreset) {
+    params.set("preset", currentSeasonalityPreset);
+  } else {
+    params.set("month", currentSeasonalityMonth);
+    params.set("min_win_rate", minWr);
+    params.set("min_avg_return", minRet);
+  }
   if (q) params.set("query", q);
 
   const data = await api(`/api/seasonality/scan?${params.toString()}`);
   seasonalityRows = data.rows || [];
+  renderSeasonalityPresetControls(data.presets || seasonalityPresetCatalog);
 
   const countBadge = $("#seasonality-count-badge");
   if (countBadge) {
@@ -11485,7 +11606,13 @@ async function loadSeasonality() {
     const kosdaq = (data.markets || {}).KOSDAQ;
     const kospi = (data.markets || {}).KOSPI;
     const mkt = [kospi != null ? `KOSPI ${kospi}` : null, kosdaq != null ? `KOSDAQ ${kosdaq}` : null].filter(Boolean).join(" · ");
-    countBadge.textContent = `${currentSeasonalityMonth}월 조건 부합 ${seasonalityRows.length}종목 · 전종목 스캔 ${scanned}/${listed}${mkt ? ` (${mkt})` : ""}`;
+    if (data.filter_mode === "event" && data.active_preset) {
+      const eventName = data.active_preset.label || data.active_preset.title || currentSeasonalityPreset;
+      const mappedCount = Number(data.event_mapped_count || data.active_preset.tickers?.length || seasonalityRows.length);
+      countBadge.textContent = `${eventName} 현재 표시 ${seasonalityRows.length}/${mappedCount} · 월/최소조건 미적용 · 거래불가·데이터 미확인은 안전 제외`;
+    } else {
+      countBadge.textContent = `${currentSeasonalityMonth}월 조건 부합 ${seasonalityRows.length}종목 · 전종목 스캔 ${scanned}/${listed}${mkt ? ` (${mkt})` : ""}`;
+    }
   }
 
   renderSeasonalityTable();
@@ -11496,7 +11623,10 @@ function renderSeasonalityTable() {
   if (!tbody) return;
 
   if (!seasonalityRows.length) {
-    tbody.innerHTML = `<tr><td colspan="11" class="text-center text-slate-400 py-8">조건에 부합하는 ${currentSeasonalityMonth}월 계절성 종목이 없습니다. 필터를 완화해 보세요.</td></tr>`;
+    const emptyText = currentSeasonalityPreset
+      ? "현재 거래 가능성 검증을 통과한 해당 이벤트 종목이 없습니다. 거래정지·상장상태·가격 데이터 갱신 여부를 확인해 주세요."
+      : `조건에 부합하는 ${currentSeasonalityMonth}월 계절성 종목이 없습니다. 필터를 완화해 보세요.`;
+    tbody.innerHTML = `<tr><td colspan="11" class="text-center text-slate-400 py-8">${emptyText}</td></tr>`;
     return;
   }
 
@@ -11513,6 +11643,10 @@ function renderSeasonalityTable() {
       const ind = (row.industry || "").toLowerCase();
       const tags = row.tags || [];
       const badges = [];
+
+      if (row.event_mode && row.event_title) {
+        badges.push(`<span class="chip" style="background:rgba(251,191,36,0.14); color:#fbbf24; font-weight:800;">${escapeHtml(row.event_title)}</span>`);
+      }
 
       if (tags.includes("winter_heater") || comp.includes("나비엔") || comp.includes("파세코") || comp.includes("신일") || comp.includes("가스") || comp.includes("난방")) {
         badges.push(`<span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">❄️ 난방·보일러</span>`);
@@ -11555,7 +11689,7 @@ function renderSeasonalityTable() {
           <span class="meta">${escapeHtml(r.ticker)}</span>
         </td>
         <td><span class="chip">${escapeHtml(r.market || "KOSPI")}</span></td>
-        <td><b class="text-accent-cyan">${r.target_month}월</b></td>
+        <td><b class="text-accent-cyan">${r.event_mode ? "기준 " : ""}${r.target_month}월</b></td>
         <td class="${wrCls}">${wr.toFixed(0)}%</td>
         <td class="${retCls}">${avgRet > 0 ? "+" : ""}${avgRet.toFixed(1)}%</td>
         <td>${medRet > 0 ? "+" : ""}${medRet.toFixed(1)}%</td>
@@ -11593,21 +11727,30 @@ function renderSeasonalityTable() {
 
 function playbookRowFromScan(row) {
   const month = Number(row.target_month) || targetMonthOf(row);
+  const eventMode = Boolean(row.event_mode);
   return {
     ...row,
-    window_name: row.window_name || `${month}월`,
+    window_name: row.window_name || (eventMode ? `${row.event_title || "특수 이벤트"} · 비교 기준 ${month}월` : `${month}월`),
+    common_event_cluster: row.common_event_cluster || row.event_title,
     years_track: yearsTrackFromRow(row),
     all_months: row.all_months || [],
     sample_count: row.sample_count || row.years_count,
     median_alpha: row.median_alpha ?? row.median_return,
-    entry_window_str: row.entry_window_str || `${String(month).padStart(2, "0")}/01 ~ ${String(month).padStart(2, "0")}/15`,
-    exit_window_str: row.exit_window_str || `${String(month).padStart(2, "0")}/20 ~ ${String(month === 12 ? 1 : month + 1).padStart(2, "0")}/10`,
+    entry_stage: row.entry_stage || (eventMode ? "WATCH" : undefined),
+    entry_stage_label: row.entry_stage_label || (eventMode ? "📌 이벤트 관련 종목 · 타이밍 별도 확인" : undefined),
+    entry_window_str: row.entry_window_str || (eventMode
+      ? "18개 정량 이벤트 캘린더의 고유 진입 구간 확인"
+      : `${String(month).padStart(2, "0")}/01 ~ ${String(month).padStart(2, "0")}/15`),
+    exit_window_str: row.exit_window_str || (eventMode
+      ? "이벤트별 무효화 조건·목표 청산 구간 확인"
+      : `${String(month).padStart(2, "0")}/20 ~ ${String(month === 12 ? 1 : month + 1).padStart(2, "0")}/10`),
   };
 }
 
 async function openHeatmapPlaybook(row) {
   if (!row) return;
   openDiscoveryDetailModal(playbookRowFromScan(row));
+  if (row.event_mode) return;
   const code = padTicker(row.ticker);
   const month = Number(row.target_month);
   if (!code || code === "000000") return;
@@ -11646,18 +11789,10 @@ function setupSeasonalityUI() {
     });
   }
 
-  // Preset chips
-  const presetContainer = $("#seasonality-presets");
-  if (presetContainer) {
-    presetContainer.querySelectorAll(".preset-chip-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        presetContainer.querySelectorAll(".preset-chip-btn").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        currentSeasonalityPreset = btn.dataset.preset || "";
-        loadSeasonality().catch(() => {});
-      });
-    });
-  }
+  // Static fallback controls are replaced by the API-backed full event catalog
+  // after the first scan response.
+  bindSeasonalityPresetControls();
+  syncSeasonalityModeControls();
 
   // Filter dropdowns
   $("#seasonality-min-wr")?.addEventListener("change", () => loadSeasonality().catch(() => {}));

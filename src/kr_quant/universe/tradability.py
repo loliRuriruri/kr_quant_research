@@ -51,6 +51,27 @@ CANDIDATE_HARD_EXCLUSIONS = frozenset(
     }
 )
 
+# Event/theme membership is broader than the investable quant candidate set.
+# Missing financial-model fields, liquidity thresholds, or market-cap cutoffs
+# should lower confidence, not erase a genuinely related listed company. These
+# exclusions are limited to conditions that make a security unsafe or invalid
+# to present as a currently tradable event-universe member.
+EVENT_UNIVERSE_HARD_EXCLUSIONS = frozenset(
+    {
+        "DELISTING_RISK",
+        "DISTRESS_STATUS",
+        "MANAGEMENT_STOCK",
+        "MARKET_EXCLUDED",
+        "NON_COMMON_SECURITY",
+        "NOT_COMMON_STOCK",
+        "PREFERRED_SHARE",
+        "SPAC",
+        "TRADING_HALT",
+        "TRADING_STATUS_EXCLUDED",
+        "TRADING_STATUS_UNVERIFIED",
+    }
+)
+
 
 @dataclass(frozen=True)
 class TradabilityGateResult:
@@ -160,6 +181,72 @@ def evaluate_candidate_tradability(
     master_tickers = set(krx.loc[~krx["sect"].map(krx_risk_class_excluded), "ticker"])
 
     allowed = active_tickers & scored_tickers & master_tickers
+    return TradabilityGateResult(
+        True,
+        frozenset(allowed),
+        as_of_date=market_as_of.date(),
+    )
+
+
+def evaluate_event_universe_tradability(
+    prices: pd.DataFrame,
+    scored: pd.DataFrame,
+    master: pd.DataFrame,
+) -> TradabilityGateResult:
+    """Build a fail-closed but research-broad event/theme universe.
+
+    Unlike the final quant-candidate gate, this permits low-liquidity or
+    incomplete-fundamental rows so the UI can show the full mapped event
+    universe. It still requires a current positive-price/volume observation,
+    a valid KRX common-security master row, and no explicit halt, management,
+    distress, delisting, or other trading-status exclusion.
+    """
+    errors: list[str] = []
+    price_required = {"ticker", "close", "volume"}
+    date_col = "trade_date" if "trade_date" in prices.columns else "date" if "date" in prices.columns else None
+    if prices.empty or date_col is None or not price_required.issubset(prices.columns):
+        errors.append("PRICE_SOURCE_NOT_READY")
+    if scored.empty or not {"ticker", "exclusion_reasons"}.issubset(scored.columns):
+        errors.append("SCORED_UNIVERSE_NOT_READY")
+    if master.empty or not {"ticker", "sect"}.issubset(master.columns):
+        errors.append("KRX_RISK_MASTER_NOT_READY")
+    if errors:
+        return TradabilityGateResult(False, frozenset(), errors=tuple(errors))
+
+    px = prices[["ticker", date_col, "close", "volume"]].copy()
+    px["ticker"] = px["ticker"].astype(str).str.zfill(6)
+    px[date_col] = pd.to_datetime(px[date_col], errors="coerce")
+    px["close"] = pd.to_numeric(px["close"], errors="coerce")
+    px["volume"] = pd.to_numeric(px["volume"], errors="coerce")
+    px = px.dropna(subset=[date_col]).sort_values(["ticker", date_col])
+    if px.empty:
+        return TradabilityGateResult(False, frozenset(), errors=("PRICE_SOURCE_NOT_READY",))
+
+    market_as_of = px[date_col].max()
+    last = px.groupby("ticker", as_index=False).tail(1)
+    price_tickers = set(
+        last.loc[
+            (last[date_col] == market_as_of)
+            & (last["close"] >= 1000.0)
+            & (last["volume"] > 0),
+            "ticker",
+        ]
+    )
+
+    score = scored.copy()
+    score["ticker"] = score["ticker"].astype(str).str.zfill(6)
+    score = score.drop_duplicates("ticker", keep="last")
+    score_ok = ~score["exclusion_reasons"].map(
+        lambda value: bool(parse_exclusion_reasons(value) & EVENT_UNIVERSE_HARD_EXCLUSIONS)
+    )
+    scored_tickers = set(score.loc[score_ok, "ticker"])
+
+    krx = master[["ticker", "sect"]].copy()
+    krx["ticker"] = krx["ticker"].astype(str).str.zfill(6)
+    krx = krx.drop_duplicates("ticker", keep="last")
+    master_tickers = set(krx.loc[~krx["sect"].map(krx_risk_class_excluded), "ticker"])
+
+    allowed = price_tickers & scored_tickers & master_tickers
     return TradabilityGateResult(
         True,
         frozenset(allowed),

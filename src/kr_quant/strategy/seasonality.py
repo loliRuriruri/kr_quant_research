@@ -14,40 +14,123 @@ import pandas as pd
 from kr_quant.settings import Settings
 from kr_quant.strategy.remaining_peak import calculate_remaining_peak_upside
 from kr_quant.strategy.run import _prices
-from kr_quant.universe.tradability import evaluate_candidate_tradability
+from kr_quant.universe.tradability import evaluate_candidate_tradability, evaluate_event_universe_tradability
 
 logger = logging.getLogger("kr_quant.strategy.seasonality")
+SEASONALITY_CACHE_VERSION = 2
 
 EVENT_PRESETS: dict[str, dict[str, Any]] = {
     "winter_heater": {
+        "label": "❄️ 겨울 난방/보일러",
         "title": "❄️ 겨울 난방 & 보일러 특수",
         "description": "난방 가동 전 6~8월 선취매 랠리 및 10~11월 실적 반영 종목군",
         "peak_months": [7, 8, 10],
+        "analysis_month": 8,
         "tickers": ["009450", "037070", "002700", "005950", "004690", "071320", "016710", "000590", "017940"],
     },
     "summer_heat": {
+        "label": "☀️ 여름 폭염/냉방",
         "title": "☀️ 여름 폭염 · 냉방 · 제습 특수",
         "description": "본격 무더위 시작 전 4~6월 선반영 급등 종목군",
         "peak_months": [4, 5, 6],
+        "analysis_month": 5,
         "tickers": ["037070", "002700", "044340", "042110", "014820", "005300", "000080", "001550", "025860"],
     },
     "galaxy_phone": {
+        "label": "📱 갤럭시 S/Z 언팩",
         "title": "📱 갤럭시 · 스마트폰 신제품 출시 사이클",
         "description": "S시리즈(1~2월) 및 Z폴드/플립 언팩(6~7월) 직전 부품 공급 선취매",
         "peak_months": [1, 2, 6, 7],
+        "analysis_month": 7,
         "tickers": ["441270", "060720", "085670", "090460", "051370", "091700", "097520", "053610", "195870"],
     },
     "dividend_play": {
+        "label": "💰 연말 고배당",
         "title": "💰 연말 고배당 선취매 랠리",
         "description": "배당락(12월 말) 2~3개월 전인 9~11월 기관/외인 배당 매집 종목군",
         "peak_months": [9, 10, 11],
+        "analysis_month": 10,
         "tickers": ["105560", "055550", "086790", "316140", "017670", "030200", "032640", "003540", "000815", "036570"],
     },
     "shopping_frenzy": {
+        "label": "🛍️ 광군제/블프/소비재",
         "title": "🛍️ 광군제 · 블프 · K-콘텐츠/소비재",
         "description": "하반기 글로벌 쇼핑 시즌 및 여름 휴가철 웹툰/미디어/소비재 특수",
         "peak_months": [8, 9, 10, 11],
+        "analysis_month": 10,
         "tickers": ["134580", "090430", "192820", "161890", "271560", "035760", "253450", "042000", "060250", "035420"],
+    },
+    "index_rebalance": {
+        "label": "📊 지수 편입/리밸런싱",
+        "title": "📊 MSCI · KOSPI200 · KOSDAQ150 리밸런싱",
+        "description": "지수 정기변경 전후 패시브 자금 유입·유출 후보 종목군",
+        "peak_months": [5, 8, 11, 12],
+        "analysis_month": 11,
+        "tickers": ["105560", "000810", "267260", "192820", "259960", "053610", "086790"],
+    },
+    "earnings_pead": {
+        "label": "📈 실적 시즌/PEAD",
+        "title": "📈 실적 상향 · 어닝 서프라이즈 · PEAD",
+        "description": "실적 발표 전 이익추정 상향과 발표 후 양의 드리프트 후보 종목군",
+        "peak_months": [4, 7, 10, 11],
+        "analysis_month": 10,
+        "tickers": ["009450", "192820", "011070"],
+    },
+    "iphone_cycle": {
+        "label": "🍎 아이폰 공급망",
+        "title": "🍎 Apple iPhone 공개 · 양산 공급망 사이클",
+        "description": "7~8월 초도 양산과 9월 공개 전 국내 카메라·OLED·FPCB·MLCC 공급망",
+        "peak_months": [7, 8, 9],
+        "analysis_month": 8,
+        "tickers": ["011070", "090460", "034220", "009150"],
+    },
+    "ces_ai_robot": {
+        "label": "🤖 CES/AI/로봇",
+        "title": "🤖 CES · 온디바이스 AI · 로봇 · 자율주행",
+        "description": "연말부터 CES 개막 전까지 신기술 공개 기대가 반영되는 국내 공급망",
+        "peak_months": [11, 12, 1],
+        "analysis_month": 12,
+        "tickers": ["277810", "005930", "066570", "042700"],
+    },
+    "bio_conference": {
+        "label": "🧬 바이오 학회",
+        "title": "🧬 JPM · AACR · ASCO · ESMO 바이오 학회",
+        "description": "초록 공개·임상 발표·기술수출 기대가 집중되는 고위험 바이오 이벤트 종목군",
+        "peak_months": [1, 4, 5, 6, 9, 10, 11, 12],
+        "analysis_month": 9,
+        "tickers": ["000100", "196170", "141080", "206650", "310210"],
+    },
+    "game_show": {
+        "label": "🎮 게임쇼/신작",
+        "title": "🎮 G-STAR · 게임쇼 · 대형 신작 출시",
+        "description": "게임쇼와 신작 공개 전 사전예약·쇼케이스 기대가 반영되는 게임·콘텐츠 종목군",
+        "peak_months": [8, 9, 10, 11],
+        "analysis_month": 10,
+        "tickers": ["259960", "036570", "134580"],
+    },
+    "holiday_consumption": {
+        "label": "✈️ 명절/여행/소비",
+        "title": "✈️ 설 · 추석 · 연휴 여행/유통/콘텐츠",
+        "description": "명절과 장기 연휴 전후 소비·여행·콘텐츠 수요 변화를 관찰하는 종목군",
+        "peak_months": [1, 2, 9, 10],
+        "analysis_month": 9,
+        "tickers": ["001040", "097950", "028260", "035760"],
+    },
+    "year_end_calendar": {
+        "label": "📅 연말/1월 효과",
+        "title": "📅 대주주 양도세 · 산타랠리 · 1월 효과",
+        "description": "연말 개인 매물 출회와 연초 신규 자금 유입을 함께 관찰하는 캘린더 종목군",
+        "peak_months": [12, 1],
+        "analysis_month": 12,
+        "tickers": ["247540", "086520", "277810", "035420", "356680", "168360"],
+    },
+    "ipo_lockup": {
+        "label": "🔓 IPO 락업/오버행",
+        "title": "🔓 IPO 의무보유 해제 · 오버행 소화",
+        "description": "락업 해제 전 매도압력과 해제 이후 수급 안정 여부를 구분해 관찰하는 종목군",
+        "peak_months": [3, 6, 9, 12],
+        "analysis_month": 9,
+        "tickers": ["259960", "441270"],
     },
 }
 
@@ -66,6 +149,13 @@ _CLEAN_TICKERS_CACHE: dict[str, Any] = {
     "ready": False,
     "errors": (),
 }
+_EVENT_TICKERS_CACHE: dict[str, Any] = {
+    "ts": 0.0,
+    "signature": None,
+    "tickers": set(),
+    "ready": False,
+    "errors": (),
+}
 PRE_ENTRY_STAGE_WEIGHT: dict[str, int] = {
     "TODAY_ENTRY": 100,
     "PRE_ENTRY_15": 80,
@@ -74,6 +164,11 @@ PRE_ENTRY_STAGE_WEIGHT: dict[str, int] = {
     "RALLY_ACTIVE": 30,
     "EXIT_PEAK": 10,
 }
+
+
+def _event_tags_for_ticker(ticker: Any) -> list[str]:
+    code = str(ticker or "").zfill(6)
+    return [key for key, preset in EVENT_PRESETS.items() if code in preset.get("tickers", [])]
 
 
 def _clean_active_tickers(settings: Settings) -> set[str]:
@@ -132,6 +227,63 @@ def _clean_active_tickers(settings: Settings) -> set[str]:
         }
     )
     return clean_tickers
+
+
+def _event_active_tickers(settings: Settings) -> set[str]:
+    """Return the broad, current, safe-to-display event/theme universe."""
+    now = time.time()
+    price_path = next(
+        (p for p in (settings.staged_dir / "live" / "prices.parquet", settings.staged_dir / "demo" / "prices.parquet") if p.exists()),
+        None,
+    )
+    scored_path = settings.output_dir / "latest_all_stocks.parquet"
+    if not scored_path.exists():
+        scored_path = next(
+            (
+                p / "scored_all.parquet"
+                for p in sorted(settings.output_dir.glob("as_of_date=*"), reverse=True)
+                if (p / "scored_all.parquet").exists()
+            ),
+            scored_path,
+        )
+    master_path = settings.staged_dir / "live" / "krx_master.parquet"
+    if not master_path.exists():
+        master_path = settings.staged_dir / "live" / "master.parquet"
+
+    paths = (price_path, scored_path, master_path)
+    signature = tuple(
+        (str(path), path.stat().st_mtime_ns, path.stat().st_size) if path is not None and path.exists() else None
+        for path in paths
+    )
+    if (
+        _EVENT_TICKERS_CACHE.get("signature") == signature
+        and now - float(_EVENT_TICKERS_CACHE.get("ts") or 0) < 60
+    ):
+        return set(_EVENT_TICKERS_CACHE.get("tickers") or set())
+
+    result = None
+    try:
+        prices = pd.read_parquet(price_path) if price_path is not None and price_path.exists() else pd.DataFrame()
+        scored = pd.read_parquet(scored_path) if scored_path.exists() else pd.DataFrame()
+        master = pd.read_parquet(master_path) if master_path.exists() else pd.DataFrame()
+        result = evaluate_event_universe_tradability(prices, scored, master)
+    except Exception as exc:  # fail closed on transient/corrupt source reads
+        logger.error("Event universe source read failed: %s", exc)
+
+    event_tickers = set(result.allowed_tickers) if result is not None and result.ready else set()
+    errors = result.errors if result is not None else ("EVENT_UNIVERSE_SOURCE_READ_FAILED",)
+    if errors:
+        logger.warning("Event universe gate closed output: %s", ",".join(errors))
+    _EVENT_TICKERS_CACHE.update(
+        {
+            "ts": now,
+            "signature": signature,
+            "tickers": event_tickers,
+            "ready": bool(result is not None and result.ready),
+            "errors": errors,
+        }
+    )
+    return event_tickers
 
 
 def ticker_meta_map(settings: Settings) -> dict[str, dict[str, str]]:
@@ -255,19 +407,24 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
     if c_path.exists():
         try:
             cached = json.loads(c_path.read_text(encoding="utf-8"))
-            if time.time() - cached.get("updated_at", 0) < 86400 * 3 and len(cached.get("stocks", {})) > 100:
+            if (
+                cached.get("version") == SEASONALITY_CACHE_VERSION
+                and time.time() - cached.get("updated_at", 0) < 86400 * 3
+                and len(cached.get("stocks", {})) > 100
+            ):
                 meta = ticker_meta_map(settings)
                 for stock in (cached.get("stocks") or {}).values():
                     _apply_market_meta(stock, meta)
+                    stock["tags"] = _event_tags_for_ticker(stock.get("ticker"))
                 return cached
         except Exception:
             pass
 
     prices = _prices(settings)
     if prices.empty:
-        return {"updated_at": int(time.time()), "stocks": {}}
+        return {"version": SEASONALITY_CACHE_VERSION, "updated_at": int(time.time()), "stocks": {}}
 
-    clean_set = _clean_active_tickers(settings)
+    event_set = _event_active_tickers(settings)
 
     df = prices.copy()
     df["date"] = pd.to_datetime(df["trade_date"], errors="coerce")
@@ -276,7 +433,9 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
     df["month"] = df["date"].dt.month
     df["ticker"] = df["ticker"].astype(str).str.zfill(6)
 
-    df = df[df["ticker"].isin(clean_set)]
+    # Store the broader safe event universe. Monthly quant discovery applies
+    # the stricter candidate gate at query time.
+    df = df[df["ticker"].isin(event_set)]
 
     names_map: dict[str, dict[str, str]] = ticker_meta_map(settings)
     if not names_map and "company" in df.columns:
@@ -347,10 +506,7 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
         co_name = meta.get("company") or ticker
         market = meta.get("market") or "KOSPI"
 
-        tags = []
-        for p_key, p_val in EVENT_PRESETS.items():
-            if ticker in p_val["tickers"]:
-                tags.append(p_key)
+        tags = _event_tags_for_ticker(ticker)
 
         best_m = max(months_list, key=lambda x: (x["win_rate"] * 0.6 + max(0, x["avg_return"]) * 0.4))
 
@@ -366,6 +522,7 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
         }
 
     payload = {
+        "version": SEASONALITY_CACHE_VERSION,
         "updated_at": int(time.time()),
         "stocks": stocks_db,
     }
@@ -395,16 +552,28 @@ def scan_seasonality(
     preset: str | None = None,
     query: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Filters and ranks stocks by seasonality criteria."""
+    """Filter monthly seasonality or enumerate a special-event universe.
+
+    A preset is an independent event-discovery mode. Its mapped, currently
+    tradable stocks are not removed by the selected calendar month or the
+    generic minimum win-rate/return controls. Historical statistics are shown
+    on the preset's fixed analysis month so results remain comparable and do
+    not change when the user had a different month selected beforehand.
+    """
     db = get_seasonality_database(settings)
-    clean_set = _clean_active_tickers(settings)
+    preset_def = EVENT_PRESETS.get(str(preset or ""))
+    event_mode = preset_def is not None
+    allowed_set = _event_active_tickers(settings) if event_mode else _clean_active_tickers(settings)
     stocks = [
         stock
         for stock in db.get("stocks", {}).values()
-        if str(stock.get("ticker") or "").zfill(6) in clean_set
+        if str(stock.get("ticker") or "").zfill(6) in allowed_set
     ]
 
-    t_month = target_month if target_month and 1 <= target_month <= 12 else pd.Timestamp.now().month
+    requested_month = target_month if target_month and 1 <= target_month <= 12 else pd.Timestamp.now().month
+    preset_month = int(preset_def.get("analysis_month") or requested_month) if preset_def else requested_month
+    t_month = preset_month if 1 <= preset_month <= 12 else requested_month
+    preset_tickers = set(preset_def.get("tickers", [])) if preset_def else set()
 
     results: list[dict[str, Any]] = []
 
@@ -413,14 +582,15 @@ def scan_seasonality(
         if not months or len(months) < 12:
             continue
 
-        m_stat = months[t_month - 1]
+        month_map = {int(item.get("month") or 0): item for item in months}
+        m_stat = month_map.get(t_month)
+        if not m_stat:
+            continue
         win_rate = m_stat["win_rate"]
         avg_ret = m_stat["avg_return"]
 
-        # Preset filter
-        if preset and preset in EVENT_PRESETS:
-            if s["ticker"] not in EVENT_PRESETS[preset]["tickers"]:
-                continue
+        if event_mode and s["ticker"] not in preset_tickers:
+            continue
 
         # Query filter
         if query:
@@ -428,8 +598,10 @@ def scan_seasonality(
             if q not in s["ticker"] and q not in s["company"].upper():
                 continue
 
-        # Criteria filter
-        if win_rate < min_win_rate or avg_ret < min_avg_return:
+        # Generic thresholds belong only to monthly discovery. Event mode must
+        # show the complete mapped, tradable universe and communicate whether
+        # each member is currently strong or weak through its metrics.
+        if not event_mode and (win_rate < min_win_rate or avg_ret < min_avg_return):
             continue
 
         score = (win_rate * 50) + (min(avg_ret, 0.40) * 100) + (min(m_stat["years_count"], 4) * 2.5)
@@ -447,6 +619,11 @@ def scan_seasonality(
             "seasonality_score": round(score, 1),
             "all_months": months,
             "tags": s.get("tags", []),
+            "event_mode": event_mode,
+            "event_key": str(preset or "") if event_mode else None,
+            "event_title": preset_def.get("title") if preset_def else None,
+            "event_description": preset_def.get("description") if preset_def else None,
+            "event_peak_months": preset_def.get("peak_months", []) if preset_def else [],
         })
 
     results.sort(key=lambda x: x["seasonality_score"], reverse=True)

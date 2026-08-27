@@ -54,7 +54,10 @@ ROUTES: dict[str, str] = {
     "/api/seasonality/themes": "/api/seasonality/themes?lookback_years=5&horizon_days=90",
     "/api/seasonality/ranked": "/api/seasonality/ranked?lookback_years=5&horizon_days=90",
     "/api/seasonality/events": "/api/seasonality/events?horizon_days=90",
-    "/api/seasonality/scan": "/api/seasonality/scan?lookback_years=5&horizon_days=90",
+    # Export the complete tradable universe once. The public read-only client
+    # derives the selected month or event preset from each row's 12-month
+    # statistics, matching the local API without needing multiple snapshots.
+    "/api/seasonality/scan": "/api/seasonality/scan?month=1&min_win_rate=0&min_avg_return=-1",
 }
 
 
