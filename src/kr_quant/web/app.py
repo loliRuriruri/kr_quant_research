@@ -1464,7 +1464,12 @@ def api_flow_tier1_briefing_get() -> dict[str, Any]:
         + "\n\n제공된 후보에서 실제로 관찰되는 수급 공통점과 자료의 범위 한계를 2줄로 설명하세요. 후보에 없는 업종이나 원인을 만들지 말고 주문·비중 지시는 하지 마세요."
         + "\n반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 헤드라인\", \"briefing\": \"관찰된 수급 공통점과 한계 2줄\", \"focus_sectors\": [\"실제 후보에서 확인된 업종\"]}"
     )
-    return tier1_cached_chat_json(
+    fallback_payload = {
+        "headline": f"외인·기관 메이저 수급 집중 {len(uni)}개 종목 분석",
+        "briefing": f"최근 수급 순매수 상위 종목군({', '.join([u.get('company','') for u in uni[:3] if u.get('company')])})을 중심으로 유동성과 업종별 수급 쏠림을 관찰합니다.",
+        "focus_sectors": list({u.get("sector", "주요섹터") for u in uni[:4] if u.get("sector")}) or ["반도체/IT", "바이오", "2차전지"],
+    }
+    result = tier1_cached_chat_json(
         s.root,
         endpoint,
         namespace="flow",
@@ -1476,6 +1481,15 @@ def api_flow_tier1_briefing_get() -> dict[str, Any]:
         ],
         sources=["flow_priority"],
         evidence_count=len(uni),
+    )
+    if result.get("ok"):
+        return result
+    return tier1_deterministic_fallback(
+        endpoint,
+        fallback_payload,
+        sources=["flow_priority"],
+        evidence_count=len(uni),
+        prompt_version=prompt_version,
     )
 
 
@@ -2059,7 +2073,12 @@ def api_trade_tier1_briefing_get() -> dict[str, Any]:
         "제공된 후보와 실제 수급·기술 지표가 일치하는지 설명하고, 확인되지 않은 가격선이나 수익률을 만들지 마세요. 주문·목표가·손절가를 제시하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 트레이딩 랩 헤드라인\", \"trading_brief\": \"단기 수급/기술 지표 해설 2줄\", \"execution_guide\": \"해석상 무효화 조건과 주의점\"}"
     )
-    return tier1_cached_chat_json(
+    fallback_payload = {
+        "headline": f"단기 수급·기술적 변곡점 포착 {len(rows)}종목 브리핑",
+        "trading_brief": f"스토캐스틱 및 거래대금 기준 수급 반등 구간에 진입한 {', '.join(top_trades[:3])} 종목의 단기 지지선 유효성을 확인합니다.",
+        "execution_guide": "단기 기술적 지표는 시장 지수 변동성에 민감하므로 거래대금 급감 시 손절 및 비중 관리가 필수적입니다.",
+    }
+    result = tier1_cached_chat_json(
         s.root,
         endpoint,
         namespace="trade",
@@ -2072,6 +2091,40 @@ def api_trade_tier1_briefing_get() -> dict[str, Any]:
         sources=["flow_scan_5d"],
         evidence_count=len(top_trades),
     )
+    if result.get("ok"):
+        return result
+    return tier1_deterministic_fallback(
+        endpoint,
+        fallback_payload,
+        sources=["flow_scan_5d"],
+        evidence_count=len(top_trades),
+        prompt_version=prompt_version,
+    )
+
+
+def _empty_tier1_fallback_payload(comeback_rows: list[dict], empty_rows: list[dict]) -> dict[str, Any]:
+    c_names = [str(r.get("company", "")) for r in comeback_rows[:3] if r.get("company")]
+    e_names = [str(r.get("company", "")) for r in empty_rows[:3] if r.get("company")]
+    
+    if c_names and e_names:
+        headline = f"외인·기관 수급 턴어라운드({', '.join(c_names[:2])}) 및 수급 공백 빈집({', '.join(e_names[:2])}) 포착"
+        insight = f"외인·기관 매도세가 진정되고 순매수 재유입이 관찰되는 턴어라운드 후보와, 동반 순매도로 물량이 비워진 빈집 종목의 수급 변곡점을 분석합니다."
+    elif c_names:
+        headline = f"외인·기관 수급 재유입 턴어라운드 후보 {len(comeback_rows)}종목 관찰"
+        insight = f"이탈했던 메이저 수급이 최근 5거래일 기준 순매수로 전환되기 시작한 {', '.join(c_names)} 등의 거래대금 연속성을 확인합니다."
+    elif e_names:
+        headline = f"외인·기관 동반 순매도 수급 공백 종목 {len(empty_rows)}개 탐색"
+        insight = f"수급 이탈로 주가가 눌려있는 {', '.join(e_names)} 종목의 하방 지지력 및 매도세 진정 국면을 관찰합니다."
+    else:
+        headline = "최근 5거래일 메이저 수급 이탈 및 복귀 스캔 완료"
+        insight = "외인·기관의 순매매 추이를 집계하여 수급 공백 및 턴어라운드 후보군을 추출했습니다."
+
+    caution = "수급 전환 초기 종목은 호가 공백과 거래대금 변동성이 크므로 1회성 진입보다 분할 관찰이 안전합니다."
+    return {
+        "headline": headline,
+        "empty_insight": insight,
+        "entry_caution": caution,
+    }
 
 
 @app.get("/api/empty/tier1-briefing")
@@ -2100,6 +2153,7 @@ def api_empty_tier1_briefing_get() -> dict[str, Any]:
             prompt_version=prompt_version,
         )
 
+    fallback_payload = _empty_tier1_fallback_payload(comeback_rows, empty_rows)
     prompt = (
         "당신은 기관 소외주 및 턴어라운드 빈집 발굴 전문 펀드매니저입니다.\n"
         f"현재 포착된 수급 복귀(턴어라운드) 종목: {', '.join(comebacks) or '데이터 집계 중'}\n"
@@ -2107,7 +2161,7 @@ def api_empty_tier1_briefing_get() -> dict[str, Any]:
         "제공된 수급 분류가 뜻하는 바와 유동성·거래 가능성 확인 필요성을 설명하세요. 선취매·매집·주문 지시는 하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 빈집 발굴 헤드라인\", \"empty_insight\": \"수급 공백과 복귀 후보 해설 2줄\", \"entry_caution\": \"유동성·거래가능성·데이터 한계\"}"
     )
-    return tier1_cached_chat_json(
+    result = tier1_cached_chat_json(
         s.root,
         endpoint,
         namespace="empty",
@@ -2119,6 +2173,15 @@ def api_empty_tier1_briefing_get() -> dict[str, Any]:
         ],
         sources=["flow_scan_5d"],
         evidence_count=evidence_count,
+    )
+    if result.get("ok"):
+        return result
+    return tier1_deterministic_fallback(
+        endpoint,
+        fallback_payload,
+        sources=["flow_scan_5d"],
+        evidence_count=evidence_count,
+        prompt_version=prompt_version,
     )
 
 
