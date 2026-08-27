@@ -2893,17 +2893,22 @@ def api_seasonality_events_get(horizon_days: int = 180) -> dict[str, Any]:
 
 @app.get("/api/seasonality/themes")
 def api_seasonality_themes_get(horizon_days: int = 90, lookback_years: int = 5) -> dict[str, Any]:
-    from kr_quant.strategy.seasonality import scan_seasonality_discovery
+    from kr_quant.strategy.seasonality import EVENT_PRESETS, scan_seasonality
     from kr_quant.strategy.theme_engine import calculate_theme_seasonality
 
     s = load_settings()
-    rows = scan_seasonality_discovery(s, horizon_days=horizon_days, lookback_years=lookback_years)
-    themes = calculate_theme_seasonality(rows)
+    event_rows_by_preset = {
+        preset_key: scan_seasonality(s, preset=preset_key)
+        for preset_key in EVENT_PRESETS
+    }
+    themes = calculate_theme_seasonality([], event_rows_by_preset=event_rows_by_preset)
     return {
         "ok": True,
         "horizon_days": horizon_days,
         "lookback_years": lookback_years,
         "theme_count": len(themes),
+        "theme_source": "seasonality_event_presets",
+        "pre_entry_overlap_source": "seasonality_discovery_client",
         "themes": themes,
     }
 

@@ -10505,7 +10505,22 @@ async function loadPreEntryView() {
   ]);
 
   const allRows = discRes.rows || [];
-  preEntryThemeData = themeRes.themes || [];
+  // The discovery response is already loaded beside the theme response. Use
+  // it to calculate live pre-entry overlap client-side instead of making the
+  // theme endpoint repeat the expensive discovery scan.
+  const allowedStages = new Set(["TODAY_ENTRY", "PRE_ENTRY_15", "PRE_ENTRY_30", "ACCUMULATE_60"]);
+  const canonicalRows = allRows.filter((r) => allowedStages.has(r.entry_stage) && hasCanonicalPreEntryRank(r));
+  const canonicalTickerSet = new Set(canonicalRows.map((row) => padTicker(row.ticker)));
+  preEntryThemeData = (themeRes.themes || []).map((theme) => {
+    const preEntryTickers = (theme.candidate_tickers || [])
+      .map((ticker) => padTicker(ticker))
+      .filter((ticker) => canonicalTickerSet.has(ticker));
+    return {
+      ...theme,
+      pre_entry_tickers: preEntryTickers,
+      pre_entry_count: preEntryTickers.length,
+    };
+  });
 
   // Render Donut Chart and Theme Ranking Cards
   renderThemeDonutAndRanking(preEntryThemeData);
@@ -10513,8 +10528,6 @@ async function loadPreEntryView() {
 
   // Backend canonical rank is shared with dashboard Glance Top 3.  A row without
   // pre_entry_rank failed the common tradability/current-price checks.
-  const allowedStages = new Set(["TODAY_ENTRY", "PRE_ENTRY_15", "PRE_ENTRY_30", "ACCUMULATE_60"]);
-  const canonicalRows = allRows.filter((r) => allowedStages.has(r.entry_stage) && hasCanonicalPreEntryRank(r));
   let filtered = canonicalRows.slice();
   let filterRecoveryNotice = "";
 
@@ -10658,6 +10671,9 @@ function renderThemeDonutAndRanking(themes) {
   const rankList = $("#theme-ranking-list");
   if (!svg || !rankList || !themes || !themes.length) return;
 
+  const titleEl = $("#theme-ranking-title");
+  if (titleEl) titleEl.textContent = `📊 ${themes.length}개 이벤트 테마 계절성 랭킹`;
+
   // Center title
   const top1 = themes[0];
   const centerThemeEl = $("#donut-center-theme") || $("#donut-center-name");
@@ -10693,7 +10709,7 @@ function renderThemeDonutAndRanking(themes) {
     const d = `M ${x1} ${y1} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x2} ${y2} L ${x3} ${y3} A ${rInner} ${rInner} 0 ${largeArc} 0 ${x4} ${y4} Z`;
 
     pathsHtml += `<path d="${d}" fill="${t.color}" opacity="0.85" stroke="#0f172a" stroke-width="2" style="cursor:pointer; transition:opacity 0.2s;" data-theme-id="${t.theme_id}">
-      <title>${t.emoji} ${t.theme_name}: 기여도 ${t.weight_share_pct}%</title>
+      <title>${t.emoji} ${t.theme_name}: 상대 기여도 ${t.weight_share_pct}% · 안전 종목 ${t.candidate_count}/${t.mapped_count}</title>
     </path>`;
   });
 
@@ -10712,18 +10728,28 @@ function renderThemeDonutAndRanking(themes) {
   // Render Theme Ranking Sidebar
   rankList.innerHTML = themes.map((t, idx) => {
     const isActive = currentPreEntryTheme === t.theme_id ? "active" : "";
+    const avgReturn = Number(t.avg_return || 0);
+    const leaderReturn = Number(t.top_leader_return || 0);
+    const avgReturnText = `${avgReturn >= 0 ? "+" : ""}${(avgReturn * 100).toFixed(1)}%`;
+    const leaderReturnText = `${leaderReturn >= 0 ? "+" : ""}${(leaderReturn * 100).toFixed(1)}%`;
+    const peakMonths = (t.peak_months || []).map((month) => `${month}월`).join("·") || "—";
+    const noSafeRows = Number(t.candidate_count || 0) === 0;
     return `
-      <div class="theme-rank-card ${isActive}" data-theme-id="${t.theme_id}">
+      <div class="theme-rank-card ${isActive} ${noSafeRows ? "is-empty" : ""}" data-theme-id="${t.theme_id}" title="${escapeHtml(t.catalyst || "")}">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <b style="color:${t.color}; font-size:12.5px;">${t.emoji} ${t.theme_name}</b>
-          <span class="chip" style="background:rgba(255,255,255,0.08); font-size:11px;">기여도 ${t.weight_share_pct}%</span>
+          <span class="chip" style="background:rgba(255,255,255,0.08); font-size:11px;">상대 기여 ${t.weight_share_pct}%</span>
         </div>
         <div style="margin-top:4px; font-size:11.5px; color:#cbd5e1; display:flex; justify-content:space-between;">
-          <span>기대수익: <b class="text-emerald-400">+${(t.avg_return * 100).toFixed(1)}%</b></span>
+          <span>기준 ${Number(t.analysis_month || 0)}월: <b class="${avgReturn >= 0 ? "text-emerald-400" : "text-rose-400"}">${avgReturnText}</b></span>
           <span>승률: <b>${(t.avg_win_rate * 100).toFixed(0)}%</b></span>
         </div>
         <div style="margin-top:4px; font-size:11px; color:#94a3b8;">
-          👑 대장주: <span style="color:#fff; font-weight:700;">${escapeHtml(t.top_leader_name)}</span> (+${(t.top_leader_return * 100).toFixed(1)}%)
+          👑 대장주: <span style="color:#fff; font-weight:700;">${escapeHtml(t.top_leader_name)}</span>${noSafeRows ? "" : ` (${leaderReturnText})`}
+        </div>
+        <div style="margin-top:5px; font-size:10.5px; color:#64748b; display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+          <span>테마점수 ${Number(t.avg_seasonality_score || 0).toFixed(1)} · 안전 종목 ${Number(t.candidate_count || 0)}/${Number(t.mapped_count || 0)} · 선취매 겹침 ${Number(t.pre_entry_count || 0)}</span>
+          <span>관찰월 ${peakMonths}</span>
         </div>
       </div>
     `;

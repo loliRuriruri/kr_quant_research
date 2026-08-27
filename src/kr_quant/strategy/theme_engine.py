@@ -2,149 +2,186 @@
 from __future__ import annotations
 
 from typing import Any
+
 import numpy as np
 
-
-# 8 Major Industry / Seasonality Themes
-THEME_DEFINITIONS: list[dict[str, Any]] = [
-    {
-        "theme_id": "semicon_ai",
-        "theme_name": "반도체 & AI 장비",
-        "emoji": "⚡",
-        "color": "#00E5FF",  # Bright Cyan
-        "keywords": ["반도체", "HBM", "본더", "장비", "파운드리", "메모리", "칩", "소부장", "한미반도체", "프로텍", "삼성전자", "SK하이닉스"],
-        "catalyst": "글로벌 AI 칩메이커 차세대 HBM4 증설 발주 및 차세대 TC본더 독점 수주 사이클",
-    },
-    {
-        "theme_id": "heating_energy",
-        "theme_name": "겨울 난방 & 보일러 / 가전",
-        "emoji": "❄️",
-        "color": "#38BDF8",  # Sky Blue
-        "keywords": ["보일러", "온수기", "난방", "난로", "히터", "가스", "에너지", "경동나비엔", "파세코", "신일전자", "서울가스", "단열"],
-        "catalyst": "동절기 한파 대비 북미/중동 난방기기 수출 폭증 및 7~9월 선취매 랠리",
-    },
-    {
-        "theme_id": "kbeauty_consumer",
-        "theme_name": "K-뷰티 & 글로벌 소비재",
-        "emoji": "💄",
-        "color": "#FF80AB",  # Pink
-        "keywords": ["화장품", "뷰티", "ODM", "소비재", "의류", "패션", "코스맥스", "에이피알", "TBH글로벌", "영원무역", "광군제", "블랙프라이데이"],
-        "catalyst": "중국 광군제(11.11) & 북미 블프 시즌 인디 뷰티 및 아웃도어 의류 연간 최대 주문 수주",
-    },
-    {
-        "theme_id": "valueup_dividend",
-        "theme_name": "밸류업 & 연말 고배당",
-        "emoji": "💰",
-        "color": "#10B981",  # Emerald Green
-        "keywords": ["금융", "은행", "지주", "배당", "통신", "보험", "증권", "KB금융", "하나금융지주", "신영증권", "SK텔레콤", "삼성화재"],
-        "catalyst": "배당락 2~3개월 전 기관/개인 배당 펀드 대규모 자금 유입 및 정부 밸류업 프로그램",
-    },
-    {
-        "theme_id": "bio_healthcare",
-        "theme_name": "제약·바이오 학회 모멘텀",
-        "emoji": "🧬",
-        "color": "#FF5252",  # Coral Rose
-        "keywords": ["바이오", "제약", "항암", "임상", "학회", "ESMO", "JPMHC", "유한양행", "알테오젠", "레고켐바이오", "보로노이", "큐리옥스"],
-        "catalyst": "글로벌 학회(ESMO, AACR, JPMHC) 임상 초록 공개 및 빅파마 기술수출(L/O) 기대감",
-    },
-    {
-        "theme_id": "tech_cycle",
-        "theme_name": "IT 부품 & 갤럭시/아이폰",
-        "emoji": "📱",
-        "color": "#B388FF",  # Vivid Purple
-        "keywords": ["아이폰", "갤럭시", "카메라", "OLED", "힌지", "FPCB", "MLCC", "LG이노텍", "비에이치", "파인엠텍", "KH바텍", "삼성전기"],
-        "catalyst": "하반기 플래그십 스마트폰 초도 양산 부품 공급 및 연말 갤럭시 S27 부품 랠리",
-    },
-    {
-        "theme_id": "game_content",
-        "theme_name": "게임 & K-콘텐츠",
-        "emoji": "🎮",
-        "color": "#FFB300",  # Amber Gold
-        "keywords": ["게임", "엔터", "웹툰", "콘텐츠", "지스타", "크래프톤", "엔씨소프트", "CJ ENM", "탑코미디어"],
-        "catalyst": "국내 최대 지스타(G-STAR) 게임쇼 및 하반기 대작 글로벌 신작 출시 기대감",
-    },
-    {
-        "theme_id": "security_robot_ai",
-        "theme_name": "보안 & 로봇 / 온디바이스 AI",
-        "emoji": "🤖",
-        "color": "#69F0AE",  # Mint Accent
-        "keywords": ["보안", "로봇", "소프트웨어", "인공지능", "모니터랩", "엑스게이트", "레인보우로보틱스", "펨트론", "블루엠텍", "CES"],
-        "catalyst": "연말/연초 정부 보안/AI 정책 수혜 및 CES 2027 세계 최대 로봇/AI 쇼케이스",
-    },
-]
+from kr_quant.strategy.seasonality import EVENT_PRESETS
 
 
-def calculate_theme_seasonality(discovery_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Groups discovery candidates by 8 major themes and computes contribution shares, leader metrics, and win rates."""
+THEME_VISUALS: dict[str, dict[str, str]] = {
+    "winter_heater": {"emoji": "❄️", "color": "#38BDF8"},
+    "summer_heat": {"emoji": "☀️", "color": "#F59E0B"},
+    "galaxy_phone": {"emoji": "📱", "color": "#8B5CF6"},
+    "dividend_play": {"emoji": "💰", "color": "#10B981"},
+    "shopping_frenzy": {"emoji": "🛍️", "color": "#EC4899"},
+    "index_rebalance": {"emoji": "📊", "color": "#06B6D4"},
+    "earnings_pead": {"emoji": "📈", "color": "#22C55E"},
+    "iphone_cycle": {"emoji": "🍎", "color": "#A78BFA"},
+    "ces_ai_robot": {"emoji": "🤖", "color": "#34D399"},
+    "bio_conference": {"emoji": "🧬", "color": "#F43F5E"},
+    "game_show": {"emoji": "🎮", "color": "#FBBF24"},
+    "holiday_consumption": {"emoji": "✈️", "color": "#60A5FA"},
+    "year_end_calendar": {"emoji": "📅", "color": "#FB7185"},
+    "ipo_lockup": {"emoji": "🔓", "color": "#94A3B8"},
+}
+
+
+def _plain_label(label: str) -> str:
+    parts = str(label or "").split(maxsplit=1)
+    return parts[1] if len(parts) == 2 else str(label or "")
+
+
+def _theme_definitions_from_presets() -> list[dict[str, Any]]:
+    definitions: list[dict[str, Any]] = []
+    for preset_key, preset in EVENT_PRESETS.items():
+        visual = THEME_VISUALS.get(preset_key, {"emoji": "📌", "color": "#64748B"})
+        definitions.append(
+            {
+                "theme_id": preset_key,
+                "preset_key": preset_key,
+                "theme_name": _plain_label(str(preset.get("label") or preset.get("title") or preset_key)),
+                "emoji": visual["emoji"],
+                "color": visual["color"],
+                "catalyst": str(preset.get("description") or ""),
+                "peak_months": [int(month) for month in preset.get("peak_months", [])],
+                "analysis_month": int(preset.get("analysis_month") or 1),
+                "tickers": [str(ticker).zfill(6) for ticker in preset.get("tickers", [])],
+            }
+        )
+    return definitions
+
+
+# Single source of truth: the same presets that feed the heatmap event buttons
+# also feed the theme contribution map and its stock membership.
+THEME_DEFINITIONS: list[dict[str, Any]] = _theme_definitions_from_presets()
+
+
+def _best_row_by_ticker(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    best: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        ticker = str(row.get("ticker") or "").zfill(6)
+        if not ticker or ticker == "000000":
+            continue
+        current = best.get(ticker)
+        if current is None or float(row.get("seasonality_score") or 0) > float(current.get("seasonality_score") or 0):
+            best[ticker] = row
+    return best
+
+
+def calculate_theme_seasonality(
+    discovery_rows: list[dict[str, Any]],
+    event_rows_by_preset: dict[str, list[dict[str, Any]]] | None = None,
+) -> list[dict[str, Any]]:
+    """Build event-theme rankings from the shared preset stock universes.
+
+    Event scan rows own the historical statistics shown on each theme. Discovery
+    rows are used only to show how many mapped stocks are also actionable in the
+    current pre-entry queue. An empty theme stays empty; unrelated high-scoring
+    stocks are never inserted as a fallback.
+    """
+    discovery_by_ticker = _best_row_by_ticker(discovery_rows)
+    supplied_event_rows = event_rows_by_preset or {}
     theme_results: list[dict[str, Any]] = []
 
-    for t_def in THEME_DEFINITIONS:
-        t_id = t_def["theme_id"]
-        t_name = t_def["theme_name"]
-        keywords = t_def["keywords"]
+    for definition in THEME_DEFINITIONS:
+        theme_id = str(definition["theme_id"])
+        configured_tickers = list(definition.get("tickers") or [])
+        configured_set = set(configured_tickers)
 
-        # Match discovery rows to theme
-        matched_candidates = []
-        for r in discovery_rows:
-            comp = r.get("company", "")
-            cluster = r.get("common_event_cluster", "")
-            tags = r.get("tags", [])
-            theme_field = r.get("theme", "")
-
-            # Match criteria
-            is_match = False
-            for kw in keywords:
-                if kw in comp or kw in cluster or kw in theme_field or kw in " ".join(tags):
-                    is_match = True
-                    break
-
-            if is_match:
-                matched_candidates.append(r)
-
-        if not matched_candidates:
-            matched_candidates = [r for r in discovery_rows if r.get("seasonality_score", 0) > 85][:2]
-
-        cand_count = len(matched_candidates)
-        rets = [c.get("expected_p50", c.get("median_return", 0.0)) for c in matched_candidates]
-        alphas = [c.get("median_alpha", 0.0) for c in matched_candidates]
-        win_rates = [c.get("win_rate", 0.0) for c in matched_candidates]
-
-        avg_ret = float(np.mean(rets)) if rets else 0.12
-        avg_alpha = float(np.mean(alphas)) if alphas else 0.08
-        avg_wr = float(np.mean(win_rates)) if win_rates else 0.85
-
-        # Find Top Leader
-        top_leader = max(matched_candidates, key=lambda x: x.get("seasonality_score", 0)) if matched_candidates else {}
-        leader_name = top_leader.get("company", "대표 대장주")
-        leader_ticker = top_leader.get("ticker", "000000")
-        leader_ret = top_leader.get("expected_p50", top_leader.get("median_return", 0.15))
-
-        theme_results.append({
-            "theme_id": t_id,
-            "theme_name": t_name,
-            "emoji": t_def["emoji"],
-            "color": t_def["color"],
-            "candidate_count": cand_count,
-            "avg_return": round(avg_ret, 4),
-            "avg_alpha": round(avg_alpha, 4),
-            "avg_win_rate": round(avg_wr, 3),
-            "top_leader_name": leader_name,
-            "top_leader_ticker": leader_ticker,
-            "top_leader_return": round(leader_ret, 4),
-            "catalyst": t_def["catalyst"],
-            "candidate_tickers": [c["ticker"] for c in matched_candidates[:10]],
-            "raw_score": avg_ret * max(avg_wr, 0.5) * np.sqrt(max(cand_count, 1)),
-        })
-
-    # Compute percentage contribution shares (Weight Share %)
-    total_raw = sum([t["raw_score"] for t in theme_results])
-    for t in theme_results:
-        if total_raw > 0:
-            share = round((t["raw_score"] / total_raw) * 100, 1)
+        if theme_id in supplied_event_rows:
+            event_by_ticker = _best_row_by_ticker(supplied_event_rows.get(theme_id) or [])
+            matched_candidates = [event_by_ticker[ticker] for ticker in configured_tickers if ticker in event_by_ticker]
         else:
-            share = round(100.0 / len(theme_results), 1)
-        t["weight_share_pct"] = share
+            matched_candidates = [discovery_by_ticker[ticker] for ticker in configured_tickers if ticker in discovery_by_ticker]
 
-    # Sort descending by contribution weight share %
-    theme_results.sort(key=lambda x: x["weight_share_pct"], reverse=True)
+        candidate_tickers = [str(row.get("ticker") or "").zfill(6) for row in matched_candidates]
+        pre_entry_tickers = [
+            ticker
+            for ticker in candidate_tickers
+            if discovery_by_ticker.get(ticker, {}).get("pre_entry_rank") is not None
+        ]
+
+        returns = [
+            float(row.get("avg_return", row.get("expected_p50", row.get("median_return", 0.0))) or 0.0)
+            for row in matched_candidates
+        ]
+        alphas = [float(row.get("median_alpha") or 0.0) for row in matched_candidates]
+        win_rates = [float(row.get("win_rate") or 0.0) for row in matched_candidates]
+        seasonality_scores = [float(row.get("seasonality_score") or 0.0) for row in matched_candidates]
+
+        avg_return = float(np.mean(returns)) if returns else 0.0
+        avg_alpha = float(np.mean(alphas)) if alphas else 0.0
+        avg_win_rate = float(np.mean(win_rates)) if win_rates else 0.0
+        avg_seasonality_score = float(np.mean(seasonality_scores)) if seasonality_scores else 0.0
+
+        if matched_candidates:
+            top_leader = max(
+                matched_candidates,
+                key=lambda row: (
+                    float(row.get("seasonality_score") or 0),
+                    float(row.get("avg_return", row.get("expected_p50", row.get("median_return", 0.0))) or 0.0),
+                ),
+            )
+            leader_name = str(top_leader.get("company") or top_leader.get("ticker") or "해당 없음")
+            leader_ticker = str(top_leader.get("ticker") or "").zfill(6)
+            leader_return = float(
+                top_leader.get("avg_return", top_leader.get("expected_p50", top_leader.get("median_return", 0.0))) or 0.0
+            )
+        else:
+            leader_name = "안전 조건 통과 종목 없음"
+            leader_ticker = ""
+            leader_return = 0.0
+
+        # Relative contribution is a normalized theme signal, not portfolio
+        # attribution. The composite seasonality score keeps weak/negative
+        # themes visible in the donut while their return remains explicit.
+        raw_score = (max(avg_seasonality_score, 0.0) / 100.0) * max(avg_win_rate, 0.25) * np.sqrt(len(matched_candidates))
+
+        theme_results.append(
+            {
+                "theme_id": theme_id,
+                "preset_key": theme_id,
+                "theme_name": definition["theme_name"],
+                "emoji": definition["emoji"],
+                "color": definition["color"],
+                "candidate_count": len(matched_candidates),
+                "mapped_count": len(configured_set),
+                "excluded_count": max(len(configured_set) - len(matched_candidates), 0),
+                "pre_entry_count": len(pre_entry_tickers),
+                "avg_return": round(avg_return, 4),
+                "avg_alpha": round(avg_alpha, 4),
+                "avg_win_rate": round(avg_win_rate, 3),
+                "avg_seasonality_score": round(avg_seasonality_score, 1),
+                "top_leader_name": leader_name,
+                "top_leader_ticker": leader_ticker,
+                "top_leader_return": round(leader_return, 4),
+                "catalyst": definition["catalyst"],
+                "peak_months": definition["peak_months"],
+                "analysis_month": definition["analysis_month"],
+                "candidate_tickers": candidate_tickers,
+                "pre_entry_tickers": pre_entry_tickers,
+                "source": "event_preset",
+                "raw_score": float(raw_score),
+            }
+        )
+
+    total_raw = sum(float(theme["raw_score"]) for theme in theme_results)
+    nonempty_count = sum(1 for theme in theme_results if theme["candidate_count"] > 0)
+    for theme in theme_results:
+        if total_raw > 0:
+            share = (float(theme["raw_score"]) / total_raw) * 100
+        elif nonempty_count and theme["candidate_count"] > 0:
+            share = 100.0 / nonempty_count
+        else:
+            share = 0.0
+        theme["weight_share_pct"] = round(share, 1)
+
+    theme_results.sort(
+        key=lambda theme: (
+            float(theme["weight_share_pct"]),
+            int(theme["pre_entry_count"]),
+            int(theme["candidate_count"]),
+        ),
+        reverse=True,
+    )
     return theme_results
