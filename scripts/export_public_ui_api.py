@@ -29,8 +29,10 @@ SENSITIVE_KEY = re.compile(r"(api[_-]?key|secret|token|password|authorization|be
 ROUTES: dict[str, str] = {
     "/api/status": "/api/status",
     "/api/guide": "/api/guide",
-    "/api/results/top": "/api/results/top?n=20",
+    "/api/results/top": "/api/results/top?n=100",
     "/api/results/all": "/api/results/all?limit=300",
+    "/api/dashboard/tier1-briefing": "/api/dashboard/tier1-briefing?deterministic=true",
+    "/api/rank/tier1-briefing": "/api/rank/tier1-briefing?deterministic=true",
     "/api/research/reports": "/api/research/reports",
     "/api/market": "/api/market",
     "/api/macro": "/api/macro",

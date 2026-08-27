@@ -241,6 +241,70 @@ def _run_dir(settings, as_of: str | None = None) -> Path:
     return settings.output_dir
 
 
+def _has_usable_rank_rows(path: Path) -> bool:
+    """Return True only when a ranking artifact contains at least one usable row.
+
+    A failed screen can still leave a correctly shaped, zero-row top CSV or an
+    all-stocks parquet where every security is ineligible.  Existence alone is
+    therefore not a success signal.
+    """
+    if not path.exists():
+        return False
+    try:
+        if path.suffix.lower() == ".csv":
+            frame = pd.read_csv(path, dtype={"ticker": str})
+        else:
+            frame = pd.read_parquet(path)
+    except Exception:  # noqa: BLE001
+        return False
+    if frame.empty or "quant_rank" not in frame.columns:
+        return False
+    usable = pd.to_numeric(frame["quant_rank"], errors="coerce").notna()
+    if "universe_eligible" in frame.columns:
+        usable &= frame["universe_eligible"].fillna(False).astype(bool)
+    return bool(usable.any())
+
+
+def _resolve_rank_output(
+    settings: Any,
+    dated_name: str,
+    latest_name: str,
+    *,
+    as_of: str | None = None,
+) -> Path | None:
+    """Resolve the newest *successful* rank artifact, not merely newest file.
+
+    An explicit historical date remains strict.  Default dashboard requests
+    walk dated runs newest-first and then the latest-success pointer, skipping
+    incomplete runs that contain no eligible ranked securities.
+    """
+    if as_of:
+        exact = _run_dir(settings, as_of) / dated_name
+        return exact if exact.exists() else None
+
+    candidates = [folder / dated_name for _, folder in _run_dirs(settings)]
+    candidates.append(settings.output_dir / latest_name)
+    seen: set[Path] = set()
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if _has_usable_rank_rows(path):
+            return path
+    return None
+
+
+def _rank_source_as_of(frame: pd.DataFrame, path: Path | None = None) -> str | None:
+    if "as_of_date" in frame.columns:
+        values = frame["as_of_date"].dropna().astype(str)
+        if not values.empty:
+            return str(values.iloc[0])[:10]
+    if path is not None and path.parent.name.startswith("as_of_date="):
+        return path.parent.name.split("=", 1)[-1]
+    return None
+
+
 def _quality(settings, as_of: str | None = None) -> dict[str, Any]:
     folder = _run_dir(settings, as_of)
     path = folder / "data_quality_report.json"
@@ -864,30 +928,33 @@ def connect_payload() -> dict[str, Any]:
 @app.get("/api/results/top")
 def api_top(n: int = 20, as_of: str | None = None) -> dict[str, Any]:
     s = load_settings()
-    folder = _run_dir(s, as_of)
-    path = folder / ("top20.csv" if n <= 20 else "top100.csv")
-    if not path.exists():
-        path = s.output_dir / ("latest_top20.csv" if n <= 20 else "latest_top100.csv")
+    dated_name = "top20.csv" if n <= 20 else "top100.csv"
+    latest_name = "latest_top20.csv" if n <= 20 else "latest_top100.csv"
+    path = _resolve_rank_output(s, dated_name, latest_name, as_of=as_of)
     from kr_quant.web.comments import SELECTION, annotate_quant_rows
 
     from kr_quant.timing.snapshot import attach_last_close
 
-    rows = attach_last_close(annotate_quant_rows(_read_table(path)[: max(n, 1)]), s)
-    return {"rows": rows, "path": str(path) if path.exists() else None, "selection": SELECTION["quant"]}
+    rows = attach_last_close(annotate_quant_rows(_read_table(path)[: max(n, 1)] if path else []), s)
+    source_as_of = str(rows[0].get("as_of_date") or "")[:10] if rows else None
+    return {
+        "rows": rows,
+        "path": str(path) if path and path.exists() else None,
+        "source_as_of": source_as_of,
+        "selection": SELECTION["quant"],
+    }
 
 
 @app.get("/api/results/all")
 def api_all(limit: int = 300, eligible_only: bool = True, as_of: str | None = None) -> dict[str, Any]:
     s = load_settings()
-    folder = _run_dir(s, as_of)
-    path = folder / "all_stocks.parquet"
-    if not path.exists():
-        path = s.output_dir / "latest_all_stocks.parquet"
-    if not path.exists():
-        return {"rows": []}
+    path = _resolve_rank_output(s, "all_stocks.parquet", "latest_all_stocks.parquet", as_of=as_of)
+    if path is None:
+        return {"rows": [], "total": 0, "source_as_of": None}
     df = pd.read_parquet(path)
+    source_as_of = _rank_source_as_of(df, path)
     if eligible_only and "universe_eligible" in df.columns:
-        df = df[df["universe_eligible"]]
+        df = df[df["universe_eligible"].fillna(False).astype(bool)]
     if "quant_rank" in df.columns:
         df = df.sort_values("quant_rank", na_position="last")
     from kr_quant.web.comments import SELECTION, annotate_quant_rows
@@ -895,7 +962,12 @@ def api_all(limit: int = 300, eligible_only: bool = True, as_of: str | None = No
     from kr_quant.timing.snapshot import attach_last_close
 
     rows = attach_last_close(annotate_quant_rows(_clean(df.head(limit).to_dict("records"))), s)
-    return {"rows": rows, "total": int(len(df)), "selection": SELECTION["quant"]}
+    return {
+        "rows": rows,
+        "total": int(len(df)),
+        "source_as_of": source_as_of,
+        "selection": SELECTION["quant"],
+    }
 
 
 def _corp_code(ticker: str, profile: dict[str, Any]) -> str:
@@ -1247,14 +1319,12 @@ TIER1_FACTOR_LABELS = {
 
 
 def _ranking_tier1_snapshot(settings: Any, *, limit: int = 10) -> dict[str, Any]:
-    folder = _run_dir(settings)
-    path = folder / "all_stocks.parquet"
-    if not path.exists():
-        path = settings.output_dir / "latest_all_stocks.parquet"
-    if not path.exists():
+    path = _resolve_rank_output(settings, "all_stocks.parquet", "latest_all_stocks.parquet")
+    if path is None:
         return {"as_of": None, "top_rows": [], "movers": [], "universe_count": 0, "missing": ["all_stocks"]}
 
     df = pd.read_parquet(path)
+    source_as_of = _rank_source_as_of(df, path)
     if "universe_eligible" in df.columns:
         eligible = df[df["universe_eligible"].fillna(False).astype(bool)].copy()
     else:
@@ -1294,17 +1364,77 @@ def _ranking_tier1_snapshot(settings: Any, *, limit: int = 10) -> dict[str, Any]
             changed["abs_rank_change"] = changed["rank_change"].abs()
             movers = [compact_row(rec) for rec in changed.sort_values("abs_rank_change", ascending=False).head(8).to_dict("records")]
 
-    as_of = folder.name.split("=", 1)[-1] if folder.name.startswith("as_of_date=") else None
     low_confidence_count = 0
     if "data_confidence" in eligible.columns:
         low_confidence_count = int((pd.to_numeric(eligible["data_confidence"], errors="coerce") < 60).sum())
     return {
-        "as_of": as_of,
+        "as_of": source_as_of,
+        "source_path": str(path),
         "top_rows": _clean(top_rows),
         "movers": _clean(movers),
         "universe_count": int(len(eligible)),
         "low_confidence_count": low_confidence_count,
         "missing": [] if top_rows else ["eligible_rank_rows"],
+    }
+
+
+def _factor_names(row: dict[str, Any], key: str) -> str:
+    names = [str(item.get("factor")) for item in (row.get(key) or []) if item.get("factor")]
+    return "·".join(names) if names else "확인 가능한 팩터 없음"
+
+
+def _dashboard_rank_fallback_payload(context: dict[str, Any]) -> dict[str, Any]:
+    top_rows = context.get("top_rows") or []
+    champion = top_rows[0]
+    movers = context.get("movers") or []
+    mover = movers[0] if movers else None
+    as_of = context.get("as_of") or "최근 성공 기준일"
+    headline = f"{as_of} 적격 {context.get('universe_count', 0)}종목 기준 퀀트 1위: {champion.get('company') or champion.get('ticker')}"
+    champion_focus = (
+        f"현재 점수 {float(champion.get('score') or 0):.1f}, 우세 팩터는 {_factor_names(champion, 'dominant_factors')}, "
+        f"취약 팩터는 {_factor_names(champion, 'weak_factors')}입니다."
+    )
+    if mover:
+        change = float(mover.get("rank_change") or 0)
+        direction = "상승" if change > 0 else "하락" if change < 0 else "변동 없음"
+        strategy_note = (
+            f"가장 큰 전회 대비 순위 변화는 {mover.get('company') or mover.get('ticker')}의 {abs(change):.0f}계단 {direction}입니다. "
+            f"신뢰도 60 미만 종목은 {context.get('low_confidence_count', 0)}개이며, 이 설명은 점수 계산에 반영되지 않습니다."
+        )
+    else:
+        strategy_note = "비교 가능한 전회 순위 변화가 없습니다. 현재 팩터와 데이터 신뢰도만 확인해야 합니다."
+    return {"headline": headline, "champion_focus": champion_focus, "strategy_note": strategy_note}
+
+
+def _rank_fallback_payload(context: dict[str, Any]) -> dict[str, Any]:
+    top_rows = context.get("top_rows") or []
+    movers = context.get("movers") or []
+    changes = []
+    for row in movers[:4]:
+        change = float(row.get("rank_change") or 0)
+        if change == 0:
+            continue
+        direction = "상승" if change > 0 else "하락"
+        changes.append(f"{row.get('company') or row.get('ticker')}: 전회 대비 {abs(change):.0f}계단 {direction}")
+    explanations = [
+        {
+            "ticker": row.get("ticker"),
+            "summary": (
+                f"현재 {float(row.get('score') or 0):.1f}점, 우세 {_factor_names(row, 'dominant_factors')}, "
+                f"취약 {_factor_names(row, 'weak_factors')}, 데이터 신뢰도 {float(row.get('data_confidence') or 0):.1f}"
+            ),
+        }
+        for row in top_rows[:4]
+    ]
+    champion = top_rows[0]
+    return {
+        "headline": f"{context.get('as_of') or '최근 성공 기준일'} 퀀트 1위: {champion.get('company') or champion.get('ticker')}",
+        "changes": changes or ["비교 가능한 전회 순위 변화가 없습니다."],
+        "top_explanations": explanations,
+        "cautions": [
+            "실패한 최신 계산본은 제외하고 적격 랭킹이 존재하는 마지막 성공본을 사용했습니다.",
+            "현재 팩터만으로 점수 변화의 원인을 단정할 수 없습니다.",
+        ],
     }
 
 
@@ -1350,7 +1480,7 @@ def api_flow_tier1_briefing_get() -> dict[str, Any]:
 
 
 @app.get("/api/dashboard/tier1-briefing")
-def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
+def api_dashboard_tier1_briefing_get(deterministic: bool = False) -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
 
     s = load_settings()
@@ -1370,13 +1500,25 @@ def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
             prompt_version=prompt_version,
         )
 
+    fallback_payload = _dashboard_rank_fallback_payload(rank_context)
+    if deterministic:
+        return tier1_deterministic_fallback(
+            endpoint,
+            fallback_payload,
+            as_of=rank_context.get("as_of"),
+            sources=["all_stocks", "daily_rank_change"],
+            evidence_count=len(top_stocks),
+            missing=rank_context.get("missing") or [],
+            prompt_version=prompt_version,
+        )
+
     prompt = (
         "당신은 국내 최고 퀀트 펀드매니저입니다.\n"
         f"오늘의 퀀트 랭킹 및 전회 대비 변화 데이터:\n{stocks_summary}\n\n"
         "현재 순위·점수·전회 대비 변화·우세/취약 팩터·데이터 신뢰도만 사용하세요. 점수 변화가 특정 팩터 때문에 발생했다고 단정하지 말고, 제공되지 않은 재무 사실이나 주문·비중 지시는 하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 랭킹 변화 헤드라인\", \"champion_focus\": \"1위 종목의 현재 우세/취약 팩터와 변화 1줄\", \"strategy_note\": \"가장 큰 순위 변화와 데이터 주의점 2줄\"}"
     )
-    return tier1_cached_chat_json(
+    result = tier1_cached_chat_json(
         s.root,
         endpoint,
         namespace="dashboard",
@@ -1391,10 +1533,23 @@ def api_dashboard_tier1_briefing_get() -> dict[str, Any]:
         evidence_count=len(top_stocks),
         missing=rank_context.get("missing") or [],
     )
+    if result.get("ok"):
+        return result
+    fallback = tier1_deterministic_fallback(
+        endpoint,
+        fallback_payload,
+        as_of=rank_context.get("as_of"),
+        sources=["all_stocks", "daily_rank_change"],
+        evidence_count=len(top_stocks),
+        missing=rank_context.get("missing") or [],
+        prompt_version=prompt_version,
+    )
+    fallback["ai_error_code"] = result.get("error_code")
+    return fallback
 
 
 @app.get("/api/rank/tier1-briefing")
-def api_rank_tier1_briefing_get() -> dict[str, Any]:
+def api_rank_tier1_briefing_get(deterministic: bool = False) -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
 
     s = load_settings()
@@ -1414,13 +1569,25 @@ def api_rank_tier1_briefing_get() -> dict[str, Any]:
             prompt_version=prompt_version,
         )
 
+    fallback_payload = _rank_fallback_payload(context)
+    if deterministic:
+        return tier1_deterministic_fallback(
+            endpoint,
+            fallback_payload,
+            as_of=context.get("as_of"),
+            sources=["all_stocks", "daily_rank_change", "factor_scores"],
+            evidence_count=len(top_rows) + len(movers),
+            missing=context.get("missing") or [],
+            prompt_version=prompt_version,
+        )
+
     prompt = (
         "당신은 한국 주식 퀀트 랭킹 결과를 검수하는 연구원입니다.\n"
         f"실제 랭킹 스냅샷:\n{json.dumps(context, ensure_ascii=False, default=str)}\n\n"
         "현재 점수, 전회 대비 순위·점수 변화, 현재 우세/취약 팩터, 신뢰도만 해설하세요. 이전 팩터 점수가 없으므로 특정 팩터가 점수 변화를 일으켰다고 단정하지 마세요. 매수·매도·비중·목표가를 제시하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 랭킹 변화 요약\", \"changes\": [\"실제 순위 상승·하락 관측\"], \"top_explanations\": [{\"ticker\": \"6자리 코드\", \"summary\": \"현재 우세/취약 팩터와 신뢰도 해설\"}], \"cautions\": [\"데이터 또는 해석 주의점\"]}"
     )
-    return tier1_cached_chat_json(
+    result = tier1_cached_chat_json(
         s.root,
         endpoint,
         namespace="rank",
@@ -1435,6 +1602,19 @@ def api_rank_tier1_briefing_get() -> dict[str, Any]:
         evidence_count=len(top_rows) + len(movers),
         missing=context.get("missing") or [],
     )
+    if result.get("ok"):
+        return result
+    fallback = tier1_deterministic_fallback(
+        endpoint,
+        fallback_payload,
+        as_of=context.get("as_of"),
+        sources=["all_stocks", "daily_rank_change", "factor_scores"],
+        evidence_count=len(top_rows) + len(movers),
+        missing=context.get("missing") or [],
+        prompt_version=prompt_version,
+    )
+    fallback["ai_error_code"] = result.get("error_code")
+    return fallback
 
 
 @app.get("/api/market/tier1-briefing")
@@ -2051,18 +2231,15 @@ def api_quality() -> dict[str, Any]:
 
 def _load_stock_row(ticker: str, as_of: str | None = None) -> tuple[dict[str, Any], str]:
     s = load_settings()
-    folder = _run_dir(s, as_of)
-    path = folder / "all_stocks.parquet"
-    if not path.exists():
-        path = s.output_dir / "latest_all_stocks.parquet"
-    if not path.exists():
+    path = _resolve_rank_output(s, "all_stocks.parquet", "latest_all_stocks.parquet", as_of=as_of)
+    if path is None:
         raise HTTPException(404, "결과 파일이 없습니다.")
     df = pd.read_parquet(path)
     code = str(ticker).zfill(6)
     hit = df[df["ticker"].astype(str).str.zfill(6) == code]
     if hit.empty:
         raise HTTPException(404, f"{code} 없음")
-    day = folder.name.split("=", 1)[-1] if folder.name.startswith("as_of_date=") else (as_of or "")
+    day = _rank_source_as_of(df, path) or as_of or ""
     return _clean(hit.iloc[0].to_dict()), day
 
 

@@ -158,7 +158,7 @@ def resolve_provider(settings: Any, provider: str | None = None) -> LlmEndpoint:
         except Exception:
             session_key = None
 
-    xai_key = session_key if name == "xai" else getattr(settings, "xai_api_key", None)
+    xai_key = (session_key or getattr(settings, "xai_api_key", None)) if name == "xai" else getattr(settings, "xai_api_key", None)
     key_map = {
         "xai": xai_key,
         "antigravity": session_key,

@@ -2468,10 +2468,10 @@ function renderDashDna(rows, count = currentDashTopN) {
   `;
 }
 
-function renderKpis(status, top) {
+function renderKpis(status, top, eligibleTotal = null) {
   const q = status.quality || {};
   const c = q.counts || {};
-  const topRows = top || [];
+  const topRows = (top || []).slice(0, 20);
   const n = topRows.length || 1;
   const avgScore = (topRows.reduce((acc, r) => acc + (Number(r.quant_score) || 0), 0) / n).toFixed(1);
   const perList = topRows.map(r => Number(r.per)).filter(v => v > 0);
@@ -2499,7 +2499,7 @@ function renderKpis(status, top) {
         <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(52,211,153,0.15); color:#34d399;">12% 통과</span>
       </div>
       <div class="kpi-main">
-        <span class="kpi-num">${c.universe_eligible ?? 275}</span>
+        <span class="kpi-num">${eligibleTotal ?? c.universe_eligible ?? 275}</span>
         <span class="kpi-unit">개사</span>
       </div>
       <div class="kpi-sub-text">전체 2,700+ 상장사 중 엄선</div>
@@ -3904,7 +3904,18 @@ async function loadDash() {
   lastStatus = status;
   lastStatusExplain = status.status_explain || null;
   renderFreshChip(status.freshness);
-  if (currentView === "dash" || currentView === "rank") stampFromStatus();
+  if (currentView === "dash" || currentView === "rank") {
+    stampFromStatus();
+    const attemptedAsOf = status?.quality?.as_of_date || "";
+    const rankAsOf = top?.source_as_of || all?.source_as_of || "";
+    if (rankAsOf && attemptedAsOf && rankAsOf !== attemptedAsOf) {
+      const priceAsOf = status?.freshness?.price_max_date || "";
+      setPageAsOf(
+        `퀀트 랭킹 ${rankAsOf} (마지막 성공본)${priceAsOf ? ` · KRX 시세 ${priceAsOf}` : ""}`,
+        `최신 ${attemptedAsOf} 계산은 적격 랭킹이 없어 표시에서 제외했습니다. 데이터가 비어 보이지 않도록 검증을 통과한 마지막 성공본을 사용합니다.`
+      );
+    }
+  }
   renderSchedLine(status.scheduler);
   renderRunDiagnostics(status);
   
@@ -3913,7 +3924,7 @@ async function loadDash() {
   const llmDisplay = llmModel ? `🤖 AI: ${llmName} (${llmModel}) ▾` : `🤖 AI: ${llmName} ▾`;
   setChip($("#chip-llm"), llmDisplay, `AI 분석 리포트 생성 모델: ${status.llm_model || llmName}. 클릭하여 모델을 즉시 변경할 수 있습니다.`);
   dashRows = top.rows || [];
-  renderKpis(status, dashRows);
+  renderKpis(status, dashRows, all.total);
   renderChampions(dashRows);
   loadGlanceTop3().catch(() => {});
   renderDashDna(dashRows, currentDashTopN);
@@ -3981,14 +3992,17 @@ async function loadDashTier1Briefing() {
     const res = await api("/api/dashboard/tier1-briefing");
     if (!renderTier1Unavailable(container, res)) return;
     if (res && res.headline) {
+      const isRuleFallback = res.status === "DETERMINISTIC_FALLBACK";
+      const engineLabel = isRuleFallback ? "실데이터 자동 요약" : "Tier 1 무료 엔진";
+      const modelLabel = isRuleFallback ? "규칙 기반 · AI 미사용" : `🤖 ${res.model || "Tier 1 무료 모델"} (비용 0원)`;
       container.innerHTML = `
         <div style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,58,138,0.25)); border:1px solid rgba(56,189,248,0.35); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35);">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:13px; font-weight:800; color:#38bdf8;">⚡ 오늘의 퀀트 시장 종합 브리핑</span>
-              <span class="chip ok" style="font-size:10px; font-weight:700;">Tier 1 무료 엔진</span>
+              <span class="chip ok" style="font-size:10px; font-weight:700;">${escapeHtml(engineLabel)}</span>
             </div>
-            <span style="font-size:11px; color:#86efac; font-weight:600;">🤖 ${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")} (비용 0원)</span>
+            <span style="font-size:11px; color:#86efac; font-weight:600;">${escapeHtml(modelLabel)}</span>
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <div style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#cbd5e1; line-height:1.5;">
@@ -10414,9 +10428,10 @@ async function loadPreEntryView() {
   // Render Donut Chart and Theme Ranking Cards
   renderThemeDonutAndRanking(preEntryThemeData);
 
-  // Allowed active pre-entry stages: strictly require actionable pre-entry window (TODAY_ENTRY, PRE_ENTRY_15, PRE_ENTRY_30, ACCUMULATE_60)
+  // Backend canonical rank is shared with dashboard Glance Top 3.  A row without
+  // pre_entry_rank failed the common tradability/current-price checks.
   const allowedStages = new Set(["TODAY_ENTRY", "PRE_ENTRY_15", "PRE_ENTRY_30", "ACCUMULATE_60"]);
-  let filtered = allRows.filter((r) => allowedStages.has(r.entry_stage));
+  let filtered = allRows.filter((r) => allowedStages.has(r.entry_stage) && Number.isFinite(Number(r.pre_entry_rank)));
 
   if (currentPreEntryMarket !== "all") {
     filtered = filtered.filter((r) => r.market === currentPreEntryMarket);
@@ -10428,25 +10443,8 @@ async function loadPreEntryView() {
     }
   }
 
-  // Stage Priority Weight: Forward Entry & Pre-Entry (TODAY_ENTRY > PRE_ENTRY_15 > PRE_ENTRY_30 > ACCUMULATE_60)
-  const getStageWeight = (stg) => {
-    if (stg === "TODAY_ENTRY") return 100;
-    if (stg === "PRE_ENTRY_15") return 80;
-    if (stg === "PRE_ENTRY_30") return 60;
-    if (stg === "ACCUMULATE_60") return 40;
-    return 0;
-  };
-
   if (currentPreEntrySort === "score") {
-    filtered.sort((a, b) => {
-      const wa = getStageWeight(a.entry_stage);
-      const wb = getStageWeight(b.entry_stage);
-      const wDiff = wb - wa;
-      if (Math.abs(wDiff) >= 40) return wDiff;
-      const sa = Number(a.seasonality_score) || 0;
-      const sb = Number(b.seasonality_score) || 0;
-      return sb - sa;
-    });
+    filtered.sort((a, b) => Number(a.pre_entry_rank) - Number(b.pre_entry_rank));
   } else if (currentPreEntrySort === "return") {
     filtered.sort((a, b) => Number(b.remaining_peak?.available ? b.remaining_peak.remaining_p50 : -99) - Number(a.remaining_peak?.available ? a.remaining_peak.remaining_p50 : -99));
   } else if (currentPreEntrySort === "winrate") {

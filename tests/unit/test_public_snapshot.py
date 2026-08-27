@@ -44,6 +44,9 @@ def test_full_public_ui_snapshot_allowlist_and_sanitizer():
     assert "/api/status" in UI_ROUTES
     assert "/api/results/all" in UI_ROUTES
     assert "/api/seasonality/discovery" in UI_ROUTES
+    assert UI_ROUTES["/api/results/top"] == "/api/results/top?n=100"
+    assert UI_ROUTES["/api/dashboard/tier1-briefing"].endswith("deterministic=true")
+    assert UI_ROUTES["/api/rank/tier1-briefing"].endswith("deterministic=true")
     assert "/api/settings" not in UI_ROUTES
     assert "/api/settings/raw" not in UI_ROUTES
 
