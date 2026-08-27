@@ -579,17 +579,94 @@
         </div>
         <p class="hint">가격 데이터가 먼저 말하게 하고, 반복 상승 구간의 공통 이벤트를 AI가 역추적하여 올해 유효성과 무효화 조건을 도출합니다.</p>
 
-        <!-- 5 Subtabs Bar -->
+        <!-- 6 Subtabs Bar -->
         <div class="inst-subtabs-bar" id="seasonality-subtabs" style="display:flex; gap:8px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:12px; margin-bottom:16px; overflow-x:auto;">
-          <button type="button" class="inst-subtab-btn active" id="tab-v11-pre-entry" data-subtab="pre-entry" style="font-weight:800; border-color:rgba(234,179,8,0.5); color:#facc15;">🏆 오늘의 선취매 TOP 10</button>
+          <button type="button" class="inst-subtab-btn active" id="tab-v11-momentum" data-subtab="momentum" style="font-weight:800; border-color:rgba(56,189,248,0.5); color:#38bdf8;">🎯 선취매 실전 포트폴리오 & 엑시트 관리</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-pre-entry" data-subtab="pre-entry" style="font-weight:800; border-color:rgba(234,179,8,0.5); color:#facc15;">🏆 오늘의 선취매 TOP 10</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-discovery" data-subtab="discovery">🚀 90일 진입 디스커버리 TOP</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-explanation" data-subtab="explanation">🤖 AI 이벤트 역추적 & 설명</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-calendar" data-subtab="calendar">📅 10개 분야 · 18개 이벤트 캘린더</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-heatmap" data-subtab="heatmap">📊 12개월 히트맵 스크리너</button>
         </div>
 
+        <!-- PANE -1: Calendar Momentum Real-Money Portfolio Tracker -->
+        <div id="pane-v11-momentum">
+          <!-- Top 4 KPIs -->
+          <div class="kpis" id="momentum-kpis" style="margin:0 0 16px;"></div>
+
+          <!-- Add Stock Form (Collapsible) -->
+          <details id="momentum-add-details" style="background:rgba(15,23,42,0.6); border:1px solid rgba(56,189,248,0.25); border-radius:10px; padding:12px 16px; margin-bottom:16px;">
+            <summary style="cursor:pointer; font-size:13.5px; font-weight:800; color:#38bdf8; user-select:none;">
+              ➕ 새 선취매 보유종목 등록하기 (클릭하여 열기)
+            </summary>
+            <form id="momentum-add-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:14px;">
+              <div>
+                <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">종목명 *</label>
+                <input type="text" id="mom-in-name" placeholder="예: 한미반도체" required style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+              </div>
+              <div>
+                <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">종목코드 *</label>
+                <input type="text" id="mom-in-code" placeholder="예: 042700" required style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+              </div>
+              <div>
+                <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">진입일자 (매수일) *</label>
+                <input type="date" id="mom-in-entry-date" value="2026-08-27" required style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+              </div>
+              <div>
+                <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">목표 피크일 (엑시트 예정일) *</label>
+                <input type="date" id="mom-in-peak-date" value="2026-09-15" required style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+              </div>
+              <div>
+                <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">매수단가 (원)</label>
+                <input type="number" id="mom-in-entry-price" placeholder="예: 25400" style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+              </div>
+              <div>
+                <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">목표가 (원)</label>
+                <input type="number" id="mom-in-target-price" placeholder="예: 31500" style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+              </div>
+              <div style="grid-column:1/-1;">
+                <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">핵심 촉매 이벤트 / 계절성 메모</label>
+                <input type="text" id="mom-in-catalyst" placeholder="예: 9월 학회 발표 및 3Q 실적 턴어라운드" style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+              </div>
+              <div style="grid-column:1/-1;">
+                <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">엑시트 시나리오 / 주의점</label>
+                <input type="text" id="mom-in-notes" placeholder="예: D-3부터 50% 분할 익절, 피크일 전량 엑시트" style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+              </div>
+              <div style="grid-column:1/-1; text-align:right;">
+                <button type="submit" class="primary" style="height:36px; padding:0 18px; font-weight:800; border-radius:6px;">💾 포트폴리오에 저장</button>
+              </div>
+            </form>
+          </details>
+
+          <!-- Stock Cards 2-Column Grid -->
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <b style="font-size:14px; color:#f8fafc;">📦 종목별 D-Day 및 실시간 엑시트 시그널</b>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11px;">실시간 D-Day 감시 중</span>
+          </div>
+          <div id="momentum-cards-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:14px; margin-bottom:20px;"></div>
+
+          <!-- Trajectory Sync Interactive Chart -->
+          <div style="background:linear-gradient(145deg, #090d16 0%, #0d1527 100%); border:1.5px solid rgba(56,189,248,0.35); border-radius:14px; padding:16px; margin-top:16px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:16px;">📈</span>
+                <b style="color:#38bdf8; font-size:14px;">과거 5개년 평균 계절성 궤적 vs 2026년 실제 주가 비교</b>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:12px; color:#94a3b8;">종목 선택:</span>
+                <select id="momentum-chart-stock-select" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:5px 10px; font-size:12px; min-width:160px;"></select>
+              </div>
+            </div>
+
+            <!-- Chart Canvas Wrap -->
+            <div style="width:100%; height:300px; position:relative; background:#070b13; border-radius:8px; overflow:hidden; border:1px solid rgba(255,255,255,0.05);">
+              <canvas id="momentum-chart-canvas" style="width:100%; height:100%; display:block;"></canvas>
+            </div>
+          </div>
+        </div>
+
         <!-- PANE 0: Today's Pre-Entry TOP 10 Recommendation Hero View -->
-        <div id="pane-v11-pre-entry">
+        <div id="pane-v11-pre-entry" class="hidden">
           <!-- Theme Seasonality Return Contribution Donut Widget -->
           <div id="theme-donut-widget-card" class="theme-donut-container">
             <div class="donut-chart-box">

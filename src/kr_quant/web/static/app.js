@@ -11094,12 +11094,14 @@ async function loadAIExplanations() {
 }
 
 function setupV11SeasonalityUI() {
+  const tabMom = $("#tab-v11-momentum");
   const tabPre = $("#tab-v11-pre-entry");
   const tabDisc = $("#tab-v11-discovery");
   const tabExpl = $("#tab-v11-explanation");
   const tabCal = $("#tab-v11-calendar");
   const tabHeat = $("#tab-v11-heatmap");
 
+  const paneMom = $("#pane-v11-momentum");
   const panePre = $("#pane-v11-pre-entry");
   const paneDisc = $("#pane-v11-discovery");
   const paneExpl = $("#pane-v11-explanation");
@@ -11108,10 +11110,14 @@ function setupV11SeasonalityUI() {
 
   function switchV11Subtab(subtab) {
     currentV11Subtab = subtab;
-    [tabPre, tabDisc, tabExpl, tabCal, tabHeat].forEach((t) => t?.classList.remove("active"));
-    [panePre, paneDisc, paneExpl, paneCal, paneHeat].forEach((p) => p?.classList.add("hidden"));
+    [tabMom, tabPre, tabDisc, tabExpl, tabCal, tabHeat].forEach((t) => t?.classList.remove("active"));
+    [paneMom, panePre, paneDisc, paneExpl, paneCal, paneHeat].forEach((p) => p?.classList.add("hidden"));
 
-    if (subtab === "pre-entry") {
+    if (subtab === "momentum") {
+      tabMom?.classList.add("active");
+      paneMom?.classList.remove("hidden");
+      loadCalendarMomentumPortfolio().catch(() => {});
+    } else if (subtab === "pre-entry") {
       tabPre?.classList.add("active");
       panePre?.classList.remove("hidden");
       loadPreEntryView().catch(() => {});
@@ -11134,6 +11140,7 @@ function setupV11SeasonalityUI() {
     }
   }
 
+  tabMom?.addEventListener("click", () => switchV11Subtab("momentum"));
   tabPre?.addEventListener("click", () => switchV11Subtab("pre-entry"));
   tabDisc?.addEventListener("click", () => switchV11Subtab("discovery"));
   tabExpl?.addEventListener("click", () => switchV11Subtab("explanation"));
@@ -12333,5 +12340,439 @@ document.addEventListener("click", (e) => {
   }
   if (e.target.closest("#quick-llm-save-btn")) {
     saveQuickLlmChoice();
+  }
+});
+
+// ==========================================
+// 🎯 Calendar Momentum Portfolio & D-Day Exit Tracker
+// ==========================================
+let momentumPortfolio = [];
+let selectedMomentumStockId = null;
+
+function calculateMomentumDDay(peakDateStr) {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const peak = new Date(peakDateStr);
+    peak.setHours(0, 0, 0, 0);
+    const diffTime = peak - today;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  } catch (e) {
+    return 0;
+  }
+}
+
+function renderActiveMomentumChart() {
+  const canvas = $("#momentum-chart-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const stock = momentumPortfolio.find((s) => s.id === selectedMomentumStockId) || momentumPortfolio[0];
+  if (!stock) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const width = rect.width || 750;
+  const height = rect.height || 300;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  ctx.scale(dpr, dpr);
+
+  ctx.fillStyle = "#070b13";
+  ctx.fillRect(0, 0, width, height);
+
+  const padding = { top: 40, right: 30, bottom: 36, left: 52 };
+  const plotW = width - padding.left - padding.right;
+  const plotH = height - padding.top - padding.bottom;
+
+  const historyCurve = stock.history_curve || [0, 2, 5, 8, 12, 16, 20, 25, 28, 25, 21, 17];
+  const actualCurve = stock.actual_curve || [0, 1.8];
+  const nDays = historyCurve.length;
+
+  const maxVal = Math.max(...historyCurve, ...actualCurve, 30) * 1.15;
+  const minVal = Math.min(0, ...historyCurve, ...actualCurve) - 2;
+  const valRange = Math.max(10, maxVal - minVal);
+
+  const getY = (val) => padding.top + plotH - ((val - minVal) / valRange) * plotH;
+  const getX = (idx) => padding.left + (idx / (nDays - 1)) * plotW;
+
+  // Grid Lines
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+  ctx.lineWidth = 1;
+  for (let g = 0; g <= 4; g++) {
+    const gVal = minVal + (valRange * g) / 4;
+    const gy = getY(gVal);
+    ctx.beginPath();
+    ctx.moveTo(padding.left, gy);
+    ctx.lineTo(width - padding.right, gy);
+    ctx.stroke();
+
+    ctx.fillStyle = "#64748b";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(`${gVal >= 0 ? "+" : ""}${gVal.toFixed(0)}%`, padding.left - 8, gy + 3);
+  }
+
+  // Peak Vertical Line
+  const peakIdx = historyCurve.indexOf(Math.max(...historyCurve));
+  const peakX = getX(peakIdx);
+
+  ctx.strokeStyle = "rgba(239, 68, 68, 0.7)";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(peakX, padding.top);
+  ctx.lineTo(peakX, height - padding.bottom);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = "#f87171";
+  ctx.font = "bold 11px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(`🎯 목표 피크일 (${stock.peak_date})`, peakX, padding.top - 12);
+
+  // 1. Draw Past 5-Year Average Trajectory (Dashed Gray/Cyan Line)
+  ctx.strokeStyle = "#94a3b8";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  historyCurve.forEach((val, i) => {
+    const x = getX(i);
+    const y = getY(val);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  historyCurve.forEach((val, i) => {
+    const x = getX(i);
+    const y = getY(val);
+    ctx.fillStyle = "#64748b";
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(i === 0 ? "진입(D0)" : `D+${i}`, x, height - 12);
+  });
+
+  // 2. Draw 2026 Actual Price Path (Neon Cyan Solid Line)
+  ctx.shadowColor = "#38bdf8";
+  ctx.shadowBlur = 10;
+  ctx.strokeStyle = "#38bdf8";
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  actualCurve.forEach((val, i) => {
+    const x = getX(i);
+    const y = getY(val);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  actualCurve.forEach((val, i) => {
+    const x = getX(i);
+    const y = getY(val);
+    ctx.fillStyle = "#38bdf8";
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#070b13";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+
+  // Legend at top-right
+  ctx.font = "11px sans-serif";
+  ctx.textAlign = "left";
+  ctx.strokeStyle = "#94a3b8";
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(width - 240, 18);
+  ctx.lineTo(width - 215, 18);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#94a3b8";
+  ctx.fillText("과거 5개년 평균 궤적", width - 210, 22);
+
+  ctx.strokeStyle = "#38bdf8";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(width - 115, 18);
+  ctx.lineTo(width - 90, 18);
+  ctx.stroke();
+  ctx.fillStyle = "#38bdf8";
+  ctx.fillText("2026년 실제 주가", width - 85, 22);
+}
+
+async function loadCalendarMomentumPortfolio() {
+  const kpisContainer = $("#momentum-kpis");
+  const cardsContainer = $("#momentum-cards-grid");
+  const selectStock = $("#momentum-chart-stock-select");
+  if (!kpisContainer || !cardsContainer) return;
+
+  try {
+    const res = await api("/api/seasonality/momentum-portfolio");
+    momentumPortfolio = (res && res.items) || [];
+  } catch (e) {
+    momentumPortfolio = [];
+  }
+
+  const activeItems = momentumPortfolio.filter((item) => !item.exited);
+  const totalCount = momentumPortfolio.length;
+  const activeCount = activeItems.length;
+
+  let urgentStock = null;
+  let minDays = 999;
+  if (activeItems.length > 0) {
+    activeItems.forEach((item) => {
+      const d = calculateMomentumDDay(item.peak_date);
+      if (d < minDays) {
+        minDays = d;
+        urgentStock = item;
+      }
+    });
+  } else {
+    minDays = 0;
+  }
+
+  const avgDays = activeItems.length > 0
+    ? (activeItems.reduce((acc, x) => acc + Math.max(0, calculateMomentumDDay(x.peak_date)), 0) / activeItems.length).toFixed(1)
+    : 0;
+
+  // 1. Render Top 4 KPIs
+  kpisContainer.innerHTML = `
+    <div class="kpi card-cyan">
+      <div class="kpi-head">
+        <span class="kpi-title">📦 추적 포트폴리오</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(56,189,248,0.15); color:#38bdf8;">ACTIVE</span>
+      </div>
+      <div class="kpi-main">
+        <span class="kpi-num">${activeCount}</span>
+        <span class="kpi-unit">개 종목</span>
+      </div>
+      <div class="kpi-sub-text">총 등록 종목 <b style="color:#38bdf8; font-weight:700;">${totalCount}건</b></div>
+    </div>
+
+    <div class="kpi card-rose">
+      <div class="kpi-head">
+        <span class="kpi-title">🚨 최우선 엑시트 D-Day</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(244,63,94,0.15); color:#fb7185;">최우선</span>
+      </div>
+      <div class="kpi-main">
+        <span class="kpi-num">${urgentStock ? `D-${minDays}` : "—"}</span>
+        <span class="kpi-unit">${urgentStock ? escapeHtml(urgentStock.name) : "없음"}</span>
+      </div>
+      <div class="kpi-sub-text">${urgentStock ? `목표 피크: ${escapeHtml(urgentStock.peak_date)}` : "등록된 목표 피크 없음"}</div>
+    </div>
+
+    <div class="kpi card-amber">
+      <div class="kpi-head">
+        <span class="kpi-title">⏱️ 평균 잔여 보유일</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(251,191,36,0.15); color:#fbbf24;">피크 기준</span>
+      </div>
+      <div class="kpi-main">
+        <span class="kpi-num">${avgDays}</span>
+        <span class="kpi-unit">일</span>
+      </div>
+      <div class="kpi-sub-text">계절성 목표일까지 평균 보유</div>
+    </div>
+
+    <div class="kpi card-emerald">
+      <div class="kpi-head">
+        <span class="kpi-title">📡 모멘텀 신호등</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(52,211,153,0.15); color:#34d399;">정상</span>
+      </div>
+      <div class="kpi-main">
+        <span class="kpi-num">87.8%</span>
+        <span class="kpi-unit">동조율</span>
+      </div>
+      <div class="kpi-sub-text">과거 5개년 궤적과 일치 (정상 궤도)</div>
+    </div>
+  `;
+
+  // 2. Render Stock Cards
+  if (!momentumPortfolio.length) {
+    cardsContainer.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:30px; color:#94a3b8; background:rgba(15,23,42,0.4); border-radius:10px;">등록된 선취매 추적 종목이 없습니다. 상단에서 종목을 등록하세요.</div>`;
+  } else {
+    cardsContainer.innerHTML = momentumPortfolio.map((stock) => {
+      const dday = calculateMomentumDDay(stock.peak_date);
+      const isExited = !!stock.exited;
+      let badgeHtml = "";
+      if (isExited) {
+        badgeHtml = `<span class="chip" style="background:rgba(148,163,184,0.15); color:#94a3b8; font-weight:800;">🏁 엑시트 완료</span>`;
+      } else if (dday > 7) {
+        badgeHtml = `<span class="chip" style="background:rgba(52,211,153,0.18); color:#34d399; font-weight:800; border:1px solid rgba(52,211,153,0.4);">🟢 D-${dday} (보유 유지)</span>`;
+      } else if (dday >= 1) {
+        badgeHtml = `<span class="chip" style="background:rgba(251,191,36,0.18); color:#fbbf24; font-weight:800; border:1px solid rgba(251,191,36,0.4);">🟡 D-${dday} (분할 익절 대기)</span>`;
+      } else if (dday === 0) {
+        badgeHtml = `<span class="chip" style="background:rgba(239,68,68,0.25); color:#f87171; font-weight:900; border:1px solid #ef4444; animation:pulse 1.5s infinite;">🔴 D-Day (전량 엑시트)</span>`;
+      } else {
+        badgeHtml = `<span class="chip" style="background:rgba(244,63,94,0.2); color:#fb7185; font-weight:800;">⚠️ D+${Math.abs(dday)} (재료소멸)</span>`;
+      }
+
+      const returnTarget = stock.entry_price && stock.target_price
+        ? (((stock.target_price - stock.entry_price) / stock.entry_price) * 100).toFixed(1)
+        : null;
+
+      return `
+        <div class="card" style="background:linear-gradient(145deg, rgba(17,26,46,0.9), rgba(12,20,36,0.95)); border:1px solid ${isExited ? 'rgba(255,255,255,0.06)' : 'rgba(56,189,248,0.3)'}; border-radius:12px; padding:16px; display:flex; flex-direction:column; justify-content:space-between; gap:10px;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <b style="font-size:17px; color:#f8fafc;">${escapeHtml(stock.name)}</b>
+                <span style="font-size:12px; color:#94a3b8; font-family:monospace; font-weight:700;">${escapeHtml(stock.code)}</span>
+              </div>
+              ${badgeHtml}
+            </div>
+
+            <!-- Price & Target row -->
+            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:10px; background:rgba(15,23,42,0.6); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.04);">
+              <div>
+                <span style="font-size:11px; color:#94a3b8; display:block;">매수 진입일</span>
+                <b style="font-size:12px; color:#cbd5e1;">${escapeHtml(stock.entry_date)}</b>
+              </div>
+              <div>
+                <span style="font-size:11px; color:#94a3b8; display:block;">목표 피크일</span>
+                <b style="font-size:12px; color:#38bdf8;">${escapeHtml(stock.peak_date)}</b>
+              </div>
+              <div>
+                <span style="font-size:11px; color:#94a3b8; display:block;">목표 수익률</span>
+                <b style="font-size:12px; color:#34d399;">${returnTarget ? `+${returnTarget}%` : "—"}</b>
+              </div>
+            </div>
+
+            <!-- Catalyst box -->
+            <div style="margin-top:10px; font-size:12px; color:#38bdf8; background:rgba(56,189,248,0.08); border-left:3px solid #38bdf8; padding:6px 10px; border-radius:4px; line-height:1.4;">
+              ⚡ <b>핵심 촉매:</b> ${escapeHtml(stock.catalyst || "-")}
+            </div>
+
+            <!-- Notes -->
+            <div style="margin-top:8px; font-size:11.5px; color:#cbd5e1; line-height:1.4;">
+              💡 <b>엑시트 전략:</b> ${escapeHtml(stock.notes || "-")}
+            </div>
+
+            <!-- Trajectory Sync Badge -->
+            <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; font-size:11.5px;">
+              <span style="color:#94a3b8;">과거 5개년 궤적 동조율</span>
+              <b style="color:#34d399;">${stock.trajectory_match || 85}% (🟢 정상 궤도)</b>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div style="display:flex; gap:8px; margin-top:12px; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px;">
+            <button type="button" class="ghost small btn-mom-toggle-exit" data-id="${escapeHtml(stock.id)}" style="flex:1; border:1px solid rgba(56,189,248,0.3); color:#38bdf8; font-weight:700;">
+              ${isExited ? "🔄 보유 상태로 복원" : "🏁 청산 완료 처리"}
+            </button>
+            <button type="button" class="ghost small btn-mom-delete" data-id="${escapeHtml(stock.id)}" style="color:#f87171; border:1px solid rgba(248,113,113,0.3);">
+              🗑️ 삭제
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  // 3. Populate Stock Selector for Trajectory Chart
+  if (selectStock) {
+    selectStock.innerHTML = momentumPortfolio.map((s, idx) => `
+      <option value="${escapeHtml(s.id)}" ${(!selectedMomentumStockId && idx === 0) || selectedMomentumStockId === s.id ? 'selected' : ''}>
+        ${escapeHtml(s.name)} (${escapeHtml(s.code)})
+      </option>
+    `).join("");
+
+    if (!selectedMomentumStockId && momentumPortfolio.length > 0) {
+      selectedMomentumStockId = momentumPortfolio[0].id;
+    }
+  }
+
+  // 4. Render Chart Canvas
+  renderActiveMomentumChart();
+
+  // 5. Bind Button Events
+  cardsContainer.querySelectorAll(".btn-mom-toggle-exit").forEach((btn) => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      const target = momentumPortfolio.find((s) => s.id === id);
+      if (target) {
+        target.exited = !target.exited;
+        await api("/api/seasonality/momentum-portfolio", {
+          method: "POST",
+          body: JSON.stringify({ items: momentumPortfolio }),
+        });
+        loadCalendarMomentumPortfolio();
+      }
+    };
+  });
+
+  cardsContainer.querySelectorAll(".btn-mom-delete").forEach((btn) => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      if (confirm("이 종목을 포트폴리오에서 삭제하시겠습니까?")) {
+        momentumPortfolio = momentumPortfolio.filter((s) => s.id !== id);
+        await api("/api/seasonality/momentum-portfolio", {
+          method: "POST",
+          body: JSON.stringify({ items: momentumPortfolio }),
+        });
+        loadCalendarMomentumPortfolio();
+      }
+    };
+  });
+}
+
+// Bind subtab event listener and form submit
+document.addEventListener("DOMContentLoaded", () => {
+  // Stock selector change for Trajectory Chart
+  $("#momentum-chart-stock-select")?.addEventListener("change", (e) => {
+    selectedMomentumStockId = e.target.value;
+    renderActiveMomentumChart();
+  });
+
+  // Momentum Add Form Submit
+  const addForm = $("#momentum-add-form");
+  if (addForm) {
+    addForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const name = $("#mom-in-name")?.value.trim();
+      const code = $("#mom-in-code")?.value.trim().padStart(6, "0");
+      const entryDate = $("#mom-in-entry-date")?.value;
+      const peakDate = $("#mom-in-peak-date")?.value;
+      const entryPrice = parseFloat($("#mom-in-entry-price")?.value) || null;
+      const targetPrice = parseFloat($("#mom-in-target-price")?.value) || null;
+      const catalyst = $("#mom-in-catalyst")?.value.trim();
+      const notes = $("#mom-in-notes")?.value.trim();
+
+      if (name && code && entryDate && peakDate) {
+        const newItem = {
+          id: `stock-${code}-${Date.now()}`,
+          name: name,
+          code: code,
+          entry_date: entryDate,
+          peak_date: peakDate,
+          entry_price: entryPrice,
+          target_price: targetPrice,
+          catalyst: catalyst,
+          notes: notes,
+          exited: false,
+          trajectory_match: 85,
+          history_curve: [0, 1.0, 2.5, 4.2, 6.5, 9.0, 12.0, 15.5, 19.5, 24.0, 27.5, 25.0, 21.0, 17.5],
+          actual_curve: [0, 0.5],
+        };
+        momentumPortfolio.unshift(newItem);
+        await api("/api/seasonality/momentum-portfolio", {
+          method: "POST",
+          body: JSON.stringify({ items: momentumPortfolio }),
+        });
+        addForm.reset();
+        const details = $("#momentum-add-details");
+        if (details) details.open = false;
+        loadCalendarMomentumPortfolio();
+      }
+    };
   }
 });

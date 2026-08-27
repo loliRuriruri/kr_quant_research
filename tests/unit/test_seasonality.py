@@ -114,6 +114,22 @@ def test_seasonality_ticker_api():
 def test_ticker_meta_map_covers_kospi_and_kosdaq():
     s = load_settings()
     meta = ticker_meta_map(s)
+
+
+def test_seasonality_ticker_api():
+    res = client.get("/api/seasonality/ticker/009450")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is True
+    assert "stock" in data
+    assert data["stock"]["ticker"] == "009450"
+    assert len(data["stock"]["months"]) == 12
+    assert data["stock"]["market"] in {"KOSPI", "KOSDAQ"}
+
+
+def test_ticker_meta_map_covers_kospi_and_kosdaq():
+    s = load_settings()
+    meta = ticker_meta_map(s)
     assert len(meta) > 1000
     markets = {info["market"] for info in meta.values()}
     assert "KOSPI" in markets
@@ -128,3 +144,28 @@ def test_pre_entry_glance_excludes_season_end():
         assert pick["entry_stage"] in {"TODAY_ENTRY", "PRE_ENTRY_15", "PRE_ENTRY_30", "ACCUMULATE_60"}
         assert pick["rank"] >= 1
         assert pick["ticker"]
+
+
+def test_momentum_portfolio_api():
+    # GET test
+    res = client.get("/api/seasonality/momentum-portfolio")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is True
+    assert "items" in data
+    assert len(data["items"]) >= 4
+
+    # Check 4 key user stocks exist
+    codes = {item["code"] for item in data["items"]}
+    assert "161580" in codes  # 필옵틱스
+    assert "204270" in codes  # 제이앤티씨
+    assert "178320" in codes  # 서진시스템
+    assert "347850" in codes  # 디앤디파마텍
+
+    # POST test
+    test_items = list(data["items"])
+    test_items[0]["notes"] = "Updated test notes"
+    post_res = client.post("/api/seasonality/momentum-portfolio", json={"items": test_items})
+    assert post_res.status_code == 200
+    assert post_res.json()["ok"] is True
+    assert post_res.json()["saved_count"] == len(test_items)

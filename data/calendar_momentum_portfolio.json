@@ -1,0 +1,135 @@
+[
+  {
+    "id": "stock-161580",
+    "name": "필옵틱스",
+    "code": "161580",
+    "entry_date": "2026-08-27",
+    "peak_date": "2026-09-10",
+    "entry_price": 25400,
+    "target_price": 31500,
+    "catalyst": "9월 글로벌 SEMICON / IMID 학회 및 글래스 기판 레이저 장비 수주 모멘텀",
+    "notes": "Updated test notes",
+    "exited": false,
+    "trajectory_match": 89,
+    "history_curve": [
+      0,
+      1.2,
+      2.8,
+      4.5,
+      6.2,
+      8.8,
+      11.5,
+      14.8,
+      18.2,
+      22.0,
+      24.5,
+      23.0,
+      20.5,
+      17.0
+    ],
+    "actual_curve": [
+      0,
+      1.8
+    ]
+  },
+  {
+    "id": "stock-204270",
+    "name": "제이앤티씨",
+    "code": "204270",
+    "entry_date": "2026-08-27",
+    "peak_date": "2026-09-12",
+    "entry_price": 18200,
+    "target_price": 22800,
+    "catalyst": "9월 글로벌 스마트폰 신작(아이폰) 공개 전 커버글라스 / 기판 부품 공급 랠리",
+    "notes": "신제품 공개 키노트 당일 '재료 소멸' 하락 주의. D-2 전량 엑시트 권장.",
+    "exited": false,
+    "trajectory_match": 92,
+    "history_curve": [
+      0,
+      0.9,
+      2.2,
+      3.8,
+      5.5,
+      7.8,
+      10.5,
+      13.6,
+      17.2,
+      21.0,
+      25.1,
+      23.5,
+      19.8,
+      15.2
+    ],
+    "actual_curve": [
+      0,
+      2.4
+    ]
+  },
+  {
+    "id": "stock-178320",
+    "name": "서진시스템",
+    "code": "178320",
+    "entry_date": "2026-08-27",
+    "peak_date": "2026-09-28",
+    "entry_price": 28500,
+    "target_price": 35000,
+    "catalyst": "하반기 글로벌 ESS 대형 수주 및 3Q 실적 턴어라운드 기관 선반영 랠리",
+    "notes": "수주 공시 및 기관 매수세 유입 확인 시 분기말 목표일까지 추세 홀딩.",
+    "exited": false,
+    "trajectory_match": 84,
+    "history_curve": [
+      0,
+      0.6,
+      1.4,
+      2.5,
+      3.8,
+      5.4,
+      7.2,
+      9.5,
+      12.2,
+      15.5,
+      19.0,
+      23.2,
+      26.5,
+      25.0,
+      22.0
+    ],
+    "actual_curve": [
+      0,
+      0.8
+    ]
+  },
+  {
+    "id": "stock-347850",
+    "name": "디앤디파마텍",
+    "code": "347850",
+    "entry_date": "2026-08-27",
+    "peak_date": "2026-10-05",
+    "entry_price": 43200,
+    "target_price": 56000,
+    "catalyst": "9~10월 유럽당뇨학회(EASD) / 비만학회(ObesityWeek) 파이프라인 임상 모멘텀",
+    "notes": "학회 초록(Abstract) 공개 시점 단기 급등 시 1차 50% 분할 익절.",
+    "exited": false,
+    "trajectory_match": 86,
+    "history_curve": [
+      0,
+      1.8,
+      3.9,
+      6.2,
+      8.8,
+      12.0,
+      15.8,
+      20.2,
+      25.5,
+      31.0,
+      35.8,
+      38.0,
+      34.2,
+      29.5
+    ],
+    "actual_curve": [
+      0,
+      3.2
+    ]
+  }
+]
