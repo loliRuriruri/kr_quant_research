@@ -2304,13 +2304,14 @@ async function loadGlanceTop3() {
     const cards = picks.map((p) => {
       const rank = Number(p.rank) || 0;
       const wr = ((p.win_rate || 0) * 100).toFixed(0);
-      const ret = ((p.expected_p50 || 0) * 100).toFixed(1);
+      const remaining = p.remaining_peak || {};
+      const ret = remaining.available === true && Number.isFinite(Number(remaining.remaining_p50)) ? pbPct(remaining.remaining_p50) : "산출대기";
       const close = p.last_close == null ? "—" : `${Number(p.last_close).toLocaleString("ko-KR")}원`;
       const chg = Number(p.chg_pct || 0);
       const chgCls = chg > 0 ? "up" : chg < 0 ? "down" : "";
       const chgTxt = `${chg > 0 ? "+" : ""}${(chg * 100).toFixed(2)}%`;
       return `
-        <div class="glance-pick-card rank-${rank}" data-ticker="${escapeHtml(p.ticker || "")}">
+        <div class="glance-pick-card rank-${rank}" data-ticker="${escapeHtml(p.ticker || "")}" data-pattern-id="${escapeHtml(p.pattern_id || "")}">
           <div class="glance-pick-head">
             <span class="chip" style="background:#eab308; color:#0f172a; font-weight:900; font-size:11px;">${glanceRankBadge(rank)}</span>
             <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11px;">${escapeHtml(p.entry_stage_label || p.window_name || "")}</span>
@@ -2323,7 +2324,7 @@ async function loadGlanceTop3() {
           </div>
           <div class="glance-pick-kpis">
             <span>승률 <b style="color:#facc15;">${wr}%</b></span>
-            <span>5년 <b class="text-emerald-400">+${ret}%</b></span>
+            <span>오늘→피크 <b class="text-emerald-400">${ret}</b></span>
           </div>
         </div>
       `;
@@ -2342,19 +2343,22 @@ async function loadGlanceTop3() {
     `;
     $("#btn-open-seasonality-from-glance")?.addEventListener("click", () => switchView("seasonality"));
     box.querySelectorAll(".glance-pick-card").forEach((card) => {
-      card.addEventListener("click", () => openGlancePlaybook(card.dataset.ticker));
+      card.addEventListener("click", () => openGlancePlaybook(card.dataset.ticker, card.dataset.patternId));
     });
   } catch (err) {
     box.innerHTML = `<p class="hint" style="margin:0;">선취매 Top 3를 불러오지 못했습니다. ${escapeHtml(err.message || "")}</p>`;
   }
 }
 
-async function openGlancePlaybook(ticker) {
+async function openGlancePlaybook(ticker, patternId = "") {
   const code = String(ticker || "").padStart(6, "0");
   if (!code || code === "000000") return;
   try {
     const data = await api(`/api/seasonality/discovery/${code}?lookback_years=${currentV11Lookback || 5}`);
-    const match = (data.patterns || [])[0];
+    const patterns = data.patterns || [];
+    const match = patterns.find((p) => patternId && p.pattern_id === patternId)
+      || patterns.find((p) => ["TODAY_ENTRY", "PRE_ENTRY_15", "PRE_ENTRY_30", "ACCUMULATE_60"].includes(p.entry_stage))
+      || patterns[0];
     if (match) {
       openDiscoveryDetailModal(match);
       return;
@@ -9695,6 +9699,12 @@ function pbNum(x, digits = 1) {
   return n.toFixed(digits);
 }
 
+function pbWon(x) {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return "—";
+  return `${Math.round(n).toLocaleString("ko-KR")}원`;
+}
+
 function computeTrackStats(track) {
   const rets = (track || []).map((y) => Number(y.return)).filter((n) => Number.isFinite(n));
   if (!rets.length) return null;
@@ -9794,8 +9804,13 @@ function renderDiscDeepPlaybook(r, months) {
   const stats = computeTrackStats(track);
   const targetM = targetMonthOf(r);
   const pb = r.playbook || {};
-  const p50 = r.expected_p50 || r.median_return || 0;
-  const p90 = r.expected_p90 || 0;
+  const monthlyP50 = r.expected_p50 ?? r.median_return;
+  const rem = r.remaining_peak || {};
+  const hasRemaining = rem.available === true && Number.isFinite(Number(rem.remaining_p50));
+  const remWarnings = Array.isArray(rem.warnings) ? rem.warnings : [];
+  const remWarningHtml = remWarnings.length
+    ? `<div style="margin-top:9px;color:#fbbf24;font-size:11.5px;line-height:1.5;">⚠️ ${remWarnings.map(escapeHtml).join("<br>⚠️ ")}</div>`
+    : "";
   const alpha = r.median_alpha ?? r.median_return ?? 0;
   const sample = r.sample_count || r.years_count || track.length || 0;
   const monthCells = renderPbMonthHeat(months, targetM);
@@ -9917,13 +9932,19 @@ function renderDiscDeepPlaybook(r, months) {
         <li style="color:#fca5a5;">${escapeHtml(pb.stop_loss || "리스크 방어 기준: 평균 MDD 초과 하락 시 손절")}</li>
       </ul>
       <div style="margin-top:12px;">
-        <span style="font-size:11.5px; font-weight:700; color:#38bdf8;">📊 현시점 매수 시 수익률 기댓값 산출표</span>
+        <span style="font-size:11.5px; font-weight:700; color:#38bdf8;">📊 오늘 현재가 → 역사적 피크 구간 잔여 상승여력</span>
         <div class="expected-kpi-grid">
-          <div class="expected-kpi-item"><span>당월 계절성 지수</span><b style="color:#38bdf8;">${r.seasonality_score || "—"}점${r.grade ? ` (${r.grade}등급)` : ""}</b></div>
-          <div class="expected-kpi-item"><span>기대 수익률(P50)</span><b style="color:#34d399;">${p50 > 0 ? "+" : ""}${((p50 || 0) * 100).toFixed(1)}%</b></div>
-          <div class="expected-kpi-item"><span>낙관 기대치(P90)</span><b style="color:#60a5fa;">${p90 > 0 ? "+" : ""}${((p90 || 0) * 100).toFixed(1)}%</b></div>
-          <div class="expected-kpi-item"><span>손익비(PF)</span><b style="color:#fbbf24;">${r.profit_factor || 3.5}x</b></div>
+          <div class="expected-kpi-item"><span>현재가 · 기준일</span><b style="color:#e2e8f0;">${pbWon(rem.current_price)} <small>${escapeHtml(rem.price_as_of || "")}</small></b></div>
+          <div class="expected-kpi-item"><span>잔여 상승여력(P50)</span><b style="color:#34d399;">${hasRemaining ? pbPct(rem.remaining_p50) : "산출 불가"}</b></div>
+          <div class="expected-kpi-item"><span>보수~낙관 범위(P25~P75)</span><b style="color:#60a5fa;">${hasRemaining ? `${pbPct(rem.remaining_p25)} ~ ${pbPct(rem.remaining_p75)}` : "—"}</b></div>
+          <div class="expected-kpi-item"><span>P50 피크 환산가</span><b style="color:#fbbf24;">${pbWon(rem.peak_price_p50)}</b></div>
+          <div class="expected-kpi-item"><span>피크까지 중앙 거래일</span><b>${rem.median_trading_days_to_peak == null ? "—" : `${rem.median_trading_days_to_peak}일`}</b></div>
+          <div class="expected-kpi-item"><span>피크 전 하방(P50)</span><b style="color:#f87171;">${pbPct(rem.downside_before_peak_p50)}</b></div>
+          <div class="expected-kpi-item"><span>역사적 플러스 확률</span><b style="color:#34d399;">${rem.positive_peak_rate == null ? "—" : `${(Number(rem.positive_peak_rate) * 100).toFixed(1)}%`}</b></div>
+          <div class="expected-kpi-item"><span>표본 · 신뢰도</span><b>${Number(rem.sample_count || 0)}개년 · ${escapeHtml(rem.confidence || "—")}</b></div>
         </div>
+        <div class="meta" style="margin-top:8px;line-height:1.5;">과거 월간 전체구간 P50 ${pbPct(monthlyP50)}와 구분해 계산합니다. ${escapeHtml(rem.methodology || "실제 일봉 경로가 부족하면 값을 표시하지 않습니다.")}</div>
+        ${remWarningHtml}
       </div>
     </div>
 
@@ -10146,8 +10167,10 @@ function renderSeasonalOverlayChart(canvas, r, months, mode = "seasonal_overlay"
     ctx.fillStyle = "#fbbf24";
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "center";
-    const peakAlphaPct = ((r.median_return || r.expected_p50 || 0.4) * 100).toFixed(1);
-    ctx.fillText(`🎯 역사적 피크 도달 (+${peakAlphaPct}%)`, (peakX1 + peakX2) / 2, padding.top - 10);
+    const remainingP50 = Number(r.remaining_peak && r.remaining_peak.remaining_p50);
+    const peakAlpha = Number.isFinite(remainingP50) ? remainingP50 : Number(r.median_return ?? r.expected_p50 ?? 0);
+    const peakAlphaPct = (peakAlpha * 100).toFixed(1);
+    ctx.fillText(`🎯 오늘→피크 중앙값 (${peakAlpha >= 0 ? "+" : ""}${peakAlphaPct}%)`, (peakX1 + peakX2) / 2, padding.top - 10);
 
     // 3. Draw Seasonal Trajectory Curve
     ctx.shadowColor = "#38bdf8";
@@ -10201,7 +10224,8 @@ function renderSeasonalOverlayChart(canvas, r, months, mode = "seasonal_overlay"
 
     const summaryText = $("#disc-chart-summary-text");
     if (summaryText) {
-      summaryText.innerHTML = `선취매 진입 ➔ 피크 목표 기댓값: <b style="color:#34d399;">+${peakAlphaPct}%</b> (과거 승률 <b style="color:#38bdf8;">${((r.win_rate || 1.0)*100).toFixed(0)}%</b>)`;
+      const peakPrice = r.remaining_peak && r.remaining_peak.peak_price_p50;
+      summaryText.innerHTML = `오늘 현재가 ➔ 피크 잔여 중앙값: <b style="color:#34d399;">${peakAlpha >= 0 ? "+" : ""}${peakAlphaPct}%</b>${peakPrice ? ` · 환산가 <b>${pbWon(peakPrice)}</b>` : ""}`;
     }
   }
 }
@@ -10310,8 +10334,9 @@ async function openDiscoveryDetailModal(r) {
   setModalText("disc-modal-winrate", `${((r.win_rate || 0) * 100).toFixed(1)}%`);
   setModalText("disc-modal-r3-sub", `최근 3년 ${((r.recent_3y_win_rate || 0) * 100).toFixed(0)}%`);
   const alpha = r.median_alpha ?? r.median_return ?? 0;
+  const remDownside = r.remaining_peak && r.remaining_peak.downside_before_peak_p50;
   setModalText("disc-modal-alpha", `${alpha > 0 ? "+" : ""}${(alpha * 100).toFixed(1)}%`);
-  setModalText("disc-modal-mdd-sub", `평균 MDD -${((r.avg_mdd || 0) * 100).toFixed(1)}%`);
+  setModalText("disc-modal-mdd-sub", remDownside == null ? "피크 전 하방 —" : `피크 전 하방(P50) ${pbPct(remDownside)}`);
   setModalText("disc-modal-entry-win", `📈 진입 권장: ${r.entry_window_str || "—"}`);
   setModalText("disc-modal-exit-win", `➔ 목표 엑시트: ${r.exit_window_str || "—"}`);
 
@@ -10423,7 +10448,7 @@ async function loadPreEntryView() {
       return sb - sa;
     });
   } else if (currentPreEntrySort === "return") {
-    filtered.sort((a, b) => (b.expected_p50 || b.median_return || 0) - (a.expected_p50 || a.median_return || 0));
+    filtered.sort((a, b) => Number(b.remaining_peak?.available ? b.remaining_peak.remaining_p50 : -99) - Number(a.remaining_peak?.available ? a.remaining_peak.remaining_p50 : -99));
   } else if (currentPreEntrySort === "winrate") {
     filtered.sort((a, b) => (b.win_rate || 0) - (a.win_rate || 0));
   } else if (currentPreEntrySort === "alpha") {
@@ -10448,9 +10473,10 @@ async function loadPreEntryView() {
     else if (r.entry_stage === "EXIT_PEAK") stageCls = "stage-peak-exit";
 
     const wr = ((r.win_rate || 0) * 100).toFixed(0);
-    const avgRet = ((r.expected_p50 || r.median_return || 0) * 100).toFixed(1);
-    const alpha = ((r.median_alpha || 0) * 100).toFixed(1);
-    const mdd = ((r.avg_mdd || 0) * 100).toFixed(1);
+    const rem = r.remaining_peak || {};
+    const avgRet = rem.available ? pbPct(rem.remaining_p50) : "산출 불가";
+    const remHit = !rem.available || rem.positive_peak_rate == null ? "—" : `${(Number(rem.positive_peak_rate) * 100).toFixed(0)}%`;
+    const remMdd = rem.available ? pbPct(rem.downside_before_peak_p50) : "—";
 
     const yearsTrackHtml = (r.years_track || []).map((y) => {
       const cls = y.is_win ? "year-track-win" : "year-track-loss";
@@ -10481,27 +10507,27 @@ async function loadPreEntryView() {
           </div>
         </div>
 
-        <!-- 5 Key KPI Bar -->
+        <!-- Current-price-to-peak KPI Bar -->
         <div class="pre-entry-kpi-bar">
           <div class="pre-entry-kpi-item">
-            <span>5년 평균 수익률</span>
-            <b class="text-emerald-400">+${avgRet}%</b>
+            <span>오늘→피크 P50</span>
+            <b class="text-emerald-400">${avgRet}</b>
           </div>
           <div class="pre-entry-kpi-item" style="border-color:rgba(234,179,8,0.4); background:rgba(234,179,8,0.1);">
-            <span style="color:#fde047;">5년 승률</span>
-            <b style="color:#facc15;">${wr}% (${r.sample_count}/${r.sample_count}년)</b>
+            <span style="color:#fde047;">피크 플러스 확률</span>
+            <b style="color:#facc15;">${remHit}</b>
           </div>
           <div class="pre-entry-kpi-item">
-            <span>초과알파</span>
-            <b style="color:#38bdf8;">+${alpha}%</b>
+            <span>P50 피크 환산가</span>
+            <b style="color:#38bdf8;">${pbWon(rem.peak_price_p50)}</b>
           </div>
           <div class="pre-entry-kpi-item">
-            <span>5년 평균 MDD</span>
-            <b style="color:#f87171;">-${mdd}%</b>
+            <span>피크 전 하방(P50)</span>
+            <b style="color:#f87171;">${remMdd}</b>
           </div>
           <div class="pre-entry-kpi-item">
-            <span>손익비(PF)</span>
-            <b style="color:#fbbf24;">${r.profit_factor || 3.5}x</b>
+            <span>표본 · 신뢰도</span>
+            <b style="color:#fbbf24;">${Number(rem.sample_count || 0)}년 · ${escapeHtml(rem.confidence || "—")}</b>
           </div>
         </div>
 

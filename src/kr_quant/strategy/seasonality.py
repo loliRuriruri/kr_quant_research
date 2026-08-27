@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from kr_quant.settings import Settings
+from kr_quant.strategy.remaining_peak import calculate_remaining_peak_upside
 from kr_quant.strategy.run import _prices
 from kr_quant.universe.tradability import evaluate_candidate_tradability
 
@@ -56,6 +58,7 @@ def cache_path(settings: Settings) -> Path:
 
 _TICKER_META_CACHE: dict[str, Any] = {"ts": 0.0, "map": {}}
 _SEASONALITY_DB_MEM: dict[str, Any] = {"ts": 0.0, "db": None}
+_REMAINING_PEAK_CACHE: dict[str, Any] = {"signature": None, "values": {}}
 _CLEAN_TICKERS_CACHE: dict[str, Any] = {
     "ts": 0.0,
     "signature": None,
@@ -723,6 +726,85 @@ from kr_quant.strategy.discovery_engine import pattern_from_month_stat, Seasonal
 from kr_quant.strategy.event_explainer import explain_and_score_pattern
 
 
+def _enrich_remaining_peak_rows(
+    settings: Settings,
+    rows: list[dict[str, Any]],
+    *,
+    lookback_years: int,
+) -> list[dict[str, Any]]:
+    """Attach current-price-to-peak estimates without persisting date-sensitive values."""
+    if not rows:
+        return []
+
+    price_path = next(
+        (path for path in (settings.staged_dir / "live" / "prices.parquet", settings.staged_dir / "demo" / "prices.parquet") if path.exists()),
+        None,
+    )
+    signature = (
+        str(price_path),
+        price_path.stat().st_mtime_ns,
+        price_path.stat().st_size,
+        date.today().isoformat(),
+    ) if price_path is not None else None
+    if _REMAINING_PEAK_CACHE.get("signature") != signature:
+        _REMAINING_PEAK_CACHE["signature"] = signature
+        _REMAINING_PEAK_CACHE["values"] = {}
+    metric_cache: dict[tuple[str, int, int], dict[str, Any]] = _REMAINING_PEAK_CACHE["values"]
+
+    requested: list[tuple[dict[str, Any], str, int, tuple[str, int, int]]] = []
+    for source in rows:
+        row = dict(source)
+        ticker = str(row.get("ticker") or "").zfill(6)
+        try:
+            target_month = int(str(row.get("window_name") or "").replace("월", ""))
+        except (TypeError, ValueError):
+            target_month = int(row.get("target_start_month") or pd.Timestamp.now().month)
+        requested.append((row, ticker, target_month, (ticker, target_month, int(lookback_years))))
+
+    missing_tickers = {ticker for _, ticker, _, key in requested if key not in metric_cache}
+    by_ticker: dict[str, pd.DataFrame] = {}
+    if missing_tickers:
+        prices = _prices(settings)
+        if prices is not None and not prices.empty and "ticker" in prices.columns:
+            ticker_values = prices["ticker"].astype(str).str.zfill(6)
+            work = prices.loc[ticker_values.isin(missing_tickers)].copy()
+            work["ticker"] = ticker_values.loc[work.index]
+            by_ticker = {ticker: group.copy() for ticker, group in work.groupby("ticker", sort=False)}
+
+    enriched: list[dict[str, Any]] = []
+    for row, ticker, target_month, cache_key in requested:
+        metrics = metric_cache.get(cache_key)
+        if metrics is None:
+            metrics = calculate_remaining_peak_upside(
+                by_ticker.get(ticker, pd.DataFrame()),
+                ticker,
+                target_month,
+                lookback_years=lookback_years,
+            )
+            metric_cache[cache_key] = metrics
+        row["remaining_peak"] = metrics
+        if metrics.get("target_peak_date"):
+            row["entry_window_str"] = metrics.get("entry_window_str")
+            row["exit_window_str"] = metrics.get("exit_window_str")
+            row["entry_stage"] = metrics.get("entry_stage")
+            row["entry_stage_label"] = metrics.get("entry_stage_label")
+            row["historical_peak_day"] = metrics.get("historical_peak_day")
+            playbook = dict(row.get("playbook") or {})
+            p50 = metrics.get("remaining_p50")
+            downside = metrics.get("downside_before_peak_p50")
+            peak_text = f", 오늘 기준 역사적 중앙값 상승여력 {p50 * 100:+.1f}%" if p50 is not None else ""
+            risk_text = f"역사적 피크 전 중앙값 하방 {downside * 100:.1f}%" if downside is not None else "가격·거래량 무효화 조건"
+            playbook.update({
+                "entry_timing": f"실측 피크 역산 진입 관찰 구간: {metrics.get('entry_window_str')}",
+                "exit_timing": f"역사적 피크 감시 구간: {metrics.get('exit_window_str')}{peak_text}",
+                "stop_loss": f"리스크 참고: {risk_text}. 거래정지·거래량 0·가격 지연 시 산출값을 사용하지 않습니다.",
+                "recommendation": "현재가 이후 남은 경로를 과거 동일 계절 진행시점과 비교합니다. 목표가가 아닌 역사적 분포 추정치입니다.",
+            })
+            row["playbook"] = playbook
+        enriched.append(row)
+    return enriched
+
+
 def scan_seasonality_discovery(
     settings: Settings,
     horizon_days: int = 90,
@@ -822,15 +904,16 @@ def scan_seasonality_discovery(
         if status_filter and status_filter != "all" and item.get("current_status") != status_filter:
             continue
 
-        if exclude_expired and item.get("entry_stage") in ["SEASON_END"]:
-            continue
-
         if query:
             q = query.strip().upper()
             if q not in item["ticker"] and q not in item["company"].upper() and q not in item["common_event_cluster"].upper():
                 continue
 
-        filtered.append(item)
+        filtered.append(dict(item))
+
+    filtered = _enrich_remaining_peak_rows(settings, filtered, lookback_years=lookback_years)
+    if exclude_expired:
+        filtered = [item for item in filtered if item.get("entry_stage") != "SEASON_END"]
 
     filtered.sort(key=lambda x: x["seasonality_score"], reverse=True)
     return filtered
@@ -900,6 +983,8 @@ def get_pre_entry_glance(settings: Settings, n: int = 3, lookback_years: int = 5
         t = str(r.get("ticker") or "").zfill(6)
         if t not in clean_set:
             continue
+        if not bool((r.get("remaining_peak") or {}).get("available")):
+            continue
         q = quotes.get(t, {})
         close = q.get("last_close")
         if close is not None and close < 1000.0:
@@ -913,11 +998,13 @@ def get_pre_entry_glance(settings: Settings, n: int = 3, lookback_years: int = 5
         q = quotes.get(str(r.get("ticker") or "").zfill(6), {})
         glance.append({
             "rank": idx,
+            "pattern_id": r.get("pattern_id"),
             "ticker": r.get("ticker"),
             "company": r.get("company"),
             "market": r.get("market"),
             "win_rate": r.get("win_rate"),
             "expected_p50": r.get("expected_p50") or r.get("median_return"),
+            "remaining_peak": r.get("remaining_peak"),
             "seasonality_score": r.get("seasonality_score"),
             "entry_stage": r.get("entry_stage"),
             "entry_stage_label": r.get("entry_stage_label"),

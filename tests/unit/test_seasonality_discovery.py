@@ -71,3 +71,11 @@ def test_api_seasonality_discovery_playbook():
     assert "expected_p90" in row
     assert "profit_factor" in row
     assert "playbook" in row
+    assert "remaining_peak" in row
+    remaining = row["remaining_peak"]
+    assert "available" in remaining
+    assert "status" in remaining
+    if remaining["available"]:
+        assert remaining["remaining_p50"] is not None
+        assert remaining["peak_price_p50"] is not None
+        assert remaining["sample_count"] >= 3
