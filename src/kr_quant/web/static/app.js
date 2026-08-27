@@ -10385,6 +10385,34 @@ let currentPreEntryTheme = "all";
 let preEntryThemeData = [];
 let preEntryTop10 = [];
 
+function hasCanonicalPreEntryRank(row) {
+  if (row?.pre_entry_rank === null || row?.pre_entry_rank === undefined || row?.pre_entry_rank === "") return false;
+  const rank = Number(row.pre_entry_rank);
+  return Number.isFinite(rank) && rank > 0;
+}
+
+function syncPreEntryFilterControls() {
+  const normalizedMarket = String(currentPreEntryMarket || "all").toUpperCase();
+  currentPreEntryMarket = normalizedMarket === "KOSPI" || normalizedMarket === "KOSDAQ"
+    ? normalizedMarket
+    : "all";
+  currentPreEntryTheme = String(currentPreEntryTheme || "all");
+
+  const marketSelect = $("#pre-entry-market-filter");
+  if (marketSelect) marketSelect.value = currentPreEntryMarket;
+
+  const reset = $("#theme-filter-reset");
+  if (reset) {
+    reset.hidden = currentPreEntryTheme === "all";
+    reset.setAttribute("aria-hidden", reset.hidden ? "true" : "false");
+  }
+
+  const sortTabs = $("#pre-entry-sort-tabs");
+  sortTabs?.querySelectorAll("[data-pre-sort]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.preSort === currentPreEntrySort);
+  });
+}
+
 function bindPreEntryClicks() {
   const container = $("#pre-entry-cards-list");
   if (!container || container.dataset.playbookBound) return;
@@ -10415,10 +10443,10 @@ async function loadPreEntryView() {
 
   container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">오늘의 선취매 최우수 종목 및 테마 기여도 분석 중...</div>`;
 
-  // Fetch Discovery and Theme data in parallel
-  const preEntryQuery = currentSeasonalityQuery ? `&query=${encodeURIComponent(currentSeasonalityQuery)}` : "";
+  // TOP 10 is a market-wide canonical list. A stock search belongs to the
+  // discovery detail tabs and must not silently narrow this list.
   const [discRes, themeRes] = await Promise.all([
-    api(`/api/seasonality/discovery?lookback_years=${currentV11Lookback}&horizon_days=90${preEntryQuery}`),
+    api(`/api/seasonality/discovery?lookback_years=${currentV11Lookback}&horizon_days=90`),
     api(`/api/seasonality/themes?lookback_years=${currentV11Lookback}&horizon_days=90`),
   ]);
 
@@ -10427,20 +10455,36 @@ async function loadPreEntryView() {
 
   // Render Donut Chart and Theme Ranking Cards
   renderThemeDonutAndRanking(preEntryThemeData);
+  syncPreEntryFilterControls();
 
   // Backend canonical rank is shared with dashboard Glance Top 3.  A row without
   // pre_entry_rank failed the common tradability/current-price checks.
   const allowedStages = new Set(["TODAY_ENTRY", "PRE_ENTRY_15", "PRE_ENTRY_30", "ACCUMULATE_60"]);
-  let filtered = allRows.filter((r) => allowedStages.has(r.entry_stage) && Number.isFinite(Number(r.pre_entry_rank)));
+  const canonicalRows = allRows.filter((r) => allowedStages.has(r.entry_stage) && hasCanonicalPreEntryRank(r));
+  let filtered = canonicalRows.slice();
+  let filterRecoveryNotice = "";
 
   if (currentPreEntryMarket !== "all") {
-    filtered = filtered.filter((r) => r.market === currentPreEntryMarket);
+    filtered = filtered.filter((r) => String(r.market || "").toUpperCase() === currentPreEntryMarket);
   }
   if (currentPreEntryTheme !== "all") {
     const tObj = preEntryThemeData.find((t) => t.theme_id === currentPreEntryTheme);
-    if (tObj && tObj.candidate_tickers) {
-      filtered = filtered.filter((r) => tObj.candidate_tickers.includes(r.ticker));
-    }
+    const themeTickers = new Set((tObj?.candidate_tickers || []).map((ticker) => padTicker(ticker)));
+    filtered = filtered.filter((r) => themeTickers.has(padTicker(r.ticker)));
+  }
+
+  // A stale/zero-result theme must not make the page look as if the engine has
+  // no candidates while the dashboard is already showing the same ranked feed.
+  if (!filtered.length && canonicalRows.length && (currentPreEntryTheme !== "all" || currentPreEntryMarket !== "all")) {
+    currentPreEntryTheme = "all";
+    currentPreEntryMarket = "all";
+    filtered = canonicalRows.slice();
+    filterRecoveryNotice = `
+      <div class="pre-entry-filter-notice">
+        선택한 테마·시장에는 현재 유효 후보가 없어 필터를 자동 해제하고 대시보드와 동일한 전체 TOP10을 표시합니다.
+      </div>
+    `;
+    syncPreEntryFilterControls();
   }
 
   if (currentPreEntrySort === "score") {
@@ -10455,12 +10499,13 @@ async function loadPreEntryView() {
 
   const top10 = filtered.slice(0, 10);
   if (!top10.length) {
-    container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">해당 조건에 부합하는 선취매 추천 종목이 없습니다. 필터를 완화해 보세요.</div>`;
+    preEntryTop10 = [];
+    container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">대시보드와 동일한 거래 가능·현재가 검증을 통과한 선취매 후보가 없습니다. 데이터 갱신 후 다시 확인해 주세요.</div>`;
     return;
   }
 
   preEntryTop10 = top10;
-  container.innerHTML = top10.map((r, idx) => {
+  container.innerHTML = filterRecoveryNotice + top10.map((r, idx) => {
     const rank = idx + 1;
     const rankBadge = rank === 1 ? "🥇 1위" : rank === 2 ? "🥈 2위" : rank === 3 ? "🥉 3위" : `🏅 ${rank}위`;
     const rankCls = rank === 1 ? "rank-1" : "";
@@ -10605,6 +10650,7 @@ function renderThemeDonutAndRanking(themes) {
     p.addEventListener("click", () => {
       const tid = p.dataset.themeId;
       currentPreEntryTheme = currentPreEntryTheme === tid ? "all" : tid;
+      syncPreEntryFilterControls();
       loadPreEntryView().catch(() => {});
     });
   });
@@ -10633,6 +10679,7 @@ function renderThemeDonutAndRanking(themes) {
     card.addEventListener("click", () => {
       const tid = card.dataset.themeId;
       currentPreEntryTheme = currentPreEntryTheme === tid ? "all" : tid;
+      syncPreEntryFilterControls();
       loadPreEntryView().catch(() => {});
     });
   });
@@ -11012,6 +11059,28 @@ function setupV11SeasonalityUI() {
   tabExpl?.addEventListener("click", () => switchV11Subtab("explanation"));
   tabCal?.addEventListener("click", () => switchV11Subtab("calendar"));
   tabHeat?.addEventListener("click", () => switchV11Subtab("heatmap"));
+
+  const preEntrySortTabs = $("#pre-entry-sort-tabs");
+  preEntrySortTabs?.querySelectorAll("[data-pre-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      currentPreEntrySort = btn.dataset.preSort || "score";
+      syncPreEntryFilterControls();
+      loadPreEntryView().catch(() => {});
+    });
+  });
+
+  $("#pre-entry-market-filter")?.addEventListener("change", (event) => {
+    const value = String(event.target.value || "all").toUpperCase();
+    currentPreEntryMarket = value === "KOSPI" || value === "KOSDAQ" ? value : "all";
+    loadPreEntryView().catch(() => {});
+  });
+
+  $("#theme-filter-reset")?.addEventListener("click", () => {
+    currentPreEntryTheme = "all";
+    syncPreEntryFilterControls();
+    loadPreEntryView().catch(() => {});
+  });
+  syncPreEntryFilterControls();
 
   // Lookback Period Filter Chips
   const lookbackContainer = $("#discovery-lookback-tabs");

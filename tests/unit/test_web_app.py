@@ -116,6 +116,22 @@ def test_tier1_ui_exposes_failure_and_provenance_states():
     assert "DETERMINISTIC_FALLBACK" in js
 
 
+def test_pre_entry_ui_rejects_null_ranks_and_binds_filters():
+    home = client.get("/").text
+    js = client.get("/static/app.js").text
+    css = client.get("/static/styles.css").text
+
+    assert "function hasCanonicalPreEntryRank" in js
+    assert "row?.pre_entry_rank === null" in js
+    assert "const canonicalRows = allRows.filter" in js
+    assert "preEntryQuery" not in js
+    assert '$("#pre-entry-market-filter")?.addEventListener("change"' in js
+    assert '$("#theme-filter-reset")?.addEventListener("click"' in js
+    assert "대시보드와 동일한 전체 TOP10" in js
+    assert 'id="theme-filter-reset"' in home
+    assert "#theme-filter-reset[hidden]" in css
+
+
 def test_external_web_is_read_only_and_hides_settings():
     status = public_client.get("/api/status")
     assert status.status_code == 200

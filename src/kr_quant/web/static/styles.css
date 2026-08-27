@@ -5105,6 +5105,20 @@ th.has-tip:hover, .filter-tag.has-tip:hover {
   align-items: center !important;
   flex-shrink: 0;
 }
+
+#theme-filter-reset[hidden] {
+  display: none !important;
+}
+
+.pre-entry-filter-notice {
+  padding: 10px 14px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.1);
+  color: #bae6fd;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
 td.num, th.num, td .meta, th {
   white-space: nowrap;
 }
