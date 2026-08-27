@@ -194,29 +194,29 @@ def pattern_from_month_stat(
 
         if 0 < d_days <= 10:
             entry_stage = "TODAY_ENTRY"
-            entry_stage_label = f"🔥 선취매 집중 진입 (D-{d_days})"
+            entry_stage_label = f"🔥 사전 진입 집중 (D-{d_days})"
         elif 10 < d_days <= 25:
             entry_stage = "PRE_ENTRY_15"
-            entry_stage_label = f"⚡ 선취매 적기 (D-{d_days})"
+            entry_stage_label = f"⚡ 사전 진입 적기 (D-{d_days})"
         elif 25 < d_days <= 45:
             entry_stage = "PRE_ENTRY_30"
-            entry_stage_label = f"⚡ 선취매 분할구간 (D-{d_days})"
+            entry_stage_label = f"⚡ 분할 진입 구간 (D-{d_days})"
         elif 45 < d_days <= 75:
             entry_stage = "ACCUMULATE_60"
-            entry_stage_label = f"🎯 매집 윈도우 (D-{d_days})"
+            entry_stage_label = f"🎯 사전 준비 윈도우 (D-{d_days})"
         else:
             entry_stage = "WATCH"
-            entry_stage_label = f"👀 중장기 관찰 (D-{d_days})"
+            entry_stage_label = f"👀 통계적 관찰 (D-{d_days})"
 
     # Playbook rules
     target_alpha_str = f"+{med_alpha * 100:.1f}%" if med_alpha > 0 else "+10.0%"
     mdd_stop_str = f"-{avg_mdd * 100:.1f}%" if avg_mdd > 0 else "-5.0%"
 
     playbook = {
-        "entry_timing": f"권장 선취매 타이밍: 피크 시기({month:02d}/{peak_day:02d}) 도달 D-30일 ~ D-15일 전 분할 매수",
+        "entry_timing": f"통계적 사전 진입 타이밍: 피크 시기({month:02d}/{peak_day:02d}) 도달 D-30일 ~ D-15일 전 분할 관찰/매수",
         "exit_timing": f"목표 엑시트 시기: 계절성 피크({month:02d}/{peak_day:02d}) 도달 시점 또는 목표 알파({target_alpha_str}) 달성 시 분할 매도",
         "stop_loss": f"리스크 방어 기준: 평균 MDD({mdd_stop_str}) 초과 하락 또는 외국인/기관 대규모 순매도 전환 시 손절",
-        "recommendation": f"반복 상승 Window({entry_window_str}) 진입 시 분할 매수 및 계절성 목표가 대응 유효",
+        "recommendation": f"반복 상승 Window({entry_window_str}) 진입 시 분할 관찰 및 계절성 목표가 대응 유효",
     }
 
     return SeasonalityPattern(

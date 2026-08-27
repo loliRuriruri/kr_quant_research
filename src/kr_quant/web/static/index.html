@@ -581,8 +581,8 @@
 
         <!-- 6 Subtabs Bar -->
         <div class="inst-subtabs-bar" id="seasonality-subtabs" style="display:flex; gap:8px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:12px; margin-bottom:16px; overflow-x:auto;">
-          <button type="button" class="inst-subtab-btn active" id="tab-v11-momentum" data-subtab="momentum" style="font-weight:800; border-color:rgba(56,189,248,0.5); color:#38bdf8;">🎯 선취매 실전 포트폴리오 & 엑시트 관리</button>
-          <button type="button" class="inst-subtab-btn" id="tab-v11-pre-entry" data-subtab="pre-entry" style="font-weight:800; border-color:rgba(234,179,8,0.5); color:#facc15;">🏆 오늘의 선취매 TOP 10</button>
+          <button type="button" class="inst-subtab-btn active" id="tab-v11-momentum" data-subtab="momentum" style="font-weight:800; border-color:rgba(56,189,248,0.5); color:#38bdf8;">🎯 캘린더 모멘텀 포트폴리오 & 엑시트 관리</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-pre-entry" data-subtab="pre-entry" style="font-weight:800; border-color:rgba(234,179,8,0.5); color:#facc15;">🏆 오늘의 통계적 관찰 후보 TOP 10</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-discovery" data-subtab="discovery">🚀 90일 진입 디스커버리 TOP</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-explanation" data-subtab="explanation">🤖 AI 이벤트 역추적 & 설명</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-calendar" data-subtab="calendar">📅 10개 분야 · 18개 이벤트 캘린더</button>
@@ -597,7 +597,7 @@
           <!-- Add Stock Form (Collapsible) -->
           <details id="momentum-add-details" style="background:rgba(15,23,42,0.6); border:1px solid rgba(56,189,248,0.25); border-radius:10px; padding:12px 16px; margin-bottom:16px;">
             <summary style="cursor:pointer; font-size:13.5px; font-weight:800; color:#38bdf8; user-select:none;">
-              ➕ 새 선취매 보유종목 등록하기 (클릭하여 열기)
+              ➕ 새 캘린더 모멘텀 보유종목 등록하기 (클릭하여 열기)
             </summary>
             <form id="momentum-add-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:14px;">
               <div>
@@ -742,7 +742,7 @@
                   <div id="discovery-horizon-tabs" style="display:flex; gap:4px;">
                     <button type="button" class="preset-chip-btn active" data-horizon="90">🌐 전체 90일</button>
                     <button type="button" class="preset-chip-btn" data-horizon="7">⚡ 7일 (임박)</button>
-                    <button type="button" class="preset-chip-btn" data-horizon="30">🚀 30일 (선취매)</button>
+                    <button type="button" class="preset-chip-btn" data-horizon="30">🚀 30일 (사전 진입)</button>
                   </div>
                 </div>
               </div>
@@ -1672,7 +1672,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px;">
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <span style="font-size:15px;">📊</span>
-              <b style="color:#38bdf8; font-size:13.5px;">계절성 선취매 윈도우 & 피크 알파 궤적 오버레이 차트</b>
+              <b style="color:#38bdf8; font-size:13.5px;">계절성 사전 진입 윈도우 & 피크 알파 궤적 오버레이 차트</b>
               <span id="disc-chart-status-badge" class="chip" style="background:rgba(52,211,153,0.15); color:#34d399; font-size:10.5px;">🟢 실측 데이터 겹치기</span>
             </div>
             
@@ -1691,7 +1691,7 @@
                 <span style="display:inline-block; width:12px; height:3px; background:#38bdf8; border-radius:2px;"></span> 계절성 평균 궤적
               </span>
               <span style="display:inline-flex; align-items:center; gap:4px; color:#34d399;">
-                <span style="display:inline-block; width:10px; height:10px; background:rgba(52,211,153,0.3); border:1px solid #34d399; border-radius:2px;"></span> 🟢 선취매 진입 밴드
+                <span style="display:inline-block; width:10px; height:10px; background:rgba(52,211,153,0.3); border:1px solid #34d399; border-radius:2px;"></span> 🟢 사전 진입 밴드
               </span>
               <span style="display:inline-flex; align-items:center; gap:4px; color:#fbbf24;">
                 <span style="display:inline-block; width:10px; height:10px; background:rgba(251,191,36,0.3); border:1px solid #fbbf24; border-radius:2px;"></span> 🎯 역사적 피크 밴드
@@ -1787,7 +1787,7 @@
           </p>
           <div style="margin-top:8px; background:rgba(15,23,42,0.6); padding:8px 10px; border-radius:6px; font-size:11.5px; line-height:1.5;">
             <div style="color:#94a3b8;">• <b>판정 조건:</b> 계절성 점수 78점 이상 + 과거 승률 70% 이상 + 최근 3개월 수익률 양호</div>
-            <div style="color:#34d399; margin-top:2px;">• <b>대응 가이드:</b> 권장 선취매 Window 진입 시 분할 매수 및 목표 엑시트 대응 유효</div>
+            <div style="color:#34d399; margin-top:2px;">• <b>대응 가이드:</b> 권장 사전 진입 Window 진입 시 분할 관찰/매수 및 목표 엑시트 대응 유효</div>
           </div>
         </div>
 

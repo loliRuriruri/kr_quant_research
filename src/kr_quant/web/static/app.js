@@ -2332,7 +2332,7 @@ function glanceRankBadge(rank) {
 async function loadGlanceTop3() {
   const box = $("#dash-seasonality-banner");
   if (!box) return;
-  box.innerHTML = `<div class="hint" style="margin:0;">오늘의 선취매 Top 3를 불러오는 중…</div>`;
+  box.innerHTML = `<div class="hint" style="margin:0;">오늘의 통계적 관찰 Top 3를 불러오는 중…</div>`;
   try {
     const res = await api("/api/seasonality/highlights");
     const data = res.data || {};
@@ -2346,10 +2346,10 @@ async function loadGlanceTop3() {
     if (!picks.length) {
       box.innerHTML = `
         <div class="seasonality-widget-head">
-          <div class="seasonality-widget-title">⚡ 오늘의 선취매 Top 3</div>
+          <div class="seasonality-widget-title">⚡ 오늘의 통계적 관찰 Top 3</div>
           <button type="button" class="ghost small" id="btn-open-seasonality-from-glance">계절성 화면 →</button>
         </div>
-        <p class="hint" style="margin:0;">진입 유효 선취매 종목이 없습니다. 계절성 화면에서 필터를 완화해 보세요.</p>
+        <p class="hint" style="margin:0;">진입 유효 관찰 종목이 없습니다. 계절성 화면에서 필터를 완화해 보세요.</p>
       `;
       $("#btn-open-seasonality-from-glance")?.addEventListener("click", () => switchView("seasonality"));
       return;
@@ -2386,7 +2386,7 @@ async function loadGlanceTop3() {
 
     box.innerHTML = `
       <div class="seasonality-widget-head">
-        <div class="seasonality-widget-title">⚡ 오늘의 선취매 Top 3</div>
+        <div class="seasonality-widget-title">⚡ 오늘의 통계적 관찰 Top 3</div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">전종목 스캔 ${scanned.toLocaleString("ko-KR")}/${listed.toLocaleString("ko-KR")}${mktBits ? ` · ${mktBits}` : ""}</span>
           ${asOf ? `<span class="meta">시세 ${escapeHtml(asOf)}</span>` : ""}
@@ -2400,7 +2400,7 @@ async function loadGlanceTop3() {
       card.addEventListener("click", () => openGlancePlaybook(card.dataset.ticker, card.dataset.patternId));
     });
   } catch (err) {
-    box.innerHTML = `<p class="hint" style="margin:0;">선취매 Top 3를 불러오지 못했습니다. ${escapeHtml(err.message || "")}</p>`;
+    box.innerHTML = `<p class="hint" style="margin:0;">통계적 관찰 Top 3를 불러오지 못했습니다. ${escapeHtml(err.message || "")}</p>`;
   }
 }
 
@@ -4248,7 +4248,7 @@ async function loadSeasonalityTier1Briefing() {
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">📅</span>
-              <span style="font-size:13px; font-weight:800; color:#38bdf8;">30개년 빅데이터 계절성 선취매 AI 브리핑</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">30개년 빅데이터 계절성 & 캘린더 모멘텀 AI 브리핑</span>
               <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
             </div>
             <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
@@ -9991,11 +9991,11 @@ function renderDiscDeepPlaybook(r, months) {
   box.innerHTML = `
     <div class="playbook-card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <b style="color:#38bdf8; font-size:14px;">🎯 선취매(Pre-Entry) 매매 플레이북</b>
-        <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11px;">선취매 전략</span>
+        <b style="color:#38bdf8; font-size:14px;">🎯 사전 진입(Pre-Entry) 전략 플레이북</b>
+        <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11px;">사전 진입 전략</span>
       </div>
       <ul style="margin:8px 0 0 16px; padding:0; font-size:12.5px; color:#cbd5e1; line-height:1.6;">
-        <li>${escapeHtml(pb.entry_timing || "권장 선취매 타이밍: 피크 구간 도달 D-30일 ~ D-15일 전 분할 매수")}</li>
+        <li>${escapeHtml(pb.entry_timing || "통계적 사전 진입 타이밍: 피크 구간 도달 D-30일 ~ D-15일 전 분할 관찰/매수")}</li>
         <li>${escapeHtml(pb.exit_timing || "목표 엑시트 시기: 계절성 피크 도달 시점 또는 목표 알파 달성 시 분할 매도")}</li>
         <li style="color:#fca5a5;">${escapeHtml(pb.stop_loss || "리스크 방어 기준: 평균 MDD 초과 하락 시 손절")}</li>
       </ul>
@@ -10210,7 +10210,7 @@ function renderSeasonalOverlayChart(canvas, r, months, mode = "seasonal_overlay"
     ctx.fillStyle = "#34d399";
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(`🟢 선취매 진입 밴드 (${r.entry_window_str || `${targetM-1}월말`})`, (entryX1 + entryX2) / 2, padding.top - 10);
+    ctx.fillText(`🟢 사전 진입 밴드 (${r.entry_window_str || `${targetM-1}월말`})`, (entryX1 + entryX2) / 2, padding.top - 10);
 
     // 2. Highlight PEAK TARGET ZONE 🎯
     const peakStartM = targetM;
@@ -10495,7 +10495,7 @@ async function loadPreEntryView() {
   if (!container) return;
   bindPreEntryClicks();
 
-  container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">오늘의 선취매 최우수 종목 및 테마 기여도 분석 중...</div>`;
+  container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">오늘의 통계적 관찰 최우수 종목 및 테마 기여도 분석 중...</div>`;
 
   // TOP 10 is a market-wide canonical list. A stock search belongs to the
   // discovery detail tabs and must not silently narrow this list.
@@ -10567,7 +10567,7 @@ async function loadPreEntryView() {
   const top10 = filtered.slice(0, 10);
   if (!top10.length) {
     preEntryTop10 = [];
-    container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">대시보드와 동일한 거래 가능·현재가 검증을 통과한 선취매 후보가 없습니다. 데이터 갱신 후 다시 확인해 주세요.</div>`;
+    container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">대시보드와 동일한 거래 가능·현재가 검증을 통과한 관찰 후보가 없습니다. 데이터 갱신 후 다시 확인해 주세요.</div>`;
     return;
   }
 
@@ -10748,7 +10748,7 @@ function renderThemeDonutAndRanking(themes) {
           👑 대장주: <span style="color:#fff; font-weight:700;">${escapeHtml(t.top_leader_name)}</span>${noSafeRows ? "" : ` (${leaderReturnText})`}
         </div>
         <div style="margin-top:5px; font-size:10.5px; color:#64748b; display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
-          <span>테마점수 ${Number(t.avg_seasonality_score || 0).toFixed(1)} · 안전 종목 ${Number(t.candidate_count || 0)}/${Number(t.mapped_count || 0)} · 선취매 겹침 ${Number(t.pre_entry_count || 0)}</span>
+          <span>테마점수 ${Number(t.avg_seasonality_score || 0).toFixed(1)} · 안전 종목 ${Number(t.candidate_count || 0)}/${Number(t.mapped_count || 0)} · 관찰 겹침 ${Number(t.pre_entry_count || 0)}</span>
           <span>관찰월 ${peakMonths}</span>
         </div>
       </div>
@@ -10774,7 +10774,7 @@ const STATUS_HOVER_GUIDE_DATA = {
     color: "#10b981",
     desc: "과거 5~10년 계절성 패턴과 올해 실적(EPS)/수급/상대강도(RS) 3중 검증 완료 (최우선 공략주)",
     criteria: "계절성 점수 78점 이상 + 과거 승률 70% 이상 + 최근 3M 수익률 양호",
-    action: "권장 선취매 Window 진입 시 분할 매수 및 목표 엑시트 대응 유효",
+    action: "권장 사전 진입 Window 진입 시 분할 관찰/매수 및 목표 엑시트 대응 유효",
     actionColor: "#34d399",
   },
   WATCH: {
@@ -11805,7 +11805,7 @@ function setupSeasonalityUI() {
 
     let tabsHtml = `
       <button type="button" class="month-tab-btn ${currentSeasonalityMonth === curM ? 'active' : ''}" data-month="${curM}">🔥 ${curM}월 (현재)</button>
-      <button type="button" class="month-tab-btn ${currentSeasonalityMonth === nextM ? 'active' : ''}" data-month="${nextM}">🚀 ${nextM}월 (선취매 픽)</button>
+      <button type="button" class="month-tab-btn ${currentSeasonalityMonth === nextM ? 'active' : ''}" data-month="${nextM}">🚀 ${nextM}월 (사전 관찰 픽)</button>
     `;
     for (let m = 1; m <= 12; m++) {
       tabsHtml += `<button type="button" class="month-tab-btn ${currentSeasonalityMonth === m ? 'active' : ''}" data-month="${m}">${m}월</button>`;
@@ -12598,7 +12598,7 @@ async function loadCalendarMomentumPortfolio() {
 
   // 2. Render Stock Cards
   if (!momentumPortfolio.length) {
-    cardsContainer.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:30px; color:#94a3b8; background:rgba(15,23,42,0.4); border-radius:10px;">등록된 선취매 추적 종목이 없습니다. 상단에서 종목을 등록하세요.</div>`;
+    cardsContainer.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:30px; color:#94a3b8; background:rgba(15,23,42,0.4); border-radius:10px;">등록된 캘린더 모멘텀 추적 종목이 없습니다. 상단에서 종목을 등록하세요.</div>`;
   } else {
     cardsContainer.innerHTML = momentumPortfolio.map((stock) => {
       const dday = calculateMomentumDDay(stock.peak_date);

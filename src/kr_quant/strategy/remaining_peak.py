@@ -36,10 +36,10 @@ def _stage_for(as_of: date, peak_date: date) -> tuple[str, str]:
 
     if as_of < entry_start:
         if d_day <= 60:
-            return "ACCUMULATE_60", f"🎯 선취매 준비구간 (피크 D-{d_day})"
+            return "ACCUMULATE_60", f"🎯 사전 준비구간 (피크 D-{d_day})"
         return "WATCH", f"👀 계절성 관찰 (피크 D-{d_day})"
     if as_of <= entry_end:
-        return "TODAY_ENTRY", f"🔥 선취매 진입 유효 (피크 D-{d_day})"
+        return "TODAY_ENTRY", f"🔥 사전 진입 유효 (피크 D-{d_day})"
     if as_of < exit_start:
         return "RALLY_ACTIVE", f"📈 랠리 확인구간 (피크 D-{d_day})"
     if as_of <= exit_end:
