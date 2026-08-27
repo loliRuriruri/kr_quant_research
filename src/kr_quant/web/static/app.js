@@ -7148,11 +7148,6 @@ function usdDelta(n) {
 
 function tickerChip(r) {
   const ticker = r.ticker || "";
-  const ko = r.issuer_ko || r.issuer || "";
-  const isSpaceX = ko.includes("스페이스X") || String(r.issuer || "").toUpperCase().includes("SPACE") || ticker === "SPCX" || ticker.includes("SPACE-X");
-  if (isSpaceX) {
-    return `<span class="tag" style="background:rgba(234,179,8,0.18); color:#facc15; font-weight:700; border:1px solid rgba(234,179,8,0.35); padding:2px 6px;">🔒 비상장 (SPCX)</span>`;
-  }
   if (ticker) {
     return `<span class="tag" style="background:#1e293b; color:#38bdf8; font-weight:700; font-family:monospace; padding:2px 6px; border:1px solid rgba(56,189,248,0.25);">${escapeHtml(ticker)}</span>`;
   }
@@ -7175,19 +7170,16 @@ function filerLabel(r) {
 function issuerLabel(r) {
   const ko = r.issuer_ko || r.issuer || "";
   const ticker = r.ticker || "";
-  const isSpaceX = ko.includes("스페이스X") || String(r.issuer || "").toUpperCase().includes("SPACE") || ticker === "SPCX" || ticker.includes("SPACE-X");
-  const note = r.note_ko || (isSpaceX ? "일론 머스크 설립 우주항공·스타링크 위성 인터넷. 대형 기관이 비상장 프리IPO 지분으로 보유" : "");
+  const note = r.note_ko || "";
   const en = r.issuer && r.issuer_ko && r.issuer !== r.issuer_ko ? r.issuer : "";
   
   let tickerBadge = "";
   let extLink = "";
   
-  if (isSpaceX) {
-    tickerBadge = ` <span class="tag" style="background:rgba(234,179,8,0.18); color:#facc15; font-weight:700; border:1px solid rgba(234,179,8,0.35); font-size:11px; padding:2px 6px;">🔒 비상장 (Private)</span> <span class="tag" style="background:#1e293b; color:#38bdf8; font-weight:700; font-family:monospace; font-size:11px;">SPCX</span>`;
-    extLink = ` <a class="ext inline" href="https://www.google.com/search?q=SpaceX+13F+Valuation+Baron+Capital" target="_blank" rel="noopener" style="font-size:11px; color:#38bdf8;">Google ↗</a>`;
-  } else if (ticker) {
+  if (ticker) {
     tickerBadge = ` <span class="tag" style="background:#1e293b; color:#38bdf8; font-weight:700; font-family:monospace; font-size:11px; padding:2px 6px; border:1px solid rgba(56,189,248,0.25);">${escapeHtml(ticker)}</span>`;
-    extLink = r.yahoo ? ` <a class="ext inline" href="${escapeHtml(r.yahoo)}" target="_blank" rel="noopener" style="font-size:11px; color:#38bdf8;">Yahoo ↗</a>` : "";
+    const yahooUrl = r.yahoo || `https://finance.yahoo.com/quote/${encodeURIComponent(ticker)}`;
+    extLink = ` <a class="ext inline" href="${escapeHtml(yahooUrl)}" target="_blank" rel="noopener" style="font-size:11px; color:#38bdf8;">Yahoo ↗</a>`;
   } else {
     tickerBadge = r.cusip ? ` <span class="tag" style="background:#1e293b; color:#94a3b8; font-size:10.5px;">${escapeHtml(r.cusip)}</span>` : "";
   }
@@ -10595,7 +10587,11 @@ async function loadPreEntryView() {
       return `<span class="year-track-cell ${cls}" style="padding:4px 8px; font-size:11.5px;" title="${y.year}년">${shortYear}년 ${y.return > 0 ? '+' : ''}${retStr}%</span>`;
     }).join("");
 
-    const catalyst = r.common_event_cluster || "계절적 수요 증가 및 분기 실적 모멘텀 유입";
+    const catalyst = r.common_event_cluster || "계절성 촉매 가설을 산출할 수 없습니다.";
+    const catalystEvidence = r.secondary_cluster || "실측 표본과 업종별 확인 포인트가 없습니다.";
+    const explanationMode = r.event_explanation_mode || "RULE_BASED";
+    const explanationSource = r.event_explanation_source || "계절성 통계·업종 매핑";
+    const catalystLabel = explanationMode === "CURATED_TICKER" ? "검토된 핵심 촉매 & 모멘텀" : "통계 기반 촉매 가설 & 모멘텀";
 
     return `
       <div class="pre-entry-card ${rankCls}" data-ticker="${escapeHtml(r.ticker)}" data-index="${idx}" role="button" tabindex="0">
@@ -10653,7 +10649,9 @@ async function loadPreEntryView() {
 
         <!-- AI Catalyst Box -->
         <div class="catalyst-box">
-          💡 <b>AI 핵심 투자 촉매 & 모멘텀:</b> ${escapeHtml(catalyst)}
+          💡 <b>${catalystLabel}:</b> ${escapeHtml(catalyst)}
+          <div style="margin-top:5px; color:#cbd5e1; font-size:11.5px; line-height:1.45;">${escapeHtml(catalystEvidence)}</div>
+          <div style="margin-top:5px; color:#64748b; font-size:10.5px;">근거 방식: ${escapeHtml(explanationSource)} · 실시간 뉴스·공시 확정 문구가 아닌 검증 대상 가설</div>
         </div>
 
         <!-- Action Footer -->
@@ -11046,6 +11044,8 @@ async function loadAIExplanations() {
 
   const cards = rows.slice(0, 30).map((r) => {
     const failedListHtml = (r.failed_analysis || []).map((f) => `<li style="color:#fca5a5; font-size:12px;">${escapeHtml(f)}</li>`).join("");
+    const explanationMode = r.event_explanation_mode || "RULE_BASED";
+    const explanationLabel = explanationMode === "CURATED_TICKER" ? "검토된 이벤트" : "규칙 기반 가설";
 
     return `
       <div class="event-timeline-card">
@@ -11054,14 +11054,15 @@ async function loadAIExplanations() {
             <div style="display:flex; align-items:center; gap:8px;">
               <b style="font-size:16px; color:#fff;">${escapeHtml(r.company || r.ticker)} (${escapeHtml(r.ticker)})</b>
               <span class="chip" style="background:rgba(56,189,248,0.2); color:#38bdf8; font-weight:800;">${escapeHtml(r.window_name)} 상승패턴</span>
-              <span class="chip" style="background:rgba(139,92,246,0.2); color:#c084fc;">AI 신뢰도: ${r.event_confidence}</span>
+              <span class="chip" style="background:rgba(139,92,246,0.2); color:#c084fc;">${explanationLabel} · 신뢰도 ${r.event_confidence}</span>
             </div>
             <div style="margin-top:8px; font-size:13.5px; color:#38bdf8; font-weight:700;">
-              💡 공통 상승 원인: ${escapeHtml(r.common_event_cluster)}
+              💡 핵심 촉매: ${escapeHtml(r.common_event_cluster)}
             </div>
             <div style="margin-top:4px; font-size:12.5px; color:#cbd5e1;">
-              📌 부 원인: ${escapeHtml(r.secondary_cluster || '분기 실적 호조 및 수급 유입')}
+              📌 통계 근거·확인 포인트: ${escapeHtml(r.secondary_cluster || '실측 표본과 확인 포인트가 없습니다.')}
             </div>
+            <div style="margin-top:4px; font-size:10.5px; color:#64748b;">근거 방식: ${escapeHtml(r.event_explanation_source || '계절성 통계·업종 매핑')}</div>
           </div>
           <div style="text-align:right;">
             <div style="font-size:14px; font-weight:800; color:#34d399;">승률 ${((r.win_rate || 0)*100).toFixed(0)}% · Alpha +${((r.median_alpha || 0)*100).toFixed(1)}%</div>
