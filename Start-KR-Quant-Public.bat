@@ -1,4 +1,6 @@
 @echo off
+chcp 65001 >nul
+rem 보조 기능: 일상 로컬 실행은 Start-KR-Quant.bat / Stop-KR-Quant.bat만 사용하세요.
 setlocal EnableExtensions
 cd /d "%~dp0"
 title KR Quant Public Web Update

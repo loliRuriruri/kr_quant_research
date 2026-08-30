@@ -55,10 +55,16 @@ copy .env.example .env
 
 ### 실행
 
-`Start-KR-Quant.bat` 을 실행합니다.  
-브라우저에서 **http://127.0.0.1:8790** 으로 접속합니다.
+일상적으로는 아래 두 파일만 사용합니다.
 
-포트 8790이 이미 쓰이면, 이미 켜진 대시보드를 연 것으로 보면 됩니다. 같은 포트를 두 번 켜지 마세요.
+1. `Start-KR-Quant.bat` — 포트 8790의 기존 서버를 정리한 뒤 새로 시작하고 브라우저를 엽니다.
+2. `Stop-KR-Quant.bat` — 포트 8790의 로컬 서버를 종료합니다.
+
+브라우저 주소는 **http://127.0.0.1:8790** 입니다. 시작할 때마다 재시작하므로 이전 프로세스가 남아 있어도 오래된 화면·코드가 재사용되지 않습니다.
+
+`Restart-KR-Quant.bat`은 기존 바로가기 호환용 별칭이며 `Start-KR-Quant.bat`을 호출합니다. 공개 배포·임시 터널 파일은 외부 공개가 필요할 때만 사용합니다.
+
+서버가 뜨지 않으면 `logs/web.stderr.log`를 확인하세요. 포트 8790을 다른 프로그램이 사용 중이면 시작 스크립트가 오류를 표시하고 종료합니다.
 
 ### 로컬에서 할 수 있는 일
 
@@ -143,10 +149,15 @@ npx wrangler pages deploy dist-public --project-name korea-quant-research --bran
 
 | 파일 | 하는 일 |
 |---|---|
-| `Start-KR-Quant.bat` | 로컬 대시보드 (전체 기능) |
-| `Start-KR-Quant-Public.bat` | 로컬 스냅샷 → Cloudflare Pages 업로드 |
-| `Publish-KR-Quant-Public.bat` | 위와 동일 (별칭) |
-| `Start-KR-Quant-Tunnel.bat` | PC가 켜져 있는 동안만 임시 외부 URL |
+| `Start-KR-Quant.bat` | **일상용**: 기존 로컬 서버 정리 후 대시보드 재시작 |
+| `Stop-KR-Quant.bat` | **일상용**: 로컬 서버 종료 |
+| `Restart-KR-Quant.bat` | `Start-KR-Quant.bat` 호환용 별칭 |
+| `Start-KR-Quant-Public.bat` | **보조**: 로컬 스냅샷 → Cloudflare Pages 업로드 |
+| `Publish-KR-Quant-Public.bat` | 공개 배포 별칭 (`Start-KR-Quant-Public.bat`과 동일) |
+| `Start-KR-Quant-Tunnel.bat` | **보조**: PC가 켜져 있는 동안만 임시 외부 URL |
+| `KR-Quant-Research.cmd` / `KR-Quant-Research.vbs` | 기존 자동 실행·바로가기 호환용 숨김 재시작기 |
+
+정리하면 로컬 연구만 할 때는 `Start-KR-Quant.bat`과 `Stop-KR-Quant.bat` 두 개면 충분합니다. 공개 배포와 터널은 서버 시작·중단과 목적이 달라 필요할 때만 별도로 실행합니다.
 
 ---
 

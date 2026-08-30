@@ -4,9 +4,10 @@
 * **저장소 (GitHub)**: `https://github.com/loliRuriruri/kr_quant_research.git`
 * **최신 릴리스 태그**: **`v2.69.3-stable`**
 * **공개 웹**: `https://korea-quant-research.pages.dev/` (Cloudflare Pages 읽기 전용 스냅샷. PC 꺼져 있어도 접속)
-* **로컬 대시보드**: `Start-KR-Quant.bat` → `http://127.0.0.1:8790` (수집·백테스트·API 설정)
+* **로컬 대시보드(일상 시작)**: `Start-KR-Quant.bat` → 기존 포트 8790 프로세스를 정리한 뒤 `http://127.0.0.1:8790`에서 재시작
 * **공개 웹 갱신**: `Start-KR-Quant-Public.bat` (로컬 계산본만 업로드, 키 미포함)
-* **서버 재시작/중단**: `Restart-KR-Quant.bat` / `Stop-KR-Quant.bat`
+* **서버 중단**: `Stop-KR-Quant.bat`
+* **기존 바로가기 호환**: `Restart-KR-Quant.bat`은 `Start-KR-Quant.bat`의 별칭
 * **실행 환경**: Python 3.12 (Virtualenv: `.venv`), FastAPI Backend, Vanilla JS, Cloudflare Pages static snapshot
 
 ---
@@ -183,11 +184,10 @@ vidia/nemotron-3-ultra-550b-a55b:free) 전메뉴 확장**:
     - 유니버스 선정 및 게이트 상태 영역을 깔끔한 카테고리별 카드(제외/리스크/데이터)로 개편
   - **실시간 뉴스 및 웹검색 2열 와이드 그리드 최적화**: 뉴스 배지 고정, 2줄 클램프 및 균등 패딩으로 가로폭을 꽉 채운 밸런스 뷰 제공
 * **무소음/백그라운드 원클릭 실행 런처 탑재 (v2.55.0)**:
-  - **콘솔 검은 창 없는 백그라운드 자동 실행**: 	optoon-tracker-unified와 동일한 Start-Process -WindowStyle Hidden 및 헬스 체크 기반 파워쉘 런처(scripts/launch.ps1) 구축
-  - **원클릭 실행 파일 추가**:
-    1. KR-Quant-Research.vbs (완전 무소음/검은 창 0.00초 노출 없이 백그라운드 구동 후 브라우저 오픈)
-    2. KR-Quant-Research.cmd / Start-KR-Quant.bat (백그라운드 스마트 실행 지원)
-  - **중복 실행 방지 및 즉시 브라우저 오픈**: 이미 서버가 켜져 있으면 추가 프로세스를 띄우지 않고 0.1초 만에 브라우저 페이지만 엽니다.
+  - **콘솔 검은 창 없는 백그라운드 자동 실행**: Start-Process -WindowStyle Hidden 및 헬스 체크 기반 파워쉘 런처(scripts/launch.ps1) 구축
+  - **일상 시작 경로 단일화**: Start-KR-Quant.bat이 기존 포트 8790 프로세스를 정리한 뒤 새 서버를 시작하며, Stop-KR-Quant.bat이 종료를 담당합니다.
+  - **기존 바로가기 호환**: Restart-KR-Quant.bat, KR-Quant-Research.cmd, KR-Quant-Research.vbs는 같은 재시작 스크립트를 호출합니다. VBS/CMD 경로는 자동 실행용으로 브라우저를 열지 않습니다.
+  - **중복 실행 방지**: 시작 전에 포트 점유 프로세스를 정리하고 새 서버의 `/api/status` 헬스 체크가 통과된 뒤 완료 처리합니다.
 * **이원화 스마트 LLM 아키텍처 (Tier 1 무료 일상 엔진 + Tier 2 심층 리서치 엔진) 구축 (v2.54.0)**:
   - **Tier 1 (100% 무료 일상 자동화 엔진 / 비용 0원)**:
     - 
@@ -298,7 +298,7 @@ vidia/nemotron-3-ultra-550b-a55b:free (100% 무료 모델)
 [현재 깃 저장소 상태]
 • GitHub Tag: v2.32.0-stable
 • 공개 웹: https://korea-quant-research.pages.dev/ (스냅샷, PC 오프라인 유지)
-• 로컬: Start-KR-Quant.bat / 공개 갱신: Start-KR-Quant-Public.bat
+• 로컬 시작: Start-KR-Quant.bat / 중단: Stop-KR-Quant.bat / 공개 갱신: Start-KR-Quant-Public.bat
 • 핵심 구현 기능:
   1) Cloudflare Pages 읽기 전용 공개 스냅샷 (키·설정 UI 없음)
   2) 로컬 live/screen 후 공개 웹 자동/수동 배포

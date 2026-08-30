@@ -58,6 +58,37 @@ def test_explain_and_score_pattern():
     assert "playbook" in res
 
 
+def test_unmapped_ticker_gets_industry_specific_catalyst_evidence():
+    m_stat = {
+        "month": 9,
+        "history": [0.12, 0.08, -0.03, 0.15, 0.07],
+        "win_rate": 0.80,
+        "avg_return": 0.078,
+        "median_return": 0.08,
+        "years_count": 5,
+    }
+    pat = pattern_from_month_stat("123456", "테스트전기장비", "KOSPI", m_stat, lookback_years=5)
+    assert pat is not None
+
+    res = explain_and_score_pattern(
+        pat,
+        {
+            "company": "테스트전기장비",
+            "sector": "제조업",
+            "industry": "전기장비",
+            "quant_score": 72.0,
+            "return_3m": 0.04,
+        },
+    )
+
+    assert res["event_explanation_mode"] == "RULE_BASED"
+    assert "전력망" in res["common_event_cluster"]
+    assert "5개년" in res["common_event_cluster"]
+    assert "중앙값" in res["secondary_cluster"]
+    assert "수주잔고" in res["secondary_cluster"]
+    assert "계절적 수요 증가 및 분기 실적 모멘텀" not in res["common_event_cluster"]
+
+
 def test_api_seasonality_discovery_playbook():
     res = client.get("/api/seasonality/discovery?horizon_days=90&lookback_years=5")
     assert res.status_code == 200

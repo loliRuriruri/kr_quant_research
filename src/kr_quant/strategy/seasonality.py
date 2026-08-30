@@ -18,6 +18,7 @@ from kr_quant.universe.tradability import evaluate_candidate_tradability, evalua
 
 logger = logging.getLogger("kr_quant.strategy.seasonality")
 SEASONALITY_CACHE_VERSION = 2
+DISCOVERY_CACHE_VERSION = 3
 
 EVENT_PRESETS: dict[str, dict[str, Any]] = {
     "winter_heater": {
@@ -164,6 +165,31 @@ PRE_ENTRY_STAGE_WEIGHT: dict[str, int] = {
     "RALLY_ACTIVE": 30,
     "EXIT_PEAK": 10,
 }
+
+
+def _load_scored_map(settings: Settings) -> dict[str, dict[str, Any]]:
+    """Load the latest scored universe across current and legacy output names."""
+    candidates: list[Path] = [settings.output_dir / "latest_all_stocks.parquet"]
+    for dated in sorted(settings.output_dir.glob("as_of_date=*"), reverse=True):
+        if not dated.is_dir():
+            continue
+        # all_stocks.parquet is the current orchestration output. Keep the
+        # legacy name as a compatibility fallback for older saved runs.
+        candidates.extend([dated / "all_stocks.parquet", dated / "scored_all.parquet"])
+
+    for path in candidates:
+        if not path.exists():
+            continue
+        try:
+            frame = pd.read_parquet(path)
+            if "ticker" not in frame.columns:
+                continue
+            frame = frame.copy()
+            frame["ticker"] = frame["ticker"].astype(str).str.zfill(6)
+            return {row["ticker"]: row for row in frame.to_dict("records")}
+        except Exception as exc:
+            logger.debug("Scored output read failed for %s: %s", path, exc)
+    return {}
 
 
 def _event_tags_for_ticker(ticker: Any) -> list[str]:
@@ -704,20 +730,9 @@ def rank_institutional_events(
     }
     events = get_upcoming_events(horizon_days=horizon_days)
 
-    # Load recent context/snapshot metrics if available for confirmation
-    scored_map = {}
-    try:
-        for p in sorted(settings.output_dir.glob("as_of_date=*"), reverse=True):
-            if p.is_dir():
-                sf = p / "scored_all.parquet"
-                if sf.exists():
-                    df = pd.read_parquet(sf)
-                    if "ticker" in df.columns:
-                        df["ticker"] = df["ticker"].astype(str).str.zfill(6)
-                        scored_map = {row["ticker"]: row for row in df.to_dict("records")}
-                        break
-    except Exception:
-        scored_map = {}
+    # Load recent context/snapshot metrics if available for confirmation.
+    # Current runs write all_stocks.parquet; older runs used scored_all.parquet.
+    scored_map = _load_scored_map(settings)
 
     ranked_items: list[dict[str, Any]] = []
 
@@ -994,7 +1009,10 @@ def scan_seasonality_discovery(
     """Price-First Seasonality Discovery & AI Explanation Engine (Specification v1.1) with Lookback selection."""
     cache_dir = settings.data_dir / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_file = cache_dir / f"discovery_cache_lb_{lookback_years}.json"
+    # The cache schema includes the explanation text. Bump the filename when
+    # the fallback catalyst logic changes so stale generic comments cannot be
+    # served after deployment.
+    cache_file = cache_dir / f"discovery_cache_lb_{lookback_years}_v{DISCOVERY_CACHE_VERSION}.json"
     cached_list: list[dict[str, Any]] = []
 
     if cache_file.exists():
@@ -1010,19 +1028,7 @@ def scan_seasonality_discovery(
         db = build_seasonality_database(settings)
         stocks_map = db.get("stocks", {})
 
-        scored_map = {}
-        try:
-            for p in sorted(settings.output_dir.glob("as_of_date=*"), reverse=True):
-                if p.is_dir():
-                    sf = p / "scored_all.parquet"
-                    if sf.exists():
-                        df_sc = pd.read_parquet(sf)
-                        if "ticker" in df_sc.columns:
-                            df_sc["ticker"] = df_sc["ticker"].astype(str).str.zfill(6)
-                            scored_map = {row["ticker"]: row for row in df_sc.to_dict("records")}
-                            break
-        except Exception:
-            scored_map = {}
+        scored_map = _load_scored_map(settings)
 
         all_patterns: list[dict[str, Any]] = []
 

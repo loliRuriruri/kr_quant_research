@@ -1,4 +1,6 @@
 @echo off
+chcp 65001 >nul
+rem 보조 기능: 외부 임시 공개가 필요할 때만 사용하세요. 일상 로컬 실행과는 별개입니다.
 setlocal EnableExtensions
 cd /d "%~dp0"
 title KR Quant Temporary Tunnel
