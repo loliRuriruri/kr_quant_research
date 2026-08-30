@@ -988,9 +988,9 @@ const titles = {
   reports: ["리포트 보관함", "발간된 AI 심층 분석 리포트 및 검증 아카이브"],
   run: ["실행 파이프라인", "실데이터 수집, 시세 갱신 및 퀀트 재계산"],
   settings: ["API 설정", "API 키 및 LLM 모델 환경설정"],
-  flow: ["쌍끌이 수급", "외국인·기관 동반 매수 및 사모펀드 순매수 추적"],
+  flow: ["스마트 수급·타점", "외국인·기관·사모 수급, 기술적 타점 및 신호 후 성과 통합 검증"],
   empty: ["빈집 발굴", "기관·외인 이탈 후 수급 복귀 조짐 종목"],
-  trade: ["트레이딩 랩", "수급 셋업 및 스토캐스틱·일목 기술적 신호"],
+  trade: ["스마트 수급·타점", "외국인·기관·사모 수급, 기술적 타점 및 신호 후 성과 통합 검증"],
   us13f: ["월가 대가 포트폴리오 (13F)", "워런 버핏·마이클 버리 등 글로벌 대가들의 SEC 13F 보유 비중 & 신규 편입 종목"],
   strategy: ["전략·백테스트", "일봉 기반 퀀트 전략 백테스트 및 검증"],
   investor: ["메이저 수급 & 지분", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
@@ -1011,6 +1011,7 @@ let screenCache = null;
 let tradeCache = null;
 let emptyCache = null;
 let flowTab = "dual";
+let smartFlowTab = "overview";
 let flowLimit = {};
 const FLOW_FIRST = 12;
 const FLOW_STEP = 10;
@@ -1402,6 +1403,12 @@ async function applyPublicShareMode() {
 
 function switchView(name) {
   if (publicShareMode && name === "settings") name = "dash";
+  // Backward compatibility: the former "쌍끌이 수급" route now opens the
+  // overview tab inside the unified smart-flow screen.
+  if (name === "flow") {
+    smartFlowTab = "overview";
+    name = "trade";
+  }
   currentView = name;
   closeDrawer();
   closeMobileDrawer();
@@ -1445,7 +1452,6 @@ function switchView(name) {
   }
   if (name === "sunzi") loadSunzi().catch((err) => alert(err.message));
   if (name === "nps") loadNps().catch((err) => alert(err.message));
-  if (name === "flow") loadFlow().catch((err) => alert(err.message));
   if (name === "empty") loadEmpty().catch((err) => alert(err.message));
   if (name === "trade") loadTrade().catch((err) => alert(err.message));
   if (name === "us13f") loadUs13f().catch((err) => alert(err.message));
@@ -4826,6 +4832,38 @@ function flowMinKrw() {
   return Number($("#flow-min-krw")?.value || 0);
 }
 
+function flowUniverse() {
+  return $("#trade-universe")?.value || "all";
+}
+
+function filterFlowUniverse(rows) {
+  const universe = flowUniverse();
+  if (universe === "top100") return rows.filter((r) => Boolean(r.in_quant));
+  if (universe === "outside") return rows.filter((r) => !r.in_quant);
+  return rows;
+}
+
+function sharedFlowRows(rows, amountKey = null) {
+  const scoped = filterFlowUniverse(Array.isArray(rows) ? rows : []);
+  return amountKey ? filterAmount(scoped, amountKey, flowMinKrw()) : scoped;
+}
+
+function filterFlowQuery(rows) {
+  const q = ($("#flow-q")?.value || "").trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter((r) => {
+    const hay = `${r.ticker || ""} ${r.company || ""}`.toLowerCase();
+    return hay.includes(q) || getChosung(r.company || "").includes(q);
+  });
+}
+
+function flowUniverseLabel() {
+  const universe = flowUniverse();
+  if (universe === "top100") return "퀀트 TOP100";
+  if (universe === "outside") return "퀀트 TOP100 밖";
+  return "전체 종목";
+}
+
 function analyzeHit(rows, key) {
   const vals = rows.map((r) => r[key]).filter((v) => v != null && !Number.isNaN(Number(v))).map(Number);
   if (!vals.length) return { n: 0, hit: null, avg: null, median: null };
@@ -4835,6 +4873,14 @@ function analyzeHit(rows, key) {
   const mid = Math.floor(sorted.length / 2);
   const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   return { n: vals.length, hit, avg, median };
+}
+
+function flowHorizonIsDuplicated(rows) {
+  const pairs = (rows || [])
+    .filter((r) => r.ret_5d != null && r.ret_20d != null)
+    .map((r) => [Number(r.ret_5d), Number(r.ret_20d)])
+    .filter(([d5, d20]) => !Number.isNaN(d5) && !Number.isNaN(d20));
+  return pairs.length >= 3 && pairs.every(([d5, d20]) => Math.abs(d5 - d20) < 1e-9);
 }
 
 function filterAmount(rows, key, minKrw) {
@@ -4878,17 +4924,9 @@ function quoteCell(r) {
   return `${Number(r.last).toLocaleString("ko-KR")}<div class="meta">${pctCell(r.change_rate)}</div>`;
 }
 
-function flowTable(title, rows, amountKey, tabId) {
+function flowTable(title, rows, amountKey, tabId, duplicatedHorizon = false) {
   const scope = tabId || (amountKey === "pe_krw" ? "flowPe" : "flowDual");
-  const q = ($("#flow-q")?.value || "").trim().toLowerCase();
-  let filteredRows = rows;
-  if (q) {
-    filteredRows = rows.filter((r) => {
-      const comp = String(r.company || "").toLowerCase();
-      const code = String(r.ticker || "").toLowerCase();
-      return comp.includes(q) || code.includes(q);
-    });
-  }
+  const filteredRows = filterFlowQuery(rows);
 
   if (!filteredRows.length) {
     return `<div class="rank-card"><div class="card-h"><h3 style="margin:0;">${escapeHtml(title)}</h3></div><p class="hint" style="text-align:center; padding:30px;">조건에 부합하는 수급 포착 종목이 없습니다.</p></div>`;
@@ -4913,7 +4951,7 @@ function flowTable(title, rows, amountKey, tabId) {
       <td class="num ${r.pe_net > 0 ? 'text-purple-400 font-bold' : r.pe_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.pe_net)}</td>
       <td class="num font-bold text-accent-cyan">${escapeHtml(krw(r[amountKey]))}</td>
       <td class="num font-bold">${pctCell(r.ret_5d)}</td>
-      <td class="num font-bold">${pctCell(r.ret_20d)}</td>
+      <td class="num font-bold">${duplicatedHorizon ? '<span class="warn">검증 대기</span>' : pctCell(r.ret_20d)}</td>
     </tr>`)
     .join("");
   const more = left > 0
@@ -4935,7 +4973,7 @@ function flowTable(title, rows, amountKey, tabId) {
             <th class="sortable has-tip" data-sort="pe_net" data-tip-title="💼 사모펀드 누적 순매수" data-tip="가장 빠른 스마트머니인 사모펀드의 합산 순매수 주수입니다." tabindex="0">사모(주)</th>
             <th class="sortable has-tip" data-sort="${amountKey}" data-tip-title="💵 수급 유입 추정금액" data-tip="(외인+기관 순매수 주수) × 최근 종가로 환산한 실질 자금 유입 규모입니다." tabindex="0">추정금액</th>
             <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="📈 수급 발생 후 5일 성과" data-tip="과거 수급 신호 발생 후 5거래일 동안의 주가 실측 수익률입니다." tabindex="0">이후 5일</th>
-            <th class="sortable has-tip" data-sort="ret_20d" data-tip-title="📈 수급 발생 후 20일 성과" data-tip="과거 수급 신호 발생 후 20거래일 동안의 주가 실측 수익률입니다." tabindex="0">이후 20일</th>
+            <th class="sortable has-tip" data-sort="ret_20d" data-tip-title="📈 수급 발생 후 20일 성과" data-tip="과거 수급 신호 발생 후 20거래일 동안의 주가 실측 수익률입니다. 5일 값과 동일하면 독립 검증 전까지 숨깁니다." tabindex="0">${duplicatedHorizon ? "20일 검증 대기" : "이후 20일"}</th>
           </tr>
         </thead>
         <tbody>${body}</tbody>
@@ -4953,43 +4991,36 @@ function renderFlow(data) {
     return;
   }
   const minKrw = flowMinKrw();
-  const dualRows = filterAmount(data.dual || [], "dual_krw", minKrw);
-  const peRows = filterAmount(data.private_equity || [], "pe_krw", minKrw);
+  const duplicatedHorizon = flowHorizonIsDuplicated(filterFlowUniverse(data.rows || []));
+  const dualRows = sharedFlowRows(data.dual || [], "dual_krw");
+  const peRows = sharedFlowRows(data.private_equity || [], "pe_krw");
   const tabs = [
     { id: "dual", name: "💎 쌍끌이", rows: dualRows, key: "dual_krw", title: "외인·기관 동시 순매수 (쌍끌이)" },
     { id: "pe", name: "💼 사모펀드", rows: peRows, key: "pe_krw", title: "스마트머니 사모펀드 순매수" },
-    { id: "dual_pe", name: "🔥 쌍끌이+사모", rows: filterAmount(data.dual_pe || [], "dual_krw", minKrw), key: "dual_krw", title: "외인·기관·사모 3대 메이저 집중 매집" },
-    { id: "dual_pe_retail", name: "🚀 +개인이탈", rows: filterAmount(data.dual_pe_retail || [], "dual_krw", minKrw), key: "dual_krw", title: "메이저 싹쓸이 + 개인이탈 (손바뀜 완료)" },
-    { id: "other_corp", name: "🏢 기타법인", rows: data.other_corp || [], key: "other_corp_krw", title: "기타법인 대량 순매수" },
-    { id: "pension", name: "🏛️ 기금 가세", rows: data.pension || [], key: "pension_krw", title: "연기금 동반 가세 수급" },
-    { id: "summary", name: "📊 통계 요약", rows: [], key: "", title: "금액구간별 히트율" },
+    { id: "dual_pe", name: "🔥 쌍끌이+사모", rows: sharedFlowRows(data.dual_pe || [], "dual_krw"), key: "dual_krw", title: "외인·기관·사모 3대 메이저 집중 매집" },
+    { id: "dual_pe_retail", name: "🚀 +개인이탈", rows: sharedFlowRows(data.dual_pe_retail || [], "dual_krw"), key: "dual_krw", title: "메이저 싹쓸이 + 개인이탈 (손바뀜 완료)" },
+    { id: "other_corp", name: "🏢 기타법인", rows: sharedFlowRows(data.other_corp || [], "other_corp_krw"), key: "other_corp_krw", title: "기타법인 대량 순매수" },
+    { id: "pension", name: "🏛️ 기금 가세", rows: sharedFlowRows(data.pension || [], "pension_krw"), key: "pension_krw", title: "연기금 동반 가세 수급" },
   ];
   if (!tabs.some((t) => t.id === flowTab)) flowTab = "dual";
   const dual = analyzeHit(dualRows, "ret_5d");
   const pe = analyzeHit(peRows, "ret_5d");
-  const dual20 = analyzeHit(dualRows, "ret_20d");
-  const pe20 = analyzeHit(peRows, "ret_20d");
-  const sameHorizon = dual.n && dual.avg != null && dual20.avg != null && Math.abs(dual.avg - dual20.avg) < 1e-9;
   const when = fmtWhen(data.fetched_at);
   const asof = when ? `토스 수급 스캔 ${when} · ${data.days || 5}거래일` : `수급 스캔 시점 없음 · ${data.days || 5}거래일`;
-  if (currentView === "flow") setPageAsOf(asof, "토스 투자자 매매를 받은 시각입니다. 다시 스캔하면 갱신됩니다. KRX 종가 칩과는 다릅니다.");
+  if (currentView === "trade" && smartFlowTab === "overview") setPageAsOf(asof, "토스 투자자 매매를 받은 시각입니다. 다시 스캔하면 갱신됩니다. KRX 종가 칩과는 다릅니다.");
 
   const tabBtns = tabs
     .map(
       (t) =>
-        `<button type="button" class="${t.id === flowTab ? "on" : ""}" data-flow-tab="${t.id}">${escapeHtml(t.name)}${t.id === "summary" ? "" : ` <span style="opacity:0.8; font-size:11px;">(${t.rows.length})</span>`}</button>`
+        `<button type="button" class="${t.id === flowTab ? "on" : ""}" data-flow-tab="${t.id}">${escapeHtml(t.name)} <span style="opacity:0.8; font-size:11px;">(${t.rows.length})</span></button>`
     )
     .join("");
   const active = tabs.find((t) => t.id === flowTab) || tabs[0];
   let panel = "";
-  if (active.id === "summary") {
-    panel = `<div class="rank-grid">${bucketTable("쌍끌이 금액구간 히트율", data.dual || [], "dual_krw")}${bucketTable("사모 금액구간 히트율", data.private_equity || [], "pe_krw")}</div>
-      <p style="margin-top:12px;">${hitLine("쌍끌이", dual)} · 20일 평균 ${pctCell(dual20.avg)}</p>
-      <p>${hitLine("사모", pe)} · 20일 평균 ${pctCell(pe20.avg)}</p>`;
-  } else if (active.id === "other_corp" && !active.rows.length) {
+  if (active.id === "other_corp" && !active.rows.length) {
     panel = `<p class="hint" style="text-align:center; padding:30px;">토스 응답에 기타법인 항목이 없거나 순매수가 없습니다. 키가 있으면 이 탭에 붙습니다.</p>`;
   } else {
-    panel = flowTable(active.title, active.rows, active.key, `flow-${active.id}`);
+    panel = flowTable(active.title, active.rows, active.key, `flow-${active.id}`, duplicatedHorizon);
   }
 
   box.innerHTML = `
@@ -4999,7 +5030,7 @@ function renderFlow(data) {
            data-tip="외국인과 기관이 동시에 순매수한 핵심 수급 주도주입니다. 시장에서 가장 신뢰도가 높은 단기 주가 상승 모멘텀 신호입니다."
            data-tip-hint="외인과 기관의 쌍끌이 매집은 대형주 및 주도 섹터 랠리의 필수 조건입니다."
            tabindex="0">
-        <span>쌍끌이</span><b style="color:#00e5ff;">${dual.n}</b>
+        <span>쌍끌이 후보</span><b style="color:#00e5ff;">${dualRows.length}</b>
       </div>
       <div class="kpi has-tip"
            data-tip-title="🎯 쌍끌이 5일 승률 (Hit Rate)"
@@ -5013,7 +5044,7 @@ function renderFlow(data) {
            data-tip="시장의 스마트 머니로 통하는 사모펀드가 최근 공격적으로 순매수한 종목군입니다."
            data-tip-hint="사모펀드 수급 유입은 단기 재료 및 실적 턴어라운드 선취매 가능성을 내포합니다."
            tabindex="0">
-        <span>사모 순매수</span><b style="color:#c084fc;">${pe.n}</b>
+        <span>사모 순매수</span><b style="color:#c084fc;">${peRows.length}</b>
       </div>
       <div class="kpi clickable-kpi has-tip" data-flow-tab="dual_pe"
            data-tip-title="💎 쌍끌이 + 사모펀드 동시 매집"
@@ -5039,16 +5070,99 @@ function renderFlow(data) {
     </div>
 
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-      <span class="chip" style="background:rgba(56,189,248,0.12); color:#38bdf8;">스캔 ${data.scanned || 0}종목 · ${data.days || 5}거래일 순매수 합산${minKrw ? ` · ${krw(minKrw)} 이상만 표시` : ""}</span>
+      <span class="chip" style="background:rgba(56,189,248,0.12); color:#38bdf8;">스캔 ${data.scanned || 0}종목 · ${data.days || 5}거래일 순매수 합산 · ${escapeHtml(flowUniverseLabel())}${minKrw ? ` · ${krw(minKrw)} 이상만 표시` : ""}</span>
       <span class="hint" style="margin:0;">※ 쌍끌이 기관은 토스 기관합계(금융투자+보험+투신+사모 등) 기준입니다.</span>
     </div>
 
     <div class="h-tabs">${tabBtns}</div>
+    ${duplicatedHorizon ? `<div class="smart-flow-warning" style="margin-bottom:12px;"><b>⚠️ 20일 성과 검증 대기</b><br />현재 스냅샷의 20일 값이 5일 값과 동일하여 독립 성과로 표시하지 않습니다.</div>` : ""}
     <div class="flow-panel">${panel}</div>
     <p class="hint" style="margin-top:12px;">💡 최근가는 토스, 수급 데이터는 일별 합산입니다. 열 이름을 클릭하면 최근가, 외인/기관 순매수량, 추정금액으로 정렬할 수 있습니다.</p>
   `;
   paintSortHeaders(`flow-${active.id}`);
   loadFlowTier1Briefing("flow-tier1-briefing").catch(() => {});
+}
+
+function renderFlowStats(data) {
+  const box = $("#flow-stats-box");
+  if (!box) return;
+  if (!data?.configured) {
+    box.innerHTML = `<p class="hint">${escapeHtml(data?.error || "토스증권 키가 필요합니다.")}</p>`;
+    return;
+  }
+
+  const withQuery = (rows) => filterFlowQuery(rows);
+  const dualRows = withQuery(sharedFlowRows(data.dual || [], "dual_krw"));
+  const peRows = withQuery(sharedFlowRows(data.private_equity || [], "pe_krw"));
+  const tripleRows = withQuery(sharedFlowRows(data.dual_pe || [], "dual_krw"));
+  const confluenceRows = withQuery(sharedFlowRows(data.rows || []).filter((r) => setupNotional(r) >= flowMinKrw() && taMatch(r, "confluence")));
+  const duplicatedHorizon = flowHorizonIsDuplicated(withQuery(sharedFlowRows(data.rows || [])));
+  const groups = [
+    ["외인·기관 쌍끌이", dualRows],
+    ["사모펀드 순매수", peRows],
+    ["쌍끌이+사모", tripleRows],
+    ["수급+기술 중첩", confluenceRows],
+  ];
+
+  const performanceRows = groups.map(([label, rows]) => {
+    const d5 = analyzeHit(rows, "ret_5d");
+    const d20 = analyzeHit(rows, "ret_20d");
+    return `<tr>
+      <td><b>${escapeHtml(label)}</b></td>
+      <td class="num">${rows.length}</td>
+      <td class="num">${d5.n}</td>
+      <td class="num">${d5.hit == null ? "—" : `${(d5.hit * 100).toFixed(0)}%`}</td>
+      <td class="num">${pctCell(d5.avg)}</td>
+      <td class="num">${pctCell(d5.median)}</td>
+      <td class="num">${duplicatedHorizon ? "—" : d20.n}</td>
+      <td class="num">${duplicatedHorizon || d20.hit == null ? "—" : `${(d20.hit * 100).toFixed(0)}%`}</td>
+      <td class="num">${duplicatedHorizon ? "—" : pctCell(d20.avg)}</td>
+      <td class="num">${duplicatedHorizon ? "—" : pctCell(d20.median)}</td>
+    </tr>`;
+  }).join("");
+
+  const dual5 = analyzeHit(dualRows, "ret_5d");
+  const pe5 = analyzeHit(peRows, "ret_5d");
+  const conf5 = analyzeHit(confluenceRows, "ret_5d");
+  const when = fmtWhen(data.fetched_at);
+  if (currentView === "trade" && smartFlowTab === "stats") {
+    setPageAsOf(
+      when ? `성과 표본 수급 스캔 ${when} · ${data.days || 5}거래일` : "성과 표본 시점 없음",
+      "표의 이후 5일·20일은 저장된 과거 신호의 실측 성과이며 미래 수익률 예측이 아닙니다."
+    );
+  }
+
+  box.innerHTML = `
+    <div class="kpis" style="grid-template-columns:repeat(4,1fr); margin:0 0 16px;">
+      <div class="kpi"><span>검증 범위</span><b style="font-size:17px;">${escapeHtml(flowUniverseLabel())}</b></div>
+      <div class="kpi"><span>쌍끌이 5일 승률</span><b style="color:#34d399;">${dual5.hit == null ? "—" : `${(dual5.hit * 100).toFixed(0)}%`}</b><small>표본 ${dual5.n}건</small></div>
+      <div class="kpi"><span>사모 5일 승률</span><b style="color:#c084fc;">${pe5.hit == null ? "—" : `${(pe5.hit * 100).toFixed(0)}%`}</b><small>표본 ${pe5.n}건</small></div>
+      <div class="kpi"><span>수급+기술 5일 승률</span><b style="color:#facc15;">${conf5.hit == null ? "—" : `${(conf5.hit * 100).toFixed(0)}%`}</b><small>표본 ${conf5.n}건</small></div>
+    </div>
+
+    <div class="rank-card">
+      <div class="card-h"><h3 style="margin:0;">📊 수급 셋업별 과거 성과 비교</h3></div>
+      <p class="hint">현재 검색·금액·종목 범위를 적용한 뒤, 수급 신호 발생 후 실제 5일·20일 수익률의 양수 비율과 평균·중앙값을 비교합니다.</p>
+      ${duplicatedHorizon ? `<div class="smart-flow-warning" style="margin-bottom:12px;"><b>⚠️ 20일 성과 검증 대기</b><br />현재 스냅샷의 20일 값이 5일 값과 전부 동일합니다. 독립적인 20일 관측치로 확인될 때까지 20일 통계를 표시하지 않습니다.</div>` : ""}
+      <div class="table-wrap">
+        <table class="rank-table">
+          <thead><tr>
+            <th>수급 셋업</th><th>현재 후보</th>
+            <th>5일 표본</th><th>5일 승률</th><th>5일 평균</th><th>5일 중앙</th>
+            <th>20일 표본</th><th>20일 승률</th><th>20일 평균</th><th>20일 중앙</th>
+          </tr></thead>
+          <tbody>${performanceRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="rank-grid" style="margin-top:14px;">
+      ${bucketTable("쌍끌이 금액구간별 5일 성과", dualRows, "dual_krw")}
+      ${bucketTable("사모 금액구간별 5일 성과", peRows, "pe_krw")}
+    </div>
+    <div class="smart-flow-note" style="margin-top:14px;">
+      <b>해석 주의</b><br />표본 수가 적으면 승률 100%도 신뢰하기 어렵습니다. 최근가와 당일 등락은 토스, 기술지표는 KRX 저장 일봉이며, 거래비용·슬리피지를 뺀 주문 성과가 아닙니다.
+    </div>`;
 }
 
 function flowReady(data) {
@@ -5940,27 +6054,73 @@ async function loadNps() {
   }
 }
 
-async function loadFlow(force) {
-  const box = $("#flow-box");
+function smartFlowBox(tab = smartFlowTab) {
+  if (tab === "technical") return $("#trade-box");
+  if (tab === "stats") return $("#flow-stats-box");
+  return $("#flow-box");
+}
+
+function syncSmartFlowTabs() {
+  $$('[data-smart-flow-tab]').forEach((button) => {
+    const active = button.dataset.smartFlowTab === smartFlowTab;
+    button.classList.toggle("on", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  $$('[data-smart-flow-panel]').forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.smartFlowPanel !== smartFlowTab);
+  });
+}
+
+function renderSmartFlowActive(data = flowCache) {
+  syncSmartFlowTabs();
+  if (!data) return;
+  if (smartFlowTab === "technical") {
+    loadTradeTier1Briefing().catch(() => {});
+    renderTrade(data);
+  } else if (smartFlowTab === "stats") {
+    renderFlowStats(data);
+  } else {
+    renderFlow(data);
+  }
+}
+
+function setSmartFlowTab(tab) {
+  smartFlowTab = ["overview", "technical", "stats"].includes(tab) ? tab : "overview";
+  renderSmartFlowActive(flowCache);
+}
+
+async function loadSmartFlow(force = false) {
+  syncSmartFlowTabs();
+  const box = smartFlowBox();
   if (!box) return;
-  box.innerHTML = "<p>수급 데이터를 불러오는 중…</p>";
+  box.innerHTML = force || !flowReady(flowCache)
+    ? "<p>토스 수급을 스캔하는 중… 거래대금·랭킹 종목을 포함해 1~2분 걸릴 수 있습니다.</p>"
+    : "<p>수급 데이터를 불러오는 중…</p>";
   if (force) flowLimit = {};
   const data = await ensureFlow(force);
-  renderFlow(data);
+  renderSmartFlowActive(data);
+}
+
+async function loadFlow(force) {
+  smartFlowTab = "overview";
+  return loadSmartFlow(Boolean(force));
 }
 
 async function runFlowSearch(query) {
   const input = $("#flow-q");
   const raw = String(query ?? input?.value ?? "").trim();
   if (!raw) {
-    if (flowCache) renderFlow(flowCache);
+    if (flowCache) renderSmartFlowActive(flowCache);
     return;
   }
   const code = await resolveStockQuery(raw);
   if (!/^\d{6}$/.test(code)) {
     throw new Error(`'${raw}'에 해당하는 종목을 찾지 못했습니다.`);
   }
-  await fetchOnDemandFlow(code, "#flow-box", "flow");
+  if (smartFlowTab === "stats") setSmartFlowTab("overview");
+  const target = smartFlowTab === "technical" ? "#trade-box" : "#flow-box";
+  const scope = smartFlowTab === "technical" ? "trade" : "flow";
+  await fetchOnDemandFlow(code, target, scope);
 }
 
 function emptyFilters() {
@@ -6135,10 +6295,10 @@ async function loadEmpty(force) {
 
 function tradeFilters() {
   return {
-    q: ($("#trade-q")?.value || "").trim().toLowerCase(),
+    q: ($("#flow-q")?.value || "").trim().toLowerCase(),
     mode: $("#trade-mode")?.value || "setup",
-    minKrw: Number($("#trade-min-krw")?.value || 0),
-    excludeQuant: Boolean($("#trade-ex-quant")?.checked),
+    minKrw: flowMinKrw(),
+    universe: flowUniverse(),
     ta: $("#trade-ta")?.value || "",
   };
 }
@@ -6148,6 +6308,8 @@ function setupNotional(r) {
   if (r.dual) vals.push(Number(r.dual_krw || 0));
   if (r.pe_buy || r.pe_accum) vals.push(Number(r.pe_krw || 0));
   if (r.empty) vals.push(Number(r.empty_krw || 0));
+  if (r.other_corp_buy) vals.push(Number(r.other_corp_krw || 0));
+  if (r.pension_buy) vals.push(Number(r.pension_krw || 0));
   return vals.length ? Math.max(...vals) : 0;
 }
 
@@ -6173,9 +6335,10 @@ function taMatch(r, taMode) {
 }
 
 function filterTradeRows(rows) {
-  const { q, mode, minKrw, excludeQuant, ta } = tradeFilters();
+  const { q, mode, minKrw, universe, ta } = tradeFilters();
   return rows.filter((r) => {
-    if (excludeQuant && r.in_quant) return false;
+    if (universe === "top100" && !r.in_quant) return false;
+    if (universe === "outside" && r.in_quant) return false;
     const hay = `${r.ticker || ""} ${r.company || ""}`.toLowerCase();
     const chosung = getChosung(r.company || "");
     if (q && !hay.includes(q) && !chosung.includes(q)) return false;
@@ -6189,6 +6352,9 @@ function filterTradeRows(rows) {
     if (mode === "empty" && !empty) return false;
     if (mode === "comeback" && !comeback) return false;
     if (mode === "dual_pe" && !(dual && pe)) return false;
+    if (mode === "dual_pe_retail" && !r.dual_pe_retail) return false;
+    if (mode === "other_corp" && !r.other_corp_buy) return false;
+    if (mode === "pension" && !r.pension_buy) return false;
     if (minKrw && setupNotional(r) < minKrw) return false;
     if (!taMatch(r, ta)) return false;
     return true;
@@ -6341,7 +6507,7 @@ function renderTrade(data) {
     return;
   }
   const all = data.rows || [];
-  const qVal = ($("#trade-q")?.value || "").trim();
+  const qVal = ($("#flow-q")?.value || "").trim();
   const rows = sortedCopy(filterTradeRows(all), "trade", "setup_notional", "desc");
   if (rows.length === 0 && qVal.length > 0) {
     box.innerHTML = `<p class="hint">${escapeHtml(qVal)} 종목을 전 종목에서 찾는 중…</p>`;
@@ -6350,13 +6516,13 @@ function renderTrade(data) {
     });
     return;
   }
-  const outside = all.filter((r) => !r.in_quant);
-  const dualN = outside.filter((r) => r.dual).length;
-  const peN = outside.filter((r) => r.pe_buy || r.pe_accum).length;
-  const emptyN = outside.filter((r) => r.empty).length;
+  const eligible = filterFlowUniverse(all);
+  const dualN = eligible.filter((r) => r.dual).length;
+  const peN = eligible.filter((r) => r.pe_buy || r.pe_accum).length;
+  const emptyN = eligible.filter((r) => r.empty).length;
   const hit = analyzeHit(rows, "ret_5d");
-  const taBull = all.filter((r) => !r.in_quant && taMatch(r, "ta_bull")).length;
-  const confluence = all.filter((r) => !r.in_quant && taMatch(r, "confluence")).length;
+  const taBull = eligible.filter((r) => taMatch(r, "ta_bull")).length;
+  const confluence = eligible.filter((r) => taMatch(r, "confluence")).length;
 
   const renderStochCell = (r) => {
     if (!r.ta || r.ta.stoch_k == null) return '<span class="hint">—</span>';
@@ -6425,7 +6591,7 @@ function renderTrade(data) {
     .filter(Boolean)
     .join(" · ") || "트레이딩 데이터 시점 없음";
 
-  if (currentView === "trade") {
+  if (currentView === "trade" && smartFlowTab === "technical") {
     setPageAsOf(asof, "수급은 토스, 스토캐스틱·일목은 KRX 일봉입니다. 다시 스캔하면 수급이 갱신됩니다.");
   }
 
@@ -6434,11 +6600,11 @@ function renderTrade(data) {
       <div class="kpi has-tip" data-tip-title="🎯 수급 스캔 모수" data-tip="거래대금 상위 및 랭킹 모니터링 대상 종목 총 수입니다." tabindex="0">
         <span>스캔 종목</span><b>${data.scanned || 0}</b>
       </div>
-      <div class="kpi has-tip" data-tip-title="💎 퀀트 밖 외인·기관 쌍끌이" data-tip="메인 퀀트 TOP100에 속하지 않는 숨은 외인+기관 동반 순매수 종목입니다." tabindex="0">
-        <span>퀀트 밖 쌍끌이</span><b style="color:#00e5ff;">${dualN}</b>
+      <div class="kpi has-tip" data-tip-title="💎 선택 범위 외인·기관 쌍끌이" data-tip="상단 종목 범위 필터에 포함된 외인+기관 동반 순매수 종목입니다." tabindex="0">
+        <span>선택 범위 쌍끌이</span><b style="color:#00e5ff;">${dualN}</b>
       </div>
-      <div class="kpi has-tip" data-tip-title="💼 퀀트 밖 사모펀드 매집" data-tip="단기 스마트머니인 사모펀드가 연속 순매집 중인 종목입니다." tabindex="0">
-        <span>퀀트 밖 사모</span><b style="color:#c084fc;">${peN}</b>
+      <div class="kpi has-tip" data-tip-title="💼 선택 범위 사모펀드 매집" data-tip="상단 종목 범위 필터에 포함된 사모펀드 순매집 종목입니다." tabindex="0">
+        <span>선택 범위 사모</span><b style="color:#c084fc;">${peN}</b>
       </div>
       <div class="kpi has-tip" data-tip-title="⚡ 기술적 강세 셋업" data-tip="스토캐스틱 과매도 탈출 또는 일목균형표 호전 등 기술적 진입 타점 종목입니다." tabindex="0">
         <span>기술 강세</span><b style="color:#facc15;">${taBull}</b>
@@ -6449,7 +6615,7 @@ function renderTrade(data) {
     </div>
 
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-      <span class="chip" style="background:rgba(56,189,248,0.12); color:#38bdf8;">거래대금·토스 랭킹 위주 ${data.scanned || 0}종목 · ${data.days || 5}거래일 · 빈집 ${emptyN}개</span>
+      <span class="chip" style="background:rgba(56,189,248,0.12); color:#38bdf8;">거래대금·토스 랭킹 위주 ${data.scanned || 0}종목 · ${data.days || 5}거래일 · ${escapeHtml(flowUniverseLabel())} · 빈집 ${emptyN}개</span>
       <span class="meta">${hitLine("선택 집합", hit)}</span>
     </div>
 
@@ -6469,7 +6635,7 @@ function renderTrade(data) {
             <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="📈 신호 발생 후 5일 성과" data-tip="신호 발생 후 5거래일 실제 주가 성과입니다." tabindex="0">이후 5일</th>
           </tr>
         </thead>
-        <tbody>${body || `<tr><td colspan="10" class="hint" style="text-align:center; padding:30px;">조건에 맞는 종목이 없습니다. 퀀트 제외를 끄거나 셋업·기술을 바꿔 보세요.</td></tr>`}</tbody>
+        <tbody>${body || `<tr><td colspan="10" class="hint" style="text-align:center; padding:30px;">조건에 맞는 종목이 없습니다. 종목 범위를 전체로 바꾸거나 금액·셋업·기술 필터를 완화해 보세요.</td></tr>`}</tbody>
       </table>
     </div>
     <p class="hint" style="margin-top:10px;">💡 최근가는 토스, 수급·기술은 KRX 일봉 기준입니다. 열 제목을 클릭하면 최근가, 수급 금액, 스토캐스틱 순으로 정렬할 수 있습니다.</p>
@@ -7100,15 +7266,7 @@ async function loadStrategy(force) {
 }
 
 async function loadTrade(force) {
-  const box = $("#trade-box");
-  if (!box) return;
-  loadTradeTier1Briefing().catch(() => {});
-  box.innerHTML = "<p>트레이딩 수급을 불러오는 중…</p>";
-  if (force || !flowReady(flowCache)) {
-    box.innerHTML = "<p>토스 수급을 스캔하는 중… 거래대금·랭킹 종목 포함이라 1~2분 걸릴 수 있습니다.</p>";
-  }
-  const data = await ensureFlow(force);
-  renderTrade(data);
+  return loadSmartFlow(Boolean(force));
 }
 
 let us13fCache = null;
@@ -8947,7 +9105,7 @@ document.addEventListener("click", (e) => {
 
 if ($("#flow-q")) {
   $("#flow-q").addEventListener("input", (e) => {
-    if (!e.target.value.trim() && flowCache) renderFlow(flowCache);
+    if (flowCache) renderSmartFlowActive(flowCache);
   });
   $("#flow-q").addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || e.isComposing || $("#flow-q-menu")?.style.display === "block") return;
@@ -8959,14 +9117,19 @@ if ($("#btn-flow-search")) {
   $("#btn-flow-search").addEventListener("click", () => runFlowSearch().catch((err) => alert(err.message)));
 }
 if ($("#flow-refresh")) {
-  $("#flow-refresh").addEventListener("click", () => loadFlow(true).catch((err) => alert(err.message)));
+  $("#flow-refresh").addEventListener("click", () => loadSmartFlow(true).catch((err) => alert(err.message)));
 }
 if ($("#flow-days")) {
-  $("#flow-days").addEventListener("change", () => loadFlow(false).catch((err) => alert(err.message)));
+  $("#flow-days").addEventListener("change", () => loadSmartFlow(false).catch((err) => alert(err.message)));
 }
 if ($("#flow-min-krw")) {
   $("#flow-min-krw").addEventListener("change", () => {
-    if (flowCache) renderFlow(flowCache);
+    if (flowCache) renderSmartFlowActive(flowCache);
+  });
+}
+if ($("#trade-universe")) {
+  $("#trade-universe").addEventListener("change", () => {
+    if (flowCache) renderSmartFlowActive(flowCache);
   });
 }
 if ($("#empty-refresh")) {
@@ -8991,35 +9154,18 @@ if ($("#btn-empty-search")) {
 if ($("#empty-q")) {
   $("#empty-q").addEventListener("input", () => { if (flowCache) renderEmpty(flowCache); });
 }
-if ($("#trade-refresh")) {
-  $("#trade-refresh").addEventListener("click", () => loadTrade(true).catch((err) => alert(err.message)));
-}
-["trade-mode", "trade-min-krw", "trade-ex-quant", "trade-ta"].forEach((id) => {
+["trade-mode", "trade-ta"].forEach((id) => {
   const el = document.getElementById(id);
-  if (el) el.addEventListener("change", () => { if (flowCache) renderTrade(flowCache); });
+  if (el) el.addEventListener("change", () => { if (flowCache) renderSmartFlowActive(flowCache); });
 });
-if ($("#trade-q")) {
-  $("#trade-q").addEventListener("input", () => { if (flowCache) renderTrade(flowCache); });
-  $("#trade-q").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (flowCache) renderTrade(flowCache);
-    }
-  });
-}
 if ($("#btn-trade-search")) {
-  $("#btn-trade-search").addEventListener("click", () => { if (flowCache) renderTrade(flowCache); });
+  $("#btn-trade-search").addEventListener("click", () => runFlowSearch().catch((err) => alert(err.message)));
 }
+$$('[data-smart-flow-tab]').forEach((button) => {
+  button.addEventListener("click", () => setSmartFlowTab(button.dataset.smartFlowTab));
+});
 
 function bindStockSearchers() {
-  const tradeInput = $("#trade-q");
-  const tradeMenu = $("#trade-q-menu");
-  if (tradeInput && tradeMenu) {
-    setupStockAutocomplete(tradeInput, tradeMenu, (selected) => {
-      tradeInput.value = `${selected.company || ""} ${selected.ticker || ""}`.trim();
-      fetchOnDemandFlow(selected.ticker, "#trade-box", "trade");
-    });
-  }
   const stratInput = $("#custom-strategy-q");
   const stratMenu = $("#custom-strategy-menu");
   if (stratInput && stratMenu) {

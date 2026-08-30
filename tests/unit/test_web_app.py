@@ -201,7 +201,7 @@ def test_research_reports_list_endpoint():
     assert 'data-view="reports"' in html
     assert "보관 리포트" in html
     assert "toss-rankings" in html
-    assert 'data-view="toss"' in html
+    assert 'data-view="toss"' not in html
     assert 'data-view="sector"' in html
     assert 'data-view="screens"' in html
     assert "골라보기" in html
@@ -241,12 +241,16 @@ def test_research_reports_list_endpoint():
     assert "flow90Block" in js
     assert "eventsBlock" in js
     assert "cum20" in js
-    assert 'data-view="flow"' in html
+    assert 'data-view="flow"' not in html
     assert 'data-view="empty"' in html
     assert 'data-view="trade"' in html
+    assert 'data-smart-flow-tab="overview"' in html
+    assert 'data-smart-flow-tab="technical"' in html
+    assert 'data-smart-flow-tab="stats"' in html
+    assert 'id="trade-universe"' in html
     assert "수급" in html
     assert "빈집" in html
-    assert "트레이딩" in html
+    assert "스마트 수급·타점" in html
     assert 'data-view="us13f"' in html
     assert "13F" in html
     assert 'data-view="strategy"' in html

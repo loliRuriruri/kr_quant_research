@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=1200, user-scalable=yes" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%236ee7b7'%3EQ%3C/text%3E%3C/svg%3E" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.69.5" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.70.0" />
 </head>
 <body>
   <aside class="nav">
@@ -26,9 +26,8 @@
     <button class="nav-btn" data-view="sector" data-tip="KSIC 업종별 상대강도(RS), 확산도, 실적성장 6축 종합 랭킹 및 모멘텀 차트입니다."><span class="nav-icon">🔄</span><span>업종·섹터</span></button>
     <div class="nav-group">⚡ Smart Flow</div>
     <button class="nav-btn" data-view="investor" data-tip="공식 수급 추적 및 DART 국민연금 5% 대량보유 공시 통합 분석입니다."><span class="nav-icon">👥</span><span>메이저 수급</span></button>
-    <button class="nav-btn" data-view="flow" data-tip="토스 투자자 매매에서 외인·기관이 같이 산 쌍끌이와 사모펀드 순매수입니다."><span class="nav-icon">⚡</span><span>쌍끌이 수급</span></button>
     <button class="nav-btn" data-view="empty" data-tip="외인·기관 빈집 털이 및 수급 복귀 조짐 종목 발굴입니다."><span class="nav-icon">🏚️</span><span>빈집 발굴</span></button>
-    <button class="nav-btn" data-view="trade" data-tip="퀀트 TOP100 밖 수급 후보에 일봉 스토캐스틱·일목을 붙인 연구 화면입니다."><span class="nav-icon">🎯</span><span>트레이딩 랩</span></button>
+    <button class="nav-btn" data-view="trade" data-tip="외인·기관·사모 수급 현황과 스토캐스틱·일목 타점, 과거 성과를 한 화면에서 검증합니다."><span class="nav-icon">🎯</span><span>스마트 수급·타점</span></button>
     <button class="nav-btn" data-view="seasonality" data-tip="12개월 캘린더 모멘텀 아노말리 및 이벤트 드리븐(폭염/난방/갤럭시/배당) 고승률 스크리너입니다."><span class="nav-icon">📅</span><span>시즌 모멘텀·캘린더</span></button>
     <button class="nav-btn" data-view="watch" data-tip="나만의 포트폴리오 팩터 분석 및 발간된 AI 심층 리포트 통합 보관함입니다."><span class="nav-icon">⭐</span><span>관심종목 & AI리포트</span></button>
     <div class="nav-group">🏛️ Global Research</div>
@@ -357,61 +356,6 @@
       </article>
     </section>
 
-    <section id="view-flow" class="view hidden">
-      <!-- Tier 1 AI Flow Radar Briefing (100% Free Engine) -->
-      <div id="flow-tier1-briefing" style="margin-bottom:14px;"></div>
-
-      <article class="card">
-        <div class="card-h">
-          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <h2 style="margin:0;">🌊 메이저 스마트머니 수급 레이더</h2>
-            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">외인·기관 동반 쌍끌이 &amp; 사모펀드 집중 매집 추적</span>
-          </div>
-        </div>
-        <p class="hint" style="margin-bottom:14px;">외국인과 기관의 동반 순매수(쌍끌이), 스마트머니 사모펀드 연속 매집, 개인 투자자 이탈(손바뀜) 종목을 실시간 스캔합니다.</p>
-
-        <!-- Modern Unified Flow Filter Toolbar -->
-        <div class="trade-toolbar-container">
-          <div class="trade-filter-bar">
-            <!-- Search Box Group -->
-            <div class="trade-search-wrap">
-              <div class="autocomplete-wrap">
-                <input id="flow-q" type="text" autocomplete="off" placeholder="종목명 또는 6자리 코드 검색" />
-                <ul id="flow-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
-              </div>
-              <button type="button" id="btn-flow-search" class="primary search-btn" style="height:38px; padding:0 14px; font-size:12.5px; font-weight:700; white-space:nowrap; border-radius:8px;">🔍 검색</button>
-            </div>
-
-            <!-- Filter Controls Group -->
-            <div class="trade-filter-group">
-              <label class="trade-filter-label has-tip" data-tip-title="📅 수급 누적 기간" data-tip="최근 5일, 10일, 20거래일 동안의 투자자별 순매수 주수를 합산하여 분석합니다." tabindex="0">
-                <span class="filter-tag">누적 기간</span>
-                <select id="flow-days" class="trade-select">
-                  <option value="5" selected>📅 최근 5거래일</option>
-                  <option value="10">📅 최근 10거래일</option>
-                  <option value="20">📅 최근 20거래일</option>
-                </select>
-              </label>
-
-              <label class="trade-filter-label has-tip" data-tip-title="💰 최소 수급 유입 금액" data-tip="스마트머니 유의미성을 확보하기 위해 설정하는 최소 순매수 추정금액 필터입니다." tabindex="0">
-                <span class="filter-tag">최소 추정금액</span>
-                <select id="flow-min-krw" class="trade-select">
-                  <option value="0" selected>전체 금액</option>
-                  <option value="1000000000">💰 10억 이상</option>
-                  <option value="5000000000">💰 50억 이상</option>
-                  <option value="10000000000">💰 100억 이상</option>
-                </select>
-              </label>
-
-              <button type="button" class="trade-refresh-btn has-tip" id="flow-refresh" data-tip-title="🔄 수급 데이터 동기화" data-tip="토스증권 투자자별 매매동향 최신 데이터를 서버에서 즉시 다시 수신하여 갱신합니다." tabindex="0">🔄 수급 다시 스캔</button>
-            </div>
-          </div>
-        </div>
-
-        <div id="flow-box" class="quality"></div>
-      </article>
-    </section>
-
     <section id="view-empty" class="view hidden">
       <!-- Tier 1 AI Empty House Turnaround Briefing (100% Free Engine) -->
       <div id="empty-tier1-briefing" style="margin-bottom:14px;"></div>
@@ -480,50 +424,44 @@
     </section>
 
     <section id="view-trade" class="view hidden">
-      <!-- Tier 1 AI Swing Trading Setups Briefing (100% Free Engine) -->
-      <div id="trade-tier1-briefing" style="margin-bottom:14px;"></div>
-
       <article class="card">
         <div class="card-h">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <h2 style="margin:0;">⚡ 수급 트레이딩 & 기술적 타점 랩</h2>
-            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">토스 기관/외인 수급 × KRX 일봉 스토캐스틱·일목균형표</span>
+            <h2 style="margin:0;">🎯 스마트 수급·타점 통합 연구소</h2>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">토스 수급 × KRX 일봉 기술지표 × 신호 후 성과 검증</span>
           </div>
         </div>
-        <p class="hint" style="margin-bottom:14px;">스마트머니 수급(쌍끌이·사모펀드·빈집)에 KRX 일봉 스토캐스틱(5,3,3)과 일목균형표(9-26-52)를 결합하여 최적의 단기 턴어라운드 진입 타점을 분석합니다.</p>
+        <p class="hint" style="margin-bottom:14px;">같은 수급 스캔을 중복 호출하지 않고, 수급 원본·기술적 타점·과거 성과를 같은 기준일과 필터로 이어서 검증합니다.</p>
 
-        <!-- Modern Unified Filter Toolbar -->
+        <div class="h-tabs smart-flow-tabs" role="tablist" aria-label="스마트 수급 분석 화면">
+          <button type="button" class="on" data-smart-flow-tab="overview" role="tab" aria-selected="true">🌊 수급 현황</button>
+          <button type="button" data-smart-flow-tab="technical" role="tab" aria-selected="false">🎯 기술적 타점</button>
+          <button type="button" data-smart-flow-tab="stats" role="tab" aria-selected="false">📊 성과 검증</button>
+        </div>
+
         <div class="trade-toolbar-container">
           <div class="trade-filter-bar">
-            <!-- Search Box Group -->
             <div class="trade-search-wrap">
               <div class="autocomplete-wrap">
-                <input id="trade-q" type="text" autocomplete="off" placeholder="종목명 또는 6자리 코드 검색" />
-                <ul id="trade-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
+                <input id="flow-q" type="text" autocomplete="off" placeholder="종목명 또는 6자리 코드 검색" />
+                <ul id="flow-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
               </div>
               <button type="button" id="btn-trade-search" class="primary search-btn" style="height:38px; padding:0 14px; font-size:12.5px; font-weight:700; white-space:nowrap; border-radius:8px;">🔍 검색</button>
             </div>
 
-            <!-- Filter Controls Group -->
             <div class="trade-filter-group">
-              <label class="trade-filter-label has-tip" data-tip-title="⚡ 수급 셋업 선택" data-tip="쌍끌이, 사모매집, 빈집복귀, 기타법인 등 추적할 스마트머니 셋업을 지정합니다." tabindex="0">
-                <span class="filter-tag">수급 셋업</span>
-                <select id="trade-mode" class="trade-select">
-                  <option value="setup" selected>전체 셋업</option>
-                  <option value="dual">💎 외인·기관 쌍끌이</option>
-                  <option value="pe">💼 사모펀드 매집</option>
-                  <option value="empty">🚪 빈집 이탈</option>
-                  <option value="comeback">🔄 빈집 복귀</option>
-                  <option value="dual_pe">🔥 쌍끌이 + 사모</option>
-                  <option value="dual_pe_retail">🚀 쌍끌이+사모+개인이탈</option>
-                  <option value="other_corp">🏢 기타법인 순매수</option>
-                  <option value="pension">🏛️ 연기금 가세</option>
+              <label class="trade-filter-label has-tip" data-tip-title="📅 수급 누적 기간" data-tip="최근 5일, 10일, 20거래일 동안의 투자자별 순매수 주수를 합산합니다. 세 탭에 같은 기간이 적용됩니다." tabindex="0">
+                <span class="filter-tag">누적 기간</span>
+                <select id="flow-days" class="trade-select">
+                  <option value="5" selected>📅 최근 5거래일</option>
+                  <option value="10">📅 최근 10거래일</option>
+                  <option value="20">📅 최근 20거래일</option>
                 </select>
               </label>
 
-              <label class="trade-filter-label has-tip" data-tip-title="💰 최소 수급 금액" data-tip="일정 규모 이상의 메이저 자금이 유입된 종목만 필터링합니다." tabindex="0">
+              <label class="trade-filter-label has-tip" data-tip-title="💰 최소 수급 금액" data-tip="수급 현황·기술적 타점·성과 검증에 동일하게 적용되는 최소 순매수 추정금액입니다." tabindex="0">
                 <span class="filter-tag">최소 추정금액</span>
-                <select id="trade-min-krw" class="trade-select">
+                <select id="flow-min-krw" class="trade-select">
                   <option value="0" selected>전체 금액</option>
                   <option value="1000000000">10억 이상</option>
                   <option value="5000000000">50억 이상</option>
@@ -531,32 +469,68 @@
                 </select>
               </label>
 
-              <label class="trade-filter-label has-tip" data-tip-title="🎯 보조지표 타점 필터" data-tip="스토캐스틱 과매도(%K&lt;20), 골든크로스, 일목균형표 구름대 돌파 등 기술적 지표와 결합합니다." tabindex="0">
-                <span class="filter-tag">기술적 타점</span>
-                <select id="trade-ta" class="trade-select">
-                  <option value="" selected>기술적 전체</option>
-                  <option value="stoch_os">🟢 스토 과매도 (%K &lt; 20)</option>
-                  <option value="stoch_golden">✨ 스토 골든크로스</option>
-                  <option value="stoch_ob">🔴 스토 과매수 (%K &gt; 80)</option>
-                  <option value="ichi_above">☁️ 일목 구름대 위</option>
-                  <option value="ichi_below">🌧️ 일목 구름대 아래</option>
-                  <option value="ichi_tk">📈 전환선 &gt; 기준선</option>
-                  <option value="ta_bull">⚡ 기술적 강세 셋업</option>
-                  <option value="confluence">🎯 수급 + 기술 Confluence</option>
+              <label class="trade-filter-label has-tip" data-tip-title="🧭 종목 범위" data-tip="기존 체크박스 대신 전체, 퀀트 TOP100, TOP100 밖을 명시적으로 선택합니다. 기본값은 전체라서 후보가 숨지 않습니다." tabindex="0">
+                <span class="filter-tag">종목 범위</span>
+                <select id="trade-universe" class="trade-select">
+                  <option value="all" selected>전체 종목</option>
+                  <option value="top100">퀀트 TOP100</option>
+                  <option value="outside">퀀트 TOP100 밖</option>
                 </select>
               </label>
 
-              <label class="trade-chk-label has-tip" data-tip-title="🛡️ 퀀트 제외 모드" data-tip="메인 재무 퀀트 상위 100종목 외에 시장에서 소외되었으나 수급이 들어오는 숨은 알짜주를 발굴합니다." tabindex="0">
-                <input type="checkbox" id="trade-ex-quant" checked />
-                <span>퀀트 TOP100 제외</span>
-              </label>
-
-              <button type="button" class="trade-refresh-btn has-tip" id="trade-refresh" data-tip-title="🔄 트레이딩 랩 스캔" data-tip="최신 수급 및 일봉 기술적 지표를 재계산하여 갱신합니다." tabindex="0">🔄 다시 스캔</button>
+              <button type="button" class="trade-refresh-btn has-tip" id="flow-refresh" data-tip-title="🔄 통합 수급 스캔" data-tip="토스 투자자 수급을 한 번 갱신하고 같은 결과를 세 탭에서 재사용합니다. KRX 기술지표는 최신 저장 일봉 기준입니다." tabindex="0">🔄 수급 다시 스캔</button>
             </div>
           </div>
         </div>
 
-        <div id="trade-box" class="quality"></div>
+        <section id="smart-flow-panel-overview" class="smart-flow-panel" data-smart-flow-panel="overview">
+          <div id="flow-tier1-briefing" style="margin:14px 0;"></div>
+          <div id="flow-box" class="quality"></div>
+        </section>
+
+        <section id="smart-flow-panel-technical" class="smart-flow-panel hidden" data-smart-flow-panel="technical">
+          <div class="trade-toolbar-container smart-flow-secondary-toolbar">
+            <div class="trade-filter-bar">
+              <div class="trade-filter-group">
+                <label class="trade-filter-label has-tip" data-tip-title="⚡ 수급 셋업 선택" data-tip="기술적 타점을 결합할 쌍끌이, 사모매집, 빈집복귀 등의 수급 셋업을 지정합니다." tabindex="0">
+                  <span class="filter-tag">수급 셋업</span>
+                  <select id="trade-mode" class="trade-select">
+                    <option value="setup" selected>전체 셋업</option>
+                    <option value="dual">💎 외인·기관 쌍끌이</option>
+                    <option value="pe">💼 사모펀드 매집</option>
+                    <option value="empty">🚪 빈집 이탈</option>
+                    <option value="comeback">🔄 빈집 복귀</option>
+                    <option value="dual_pe">🔥 쌍끌이 + 사모</option>
+                    <option value="dual_pe_retail">🚀 쌍끌이+사모+개인이탈</option>
+                    <option value="other_corp">🏢 기타법인 순매수</option>
+                    <option value="pension">🏛️ 연기금 가세</option>
+                  </select>
+                </label>
+
+                <label class="trade-filter-label has-tip" data-tip-title="🎯 보조지표 타점 필터" data-tip="스토캐스틱 과매도·골든크로스, 일목균형표 위치 등 KRX 일봉 지표와 수급을 결합합니다." tabindex="0">
+                  <span class="filter-tag">기술적 타점</span>
+                  <select id="trade-ta" class="trade-select">
+                    <option value="" selected>기술적 전체</option>
+                    <option value="stoch_os">🟢 스토 과매도 (%K &lt; 20)</option>
+                    <option value="stoch_golden">✨ 스토 골든크로스</option>
+                    <option value="stoch_ob">🔴 스토 과매수 (%K &gt; 80)</option>
+                    <option value="ichi_above">☁️ 일목 구름대 위</option>
+                    <option value="ichi_below">🌧️ 일목 구름대 아래</option>
+                    <option value="ichi_tk">📈 전환선 &gt; 기준선</option>
+                    <option value="ta_bull">⚡ 기술적 강세 셋업</option>
+                    <option value="confluence">🎯 수급 + 기술 중첩</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div id="trade-tier1-briefing" style="margin:14px 0;"></div>
+          <div id="trade-box" class="quality"></div>
+        </section>
+
+        <section id="smart-flow-panel-stats" class="smart-flow-panel hidden" data-smart-flow-panel="stats">
+          <div id="flow-stats-box" class="quality" style="margin-top:14px;"></div>
+        </section>
       </article>
     </section>
 
@@ -1916,6 +1890,6 @@
     </div>
 
 
-  <script src="/static/app.js?v=2.69.5"></script>
+  <script src="/static/app.js?v=2.70.0"></script>
 </body>
 </html>
