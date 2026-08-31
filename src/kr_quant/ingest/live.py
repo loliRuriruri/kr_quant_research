@@ -282,6 +282,31 @@ def calendar_guard(lookback_days: int) -> int:
     return max(days * 3, days + 80)
 
 
+def krx_session_available(settings: Settings, as_of: date) -> dict[str, Any]:
+    """Probe whether KRX already serves a complete session for as_of.
+
+    Empty markets mean the official daily file is not ready yet. This does not
+    walk back to an older session; the caller should retry the same date.
+    """
+    if not settings.krx_api_key:
+        return {"ready": False, "as_of": as_of.isoformat(), "error": "KRX_API_KEY가 없습니다."}
+    try:
+        adapter = KrxOpenApiAdapter(settings.krx_api_key, settings.config["ingest"]["krx_base_url"])
+        missing: list[str] = []
+        for market in list(settings.config["universe"]["markets"]):
+            rows = adapter.fetch_daily_maybe(as_of, market)
+            if not rows:
+                missing.append(str(market))
+        return {
+            "ready": not missing,
+            "as_of": as_of.isoformat(),
+            "missing_markets": missing,
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("KRX session probe failed for %s: %s", as_of, exc)
+        return {"ready": False, "as_of": as_of.isoformat(), "error": str(exc)[:200]}
+
+
 def fetch_krx_prices_range(
     settings: Settings,
     as_of: date,

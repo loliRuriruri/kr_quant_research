@@ -20,6 +20,7 @@ _STATE: dict[str, Any] = {
     "running": False,
     "next_fire": None,
     "last_fire": None,
+    "last_skip": None,
     "last_error": None,
     "last_result": None,
 }
@@ -37,7 +38,7 @@ def _restore_runtime_state() -> None:
         saved = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return
-    for key in ("last_fire", "last_error", "last_result"):
+    for key in ("last_fire", "last_skip", "last_error", "last_result"):
         if key in saved:
             _STATE[key] = saved[key]
 
@@ -45,7 +46,7 @@ def _restore_runtime_state() -> None:
 def _persist_runtime_state() -> None:
     path = _runtime_state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {key: _STATE.get(key) for key in ("last_fire", "last_error", "last_result")}
+    payload = {key: _STATE.get(key) for key in ("last_fire", "last_skip", "last_error", "last_result")}
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(path)
@@ -130,10 +131,12 @@ def scheduler_status() -> dict[str, Any]:
     job_kind = cfg.get("job_kind") or "smart-sync"
     enabled = bool(cfg.get("enabled")) and (bool(s.krx_api_key) or job_kind == "demo")
     from kr_quant.web.publish import publish_status
+    from kr_quant.web.smart_ledger import public_snapshot
 
     return {
         **_STATE,
         "enabled": enabled,
+        "smart_run": public_snapshot(),
         "publish_public": publish_status(),
         "job_kind": job_kind,
         "hour": int(cfg.get("hour") or 19),
@@ -197,7 +200,7 @@ def _scheduled_smart() -> dict[str, Any]:
 
     cfg = load_scheduler_config()
     lookback = int(cfg.get("lookback_days") or 80)
-    return job_smart_sync("auto", lookback_days=lookback, max_corps=400, dart_batch_size=50)
+    return job_smart_sync("auto", lookback_days=lookback, max_corps=400, dart_batch_size=50, trigger="scheduled")
 
 
 def _catch_up_due(cfg: dict[str, Any], now: datetime | None = None) -> bool:
@@ -232,16 +235,34 @@ def _catch_up_due(cfg: dict[str, Any], now: datetime | None = None) -> bool:
         return True
 
 
+def _retry_due(now: datetime | None = None) -> bool:
+    from kr_quant.web.smart_ledger import load_ledger, retry_due
+
+    return retry_due(load_ledger(), now=now)
+
+
+def _wake_at(cfg: dict[str, Any], now: datetime | None = None) -> datetime:
+    current = (now or datetime.now(KST)).astimezone(KST)
+    nxt = _next_slot(cfg, current)
+    from kr_quant.web.smart_ledger import load_ledger, next_retry_at
+
+    retry = next_retry_at(load_ledger())
+    if retry and current <= retry < nxt:
+        return retry
+    return nxt
+
+
 def _fire() -> None:
     from kr_quant.web.jobs import RUNNER
 
     cfg = load_scheduler_config()
     job_kind = cfg.get("job_kind") or "smart-sync"
-    _STATE["last_fire"] = datetime.now(KST).isoformat()
-    _persist_runtime_state()
     try:
         if RUNNER.snapshot().get("status") == "running":
             _STATE["last_error"] = "다른 작업이 실행 중이라 건너뜀"
+            _STATE["last_skip"] = datetime.now(KST).isoformat()
+            _persist_runtime_state()
+            logger.info("scheduled %s skipped: runner busy", job_kind)
             return
         if job_kind == "smart-sync":
             snap = RUNNER.start("smart-sync", _scheduled_smart)
@@ -249,6 +270,7 @@ def _fire() -> None:
             snap = RUNNER.start("live", _scheduled_live)
         else:
             snap = RUNNER.start("krx-prices", _scheduled_evening)
+        _STATE["last_fire"] = datetime.now(KST).isoformat()
         _STATE["last_error"] = None
         _STATE["last_result"] = {"started": True, "kind": snap.get("kind")}
         _persist_runtime_state()
@@ -274,11 +296,15 @@ def _loop() -> None:
             _fire()
             time.sleep(70)
             continue
-        nxt = _next_slot(cfg)
-        _STATE["next_fire"] = nxt.isoformat()
-        wait = max(5.0, (nxt - datetime.now(KST)).total_seconds())
+        if _retry_due():
+            _fire()
+            time.sleep(70)
+            continue
+        wake = _wake_at(cfg)
+        _STATE["next_fire"] = wake.isoformat()
+        wait = max(5.0, (wake - datetime.now(KST)).total_seconds())
         time.sleep(min(wait, 3600))
-        if datetime.now(KST) >= nxt - timedelta(seconds=2):
+        if _retry_due() or datetime.now(KST) >= wake - timedelta(seconds=2):
             _fire()
             time.sleep(70)
 
@@ -287,6 +313,12 @@ def start_price_scheduler() -> None:
     if _STATE.get("running"):
         return
     _restore_runtime_state()
+    try:
+        from kr_quant.web.smart_ledger import recover_interrupted
+
+        recover_interrupted(runner_running=False)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("smart-run ledger recover skipped: %s", exc)
     _STATE["running"] = True
     thread = threading.Thread(target=_loop, name="krx-price-scheduler", daemon=True)
     thread.start()

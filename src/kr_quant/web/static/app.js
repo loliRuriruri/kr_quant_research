@@ -1814,6 +1814,81 @@ function renderRunDiagnostics(status) {
         ? `자동화됨 · 다음 ${String(sched.next_fire || "예약 시각").replace("T", " ").slice(0, 16)} KST · 놓친 실행은 서버 시작 시 보충`
         : "자동화 미설정 · 아래 스케줄러에서 ‘스마트 일일 관리’를 저장하세요.";
     }
+    renderSmartRunLedger(sched.smart_run || lastStatus?.job?.progress);
+  }
+}
+
+const SMART_STEP_LABELS = {
+  krx: "KRX 시세",
+  quant: "퀀트 재계산",
+  dart: "OpenDART 백필",
+  kis: "KIS 수급",
+  publish: "공개판",
+};
+const SMART_STATUS_LABELS = {
+  pending: "대기",
+  running: "실행 중",
+  success: "완료",
+  skipped_fresh: "최신·생략",
+  skipped_sufficient: "목표 충족·생략",
+  skipped_not_configured: "키 없음·생략",
+  skipped_already_success: "오늘 완료·생략",
+  source_not_ready: "자료 미준비",
+  blocked_dependency: "선행 단계 대기",
+  blocked_stale: "시세 지연 차단",
+  queued: "품질검사 대기",
+  warning: "일부 보류",
+  partial: "일부 완료",
+  failed: "실패",
+  interrupted: "중단 복구",
+};
+
+function formatElapsed(sec) {
+  if (sec == null || Number.isNaN(Number(sec))) return "";
+  const value = Math.max(0, Number(sec));
+  if (value < 60) return `${value}초`;
+  const min = Math.floor(value / 60);
+  const rem = value % 60;
+  return rem ? `${min}분 ${rem}초` : `${min}분`;
+}
+
+function renderSmartRunLedger(ledger, opts = {}) {
+  const stepsEl = $("#smart-run-steps");
+  const summaryEl = $("#smart-run-summary");
+  const planEl = $("#smart-run-plan");
+  if (!ledger || !ledger.steps) {
+    if (stepsEl) stepsEl.textContent = "";
+    return;
+  }
+  const order = ["krx", "quant", "dart", "kis", "publish"];
+  const parts = order.map((name) => {
+    const step = ledger.steps[name] || {};
+    return `${SMART_STEP_LABELS[name] || name} ${SMART_STATUS_LABELS[step.status] || step.status || "대기"}`;
+  });
+  if (stepsEl) {
+    const elapsed = formatElapsed(ledger.elapsed_sec);
+    const retry = ledger.next_retry_at ? String(ledger.next_retry_at).replace("T", " ").slice(0, 16) : "";
+    const blocked = (ledger.blocked_dependencies || []).join(", ");
+    const extra = [
+      elapsed ? `경과 ${elapsed}` : "",
+      ledger.current_step ? `현재 ${SMART_STEP_LABELS[ledger.current_step] || ledger.current_step}` : "",
+      retry ? `다음 재시도 ${retry} KST` : "",
+      blocked ? `차단 ${blocked}` : "",
+    ].filter(Boolean).join(" · ");
+    stepsEl.textContent = extra ? `${parts.join(" → ")} · ${extra}` : parts.join(" → ");
+  }
+  if (summaryEl && !opts.fallbackPlan) {
+    if (ledger.steps.krx?.status === "source_not_ready") {
+      const retry = ledger.next_retry_at ? String(ledger.next_retry_at).replace("T", " ").slice(11, 16) : "";
+      summaryEl.textContent = retry
+        ? `KRX ${ledger.expected_price_date || ""} 자료 미준비 · ${retry} KST에 시세 단계만 다시 받습니다.`
+        : `KRX ${ledger.expected_price_date || ""} 자료 미준비 · 당일 자동 재시도 한도에 도달했습니다.`;
+    } else if (ledger.overall_status === "interrupted") {
+      summaryEl.textContent = "이전 스마트 실행이 중단으로 복구됐습니다. 다시 누르면 남은 단계부터 이어갑니다.";
+    }
+  }
+  if (planEl && ledger.next_retry_at && !opts.fallbackPlan) {
+    planEl.textContent = `시세만 재시도 · 다음 ${String(ledger.next_retry_at).replace("T", " ").slice(0, 16)} KST · DART/KIS는 오늘 완료분이 있으면 건너뜁니다.`;
   }
 }
 
@@ -9185,6 +9260,9 @@ function renderJob(job) {
       actChip.textContent = "🟢 시스템 정상";
       actChip.dataset.tip = "현재 백그라운드 작업이 완료되었거나 대기 중입니다.";
     }
+  }
+  if (job.progress || job.result?.ledger) {
+    renderSmartRunLedger(job.progress || job.result.ledger);
   }
 }
 

@@ -148,20 +148,22 @@ def test_scheduler_save_preserves_public_deploy_config(tmp_path, monkeypatch):
 
 def test_scheduler_runtime_state_survives_restart(tmp_path, monkeypatch):
     settings = replace(load_settings(), root=tmp_path)
-    prior = {key: _STATE.get(key) for key in ("last_fire", "last_error", "last_result")}
+    prior = {key: _STATE.get(key) for key in ("last_fire", "last_skip", "last_error", "last_result")}
     monkeypatch.setattr(scheduler, "load_settings", lambda: settings)
     try:
         _STATE.update(
             {
                 "last_fire": "2026-08-31T19:10:00+09:00",
+                "last_skip": None,
                 "last_error": None,
                 "last_result": {"started": True, "kind": "smart-sync"},
             }
         )
         scheduler._persist_runtime_state()
-        _STATE.update({"last_fire": None, "last_error": "reset", "last_result": None})
+        _STATE.update({"last_fire": None, "last_skip": "reset", "last_error": "reset", "last_result": None})
         scheduler._restore_runtime_state()
         assert _STATE["last_fire"] == "2026-08-31T19:10:00+09:00"
         assert _STATE["last_result"]["kind"] == "smart-sync"
+        assert _STATE["last_skip"] is None
     finally:
         _STATE.update(prior)
