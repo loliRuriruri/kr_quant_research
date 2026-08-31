@@ -71,6 +71,7 @@ def collect_official(settings: Settings, *, limit: int | None = None) -> dict[st
     run_id = datetime.now(timezone.utc).strftime("kis-%Y%m%dT%H%M%S")
     saved = 0
     errors: list[str] = []
+    adapter.token(reason="official_collect")
     con = open_settings(settings)
     try:
         for item in names:

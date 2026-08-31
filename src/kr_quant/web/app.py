@@ -610,31 +610,34 @@ def api_settings_test() -> dict[str, Any]:
     else:
         out["krx"] = {"label": "KRX 한국거래소", "ok": False, "detail": "키 없음"}
 
-    # 3. KIS (한국투자증권)
+    # 3. KIS (한국투자증권) — user-clicked test may issue a token; status/GET must not.
     if s.kis_app_key and s.kis_app_secret:
         try:
-            from kr_quant.ingest.kis import KisInvestorAdapter
+            from kr_quant.ingest.kis import KisInvestorAdapter, KisTokenRateLimited
 
             adapter = KisInvestorAdapter(s.kis_app_key, s.kis_app_secret, s.kis_base_url)
-            # Try getting cached token or issue
-            tok_ok = False
-            detail_msg = "토큰 발급 완료 · 공식 수급 연동 정상"
-            try:
-                tok = adapter.token(timeout=10)
-                if tok:
-                    tok_ok = True
-            except Exception as e:
-                err_str = str(e)
-                if "EGW00133" in err_str or "1분당 1회" in err_str or "접근토큰" in err_str:
-                    tok_ok = True
-                    detail_msg = "토큰 인증 확인됨 (1분당 1회 발급 제한 정상 보호 중)"
-                elif len(s.kis_app_key) >= 16 and len(s.kis_app_secret) >= 30:
-                    tok_ok = True
-                    detail_msg = "앱 키/시크릿 형식 정상 등록됨"
-                else:
-                    detail_msg = err_str[:140]
-
-            out["kis"] = {"label": "한국투자증권 (KIS)", "ok": tok_ok, "detail": detail_msg}
+            status = adapter.token_status()
+            if status.get("cached"):
+                out["kis"] = {
+                    "label": "한국투자증권 (KIS)",
+                    "ok": True,
+                    "detail": f"캐시된 토큰 유효 · 재발급 없음 · 만료 {status.get('expires_at') or '—'}",
+                }
+            elif not status.get("can_issue"):
+                out["kis"] = {
+                    "label": "한국투자증권 (KIS)",
+                    "ok": True,
+                    "detail": f"발급 제한 보호 중 · 다음 가능 {status.get('retry_at') or '1분 후'}",
+                }
+            else:
+                adapter.token(timeout=10, reason="connection_test")
+                out["kis"] = {
+                    "label": "한국투자증권 (KIS)",
+                    "ok": True,
+                    "detail": "토큰 발급 완료 · 공식 수급 연동 정상",
+                }
+        except KisTokenRateLimited as exc:
+            out["kis"] = {"label": "한국투자증권 (KIS)", "ok": True, "detail": str(exc)[:160]}
         except Exception as exc:  # noqa: BLE001
             out["kis"] = {"label": "한국투자증권 (KIS)", "ok": False, "detail": str(exc)[:140]}
     else:
@@ -1222,21 +1225,6 @@ def api_stock(ticker: str, as_of: str | None = None) -> dict[str, Any]:
         from kr_quant.flow.official import ticker_payload
 
         flow90 = ticker_payload(s, code)
-        if not flow90.get("chart") and s.kis_app_key and s.kis_app_secret:
-            try:
-                from kr_quant.ingest.kis import KisInvestorAdapter
-                from kr_quant.flow.store import open_settings, upsert_flows
-
-                adapter = KisInvestorAdapter(s.kis_app_key, s.kis_app_secret, s.kis_base_url)
-                if adapter.configured():
-                    rows = adapter.collect_stock(code)
-                    if rows:
-                        con = open_settings(s)
-                        upsert_flows(con, rows)
-                        con.close()
-                        flow90 = ticker_payload(s, code)
-            except Exception:
-                pass
     except Exception as exc:  # noqa: BLE001
         flow90 = {"used_in_quant": False, "chart": [], "error": str(exc)[:160]}
 
