@@ -178,6 +178,7 @@ def latest_price_date(settings: Settings) -> date | None:
 
 
 def freshness_snapshot(settings: Settings, *, now: datetime | None = None, screen_as_of: str | None = None) -> dict[str, Any]:
+    from kr_quant.run_generation import current_output_path, is_updating
     expected = expected_price_date(now)
     live = settings.staged_dir / "live"
     demo = settings.staged_dir / "demo"
@@ -187,6 +188,12 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
     price_days = _read_price_days(price_path)
     financial_max = _read_financial_max(facts_path)
     screen_day = None
+    quality_path = current_output_path(settings, "data_quality_report.json")
+    if not screen_as_of and quality_path.exists():
+        try:
+            screen_as_of = json.loads(quality_path.read_text(encoding="utf-8")).get("as_of_date")
+        except (OSError, json.JSONDecodeError, TypeError):
+            screen_as_of = None
     if screen_as_of:
         try:
             screen_day = date.fromisoformat(str(screen_as_of)[:10])
@@ -241,7 +248,7 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
             "observed_date": None if screen_day is None else screen_day.isoformat(),
             "lag_trading_days": screen_lag,
             "state": "missing" if screen_day is None else ("stale" if stale_screen else "fresh"),
-            "last_updated_at": _mtime_iso(settings.output_dir / "data_quality_report.json"),
+            "last_updated_at": _mtime_iso(quality_path),
         },
         "strategy_cache": {
             "label": "전략·백테스트 캐시",
@@ -274,6 +281,7 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
         "derived_stale": derived_stale,
         "sources": sources,
         "used_in_quant": False,
+        "updating": is_updating(settings),
     }
 
 

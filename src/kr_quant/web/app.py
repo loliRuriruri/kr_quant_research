@@ -283,7 +283,10 @@ def _resolve_rank_output(
         exact = _run_dir(settings, as_of) / dated_name
         return exact if exact.exists() else None
 
-    candidates = [folder / dated_name for _, folder in _run_dirs(settings)]
+    from kr_quant.run_generation import current_output_path
+
+    candidates = [current_output_path(settings, latest_name)]
+    candidates.extend(folder / dated_name for _, folder in _run_dirs(settings))
     candidates.append(settings.output_dir / latest_name)
     seen: set[Path] = set()
     for path in candidates:
@@ -307,8 +310,14 @@ def _rank_source_as_of(frame: pd.DataFrame, path: Path | None = None) -> str | N
 
 
 def _quality(settings, as_of: str | None = None) -> dict[str, Any]:
+    from kr_quant.run_generation import current_output_path
+
     folder = _run_dir(settings, as_of)
     path = folder / "data_quality_report.json"
+    if not as_of:
+        committed = current_output_path(settings, "data_quality_report.json")
+        if committed.exists():
+            path = committed
     if not path.exists():
         path = settings.output_dir / "data_quality_report.json"
     if not path.exists():

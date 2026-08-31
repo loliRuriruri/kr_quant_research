@@ -276,14 +276,39 @@ def run_from_staged(
     # Keep the last known-good local snapshot intact when a run is partial.
     # Dated outputs above remain available for diagnosis and audit.
     if publish_latest and ctx.status == "success":
-        write_parquet_atomic(all_df, settings.output_dir / "latest_all_stocks.parquet")
-        _csv_ready(top100).to_csv(settings.output_dir / "latest_top100.csv", index=False, encoding="utf-8-sig")
-        _csv_ready(top20).to_csv(settings.output_dir / "latest_top20.csv", index=False, encoding="utf-8-sig")
-        write_parquet_atomic(hist_df, settings.output_dir / "daily_history.parquet")
-        write_json(settings.output_dir / "data_quality_report.json", quality)
-        write_parquet_atomic(price_integrity_issues, settings.output_dir / "price_integrity_issues.parquet")
-        write_parquet_atomic(universe_snapshot, settings.output_dir / "latest_universe_snapshot.parquet")
-        write_json(settings.output_dir / "universe_evidence.json", universe_evidence)
+        from kr_quant.run_generation import mark_updating, publish_run_generation
+
+        try:
+            generation = publish_run_generation(
+                settings,
+                run_id=ctx.run_id,
+                as_of=as_of.isoformat(),
+                all_stocks=all_df,
+                top100=_csv_ready(top100),
+                top20=_csv_ready(top20),
+                quality=quality,
+                universe_evidence=universe_evidence,
+                universe_snapshot=universe_snapshot,
+                price_integrity_issues=price_integrity_issues,
+                extra={
+                    "result_hash": ctx.result_hash,
+                    "source_bundle_hash": ctx.source_bundle_hash,
+                    "status": ctx.status,
+                },
+            )
+            write_parquet_atomic(hist_df, settings.output_dir / "daily_history.parquet")
+            manifest["generation"] = {
+                "run_id": generation.get("run_id"),
+                "committed_at": generation.get("committed_at"),
+                "generation_dir": generation.get("generation_dir"),
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("generation commit failed; dated outputs remain: %s", exc)
+            ctx.warnings.append("GENERATION_COMMIT_FAILED")
+            try:
+                mark_updating(settings, ctx.run_id, updating=False)
+            except Exception:  # noqa: BLE001
+                pass
 
     manifest = {
         "run_id": ctx.run_id,

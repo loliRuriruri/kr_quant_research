@@ -195,8 +195,10 @@ def evaluate_publication_readiness(
 def publication_readiness(root: Path | None = None) -> dict[str, Any]:
     project = root or _root()
     settings = load_settings(project)
-    quality_path = settings.output_dir / "data_quality_report.json"
-    latest_path = settings.output_dir / "latest_all_stocks.parquet"
+    from kr_quant.run_generation import current_output_path
+
+    quality_path = current_output_path(settings, "data_quality_report.json")
+    latest_path = current_output_path(settings, "latest_all_stocks.parquet")
     if not quality_path.exists() or not latest_path.exists():
         missing = []
         if not quality_path.exists():

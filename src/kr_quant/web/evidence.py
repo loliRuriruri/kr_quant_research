@@ -93,7 +93,9 @@ def build_evidence_registry(
     freshness: dict[str, Any],
 ) -> dict[str, Any]:
     cache_dir = settings.root / "data" / "cache"
-    ranking_path = settings.output_dir / "latest_all_stocks.parquet"
+    from kr_quant.run_generation import current_output_path
+
+    ranking_path = current_output_path(settings, "latest_all_stocks.parquet")
     ranking_count = _count_rows(ranking_path, eligible_only=True)
     quality_as_of = str(quality.get("as_of_date") or freshness.get("screen_as_of") or "") or None
     price_as_of = str(freshness.get("price_max_date") or "") or None

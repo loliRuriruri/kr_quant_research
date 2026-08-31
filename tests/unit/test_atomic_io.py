@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import pytest
 
-from kr_quant.atomic_io import write_csv_atomic, write_parquet_atomic
+from kr_quant.atomic_io import write_csv_atomic, write_json_atomic, write_parquet_atomic
 
 
 def test_write_parquet_atomic_replaces_target_without_temp_files(tmp_path):
@@ -56,3 +56,12 @@ def test_write_csv_atomic_replaces_target_and_preserves_ticker_text(tmp_path):
     actual = pd.read_csv(target, dtype={"ticker": str})
     pd.testing.assert_frame_equal(actual, expected)
     assert list(tmp_path.glob(".krx_status.csv.*.tmp")) == []
+
+
+def test_write_json_atomic_replaces_object(tmp_path):
+    target = tmp_path / "current_manifest.json"
+    write_json_atomic(target, {"run_id": "a", "as_of_date": "2026-08-28"})
+    write_json_atomic(target, {"run_id": "b", "as_of_date": "2026-08-31"})
+    assert target.read_text(encoding="utf-8").count("run_id") == 1
+    assert '"b"' in target.read_text(encoding="utf-8")
+    assert list(tmp_path.glob(".current_manifest.json.*.tmp")) == []

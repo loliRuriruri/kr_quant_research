@@ -172,7 +172,11 @@ def job_live(as_of: str, lookback_days: int, max_corps: int, skip_ingest: bool) 
         derived["strategy_cache"] = {"status": "error", "error": str(exc)[:240]}
         logger = logging.getLogger("kr_quant")
         logger.warning("strategy cache refresh failed after live run: %s", exc)
-    fresh = freshness_snapshot(s, screen_as_of=out.get("as_of_date"))
+    from kr_quant.run_generation import load_manifest
+
+    committed = load_manifest(s) or {}
+    screen_as_of = committed.get("as_of_date") or out.get("as_of_date")
+    fresh = freshness_snapshot(s, screen_as_of=screen_as_of)
     out["freshness"] = fresh
     out["derived"] = derived
     out["pipeline_status"] = (
@@ -270,7 +274,10 @@ def job_dart_backfill(as_of: str = "auto", batch_size: int = 50) -> dict[str, An
         for key, value in backfill.items()
         if key not in {"ticker_order", "ticker_outcomes"}
     }
-    out["freshness"] = freshness_snapshot(s, screen_as_of=out.get("as_of_date"))
+    from kr_quant.run_generation import load_manifest
+
+    committed = load_manifest(s) or {}
+    out["freshness"] = freshness_snapshot(s, screen_as_of=committed.get("as_of_date") or out.get("as_of_date"))
     out["pipeline_status"] = "partial" if out["freshness"].get("required_stale") else "success"
     return out
 

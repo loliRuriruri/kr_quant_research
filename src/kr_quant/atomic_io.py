@@ -55,3 +55,21 @@ def write_csv_atomic(
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+def write_json_atomic(path: Path, payload: dict, *, encoding: str = "utf-8") -> None:
+    """Write JSON to a sibling file, parse it back, then atomically replace the target."""
+    import json
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding=encoding)
+        parsed = json.loads(temporary.read_text(encoding=encoding))
+        if not isinstance(parsed, dict):
+            raise IOError(f"json validation failed for {path}: expected object")
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
