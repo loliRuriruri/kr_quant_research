@@ -1,5 +1,9 @@
+import json
+from dataclasses import replace
+
 import pandas as pd
 
+from kr_quant.settings import load_settings
 from kr_quant.strategy.engine import run_backtest
 from kr_quant.strategy.registry import strategy_registry
 
@@ -132,6 +136,29 @@ def test_strategy_evaluation_uses_only_latest_clean_price_segment():
     assert result["bars"] == 50
     assert result["from"] == str(data.iloc[50]["date"].date())
     assert result["price_integrity"]["issue_counts"] == {"UNEXPLAINED_PRICE_DISCONTINUITY": 1}
+
+
+def test_load_strategy_marks_cache_stale_when_price_source_advanced(tmp_path):
+    from kr_quant.strategy.run import load_strategy
+
+    settings = replace(load_settings(), root=tmp_path)
+    live = settings.staged_dir / "live"
+    live.mkdir(parents=True)
+    pd.DataFrame([{"ticker": "000001", "trade_date": "2026-08-20", "close": 1000}]).to_parquet(
+        live / "prices.parquet", index=False
+    )
+    cache = settings.root / "data" / "cache" / "strategy_lab.json"
+    cache.parent.mkdir(parents=True)
+    cache.write_text(
+        json.dumps({"need_run": False, "source_price_as_of": "2026-08-19", "rows": []}),
+        encoding="utf-8",
+    )
+
+    payload = load_strategy(settings)
+
+    assert payload["stale"] is True
+    assert payload["need_run"] is True
+    assert payload["lag_trading_days"] == 1
 
 
 def test_params_and_comments_are_korean():

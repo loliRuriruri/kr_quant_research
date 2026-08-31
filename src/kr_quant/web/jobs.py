@@ -128,8 +128,10 @@ def job_screen(as_of: str, source: str) -> dict[str, Any]:
 
 
 def job_live(as_of: str, lookback_days: int, max_corps: int, skip_ingest: bool) -> dict[str, Any]:
+    from kr_quant.freshness import freshness_snapshot
     from kr_quant.ingest.live import bootstrap_live
     from kr_quant.orchestration.run import run_from_staged
+    from kr_quant.strategy.run import scan_strategies
 
     s = load_settings()
     d = resolve_as_of(as_of)
@@ -142,6 +144,26 @@ def job_live(as_of: str, lookback_days: int, max_corps: int, skip_ingest: bool) 
     result = run_from_staged(s, d, folder, source_mode="live")
     out = _summarize(result)
     out["ingest"] = info.get("ingest")
+    derived: dict[str, Any] = {}
+    try:
+        strategy = scan_strategies(s)
+        derived["strategy_cache"] = {
+            "status": "success",
+            "source_price_as_of": strategy.get("source_price_as_of"),
+            "tickers": len(strategy.get("rows") or []),
+        }
+    except Exception as exc:  # noqa: BLE001
+        derived["strategy_cache"] = {"status": "error", "error": str(exc)[:240]}
+        logger = logging.getLogger("kr_quant")
+        logger.warning("strategy cache refresh failed after live run: %s", exc)
+    fresh = freshness_snapshot(s, screen_as_of=out.get("as_of_date"))
+    out["freshness"] = fresh
+    out["derived"] = derived
+    out["pipeline_status"] = (
+        "partial"
+        if fresh.get("contract_status") != "ready" or any(item.get("status") == "error" for item in derived.values())
+        else "success"
+    )
     return out
 
 

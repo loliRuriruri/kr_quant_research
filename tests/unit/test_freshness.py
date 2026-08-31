@@ -1,7 +1,11 @@
-from datetime import datetime
+import json
+from dataclasses import replace
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from kr_quant.freshness import expected_price_date, runtime_spec
+import pandas as pd
+
+from kr_quant.freshness import expected_price_date, freshness_snapshot, runtime_spec, trading_session_lag
 from kr_quant.ingest.live import calendar_guard
 from kr_quant.settings import load_settings
 from kr_quant.web.scheduler import _next_slot, load_scheduler_config
@@ -21,6 +25,42 @@ def test_expected_price_date_weekend_and_holiday():
     holiday = datetime(2026, 8, 17, 19, 0, tzinfo=KST)
     assert expected_price_date(saturday).isoformat() == "2026-08-21"
     assert expected_price_date(holiday).isoformat() == "2026-08-14"
+
+
+def test_trading_session_lag_ignores_weekend():
+    assert trading_session_lag(date(2026, 8, 21), date(2026, 8, 24)) == 1
+    assert trading_session_lag(date(2026, 8, 24), date(2026, 8, 24)) == 0
+
+
+def test_freshness_snapshot_reports_source_coverage_and_stale_strategy(tmp_path):
+    settings = replace(load_settings(), root=tmp_path)
+    live = settings.staged_dir / "live"
+    live.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {"ticker": "000001", "trade_date": "2026-08-20"},
+            {"ticker": "000002", "trade_date": "2026-08-20"},
+        ]
+    ).to_parquet(live / "prices.parquet", index=False)
+    pd.DataFrame([{"ticker": "000001"}, {"ticker": "000002"}]).to_parquet(live / "master.parquet", index=False)
+    pd.DataFrame(
+        [{"ticker": "000001", "available_date": "2026-08-19", "period_end": "2026-06-30"}]
+    ).to_parquet(live / "financial_facts.parquet", index=False)
+    cache = settings.root / "data" / "cache" / "strategy_lab.json"
+    cache.parent.mkdir(parents=True)
+    cache.write_text(json.dumps({"source_price_as_of": "2026-08-19", "rows": []}), encoding="utf-8")
+
+    snap = freshness_snapshot(
+        settings,
+        now=datetime(2026, 8, 20, 18, 30, tzinfo=KST),
+        screen_as_of="2026-08-20",
+    )
+
+    assert snap["lag_trading_days"] == 0
+    assert snap["sources"]["financial_facts"]["coverage"]["coverage_pct"] == 50.0
+    assert snap["sources"]["strategy_cache"]["state"] == "stale"
+    assert snap["derived_stale"] == ["strategy_cache"]
+    assert snap["contract_status"] == "partial"
 
 
 def test_runtime_spec_does_not_enable_orders_or_overlay_scores():

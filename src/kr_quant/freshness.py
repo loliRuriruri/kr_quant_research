@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time
+import json
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -76,6 +77,72 @@ def _read_financial_max(path: Path) -> date | None:
     return None
 
 
+def trading_session_lag(observed: date | None, expected: date) -> int | None:
+    """Count missing default KRX sessions, not calendar days."""
+    if observed is None:
+        return None
+    if observed >= expected:
+        return 0
+    lag = 0
+    cursor = observed + timedelta(days=1)
+    while cursor <= expected:
+        if is_default_trading_day(cursor):
+            lag += 1
+        cursor += timedelta(days=1)
+    return lag
+
+
+def _mtime_iso(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    return datetime.fromtimestamp(path.stat().st_mtime, tz=KST).isoformat()
+
+
+def _financial_coverage(facts_path: Path, master_path: Path) -> dict[str, Any]:
+    fact_tickers = 0
+    master_tickers = 0
+    fact_rows = 0
+    if facts_path.exists():
+        try:
+            facts = pd.read_parquet(facts_path, columns=["ticker"])
+            fact_rows = int(len(facts))
+            fact_tickers = int(facts["ticker"].astype(str).str.zfill(6).nunique())
+        except Exception:  # noqa: BLE001
+            pass
+    if master_path.exists():
+        try:
+            master = pd.read_parquet(master_path, columns=["ticker"])
+            master_tickers = int(master["ticker"].astype(str).str.zfill(6).nunique())
+        except Exception:  # noqa: BLE001
+            pass
+    coverage = None if not master_tickers else round(fact_tickers / master_tickers * 100, 1)
+    return {
+        "rows": fact_rows,
+        "tickers": fact_tickers,
+        "universe_tickers": master_tickers,
+        "coverage_pct": coverage,
+    }
+
+
+def _strategy_cache_date(path: Path) -> date | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    direct = payload.get("source_price_as_of")
+    candidates = [direct, *[row.get("to") for row in payload.get("rows") or [] if isinstance(row, dict)]]
+    parsed = pd.to_datetime(pd.Series([value for value in candidates if value]), errors="coerce").dropna()
+    return None if parsed.empty else parsed.max().date()
+
+
+def latest_price_date(settings: Settings) -> date | None:
+    live = settings.staged_dir / "live" / "prices.parquet"
+    demo = settings.staged_dir / "demo" / "prices.parquet"
+    return _read_price_max(live if live.exists() else demo)
+
+
 def freshness_snapshot(settings: Settings, *, now: datetime | None = None, screen_as_of: str | None = None) -> dict[str, Any]:
     expected = expected_price_date(now)
     live = settings.staged_dir / "live"
@@ -92,6 +159,7 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
         except ValueError:
             screen_day = None
     lag = None if price_max is None else (expected - price_max).days
+    session_lag = trading_session_lag(price_max, expected)
     stale_price = price_max is None or price_max < expected
     stale_screen = bool(screen_day and price_max and screen_day < price_max)
     if stale_price:
@@ -103,6 +171,53 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
     else:
         status = "fresh"
         label = "시세 최신"
+    master_path = live / "master.parquet" if (live / "master.parquet").exists() else demo / "master.parquet"
+    financial_coverage = _financial_coverage(facts_path, master_path)
+    strategy_path = settings.root / "data" / "cache" / "strategy_lab.json"
+    strategy_day = _strategy_cache_date(strategy_path)
+    strategy_lag = trading_session_lag(strategy_day, price_max or expected)
+    strategy_state = "missing" if strategy_day is None else ("stale" if strategy_lag else "fresh")
+    screen_lag = trading_session_lag(screen_day, price_max or expected)
+    sources = {
+        "krx_prices": {
+            "label": "KRX 일봉 시세",
+            "expected_date": expected.isoformat(),
+            "observed_date": None if price_max is None else price_max.isoformat(),
+            "lag_trading_days": session_lag,
+            "state": "missing" if price_max is None else ("stale" if stale_price else "fresh"),
+            "coverage": {"trading_days": price_days},
+            "last_updated_at": _mtime_iso(price_path),
+        },
+        "financial_facts": {
+            "label": "OpenDART 재무공시",
+            "expected_date": None,
+            "observed_date": None if financial_max is None else financial_max.isoformat(),
+            "lag_trading_days": None,
+            "state": "missing" if financial_max is None else ("partial" if (financial_coverage.get("coverage_pct") or 0) < 90 else "available"),
+            "cadence": "공시 발생 기준",
+            "coverage": financial_coverage,
+            "last_updated_at": _mtime_iso(facts_path),
+        },
+        "quant_ranking": {
+            "label": "퀀트 점수·랭킹",
+            "expected_date": None if price_max is None else price_max.isoformat(),
+            "observed_date": None if screen_day is None else screen_day.isoformat(),
+            "lag_trading_days": screen_lag,
+            "state": "missing" if screen_day is None else ("stale" if stale_screen else "fresh"),
+            "last_updated_at": _mtime_iso(settings.output_dir / "data_quality_report.json"),
+        },
+        "strategy_cache": {
+            "label": "전략·백테스트 캐시",
+            "expected_date": None if price_max is None else price_max.isoformat(),
+            "observed_date": None if strategy_day is None else strategy_day.isoformat(),
+            "lag_trading_days": strategy_lag,
+            "state": strategy_state,
+            "last_updated_at": _mtime_iso(strategy_path),
+            "used_in_quant": False,
+        },
+    }
+    required_stale = [name for name in ("krx_prices", "quant_ranking") if sources[name]["state"] != "fresh"]
+    derived_stale = [name for name in ("strategy_cache",) if sources[name]["state"] != "fresh"]
     return {
         "timezone": "Asia/Seoul",
         "expected_price_date": expected.isoformat(),
@@ -111,11 +226,16 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
         "financial_max_available_date": None if financial_max is None else financial_max.isoformat(),
         "screen_as_of": None if screen_day is None else screen_day.isoformat(),
         "lag_days": lag,
+        "lag_trading_days": session_lag,
         "stale_price": stale_price,
         "stale_screen": stale_screen,
         "status": status,
         "label": label,
         "source": str(price_path) if price_path.exists() else None,
+        "contract_status": "blocked" if stale_price else ("partial" if required_stale or derived_stale else "ready"),
+        "required_stale": required_stale,
+        "derived_stale": derived_stale,
+        "sources": sources,
         "used_in_quant": False,
     }
 

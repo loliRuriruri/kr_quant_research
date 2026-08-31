@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pandas as pd
 import yaml
@@ -207,7 +209,29 @@ def load_strategy(settings: Settings) -> dict[str, Any]:
     path = cache_path(settings.root)
     if path.exists():
         try:
-            return annotate_strategy_payload(json.loads(path.read_text(encoding="utf-8")))
+            payload = annotate_strategy_payload(json.loads(path.read_text(encoding="utf-8")))
+            from kr_quant.freshness import latest_price_date, trading_session_lag
+
+            price_day = latest_price_date(settings)
+            cache_day = payload.get("source_price_as_of")
+            if not cache_day:
+                row_dates = [row.get("to") for row in payload.get("rows") or [] if isinstance(row, dict) and row.get("to")]
+                cache_day = max(row_dates) if row_dates else None
+            cache_date = None
+            if cache_day:
+                try:
+                    cache_date = pd.Timestamp(cache_day).date()
+                except (TypeError, ValueError):
+                    cache_date = None
+            lag = trading_session_lag(cache_date, price_day) if price_day else None
+            payload["source_price_as_of"] = cache_day
+            payload["current_price_as_of"] = None if price_day is None else price_day.isoformat()
+            payload["lag_trading_days"] = lag
+            payload["stale"] = bool(lag)
+            if lag:
+                payload["need_run"] = True
+                payload["freshness_warning"] = f"전략 결과가 최신 시세보다 {lag}거래일 뒤처졌습니다. 전략 재검증이 필요합니다."
+            return payload
         except json.JSONDecodeError:
             pass
     return {
@@ -245,11 +269,20 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
             price_integrity_config=settings.config.get("corporate_actions") or {},
         )
         rows.append({"ticker": code, "company": company or code, **ev})
+    source_price_as_of = None
+    if not prices.empty and "trade_date" in prices.columns:
+        dates = pd.to_datetime(prices["trade_date"], errors="coerce").dropna()
+        if not dates.empty:
+            source_price_as_of = dates.max().date().isoformat()
     out = {
         "configured": True,
         "used_in_quant": False,
         "need_run": False,
         "fetched_at": time.time(),
+        "source_price_as_of": source_price_as_of,
+        "current_price_as_of": source_price_as_of,
+        "lag_trading_days": 0,
+        "stale": False,
         "commission_bps": commission,
         "slippage_bps": slippage,
         "execution": "next-bar open",
@@ -263,7 +296,14 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
     }
     path = cache_path(settings.root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(out, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(out, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        json.loads(temporary.read_text(encoding="utf-8"))
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
     return out
 
 

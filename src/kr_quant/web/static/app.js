@@ -1662,19 +1662,51 @@ function renderRunDiagnostics(status) {
   const pxMetaEl = $("#run-diag-price-meta");
   const pxBadge = $("#run-status-price-badge");
   const dartDateEl = $("#run-diag-dart-date");
+  const dartMetaEl = $("#run-diag-dart-meta");
+  const dartBadge = $("#run-status-dart-badge");
+  const quantDateEl = $("#run-diag-quant-date");
+  const quantMetaEl = $("#run-diag-quant-meta");
+  const quantBadge = $("#run-status-quant-badge");
   const schedTimeEl = $("#run-diag-sched-time");
   const schedNextEl = $("#run-diag-sched-next");
   const schedBadge = $("#run-diag-sched-badge");
 
   if (pxDateEl) pxDateEl.textContent = fresh.price_max_date || "시세 없음";
-  if (pxMetaEl) pxMetaEl.textContent = `${fresh.price_days || 750}거래일 일봉 축적 완료`;
+  if (pxMetaEl) {
+    const lag = fresh.lag_trading_days;
+    pxMetaEl.textContent = `${fresh.price_days || 0}거래일 축적 · 기대 기준일 ${fresh.expected_price_date || "—"}${lag ? ` · ${lag}거래일 지연` : ""}`;
+  }
   if (pxBadge) {
     const isStale = Boolean(fresh.stale_price);
     pxBadge.textContent = isStale ? "동기화 필요" : "정상 (최신)";
     pxBadge.className = "chip " + (isStale ? "warn" : "ok");
   }
 
-  if (dartDateEl) dartDateEl.textContent = fresh.financial_max_available_date || "2026-08-19";
+  const sources = fresh.sources || {};
+  const dart = sources.financial_facts || {};
+  const dartCoverage = dart.coverage || {};
+  if (dartDateEl) dartDateEl.textContent = dart.observed_date || fresh.financial_max_available_date || "적재 자료 없음";
+  if (dartMetaEl) {
+    const pct = dartCoverage.coverage_pct;
+    dartMetaEl.textContent = `공시 보유 ${dartCoverage.tickers || 0}/${dartCoverage.universe_tickers || 0}종목${pct != null ? ` · ${pct}%` : ""} · 공시 발생 기준`;
+  }
+  if (dartBadge) {
+    const partial = ["missing", "partial"].includes(dart.state);
+    dartBadge.textContent = dart.state === "missing" ? "자료 없음" : partial ? "커버리지 확장 필요" : "적재 가능";
+    dartBadge.className = "chip " + (partial ? "warn" : "ok");
+  }
+
+  const quant = sources.quant_ranking || {};
+  if (quantDateEl) quantDateEl.textContent = quant.observed_date || fresh.screen_as_of || "미계산";
+  if (quantMetaEl) {
+    const lag = quant.lag_trading_days;
+    quantMetaEl.textContent = lag ? `최신 시세보다 ${lag}거래일 뒤처짐 · 재계산 필요` : "시세 기준일과 점수 기준일 일치";
+  }
+  if (quantBadge) {
+    const ready = quant.state === "fresh";
+    quantBadge.textContent = ready ? "기준일 일치" : quant.state === "missing" ? "미계산" : "재계산 필요";
+    quantBadge.className = "chip " + (ready ? "ok" : "warn");
+  }
 
   if (schedTimeEl) {
     schedTimeEl.textContent = sched.enabled ? `매일 ${sched.hour || 18}:${String(sched.minute || 30).padStart(2, "0")} KST` : "비활성화";

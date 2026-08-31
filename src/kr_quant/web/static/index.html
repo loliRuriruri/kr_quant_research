@@ -1099,28 +1099,28 @@
             <span class="run-diag-title">KRX 일봉 시세 데이터</span>
             <span id="run-status-price-badge" class="chip ok">정상</span>
           </div>
-          <div class="run-diag-val" id="run-diag-price-date">2026-08-25</div>
-          <div class="run-diag-meta" id="run-diag-price-meta">754거래일 일봉 축적 완료</div>
+          <div class="run-diag-val" id="run-diag-price-date">확인 중</div>
+          <div class="run-diag-meta" id="run-diag-price-meta">시세 기준일을 확인합니다.</div>
         </div>
 
         <div class="run-diag-card">
           <div class="run-diag-head">
             <span class="run-diag-icon">📑</span>
             <span class="run-diag-title">OpenDART 기업 재무공시</span>
-            <span id="run-status-dart-badge" class="chip ok">정상</span>
+            <span id="run-status-dart-badge" class="chip">확인 중</span>
           </div>
-          <div class="run-diag-val" id="run-diag-dart-date">2026-08-19</div>
-          <div class="run-diag-meta">최신 분기 재무제표 적재 완료</div>
+          <div class="run-diag-val" id="run-diag-dart-date">확인 중</div>
+          <div class="run-diag-meta" id="run-diag-dart-meta">공시 적재 범위를 확인합니다.</div>
         </div>
 
         <div class="run-diag-card">
           <div class="run-diag-head">
             <span class="run-diag-icon">🧬</span>
             <span class="run-diag-title">퀀트 종합 스코어 & 랭킹</span>
-            <span class="chip ok">적용 중</span>
+            <span id="run-status-quant-badge" class="chip">확인 중</span>
           </div>
-          <div class="run-diag-val">2,700여 개 전 종목</div>
-          <div class="run-diag-meta">5대 팩터 DNA 평가 완료</div>
+          <div class="run-diag-val" id="run-diag-quant-date">확인 중</div>
+          <div class="run-diag-meta" id="run-diag-quant-meta">점수 기준일을 확인합니다.</div>
         </div>
 
         <div class="run-diag-card">
@@ -1149,10 +1149,10 @@
               <!-- Action Card 1: Fast Price Sync -->
               <div class="run-action-box highlight-blue">
                 <div class="run-action-box-left">
-                  <div class="run-action-badge">⚡ 추천 (매일 15:30 이후)</div>
+                  <div class="run-action-badge">⚡ 추천 (매일 18:10 이후)</div>
                   <div class="run-action-name">1. 빠른 일봉 시세 동기화 (Quick Sync)</div>
                   <div class="run-action-desc">
-                    <b>어떤 상황에 누르나요?</b> 매일 장 마감(15:30) 후 또는 아침에 전 종목의 최신 주가와 일봉을 빠르게 받아오고 싶을 때 누릅니다.<br>
+                    <b>어떤 상황에 누르나요?</b> KRX 공식 일봉이 반영되는 매일 18:10 이후 또는 다음 날 아침에 전 종목의 확정 종가를 받고 싶을 때 누릅니다. 15:30 직후에는 공급처 일봉이 아직 준비되지 않을 수 있습니다.<br>
                     <span class="run-action-detail">⏱️ 약 15~30초 소요 · API 한도 소모 없음 · 2,700여 개 전 종목 KRX 일봉 최신 갱신</span>
                   </div>
                 </div>
@@ -1165,14 +1165,14 @@
               <div class="run-action-box highlight-green">
                 <div class="run-action-box-left">
                   <div class="run-action-badge ok">🚀 주 1회 / 실적 발표기 추천</div>
-                  <div class="run-action-name">2. 실데이터 풀스캔 + 퀀트 전체 재계산 (Full Update)</div>
+                  <div class="run-action-name">2. 실데이터 빠른 갱신 + 퀀트 전체 재계산 (Full Update)</div>
                   <div class="run-action-desc">
-                    <b>어떤 상황에 누르나요?</b> 최신 기업 실적 공시(OpenDART)와 최신 수급을 전 종목 풀스캔하여 퀀트 순위와 리포트를 완전히 새로 뽑고 싶을 때 누릅니다.<br>
-                    <span class="run-action-detail">⏱️ 약 3~5분 소요 · KRX 일봉 + DART 재무제표 2중 수집 · 5대 팩터 종합 재산출</span>
+                    <b>어떤 상황에 누르나요?</b> KRX 전 종목 시세와 OpenDART 우선 수집 종목(기본 시총 상위 400개)을 갱신한 뒤 퀀트 순위와 전략 캐시를 같은 기준일로 다시 계산할 때 누릅니다.<br>
+                    <span class="run-action-detail">⏱️ 수 분 소요 · KRX 전 종목 + DART 우선 400개 · 5대 팩터와 전략 캐시 재산출</span>
                   </div>
                 </div>
                 <div class="run-action-box-right">
-                  <button class="btn-action-green" data-job="live" style="white-space:nowrap; padding:10px 18px; font-weight:700;">🚀 실데이터 풀스캔 + 재계산</button>
+                  <button class="btn-action-green" data-job="live" style="white-space:nowrap; padding:10px 18px; font-weight:700;">🚀 빠른 갱신 + 전체 재계산</button>
                 </div>
               </div>
 
@@ -1212,7 +1212,7 @@
                   <label>lookback 일수
                     <input id="run-lookback" type="number" value="80" min="20" max="1250" />
                   </label>
-                  <label>최대 수집 종목 수
+                  <label>DART 빠른 수집 종목 수
                     <input id="run-max" type="number" value="400" min="10" max="3000" />
                   </label>
                 </div>
