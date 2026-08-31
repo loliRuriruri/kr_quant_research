@@ -236,12 +236,32 @@ def job_krx_history(as_of: str = "auto", lookback_days: int = HISTORY_DAYS) -> d
     }
 
 
+def job_dart_backfill(as_of: str = "auto", batch_size: int = 50) -> dict[str, Any]:
+    """Advance DART full-universe coverage and re-score against the expanded facts."""
+    from kr_quant.freshness import freshness_snapshot
+    from kr_quant.ingest.live import backfill_dart_financials
+    from kr_quant.orchestration.run import run_from_staged
+
+    s = load_settings()
+    if not s.opendart_api_key:
+        raise RuntimeError("OPENDART_API_KEY가 없습니다.")
+    d = resolve_as_of(as_of)
+    backfill = backfill_dart_financials(s, d, batch_size=max(1, min(int(batch_size or 50), 500)))
+    result = run_from_staged(s, d, s.staged_dir / "live", source_mode="live")
+    out = _summarize(result)
+    out["dart_backfill"] = {key: value for key, value in backfill.items() if key != "ticker_order"}
+    out["freshness"] = freshness_snapshot(s, screen_as_of=out.get("as_of_date"))
+    out["pipeline_status"] = "partial" if out["freshness"].get("required_stale") else "success"
+    return out
+
+
 def _maybe_publish(kind: str) -> None:
     try:
         from kr_quant.web.publish import maybe_publish_after_job
 
         RUNNER.logs.append("공개 스냅샷을 Cloudflare Pages에 올리는 중… (API 키는 로컬에만 있습니다)")
-        out = maybe_publish_after_job(kind)
+        publish_kind = "live" if kind == "dart-backfill" else kind
+        out = maybe_publish_after_job(publish_kind)
         if out is None:
             RUNNER.logs.append("이 작업은 공개 사이트 자동 배포 대상이 아닙니다.")
             return

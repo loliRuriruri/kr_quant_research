@@ -44,7 +44,7 @@ from kr_quant.research.tier1_contract import (
 )
 from kr_quant.settings import load_settings
 from kr_quant.web.envfile import apply_env_to_process, mask_secret, upsert_env_file
-from kr_quant.web.jobs import RUNNER, job_demo, job_krx_history, job_krx_prices, job_live, job_screen
+from kr_quant.web.jobs import RUNNER, job_dart_backfill, job_demo, job_krx_history, job_krx_prices, job_live, job_screen
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -149,7 +149,7 @@ class ReportDeleteIn(BaseModel):
 
 
 class JobIn(BaseModel):
-    kind: str = Field(pattern="^(demo|screen|live|krx-prices|krx-history|investor-kis|dart-nps|strategy)$")
+    kind: str = Field(pattern="^(demo|screen|live|krx-prices|krx-history|dart-backfill|investor-kis|dart-nps|strategy)$")
     as_of: str = "auto"
     source: str = "live"
     lookback_days: int = 80
@@ -3615,6 +3615,11 @@ def api_job_start(body: JobIn) -> dict[str, Any]:
             return RUNNER.start(
                 "krx-history",
                 lambda: job_krx_history(body.as_of, body.lookback_days or 750),
+            )
+        if body.kind == "dart-backfill":
+            return RUNNER.start(
+                "dart-backfill",
+                lambda: job_dart_backfill(body.as_of, body.max_corps or 50),
             )
         if body.kind == "investor-kis":
             from kr_quant.flow.official import collect_official

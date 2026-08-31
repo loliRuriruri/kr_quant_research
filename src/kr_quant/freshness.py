@@ -111,8 +111,14 @@ def _financial_coverage(facts_path: Path, master_path: Path) -> dict[str, Any]:
             pass
     if master_path.exists():
         try:
-            master = pd.read_parquet(master_path, columns=["ticker"])
-            master_tickers = int(master["ticker"].astype(str).str.zfill(6).nunique())
+            master = pd.read_parquet(master_path)
+            if "corp_code" in master.columns:
+                from kr_quant.ingest.live import select_ingest_targets
+
+                eligible = select_ingest_targets(master, None)
+            else:
+                eligible = master
+            master_tickers = int(eligible["ticker"].astype(str).str.zfill(6).nunique())
         except Exception:  # noqa: BLE001
             pass
     coverage = None if not master_tickers else round(fact_tickers / master_tickers * 100, 1)
@@ -135,6 +141,31 @@ def _strategy_cache_date(path: Path) -> date | None:
     candidates = [direct, *[row.get("to") for row in payload.get("rows") or [] if isinstance(row, dict)]]
     parsed = pd.to_datetime(pd.Series([value for value in candidates if value]), errors="coerce").dropna()
     return None if parsed.empty else parsed.max().date()
+
+
+def _backfill_progress(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return {
+        key: payload.get(key)
+        for key in (
+            "status",
+            "cursor",
+            "batch_end",
+            "total_targets",
+            "processed_this_run",
+            "covered_tickers",
+            "coverage_pct",
+            "completed_cycles",
+            "completed_at",
+        )
+    }
 
 
 def latest_price_date(settings: Settings) -> date | None:
@@ -173,6 +204,7 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
         label = "시세 최신"
     master_path = live / "master.parquet" if (live / "master.parquet").exists() else demo / "master.parquet"
     financial_coverage = _financial_coverage(facts_path, master_path)
+    backfill_progress = _backfill_progress(live / "dart_backfill_state.json")
     strategy_path = settings.root / "data" / "cache" / "strategy_lab.json"
     strategy_day = _strategy_cache_date(strategy_path)
     strategy_lag = trading_session_lag(strategy_day, price_max or expected)
@@ -196,6 +228,7 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
             "state": "missing" if financial_max is None else ("partial" if (financial_coverage.get("coverage_pct") or 0) < 90 else "available"),
             "cadence": "공시 발생 기준",
             "coverage": financial_coverage,
+            "backfill": backfill_progress,
             "last_updated_at": _mtime_iso(facts_path),
         },
         "quant_ranking": {

@@ -1688,7 +1688,9 @@ function renderRunDiagnostics(status) {
   if (dartDateEl) dartDateEl.textContent = dart.observed_date || fresh.financial_max_available_date || "적재 자료 없음";
   if (dartMetaEl) {
     const pct = dartCoverage.coverage_pct;
-    dartMetaEl.textContent = `공시 보유 ${dartCoverage.tickers || 0}/${dartCoverage.universe_tickers || 0}종목${pct != null ? ` · ${pct}%` : ""} · 공시 발생 기준`;
+    const backfill = dart.backfill || {};
+    const progress = backfill.total_targets ? ` · 백필 ${backfill.cursor || 0}/${backfill.total_targets}` : "";
+    dartMetaEl.textContent = `공시 보유 ${dartCoverage.tickers || 0}/${dartCoverage.universe_tickers || 0}종목${pct != null ? ` · ${pct}%` : ""}${progress} · 공시 발생 기준`;
   }
   if (dartBadge) {
     const partial = ["missing", "partial"].includes(dart.state);
@@ -9048,6 +9050,7 @@ const JOB_KINDS = {
   "live-skip": "실데이터 재계산",
   "krx-prices": "KRX 시세 갱신",
   "krx-history": "시세 이력 확장 (750일)",
+  "dart-backfill": "OpenDART 전 종목 백필",
   "investor-kis": "공식 수급 수집",
   "dart-nps": "국민연금 공시 수집",
   strategy: "전략 랩 스캔",
@@ -9155,6 +9158,10 @@ async function startJob(kind) {
     payload.kind = "krx-history";
     const selectedDays = Number($("#run-history-duration")?.value || 1250);
     payload.lookback_days = selectedDays;
+  }
+  if (kind === "dart-backfill") {
+    payload.kind = "dart-backfill";
+    payload.max_corps = Number($("#run-dart-batch")?.value || 50);
   }
 
   const krxBtn = $("#btn-krx-now");

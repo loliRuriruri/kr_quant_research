@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import calendar
 import io
+import json
 import logging
+import os
 import time
 import zipfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
+from uuid import uuid4
 from xml.etree import ElementTree as ET
 
 import pandas as pd
@@ -24,23 +27,58 @@ from kr_quant.universe.tradability import normalize_krx_risk_class
 
 logger = logging.getLogger("kr_quant.ingest.live")
 
-DEFAULT_REPORTS = [
-    (2022, "11011"),
-    (2023, "11011"),
-    (2023, "11013"),
-    (2023, "11012"),
-    (2023, "11014"),
-    (2024, "11011"),
-    (2024, "11013"),
-    (2024, "11012"),
-    (2024, "11014"),
-    (2025, "11011"),
-    (2025, "11013"),
-    (2025, "11012"),
-    (2025, "11014"),
-    (2026, "11013"),
-    (2026, "11012"),
-]
+REPORT_AVAILABLE_MONTH_DAY = {
+    "11013": (5, 16),
+    "11012": (8, 16),
+    "11014": (11, 16),
+}
+
+
+def dart_report_schedule(as_of: date, history_years: int = 4) -> list[tuple[int, str]]:
+    """Return only reports whose statutory filing window has already passed.
+
+    The oldest year keeps the annual filing only; the following years keep all
+    available quarterly filings. New current-year reports appear automatically
+    after their normal filing deadline instead of being hard-coded by calendar year.
+    """
+    start_year = as_of.year - max(1, int(history_years))
+    reports: list[tuple[int, str]] = []
+    for year in range(as_of.year, start_year - 1, -1):
+        available: list[str] = []
+        annual_available = date(year + 1, 4, 1)
+        if annual_available <= as_of:
+            available.append("11011")
+        for code in ("11014", "11012", "11013"):
+            month, day = REPORT_AVAILABLE_MONTH_DAY[code]
+            if date(year, month, day) <= as_of:
+                available.append(code)
+        if year == start_year:
+            available = [code for code in available if code == "11011"]
+        reports.extend((year, code) for code in available)
+    return reports
+
+
+def should_retry_dart_job(
+    record: dict[str, Any] | None,
+    *,
+    now: datetime | None = None,
+    no_data_retry_hours: int = 24,
+    error_retry_hours: int = 1,
+) -> bool:
+    if not record:
+        return True
+    status = str(record.get("status") or "")
+    if status == "000":
+        return False
+    fetched = pd.to_datetime(record.get("fetched_at"), utc=True, errors="coerce")
+    if pd.isna(fetched):
+        return True
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    age_hours = (current.astimezone(timezone.utc) - fetched.to_pydatetime()).total_seconds() / 3600
+    retry_after = no_data_retry_hours if status == "013" else error_retry_hours
+    return age_hours >= retry_after
 
 
 def _last_day(year: int, month: int) -> date:
@@ -459,6 +497,8 @@ def fetch_dart_financials(
     settings: Settings,
     targets: list[dict[str, Any]],
     reports: list[tuple[int, str]] | None = None,
+    *,
+    as_of: date | None = None,
 ) -> pd.DataFrame:
     adapter = OpenDartAdapter(
         settings.opendart_api_key or "",
@@ -469,13 +509,13 @@ def fetch_dart_financials(
     sign_by_canonical = {
         name: spec.get("sign", "+") for name, spec in settings.account_map.get("accounts", {}).items()
     }
-    reports = reports or DEFAULT_REPORTS
+    reports = dart_report_schedule(as_of or date.today()) if reports is None else reports
     job_path = live_dir(settings) / "dart_jobs.parquet"
-    done_status: dict[tuple[str, int, str, str], str] = {}
+    done_jobs: dict[tuple[str, int, str, str], dict[str, Any]] = {}
     if job_path.exists():
         jobs = pd.read_parquet(job_path)
         for rec in jobs.to_dict("records"):
-            done_status[(str(rec["corp_code"]), int(rec["year"]), str(rec["reprt_code"]), str(rec["fs_div"]))] = str(rec["status"])
+            done_jobs[(str(rec["corp_code"]), int(rec["year"]), str(rec["reprt_code"]), str(rec["fs_div"]))] = rec
 
     facts_path = live_dir(settings) / "financial_facts.parquet"
     new_facts: list[dict[str, Any]] = []
@@ -488,16 +528,18 @@ def fetch_dart_financials(
         for year, code in reports:
             for fs_div in ("CFS", "OFS"):
                 key = (corp, year, code, fs_div)
-                if key in done_status:
-                    if done_status[key] == "000":
-                        break
+                previous = done_jobs.get(key)
+                if not should_retry_dart_job(previous):
+                    if str((previous or {}).get("status")) == "000":
+                        if int((previous or {}).get("n_mapped") or 0) > 0:
+                            break
+                        continue
                     continue
                 try:
                     payload = adapter.fetch_financials(corp, str(year), code, fs_div)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("fs fail %s %s %s %s: %s", ticker, year, code, fs_div, exc)
-                    new_jobs.append(
-                        {
+                    job_record = {
                             "corp_code": corp,
                             "year": year,
                             "reprt_code": code,
@@ -506,14 +548,14 @@ def fetch_dart_financials(
                             "n_mapped": 0,
                             "fetched_at": datetime.now(timezone.utc).isoformat(),
                         }
-                    )
+                    new_jobs.append(job_record)
+                    done_jobs[key] = job_record
                     continue
                 status = str(payload.get("status"))
                 rows = parse_financial_payload(
                     payload, ticker, corp, year, code, fs_div, acc_mt, lookup, sign_by_canonical
                 )
-                new_jobs.append(
-                    {
+                job_record = {
                         "corp_code": corp,
                         "year": year,
                         "reprt_code": code,
@@ -522,8 +564,8 @@ def fetch_dart_financials(
                         "n_mapped": len(rows),
                         "fetched_at": datetime.now(timezone.utc).isoformat(),
                     }
-                )
-                done_status[key] = status
+                new_jobs.append(job_record)
+                done_jobs[key] = job_record
                 fetched += 1
                 if status == "000" and rows:
                     new_facts.extend(rows)
@@ -621,6 +663,139 @@ def select_ingest_targets(master: pd.DataFrame, max_corps: int | None) -> pd.Dat
     return df
 
 
+def plan_dart_backfill_targets(
+    master: pd.DataFrame,
+    facts: pd.DataFrame,
+    *,
+    batch_size: int,
+    state: dict[str, Any] | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Build a stable, resumable full-universe DART batch.
+
+    The first cycle places tickers without any stored facts first. Later calls keep
+    the stored order so new facts do not move the cursor and accidentally skip names.
+    """
+    eligible = select_ingest_targets(master, None).copy()
+    if eligible.empty:
+        return eligible, {"cursor": 0, "total_targets": 0, "ticker_order": [], "completed_cycles": 0}
+    eligible["ticker"] = eligible["ticker"].astype(str).str.zfill(6)
+    eligible = eligible.drop_duplicates("ticker")
+    current = eligible["ticker"].tolist()
+    current_set = set(current)
+    previous = [str(code).zfill(6) for code in (state or {}).get("ticker_order") or []]
+    order = [code for code in previous if code in current_set]
+    newcomers = [code for code in current if code not in set(order)]
+    if not order:
+        covered: set[str] = set()
+        if facts is not None and not facts.empty and "ticker" in facts.columns:
+            covered = set(facts["ticker"].astype(str).str.zfill(6))
+        missing = [code for code in current if code not in covered]
+        present = [code for code in current if code in covered]
+        order = missing + present
+    else:
+        order.extend(newcomers)
+
+    total = len(order)
+    size = max(1, min(int(batch_size or 50), 500))
+    cursor = int((state or {}).get("cursor") or 0)
+    if cursor < 0 or cursor >= total:
+        cursor = 0
+    end = min(total, cursor + size)
+    batch_codes = order[cursor:end]
+    completed = end >= total
+    next_cursor = 0 if completed else end
+    cycles = int((state or {}).get("completed_cycles") or 0) + (1 if completed else 0)
+    indexed = eligible.set_index("ticker", drop=False)
+    batch = indexed.loc[[code for code in batch_codes if code in indexed.index]].reset_index(drop=True)
+    progress = {
+        "cursor": cursor,
+        "next_cursor": next_cursor,
+        "batch_start": cursor,
+        "batch_end": end,
+        "batch_size": int(len(batch)),
+        "total_targets": total,
+        "ticker_order": order,
+        "last_batch_tickers": batch_codes,
+        "completed_cycle": completed,
+        "completed_cycles": cycles,
+    }
+    return batch, progress
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        json.loads(temporary.read_text(encoding="utf-8"))
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def backfill_dart_financials(settings: Settings, as_of: date, *, batch_size: int = 50) -> dict[str, Any]:
+    """Advance one resumable full-universe DART batch and persist its checkpoint."""
+    folder = live_dir(settings)
+    if not (folder / "krx_master.parquet").exists() or not (folder / "prices.parquet").exists():
+        raise FileNotFoundError("KRX 마스터와 시세가 없습니다. 먼저 빠른 갱신 또는 전체 갱신을 실행하세요.")
+    if not (folder / "corp_map.parquet").exists():
+        fetch_dart_corp_map(settings)
+    master = build_live_master(settings, as_of)
+    facts_path = folder / "financial_facts.parquet"
+    facts = pd.read_parquet(facts_path) if facts_path.exists() else pd.DataFrame()
+    state_path = folder / "dart_backfill_state.json"
+    prior = _read_json(state_path)
+    batch, progress = plan_dart_backfill_targets(master, facts, batch_size=batch_size, state=prior)
+    started = {
+        **prior,
+        **progress,
+        "status": "running",
+        "as_of": as_of.isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "state_path": str(state_path),
+    }
+    _write_json_atomic(state_path, started)
+    if batch.empty:
+        finished = {**started, "status": "complete", "completed_at": datetime.now(timezone.utc).isoformat()}
+        _write_json_atomic(state_path, finished)
+        return finished
+
+    fetch_dart_companies(settings, batch["corp_code"].astype(str).tolist())
+    refreshed = build_live_master(settings, as_of)
+    refreshed["ticker"] = refreshed["ticker"].astype(str).str.zfill(6)
+    batch_codes = set(progress["last_batch_tickers"])
+    batch = refreshed[refreshed["ticker"].isin(batch_codes)].copy()
+    fetch_dart_financials(settings, batch.to_dict("records"), as_of=as_of)
+
+    facts = pd.read_parquet(facts_path) if facts_path.exists() else pd.DataFrame()
+    covered = 0
+    if not facts.empty and "ticker" in facts.columns:
+        covered = int(facts["ticker"].astype(str).str.zfill(6).nunique())
+    total = int(progress["total_targets"])
+    finished = {
+        **started,
+        "status": "success",
+        "cursor": int(progress["next_cursor"]),
+        "processed_this_run": int(len(batch)),
+        "covered_tickers": covered,
+        "coverage_pct": None if not total else round(covered / total * 100, 1),
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _write_json_atomic(state_path, finished)
+    return finished
+
+
 def bootstrap_live(
     settings: Settings,
     as_of: date,
@@ -638,7 +813,7 @@ def bootstrap_live(
         fetch_dart_companies(settings, targets["corp_code"].tolist())
         master = build_live_master(settings, as_of)
         targets = select_ingest_targets(master, max_corps)
-        fetch_dart_financials(settings, targets.to_dict("records"))
+        fetch_dart_financials(settings, targets.to_dict("records"), as_of=as_of)
         master = build_live_master(settings, as_of)
     facts_path = live_dir(settings) / "financial_facts.parquet"
     n_facts = len(pd.read_parquet(facts_path)) if facts_path.exists() else 0

@@ -295,6 +295,9 @@ def test_research_reports_list_endpoint():
     assert "setPageAsOf" in js
     assert "closeDrawer" in js
     assert "startLiveSync" in js
+    assert 'data-job="dart-backfill"' in html
+    assert "OpenDART 전 종목 재무 커버리지 백필" in html
+    assert 'fresh.financial_max_available_date || "2026-08-19"' not in js
     html = client.get("/").text
     assert "종목 옆은 선정 코멘트" in html
     top = client.get("/api/results/top?n=20").json()
