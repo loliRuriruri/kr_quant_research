@@ -38,7 +38,7 @@ def status_payload(settings: Settings) -> dict[str, Any]:
         next_steps.append("API 설정에서 KIS 키를 저장한 뒤 연결 테스트를 하세요.")
     if cov["rows"] == 0:
         blockers.append("아직 공식 수급 행이 없습니다.")
-        next_steps.append("관심종목을 넣거나, 아래 수집 버튼으로 고유동성·관심종목만 받으세요. 전 종목 순위는 만들지 않습니다.")
+        next_steps.append("관심종목을 넣거나, 아래 수집 버튼으로 관심종목·거래대금 상위 종목을 받으세요.")
     if not blockers:
         next_steps.append("연속·동반·방향전환 탭을 보세요. 공식 행이 없으면 토스 캐시(기관+외인)로 채웁니다.")
     return {
@@ -55,8 +55,7 @@ def status_payload(settings: Settings) -> dict[str, Any]:
             {"code": "INSTITUTION_TOTAL", "ko": display_name("INSTITUTION_TOTAL")},
             {"code": "FUND", "ko": display_name("FUND"), "note": source_note("FUND")},
         ],
-        "disclaimer": cfg.get("disclaimer")
-        or "공식 수급은 KIS입니다. 기금은 원천 라벨 그대로이며 국민연금이라고 부르지 않습니다. Quant에 넣지 않습니다.",
+        "disclaimer": cfg.get("disclaimer") or "",
     }
 
 
@@ -93,7 +92,7 @@ def collect_official(settings: Settings, *, limit: int | None = None) -> dict[st
         "saved": saved,
         "errors": errors[:8],
         "coverage": cov,
-        "note": "관심종목·고유동성만 받았습니다. 전 종목 기금 순위가 아닙니다.",
+        "note": "관심종목·거래대금 상위 종목의 공식 수급 수집을 완료했습니다.",
     }
 
 
@@ -140,10 +139,7 @@ def events_payload(settings: Settings, min_turn: int = 5) -> dict[str, Any]:
         "toss": toss,
         "rebalance": sample_rebalance(official_rows, names=names),
         "active": "official" if official_rows else "toss",
-        "disclaimer": (
-            "연속·동반은 공식 KIS가 있으면 KIS, 없으면 토스 캐시입니다. "
-            "토스는 기관+외인이며 연기금 전종목 순위가 아닙니다. Quant에 넣지 않습니다."
-        ),
+        "disclaimer": "",
     }
 
 
@@ -171,5 +167,5 @@ def ticker_payload(settings: Settings, ticker: str) -> dict[str, Any]:
         "n": len(rows),
         "chart": chart,
         "windows": window_sums(inst_newest),
-        "disclaimer": "KIS 종목별 수급입니다. 기금은 연기금·국민연금으로 바꾸지 않았습니다. 90일은 저장된 행만입니다.",
+        "disclaimer": "저장된 KIS 종목별 수급 행의 최근 90일 범위입니다.",
     }

@@ -191,7 +191,7 @@ def test_toss_events_need_daily_and_not_pension_rank():
     out = from_toss_cache_rows(rows, min_turn=5)
     assert out["source"] == "TOSS"
     assert out["pair"] == "기관+외인"
-    assert "연기금 전종목" in out["pair_note"]
+    assert "기관합계+외국인 동반 수급" in out["pair_note"]
     assert out["consecutive"][0]["days"] == 3
 
 

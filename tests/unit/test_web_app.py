@@ -116,6 +116,12 @@ def test_tier1_ui_exposes_failure_and_provenance_states():
     assert "DETERMINISTIC_FALLBACK" in js
 
 
+def test_menu_evidence_keeps_quant_relation_in_tooltip_only():
+    js = client.get("/static/app.js").text
+    assert "오버레이·설명 전용" not in js
+    assert "점수 관계 ${quantDetail}" in js
+
+
 def test_pre_entry_ui_rejects_null_ranks_and_binds_filters():
     home = client.get("/").text
     js = client.get("/static/app.js").text

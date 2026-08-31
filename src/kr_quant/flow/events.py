@@ -362,10 +362,7 @@ def from_toss_cache_rows(rows: list[dict[str, Any]], min_turn: int = 5) -> dict[
         "cum20": cumulative_table(events, 20),
         "cum60": cumulative_table(events, 60),
         "pair": "기관+외인",
-        "pair_note": (
-            "토스 일별 투자자 매매입니다. 기관+외인 동반이며 연기금 전종목 순위가 아닙니다. "
-            "토스 분류 연기금 수치는 국민연금 단독이 아닙니다."
-        ),
+        "pair_note": "토스 일별 투자자 매매의 기관합계+외국인 동반 수급입니다.",
         "tickers": len(events),
         "skipped_no_daily": skipped,
         **tables,

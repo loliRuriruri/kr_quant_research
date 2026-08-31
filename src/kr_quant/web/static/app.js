@@ -1684,13 +1684,13 @@ function renderPageEvidence(name = currentView) {
   const sources = (item.sources || []).map((source) => source.name).filter(Boolean).join(" + ") || "출처 미상";
   const sample = item.sample || {};
   const sampleText = sample.count == null ? sample.scope || "표본 확인 필요" : `${Number(sample.count).toLocaleString("ko-KR")}${sample.unit || ""}`;
-  const quantText = item.used_in_quant ? "퀀트 점수 반영" : "오버레이·설명 전용";
+  const quantDetail = item.used_in_quant ? "결정론적 퀀트 입력" : "점수와 분리된 설명·오버레이";
   const limits = (item.limitations || []).join(" / ") || "별도 한계 없음";
   el.className = `page-evidence has-tip ${stateClass}`;
-  el.textContent = `🔎 근거 ${stateLabel} · ${sources} · ${sampleText} · ${quantText}`;
+  el.textContent = `🔎 근거 ${stateLabel} · ${sources} · ${sampleText}`;
   el.setAttribute(
     "data-tip",
-    `기준일 ${item.as_of || "시장시점 아님"} · 범위 ${sample.scope || "—"} · 계산상태 ${item.calculation_state || "—"} · 한계: ${limits}`
+    `기준일 ${item.as_of || "시장시점 아님"} · 범위 ${sample.scope || "—"} · 계산상태 ${item.calculation_state || "—"} · 점수 관계 ${quantDetail} · 한계: ${limits}`
   );
 }
 
@@ -5426,7 +5426,7 @@ async function loadInvestor() {
 
     ${blockers ? `<div style="margin-top:10px;"><h4 style="margin:0 0 4px; font-size:13px; color:#f59e0b;">⚠️ KIS 공식 수급 안내</h4><ul style="margin:0; padding-left:20px; font-size:12px; color:#fbbf24;">${blockers}</ul></div>` : ""}
     ${next ? `<div style="margin-top:10px;"><h4 style="margin:0 0 4px; font-size:13px; color:#93c5fd;">🚀 다음 진행 팁</h4><ul style="margin:0; padding-left:20px; font-size:12px; color:#cbd5e1;">${next}</ul></div>` : ""}
-    <p class="hint" style="margin-top:12px;">${escapeHtml(data.disclaimer || "")}</p>
+    ${data.disclaimer ? `<p class="hint" style="margin-top:12px;">${escapeHtml(data.disclaimer)}</p>` : ""}
   `;
   loadTier1InvestorBriefing().catch(() => {});
 }
