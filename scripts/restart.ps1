@@ -6,24 +6,37 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Get-ListenerProcessIds {
+    return @(Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
+        Where-Object { $_.State -eq 'Listen' -and $_.OwningProcess -gt 0 } |
+        Select-Object -ExpandProperty OwningProcess -Unique)
+}
+
 try {
     # Start is intentionally a clean restart: stale processes from a previous
     # run must not make the user unknowingly reuse an old server/data state.
-    $connections = @(Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue)
-    $processIds = @($connections | Where-Object { $_.OwningProcess -gt 0 } |
-        Select-Object -ExpandProperty OwningProcess -Unique)
+    # Only LISTEN sockets own the server port. ESTABLISHED/TIME_WAIT rows may
+    # linger after the process exits and must not be treated as a live server.
+    $processIds = @(Get-ListenerProcessIds)
     foreach ($processId in $processIds) {
-        Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+        if (Get-Process -Id $processId -ErrorAction SilentlyContinue) {
+            try {
+                Stop-Process -Id $processId -Force -ErrorAction Stop
+            }
+            catch {
+                throw "포트 ${Port} 리스너(PID ${processId}) 종료 실패: $($_.Exception.Message)"
+            }
+        }
     }
 
-    if ($processIds.Count -gt 0) {
-        Start-Sleep -Milliseconds 500
+    $remaining = @(Get-ListenerProcessIds)
+    for ($attempt = 0; $remaining.Count -gt 0 -and $attempt -lt 20; $attempt++) {
+        Start-Sleep -Milliseconds 250
+        $remaining = @(Get-ListenerProcessIds)
     }
 
-    $remaining = @(Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
-        Where-Object { $_.OwningProcess -gt 0 })
     if ($remaining.Count -gt 0) {
-        throw "포트 ${Port}의 기존 프로세스를 종료하지 못했습니다. 관리자 권한 또는 logs를 확인하세요."
+        throw "포트 ${Port}의 기존 리스너(PID $($remaining -join ', '))를 5초 안에 종료하지 못했습니다."
     }
 
     $launchScript = Join-Path $PSScriptRoot 'launch.ps1'
