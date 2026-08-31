@@ -1,7 +1,7 @@
 enabled: true
-job_kind: live
-hour: 18
-minute: 30
+job_kind: smart-sync
+hour: 19
+minute: 10
 lookback_days: 80
 official_flow: true
 timezone: Asia/Seoul
@@ -11,7 +11,7 @@ publish_public:
   project: korea-quant-research
   branch: main
 krx_prices:
-  hour: 18
-  minute: 30
+  hour: 19
+  minute: 10
   lookback_days: 80
   official_flow: true

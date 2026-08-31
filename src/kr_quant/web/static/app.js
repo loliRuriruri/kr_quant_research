@@ -1742,6 +1742,8 @@ function renderRunDiagnostics(status) {
   const schedTimeEl = $("#run-diag-sched-time");
   const schedNextEl = $("#run-diag-sched-next");
   const schedBadge = $("#run-diag-sched-badge");
+  const smartSummaryEl = $("#smart-run-summary");
+  const smartPlanEl = $("#smart-run-plan");
 
   if (pxDateEl) pxDateEl.textContent = fresh.price_max_date || "시세 없음";
   if (pxMetaEl) {
@@ -1792,6 +1794,26 @@ function renderRunDiagnostics(status) {
   if (schedBadge) {
     schedBadge.textContent = sched.enabled ? "가동 중" : "정지";
     schedBadge.className = "chip " + (sched.enabled ? "ok" : "");
+  }
+
+  if (smartSummaryEl || smartPlanEl) {
+    const todo = [];
+    if (fresh.stale_price) todo.push(`KRX 시세 ${fresh.lag_trading_days || 1}거래일 지연 해소`);
+    if (quant.state !== "fresh") todo.push("퀀트 기준일 재계산");
+    if (["missing", "partial"].includes(dart.state)) {
+      todo.push(`DART 50종목 백필${dartCoverage.coverage_pct != null ? ` (현재 ${dartCoverage.coverage_pct}%)` : ""}`);
+    }
+    todo.push("KIS 수급 갱신");
+    if (smartSummaryEl) {
+      smartSummaryEl.textContent = todo.length > 1
+        ? `지금 누르면: ${todo.join(" → ")}`
+        : "핵심 시세·퀀트는 정상입니다. 오늘 수급만 확인합니다.";
+    }
+    if (smartPlanEl) {
+      smartPlanEl.textContent = sched.enabled && sched.job_kind === "smart-sync"
+        ? `자동화됨 · 다음 ${String(sched.next_fire || "예약 시각").replace("T", " ").slice(0, 16)} KST · 놓친 실행은 서버 시작 시 보충`
+        : "자동화 미설정 · 아래 스케줄러에서 ‘스마트 일일 관리’를 저장하세요.";
+    }
   }
 }
 
@@ -2336,7 +2358,7 @@ function renderSchedLine(sched) {
   const last = sched.last_fire ? String(sched.last_fire).replace("T", " ").slice(0, 19) : "기록 없음";
 
   if (enabledEl) enabledEl.checked = Boolean(sched.enabled);
-  if (kindEl) kindEl.value = sched.job_kind || "krx-prices";
+  if (kindEl) kindEl.value = sched.job_kind || "smart-sync";
   if (hourEl && sched.hour != null) hourEl.value = sched.hour;
   if (minEl && sched.minute != null) minEl.value = sched.minute;
   if (nxtEl) nxtEl.textContent = sched.enabled ? `${nxt} KST` : "비활성화됨 (설정 후 활성화 필요)";
@@ -2356,7 +2378,9 @@ function renderSchedLine(sched) {
     if (!sched.enabled) {
       el.textContent = "자동 스케줄: 비활성화됨. 아래 스케줄러에서 매일 실행을 켜고 원하는 시간을 저장하세요.";
     } else {
-      const kindTxt = sched.job_kind === "live" ? "실데이터 수집+계산" : "KRX 시세 갱신";
+      const kindTxt = sched.job_kind === "smart-sync"
+        ? "스마트 일일 관리"
+        : sched.job_kind === "live" ? "실데이터 수집+계산" : "KRX 시세 갱신";
       el.textContent = `자동 스케줄: 매일 ${sched.hour}:${String(sched.minute).padStart(2, "0")} KST · 대상 [${kindTxt}] · 다음 ${nxt}`;
     }
   }
@@ -9120,6 +9144,7 @@ function showToast(msg, type = "info", duration = 3500) {
 }
 
 const JOB_KINDS = {
+  "smart-sync": "오늘 필요한 작업 스마트 실행",
   demo: "데모 실행",
   screen: "재계산",
   live: "실데이터 수집+계산",
@@ -9186,20 +9211,35 @@ async function pollJob() {
     const job = await api("/api/jobs");
     renderJob(job);
     const krxBtn = $("#btn-krx-now");
+    const smartBtn = $("#smart-sync-btn");
     if (job.status === "running") {
+      if (smartBtn) {
+        smartBtn.textContent = job.kind === "smart-sync" ? "처리 중…" : "다른 작업 진행 중";
+        smartBtn.disabled = true;
+      }
       if (krxBtn && job.kind === "krx-prices") {
         krxBtn.textContent = "⏳ 시세 수신 중...";
         krxBtn.disabled = true;
       }
       setTimeout(pollJob, 1200);
     } else {
+      if (smartBtn) {
+        smartBtn.textContent = "▶ 스마트 실행";
+        smartBtn.disabled = false;
+      }
       if (krxBtn) {
         krxBtn.textContent = "시세 받기";
         krxBtn.disabled = false;
       }
-      if (job.status === "success") {
+      if (["success", "partial"].includes(job.status)) {
         const title = JOB_KINDS[job.kind] || job.kind || "작업";
-        showToast(`✅ <b>${title} 완료</b>`, "success");
+        const partial = job.status === "partial";
+        const followup = partial ? escapeHtml(job.result?.next_action || "일부 데이터는 다음 실행에서 이어집니다.") : "";
+        showToast(
+          partial ? `⚠️ <b>${title} 일부 완료</b><br>${followup}` : `✅ <b>${title} 완료</b>`,
+          partial ? "warning" : "success",
+          partial ? 5500 : 3500,
+        );
         await loadStatus();
         await reloadActiveView();
       } else if (job.status === "error") {
@@ -9223,6 +9263,7 @@ async function startJob(kind) {
     source: "live",
     lookback_days: lookbackVal,
     max_corps: maxVal,
+    dart_batch_size: 50,
     skip_ingest: kind === "live-skip" || kind === "screen",
   };
   if (kind === "screen") payload.kind = "screen";
@@ -12290,9 +12331,9 @@ function setupInvestorSubtabs() {
 
 async function saveSchedulerSettings() {
   const enabled = $("#sched-enabled")?.checked || false;
-  const jobKind = $("#sched-kind")?.value || "krx-prices";
-  const hour = Number($("#sched-hour")?.value || 18);
-  const minute = Number($("#sched-min")?.value || 30);
+  const jobKind = $("#sched-kind")?.value || "smart-sync";
+  const hour = Number($("#sched-hour")?.value || 19);
+  const minute = Number($("#sched-min")?.value || 10);
 
   const payload = {
     enabled,

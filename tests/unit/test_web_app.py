@@ -301,6 +301,11 @@ def test_research_reports_list_endpoint():
     assert "setPageAsOf" in js
     assert "closeDrawer" in js
     assert "startLiveSync" in js
+    assert 'data-job="smart-sync"' in html
+    assert "오늘 필요한 작업 스마트 실행" in html
+    assert "개별 작업·장애 복구 도구" in html
+    assert 'value="smart-sync" selected' in html
+    assert '"smart-sync": "오늘 필요한 작업 스마트 실행"' in js
     assert 'data-job="dart-backfill"' in html
     assert "OpenDART 전 종목 재무 커버리지 백필" in html
     assert 'fresh.financial_max_available_date || "2026-08-19"' not in js

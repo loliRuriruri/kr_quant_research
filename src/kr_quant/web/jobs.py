@@ -66,11 +66,12 @@ class JobRunner:
         logger.addHandler(handler)
         try:
             result = fn()
+            finished_status = "partial" if result.get("pipeline_status") == "partial" else "success"
             with self._lock:
-                self.state["status"] = "success"
+                self.state["status"] = finished_status
                 self.state["result"] = result
                 self.state["finished_at"] = datetime.now(timezone.utc).isoformat()
-            self.logs.append(f"작업 완료: {kind}")
+            self.logs.append(f"작업 {'일부 완료' if finished_status == 'partial' else '완료'}: {kind}")
             _maybe_publish(kind)
             _notify_job(kind, result=result)
         except Exception as exc:  # noqa: BLE001
@@ -255,12 +256,141 @@ def job_dart_backfill(as_of: str = "auto", batch_size: int = 50) -> dict[str, An
     return out
 
 
+def job_smart_sync(
+    as_of: str = "auto",
+    lookback_days: int = 80,
+    max_corps: int = 400,
+    dart_batch_size: int = 50,
+) -> dict[str, Any]:
+    """Run only the maintenance steps that the current local snapshot needs.
+
+    The daily action deliberately limits the full-universe DART work to one
+    resumable batch.  This keeps the one-click path bounded while steadily
+    improving coverage on every successful trading-day run.
+    """
+    from kr_quant.freshness import freshness_snapshot
+
+    s = load_settings()
+    d = resolve_as_of(as_of)
+    before = freshness_snapshot(s)
+    steps: list[dict[str, Any]] = []
+    warnings: list[str] = []
+
+    quant = ((before.get("sources") or {}).get("quant_ranking") or {})
+    needs_core_refresh = bool(before.get("stale_price")) or quant.get("state") != "fresh"
+    if needs_core_refresh:
+        RUNNER.logs.append("[1/4] KRX·OpenDART 우선수집과 퀀트 재계산을 시작합니다.")
+        live = job_live(as_of, lookback_days, max_corps, skip_ingest=False)
+        steps.append(
+            {
+                "kind": "live",
+                "label": "KRX·OpenDART 우선수집·퀀트 재계산",
+                "status": live.get("pipeline_status") or live.get("status") or "success",
+                "as_of": live.get("as_of_date") or d.isoformat(),
+            }
+        )
+        RUNNER.logs.append("[1/4] 시세·퀀트 갱신 완료")
+    else:
+        steps.append(
+            {
+                "kind": "live",
+                "label": "KRX·퀀트 기준일 확인",
+                "status": "skipped_fresh",
+                "as_of": before.get("screen_as_of") or d.isoformat(),
+            }
+        )
+        RUNNER.logs.append("[1/4] 시세·퀀트가 최신이라 무거운 재수집을 건너뜁니다.")
+
+    current = freshness_snapshot(s)
+    facts = ((current.get("sources") or {}).get("financial_facts") or {})
+    coverage = (facts.get("coverage") or {}).get("coverage_pct")
+    if coverage is None or float(coverage) < 90.0:
+        try:
+            RUNNER.logs.append(f"[2/4] DART 커버리지 {coverage or 0}% · 다음 {dart_batch_size}종목을 이어서 수집합니다.")
+            dart = job_dart_backfill(as_of, max(1, min(int(dart_batch_size or 50), 100)))
+            progress = dart.get("dart_backfill") or {}
+            steps.append(
+                {
+                    "kind": "dart-backfill",
+                    "label": "OpenDART 전 종목 커버리지 1배치",
+                    "status": progress.get("status") or "success",
+                    "processed": progress.get("processed_this_run") or 0,
+                    "covered_tickers": progress.get("covered_tickers"),
+                    "coverage_pct": progress.get("coverage_pct"),
+                }
+            )
+            RUNNER.logs.append(f"[2/4] DART 백필 완료 · 커버리지 {progress.get('coverage_pct') or coverage or 0}%")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"DART 백필 보류: {str(exc)[:180]}")
+            steps.append({"kind": "dart-backfill", "label": "OpenDART 전 종목 커버리지 1배치", "status": "warning"})
+    else:
+        steps.append(
+            {
+                "kind": "dart-backfill",
+                "label": "OpenDART 커버리지 확인",
+                "status": "skipped_sufficient",
+                "coverage_pct": coverage,
+            }
+        )
+        RUNNER.logs.append(f"[2/4] DART 커버리지 {coverage}%로 목표를 충족해 백필을 건너뜁니다.")
+
+    if s.kis_app_key and s.kis_app_secret:
+        try:
+            from kr_quant.flow.official import collect_official
+
+            RUNNER.logs.append("[3/4] KIS 관심·고유동성 종목 수급을 갱신합니다.")
+            flow = collect_official(s)
+            steps.append(
+                {
+                    "kind": "investor-kis",
+                    "label": "KIS 관심·고유동성 수급",
+                    "status": "success" if not flow.get("errors") else "partial",
+                    "attempted": flow.get("attempted") or 0,
+                    "saved": flow.get("saved") or 0,
+                }
+            )
+            if flow.get("errors"):
+                warnings.append(f"KIS 일부 수집 실패 {len(flow.get('errors') or [])}건")
+            RUNNER.logs.append(f"[3/4] KIS 수급 완료 · {flow.get('saved') or 0}행 저장")
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"KIS 수급 보류: {str(exc)[:180]}")
+            steps.append({"kind": "investor-kis", "label": "KIS 관심·고유동성 수급", "status": "warning"})
+    else:
+        steps.append({"kind": "investor-kis", "label": "KIS 수급", "status": "skipped_not_configured"})
+        RUNNER.logs.append("[3/4] KIS 키가 없어 수급 갱신을 건너뜁니다.")
+
+    RUNNER.logs.append("[4/4] 최종 최신성·품질 계약을 확인합니다.")
+    final = freshness_snapshot(s)
+    final_facts = (((final.get("sources") or {}).get("financial_facts") or {}).get("coverage") or {})
+    has_required_stale = bool(final.get("required_stale"))
+    return {
+        "kind": "smart-sync",
+        "as_of": d.isoformat(),
+        "steps": steps,
+        "warnings": warnings,
+        "pipeline_status": "partial" if has_required_stale or warnings else "success",
+        "freshness": final,
+        "dart_coverage": {
+            "tickers": final_facts.get("tickers"),
+            "universe_tickers": final_facts.get("universe_tickers"),
+            "coverage_pct": final_facts.get("coverage_pct"),
+            "target_pct": 90.0,
+        },
+        "next_action": (
+            "다음 예약 실행에서 DART 백필을 이어갑니다."
+            if (final_facts.get("coverage_pct") or 0) < 90
+            else "일일 데이터 정상화가 완료되었습니다."
+        ),
+        "used_in_quant": False,
+    }
+
+
 def _maybe_publish(kind: str) -> None:
     try:
         from kr_quant.web.publish import maybe_publish_after_job
 
         RUNNER.logs.append("공개 스냅샷을 Cloudflare Pages에 올리는 중… (API 키는 로컬에만 있습니다)")
-        publish_kind = "live" if kind == "dart-backfill" else kind
+        publish_kind = "live" if kind in {"dart-backfill", "smart-sync"} else kind
         out = maybe_publish_after_job(publish_kind)
         if out is None:
             RUNNER.logs.append("이 작업은 공개 사이트 자동 배포 대상이 아닙니다.")

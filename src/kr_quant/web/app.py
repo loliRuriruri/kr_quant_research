@@ -44,7 +44,7 @@ from kr_quant.research.tier1_contract import (
 )
 from kr_quant.settings import load_settings
 from kr_quant.web.envfile import apply_env_to_process, mask_secret, upsert_env_file
-from kr_quant.web.jobs import RUNNER, job_dart_backfill, job_demo, job_krx_history, job_krx_prices, job_live, job_screen
+from kr_quant.web.jobs import RUNNER, job_dart_backfill, job_demo, job_krx_history, job_krx_prices, job_live, job_screen, job_smart_sync
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -149,11 +149,12 @@ class ReportDeleteIn(BaseModel):
 
 
 class JobIn(BaseModel):
-    kind: str = Field(pattern="^(demo|screen|live|krx-prices|krx-history|dart-backfill|investor-kis|dart-nps|strategy)$")
+    kind: str = Field(pattern="^(smart-sync|demo|screen|live|krx-prices|krx-history|dart-backfill|investor-kis|dart-nps|strategy)$")
     as_of: str = "auto"
     source: str = "live"
     lookback_days: int = 80
     max_corps: int = 400
+    dart_batch_size: int = 50
     skip_ingest: bool = False
 
 
@@ -177,10 +178,10 @@ class StrategyIn(BaseModel):
 
 class SchedulerIn(BaseModel):
     enabled: bool = False
-    job_kind: str = "krx-prices"
-    hour: int = 18
-    minute: int = 30
-    lookback_days: int = 10
+    job_kind: str = "smart-sync"
+    hour: int = 19
+    minute: int = 10
+    lookback_days: int = 80
     official_flow: bool = True
 
 
@@ -3605,6 +3606,16 @@ def api_job_status() -> dict[str, Any]:
 @app.post("/api/jobs")
 def api_job_start(body: JobIn) -> dict[str, Any]:
     try:
+        if body.kind == "smart-sync":
+            return RUNNER.start(
+                "smart-sync",
+                lambda: job_smart_sync(
+                    body.as_of,
+                    body.lookback_days or 80,
+                    body.max_corps or 400,
+                    body.dart_batch_size or 50,
+                ),
+            )
         if body.kind == "demo":
             return RUNNER.start("demo", lambda: job_demo(body.as_of))
         if body.kind == "screen":

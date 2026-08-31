@@ -4,11 +4,13 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import yaml
 
 from kr_quant.freshness import expected_price_date, freshness_snapshot, runtime_spec, trading_session_lag
 from kr_quant.ingest.live import calendar_guard
 from kr_quant.settings import load_settings
-from kr_quant.web.scheduler import _next_slot, load_scheduler_config
+import kr_quant.web.scheduler as scheduler
+from kr_quant.web.scheduler import _STATE, _catch_up_due, _next_slot, load_scheduler_config
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -84,7 +86,82 @@ def test_calendar_guard_allows_three_year_history():
 
 def test_scheduler_next_slot_skips_weekend():
     cfg = load_scheduler_config()
-    friday_night = datetime(2026, 8, 21, 19, 0, tzinfo=KST)
+    friday_night = datetime(2026, 8, 21, 19, 30, tzinfo=KST)
     nxt = _next_slot(cfg, friday_night)
     assert nxt.date().isoformat() == "2026-08-24"
     assert nxt.hour == int(cfg["krx_prices"]["hour"])
+
+
+def test_scheduler_catches_up_missed_stale_trading_day(monkeypatch):
+    import kr_quant.freshness as freshness
+
+    cfg = {"job_kind": "smart-sync", "hour": 19, "minute": 10}
+    now = datetime(2026, 8, 25, 20, 0, tzinfo=KST)
+    previous = _STATE.get("last_fire")
+    try:
+        _STATE["last_fire"] = None
+        monkeypatch.setattr(
+            freshness,
+            "freshness_snapshot",
+            lambda *args, **kwargs: {
+                "stale_price": True,
+                "sources": {"quant_ranking": {"state": "stale"}},
+            },
+        )
+        assert _catch_up_due(cfg, now) is True
+        _STATE["last_fire"] = now.isoformat()
+        assert _catch_up_due(cfg, now) is False
+    finally:
+        _STATE["last_fire"] = previous
+
+
+def test_scheduler_save_preserves_public_deploy_config(tmp_path, monkeypatch):
+    settings = replace(load_settings(), root=tmp_path)
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    path = config_dir / "scheduler.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "enabled": True,
+                "job_kind": "live",
+                "hour": 18,
+                "minute": 30,
+                "publish_public": {"enabled": True, "after_jobs": ["live", "screen"], "project": "keep-me"},
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(scheduler, "load_settings", lambda: settings)
+    monkeypatch.setattr("kr_quant.web.publish.publish_status", lambda: {"enabled": True})
+
+    scheduler.save_scheduler_config(
+        {"enabled": True, "job_kind": "smart-sync", "hour": 19, "minute": 10, "lookback_days": 80}
+    )
+
+    saved = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert saved["publish_public"]["project"] == "keep-me"
+    assert saved["job_kind"] == "smart-sync"
+    assert saved["hour"] == 19
+
+
+def test_scheduler_runtime_state_survives_restart(tmp_path, monkeypatch):
+    settings = replace(load_settings(), root=tmp_path)
+    prior = {key: _STATE.get(key) for key in ("last_fire", "last_error", "last_result")}
+    monkeypatch.setattr(scheduler, "load_settings", lambda: settings)
+    try:
+        _STATE.update(
+            {
+                "last_fire": "2026-08-31T19:10:00+09:00",
+                "last_error": None,
+                "last_result": {"started": True, "kind": "smart-sync"},
+            }
+        )
+        scheduler._persist_runtime_state()
+        _STATE.update({"last_fire": None, "last_error": "reset", "last_result": None})
+        scheduler._restore_runtime_state()
+        assert _STATE["last_fire"] == "2026-08-31T19:10:00+09:00"
+        assert _STATE["last_result"]["kind"] == "smart-sync"
+    finally:
+        _STATE.update(prior)

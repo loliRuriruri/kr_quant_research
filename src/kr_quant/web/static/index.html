@@ -1137,16 +1137,35 @@
 
       <div class="grid-2" style="margin-top:16px;">
         <div style="display:flex; flex-direction:column; gap:16px;">
-          <!-- 2. The 3 Primary Intuitive Action Cards -->
+          <!-- 2. Smart daily maintenance with manual recovery tools -->
           <article class="card">
             <div class="card-h">
               <div>
-                <h2 style="margin:0;">🎯 상황별 원클릭 실행 작업</h2>
-                <p class="hint" style="margin-top:2px;">원하는 목적에 맞는 카드의 실행 버튼을 한 번만 클릭하세요. 백그라운드에서 안전하게 진행됩니다.</p>
+                <h2 style="margin:0;">✨ 오늘 필요한 데이터 자동 관리</h2>
+                <p class="hint" style="margin-top:2px;">운영자는 아래 버튼 하나만 사용하면 됩니다. 현재 상태를 읽고 필요한 단계만 순서대로 실행합니다.</p>
               </div>
             </div>
 
-            <div class="run-action-cards">
+            <div class="run-action-box highlight-blue" style="margin-top:12px; border-width:2px;">
+              <div class="run-action-box-left">
+                <div class="run-action-badge ok">권장 · 매일 19:10 자동 실행</div>
+                <div class="run-action-name" style="font-size:17px;">오늘 필요한 작업 스마트 실행</div>
+                <div class="run-action-desc" id="smart-run-summary">
+                  데이터 상태를 확인하는 중입니다. 시세·재무·퀀트·수급 중 필요한 작업만 고릅니다.
+                </div>
+                <div class="run-action-detail" id="smart-run-plan" style="margin-top:8px;">
+                  KRX 확인 → 필요 시 전체 재계산 → DART 50종목 백필 → KIS 수급 → 품질검사·공개판 갱신
+                </div>
+              </div>
+              <div class="run-action-box-right">
+                <button class="primary" id="smart-sync-btn" data-job="smart-sync" style="white-space:nowrap; padding:13px 22px; font-size:14px; font-weight:800;">▶ 스마트 실행</button>
+              </div>
+            </div>
+
+            <details class="run-advanced-details" style="margin-top:16px;">
+              <summary style="cursor:pointer; color:#94a3b8; font-size:12.5px; font-weight:600; padding:6px 0;">🛠 개별 작업·장애 복구 도구</summary>
+              <p class="hint" style="margin:6px 0 10px;">특정 단계만 다시 실행하거나 장기 백테스트 이력을 처음 채울 때만 사용하세요.</p>
+              <div class="run-action-cards">
               <!-- Action Card 1: Fast Price Sync -->
               <div class="run-action-box highlight-blue">
                 <div class="run-action-box-left">
@@ -1223,7 +1242,8 @@
                   <button class="ghost" data-job="dart-backfill" style="white-space:nowrap; padding:10px 18px; font-weight:700; border-color:#10b981; color:#6ee7b7; background:rgba(16,185,129,0.10);">📑 다음 DART 배치 수집</button>
                 </div>
               </div>
-            </div>
+              </div>
+            </details>
 
             <!-- Advanced Collapsible Settings -->
             <details class="run-advanced-details" style="margin-top:16px;">
@@ -1268,16 +1288,17 @@
               </label>
               <label>자동 실행 작업 종류
                 <select id="sched-kind">
-                  <option value="krx-prices" selected>🟢 KRX 시세만 갱신 (평일 18:30 추천, 약 30초)</option>
-                  <option value="live">🚀 실데이터 수집 + 퀀트 전체 계산 (평일 19:00 추천, 약 3~5분)</option>
+                  <option value="smart-sync" selected>✨ 스마트 일일 관리 (권장: 필요한 단계만 자동 실행)</option>
+                  <option value="live">🚀 실데이터 수집 + 퀀트 전체 계산</option>
+                  <option value="krx-prices">🟢 KRX 시세만 갱신</option>
                 </select>
               </label>
               <div class="row">
                 <label>실행 시 (Hour, 0~23)
-                  <input id="sched-hour" type="number" value="18" min="0" max="23" />
+                  <input id="sched-hour" type="number" value="19" min="0" max="23" />
                 </label>
                 <label>실행 분 (Minute, 0~59)
-                  <input id="sched-min" type="number" value="30" min="0" max="59" />
+                  <input id="sched-min" type="number" value="10" min="0" max="59" />
                 </label>
               </div>
             </div>
