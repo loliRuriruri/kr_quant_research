@@ -32,6 +32,7 @@ from kr_quant.scoring.composite import apply_composite, factor_specs
 from kr_quant.scoring.peers import assign_peer_scores
 from kr_quant.settings import Settings
 from kr_quant.universe.builder import apply_universe_gates, load_ksic_map, map_industry
+from kr_quant.universe.point_in_time import build_universe_snapshot
 
 logger = logging.getLogger("kr_quant.run")
 
@@ -127,6 +128,19 @@ def run_from_staged(
         ctx.status = "failed"
         ctx.warnings.append("SOURCE_NOT_READY")
         raise RuntimeError(f"no KRX prices for as_of={as_of}")
+    universe_snapshot, universe_evidence = build_universe_snapshot(
+        master,
+        day,
+        as_of=as_of,
+        source_mode=source_mode,
+    )
+    # The master may contain names listed after a historical as-of date. Keep
+    # unknown dates with an explicit coverage warning instead of inventing a
+    # complete delisting history.
+    master = universe_snapshot.drop(
+        columns=["observed_price_on_as_of", "as_of_date", "captured_at", "source_mode", "capture_state"],
+        errors="ignore",
+    )
     hist = history_window(prices, as_of)
     current_tickers = set(day["ticker"].astype(str))
     hist = hist[hist["ticker"].astype(str).isin(current_tickers)].reset_index(drop=True)
@@ -216,6 +230,16 @@ def run_from_staged(
     top20 = top_slice(all_df, 20, "top20_eligible")
     events_df = pd.DataFrame(events)
 
+    eligibility_cols = [
+        column
+        for column in ("ticker", "universe_eligible", "top100_eligible", "top20_eligible", "exclusion_reasons")
+        if column in all_df.columns
+    ]
+    if eligibility_cols:
+        eligibility = all_df[eligibility_cols].copy()
+        eligibility["ticker"] = eligibility["ticker"].astype(str).str.zfill(6)
+        universe_snapshot = universe_snapshot.merge(eligibility, on="ticker", how="left")
+
     dated = settings.output_dir / f"as_of_date={as_of.isoformat()}"
     dated.mkdir(parents=True, exist_ok=True)
     write_parquet_atomic(all_df, dated / "all_stocks.parquet")
@@ -226,6 +250,8 @@ def run_from_staged(
     if not events_df.empty:
         write_parquet_atomic(events_df, dated / "change_events.parquet")
     write_parquet_atomic(price_integrity_issues, dated / "price_integrity_issues.parquet")
+    write_parquet_atomic(universe_snapshot, dated / "universe_snapshot.parquet")
+    write_json(dated / "universe_evidence.json", universe_evidence)
 
     persist_history(db, ctx, records)
     hist_path = settings.output_dir / "daily_history.parquet"
@@ -242,6 +268,7 @@ def run_from_staged(
             "event_counts": events_df["event"].value_counts().to_dict() if not events_df.empty else {},
             "source_mode": source_mode,
             "price_integrity": price_integrity_summary,
+            "universe_evidence": universe_evidence,
         },
     )
     write_json(dated / "data_quality_report.json", quality)
@@ -255,6 +282,8 @@ def run_from_staged(
         write_parquet_atomic(hist_df, settings.output_dir / "daily_history.parquet")
         write_json(settings.output_dir / "data_quality_report.json", quality)
         write_parquet_atomic(price_integrity_issues, settings.output_dir / "price_integrity_issues.parquet")
+        write_parquet_atomic(universe_snapshot, settings.output_dir / "latest_universe_snapshot.parquet")
+        write_json(settings.output_dir / "universe_evidence.json", universe_evidence)
 
     manifest = {
         "run_id": ctx.run_id,
@@ -266,6 +295,7 @@ def run_from_staged(
         "source_bundle_hash": ctx.source_bundle_hash,
         "warnings": ctx.warnings,
         "source_mode": source_mode,
+        "universe_evidence": universe_evidence,
         "output_dir": str(dated),
     }
     write_json(dated / "run_manifest.json", manifest)
@@ -277,6 +307,8 @@ def run_from_staged(
         "top100": top100,
         "top20": top20,
         "quality": quality,
+        "universe_snapshot": universe_snapshot,
+        "universe_evidence": universe_evidence,
         "manifest": manifest,
     }
 

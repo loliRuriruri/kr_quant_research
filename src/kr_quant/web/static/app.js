@@ -483,6 +483,23 @@ function executionModelHtml(data) {
     </div>`;
 }
 
+function universeEvidenceHtml(data) {
+  const evidence = data?.universe_evidence || {};
+  if (!Object.keys(evidence).length) return "";
+  const controlled = evidence.survivorship_bias_controlled === true;
+  const color = controlled ? "#86efac" : "#fde68a";
+  const border = controlled ? "rgba(34,197,94,0.38)" : "rgba(245,158,11,0.48)";
+  const background = controlled ? "rgba(34,197,94,0.08)" : "rgba(245,158,11,0.09)";
+  const grade = evidence.research_grade || (controlled ? "PIT 구성 증거 있음" : "생존편향 제한");
+  const snapshots = Number(evidence.archived_snapshot_count || 0);
+  return `
+    <div style="padding:10px 14px; background:${background}; border:1px solid ${border}; border-radius:8px; margin-bottom:12px; color:${color}; font-size:12px; line-height:1.65;">
+      <b>🧭 유니버스 검증 등급: ${escapeHtml(grade)}</b>${snapshots ? ` · 저장된 일별 구성 스냅샷 ${snapshots}개` : ""}<br>
+      <span style="color:#e2e8f0;">${escapeHtml(evidence.limitation || "과거 시점 구성종목 증거 범위를 확인하세요.")}</span>
+      ${evidence.next_step ? `<br><span style="color:#94a3b8;">보완 경로: ${escapeHtml(evidence.next_step)}</span>` : ""}
+    </div>`;
+}
+
 async function runCustomBacktest(query, opts = {}) {
   const raw = String(query || $("#custom-strategy-q")?.value || "").trim();
   if (!raw) {
@@ -574,6 +591,7 @@ async function runCustomBacktest(query, opts = {}) {
 
         ${priceQualityHtml}
         ${executionModelHtml(data)}
+        ${universeEvidenceHtml(data)}
 
         <div style="padding:10px 14px; background:rgba(56,189,248,0.12); border:1px solid #38bdf8; border-radius:8px; margin-bottom:12px;">
           <b style="color:#38bdf8;">검증 구간 점수 1위: ${escapeHtml(data.best_name || "")} (${escapeHtml(data.best_params_ko || "")})</b>
@@ -7220,6 +7238,7 @@ function renderStrategy(data) {
     <div id="strategy-lab-tier1-briefing" style="margin: 12px 0 14px;"></div>
 
     ${executionModelHtml(data)}
+    ${universeEvidenceHtml(data)}
 
     <!-- 4-Step Intuitive Guide Deck -->
     <div class="strat-guide-grid">

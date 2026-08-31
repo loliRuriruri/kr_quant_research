@@ -15,6 +15,7 @@ from kr_quant.quality.price_integrity import latest_clean_price_segments
 from kr_quant.strategy.engine import ExecutionModel, execution_model_from_mapping, run_backtest
 from kr_quant.strategy.registry import FAMILY_KO, SELECTION_KO, format_params_ko, strategy_comment, strategy_registry
 from kr_quant.strategy.search import search_strategy, stability_label, walk_forward, walk_forward_score
+from kr_quant.universe.point_in_time import strategy_universe_evidence
 
 
 def cache_path(root: Path) -> Path:
@@ -263,6 +264,14 @@ def load_strategy(settings: Settings) -> dict[str, Any]:
             if lag:
                 payload["need_run"] = True
                 payload["freshness_warning"] = f"전략 결과가 최신 시세보다 {lag}거래일 뒤처졌습니다. 전략 재검증이 필요합니다."
+            payload.setdefault(
+                "universe_evidence",
+                strategy_universe_evidence(
+                    settings.output_dir,
+                    rows=payload.get("rows") or [],
+                    selection_as_of=payload.get("source_price_as_of"),
+                ),
+            )
             return payload
         except json.JSONDecodeError:
             pass
@@ -308,6 +317,11 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
         dates = pd.to_datetime(prices["trade_date"], errors="coerce").dropna()
         if not dates.empty:
             source_price_as_of = dates.max().date().isoformat()
+    universe_evidence = strategy_universe_evidence(
+        settings.output_dir,
+        rows=rows,
+        selection_as_of=source_price_as_of,
+    )
     out = {
         "configured": True,
         "used_in_quant": False,
@@ -322,6 +336,7 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
         "execution": "signal close -> next tradable open",
         "execution_model": execution_model.public(),
         "execution_note": "수수료·매도세·기본 슬리피지·거래대금 참여율 충격과 무거래/상하한가 잠김을 일봉 프록시로 반영합니다.",
+        "universe_evidence": universe_evidence,
         "selection": SELECTION_KO,
         "disclaimer": "일봉 백테스트. 파라미터는 학습 구간에서만 고르고, 이후 구간·walk-forward로 봅니다. 실시간 호가·주문이 아닙니다.",
         "catalog": [
@@ -532,4 +547,12 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
         "price_integrity": ev.get("price_integrity") or {},
         "execution_model": execution_model.public(),
         "execution_note": "수수료·매도세·기본 슬리피지·거래대금 참여율 충격과 무거래/상하한가 잠김을 일봉 프록시로 반영합니다.",
+        "universe_evidence": {
+            "selection_mode": "USER_SELECTED_CURRENT_SECURITY",
+            "selection_as_of": ev.get("to"),
+            "backtest_history_from": ev.get("from"),
+            "survivorship_bias_controlled": False,
+            "research_grade": "SINGLE_SECURITY_PATH_ONLY",
+            "limitation": "사용자가 현재 조회 가능한 단일 종목을 선택한 가격경로 검증입니다. 당시 전체 상장종목을 재구성한 횡단면 전략 검증은 아닙니다.",
+        },
     }
