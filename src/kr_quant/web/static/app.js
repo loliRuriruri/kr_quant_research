@@ -12539,6 +12539,8 @@ function renderDeployStatus(payload) {
     idle: "수동 배포 대기",
     running: payload.message || "공개판 갱신 및 배포 중...",
     success: "공개판 갱신 완료",
+    out_of_sync: payload.message || "마지막 공개 성공 · 현재 로컬과 날짜가 다름",
+    blocked: payload.message || "공개판 안전 차단",
     skipped: "중복 배포 건너뜀",
     failed: "배포 실패",
   }[state] || payload.message || "상태 확인 완료";
@@ -12558,10 +12560,27 @@ function renderDeployStatus(payload) {
     ? `${formattedTime ? formattedTime + " · " : ""}${payload.detail || "공개 사이트에서 최신 버전을 확인할 수 있습니다."}`
     : state === "running"
       ? `${formattedTime ? formattedTime + " · " : ""}${payload.detail || "빌드 및 Cloudflare 업로드가 진행 중입니다 (약 1분 소요)."}`
-      : payload.detail || payload.message || "자동 갱신과 별도로 필요할 때 언제든 실행할 수 있습니다.";
+      : state === "blocked"
+        ? `${formattedTime ? formattedTime + " · " : ""}${payload.detail || "시세 지연·기준일 불일치는 업로드 실패가 아니라 안전 차단입니다."}`
+        : payload.detail || payload.message || "자동 갱신과 별도로 필요할 때 언제든 실행할 수 있습니다.";
 
   if (elTitle) elTitle.textContent = stateLabel;
   if (elDetail) elDetail.textContent = detail;
+  const syncEl = document.querySelector("#deploy-sync-line");
+  if (syncEl) {
+    const reasons = (payload.blocking_reasons || []).join(", ");
+    const kind = payload.last_deploy_kind === "code" ? "웹 패치만" : payload.last_deploy_kind === "data" ? "데이터 배포" : "";
+    const parts = [
+      payload.last_successful_deploy_at ? `마지막 성공 ${String(payload.last_successful_deploy_at).replace("T", " ").slice(0, 16)}` : "",
+      payload.published_as_of ? `공개 기준일 ${payload.published_as_of}` : "",
+      payload.current_local_as_of ? `로컬 ${payload.current_local_as_of}` : "",
+      payload.current_expected_as_of ? `기대 ${payload.current_expected_as_of}` : "",
+      payload.in_sync === true ? "동기화됨" : payload.in_sync === false ? "동기화 아님" : "",
+      kind,
+      reasons ? `차단 ${reasons}` : "",
+    ].filter(Boolean);
+    syncEl.textContent = parts.join(" · ");
+  }
 
   elBtn.disabled = state === "running";
   if (elDataBtn) elDataBtn.disabled = state === "running";

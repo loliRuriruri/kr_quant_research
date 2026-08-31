@@ -606,7 +606,7 @@ def _maybe_publish(kind: str) -> None:
     try:
         from kr_quant.web.publish import maybe_publish_after_job
 
-        RUNNER.logs.append("공개 스냅샷을 Cloudflare Pages에 올리는 중… (API 키는 로컬에만 있습니다)")
+        RUNNER.logs.append("공개판 갱신 가능 여부를 검사합니다.")
         publish_kind = "live" if kind in {"dart-backfill", "smart-sync"} else kind
         out = maybe_publish_after_job(publish_kind)
         if out is None:
@@ -616,12 +616,17 @@ def _maybe_publish(kind: str) -> None:
             RUNNER.logs.append(f"공개 사이트 갱신 완료: {out.get('url')}")
             if kind == "smart-sync":
                 _record_publish_step("success", url=out.get("url"))
-        else:
-            reason = str(out.get("error") or "배포 실패")
-            blocked = "차단" in reason or "PRICE_DATA_STALE" in reason or "AS_OF_DATE_MISMATCH" in reason
-            RUNNER.logs.append(f"공개 사이트 배포 실패: {out.get('error')}" if not blocked else f"공개판 안전 차단: {out.get('error')}")
+            return
+        reason = str(out.get("error") or "배포 실패")
+        blocked = bool(out.get("blocked")) or "PUBLICATION_BLOCKED" in reason
+        if blocked:
+            RUNNER.logs.append(f"공개판 안전 차단: {reason}")
             if kind == "smart-sync":
-                _record_publish_step("blocked_stale" if blocked else "failed", detail=reason)
+                _record_publish_step("blocked_stale", detail=reason)
+            return
+        RUNNER.logs.append(f"공개 사이트 배포 실패: {out.get('error')}")
+        if kind == "smart-sync":
+            _record_publish_step("failed", detail=reason)
     except Exception as exc:  # noqa: BLE001
         RUNNER.logs.append(f"공개 사이트 배포 생략: {exc}")
         if kind == "smart-sync":

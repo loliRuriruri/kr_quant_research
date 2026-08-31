@@ -4,7 +4,14 @@ from types import SimpleNamespace
 import pytest
 
 from kr_quant.web import publish
-from kr_quant.web.publish import URL_RE, evaluate_manual_override, evaluate_publication_readiness, load_publish_config
+from kr_quant.web.jobs import RUNNER, _maybe_publish
+from kr_quant.web.publish import (
+    URL_RE,
+    classify_publication_errors,
+    evaluate_manual_override,
+    evaluate_publication_readiness,
+    load_publish_config,
+)
 
 
 def test_publish_config_defaults_to_pages_project():
@@ -120,6 +127,7 @@ def test_publication_guard_stops_before_build_or_deploy(monkeypatch, tmp_path):
     result = publish.publish_public_snapshot(deploy=True)
 
     assert result["ok"] is False
+    assert result["blocked"] is True
     assert result["step"] == "guard"
     assert "SOURCE_MODE_NOT_LIVE" in result["error"]
 
@@ -173,3 +181,127 @@ def test_code_only_build_reuses_public_data_and_bypasses_data_guard(monkeypatch,
     assert result["ok"] is True
     assert result["code_only"] is True
     assert "--reuse-data" in commands[0]
+
+
+def test_classify_stale_mismatch_as_safety_block():
+    assert classify_publication_errors(["PRICE_DATA_STALE", "AS_OF_DATE_MISMATCH"]) == "blocked"
+    assert classify_publication_errors(["NO_ELIGIBLE_CANDIDATES"]) == "failed"
+    assert classify_publication_errors([]) == "ready"
+
+
+def test_safety_block_keeps_last_successful_deploy(monkeypatch, tmp_path):
+    prior = dict(publish._STATE)
+    hydrated = publish._HYDRATED
+    try:
+        publish._HYDRATED = True
+        publish._STATE.update(
+            {
+                "last_ok": True,
+                "last_success_at": "2026-08-28T10:00:00+00:00",
+                "published_as_of": "2026-08-28",
+                "last_url": "https://korea-quant-research.pages.dev/",
+                "last_event": "success",
+                "last_deploy_kind": "data",
+                "last_error": None,
+            }
+        )
+        monkeypatch.setattr(publish, "_root", lambda: tmp_path)
+        monkeypatch.setattr(
+            publish,
+            "publication_readiness",
+            lambda root=None: {
+                "ready": False,
+                "errors": ["PRICE_DATA_STALE", "AS_OF_DATE_MISMATCH"],
+                "as_of_date": "2026-08-28",
+                "expected_price_date": "2026-08-31",
+                "current_local_as_of": "2026-08-28",
+                "current_expected_as_of": "2026-08-31",
+                "eligible_rows": 100,
+                "block_kind": "blocked",
+            },
+        )
+        monkeypatch.setattr(publish, "_run", lambda *args, **kwargs: pytest.fail("must not build after safety block"))
+        result = publish.publish_public_snapshot(deploy=True)
+        assert result["blocked"] is True
+        assert publish._STATE["last_ok"] is True
+        assert publish._STATE["published_as_of"] == "2026-08-28"
+        assert publish._STATE["last_event"] == "blocked"
+        assert publish._STATE["last_success_at"] == "2026-08-28T10:00:00+00:00"
+    finally:
+        publish._STATE.clear()
+        publish._STATE.update(prior)
+        publish._HYDRATED = hydrated
+
+
+def test_publish_sync_false_when_public_as_of_differs_from_local(monkeypatch):
+    prior = dict(publish._STATE)
+    hydrated = publish._HYDRATED
+    try:
+        publish._HYDRATED = True
+        publish._STATE.update({"published_as_of": "2026-08-26", "last_ok": True, "last_success_at": "2026-08-26T12:00:00+00:00"})
+        monkeypatch.setattr(
+            publish,
+            "publication_readiness",
+            lambda root=None: {
+                "ready": False,
+                "errors": ["PRICE_DATA_STALE"],
+                "as_of_date": "2026-08-28",
+                "expected_price_date": "2026-08-31",
+                "current_local_as_of": "2026-08-28",
+                "current_expected_as_of": "2026-08-31",
+                "block_kind": "blocked",
+            },
+        )
+        monkeypatch.setattr(publish, "read_snapshot_as_of", lambda root=None: "2026-08-26")
+        sync = publish.publish_sync_status()
+        assert sync["in_sync"] is False
+        assert sync["published_as_of"] == "2026-08-26"
+        assert sync["current_local_as_of"] == "2026-08-28"
+        assert sync["current_expected_as_of"] == "2026-08-31"
+        assert "PRICE_DATA_STALE" in sync["blocking_reasons"]
+    finally:
+        publish._STATE.clear()
+        publish._STATE.update(prior)
+        publish._HYDRATED = hydrated
+
+
+def test_maybe_publish_checks_guard_before_upload_log(monkeypatch):
+    monkeypatch.setattr(
+        "kr_quant.web.publish.maybe_publish_after_job",
+        lambda kind: {"ok": False, "blocked": True, "error": "PUBLICATION_BLOCKED: PRICE_DATA_STALE"},
+    )
+    RUNNER.logs.clear()
+    _maybe_publish("live")
+    text = "\n".join(RUNNER.logs)
+    assert "갱신 가능 여부" in text
+    assert "올리는 중" not in text
+    assert "안전 차단" in text
+
+
+def test_code_only_status_keeps_published_as_of(monkeypatch, tmp_path):
+    prior = dict(publish._STATE)
+    hydrated = publish._HYDRATED
+    try:
+        publish._HYDRATED = True
+        publish._STATE.update({"published_as_of": "2026-08-26", "last_ok": True, "last_deploy_kind": "data"})
+        monkeypatch.setattr(publish, "_root", lambda: tmp_path)
+        monkeypatch.setattr(publish, "load_publish_config", lambda: {"project": "test", "branch": "main"})
+        monkeypatch.setattr(
+            publish,
+            "publication_readiness",
+            lambda root=None: {"ready": False, "errors": ["PRICE_DATA_STALE"], "as_of_date": "2026-08-28", "eligible_rows": 10},
+        )
+        monkeypatch.setattr(
+            publish,
+            "_run",
+            lambda cmd, cwd, timeout: SimpleNamespace(returncode=0, stdout="https://test.pages.dev", stderr=""),
+        )
+        result = publish.publish_public_snapshot(deploy=True, code_only=True)
+        assert result["ok"] is True
+        assert result["code_only"] is True
+        assert publish._STATE["published_as_of"] == "2026-08-26"
+        assert publish._STATE["last_deploy_kind"] == "code"
+    finally:
+        publish._STATE.clear()
+        publish._STATE.update(prior)
+        publish._HYDRATED = hydrated

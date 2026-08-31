@@ -42,13 +42,39 @@ def _safe_print(text: str, end: str = "\n", flush: bool = True) -> None:
             pass
 
 
+SAFETY_BLOCK_ERRORS = frozenset(
+    {
+        "PRICE_DATA_STALE",
+        "AS_OF_DATE_MISMATCH",
+        "SCREEN_DATA_STALE",
+        "QUALITY_WARNINGS_PRESENT",
+        "SOURCE_MODE_NOT_LIVE",
+        "QUALITY_NOT_SUCCESS",
+    }
+)
+HARD_FAIL_ERRORS = frozenset(
+    {
+        "QUALITY_REPORT_MISSING",
+        "LATEST_RESULTS_MISSING",
+        "PUBLICATION_SOURCE_READ_FAILED",
+        "NO_ELIGIBLE_CANDIDATES",
+        "EVIDENCE_CONTRACT_INVALID",
+    }
+)
+
 _STATE: dict[str, Any] = {
     "last_ok": None,
     "last_at": None,
     "last_url": None,
     "last_error": None,
     "last_log": "",
+    "last_event": None,
+    "last_success_at": None,
+    "published_as_of": None,
+    "last_deploy_kind": None,
+    "last_block_reasons": None,
 }
+_HYDRATED = False
 
 _DEPLOY_LOCK = threading.Lock()
 _DEPLOY_STATUS: dict[str, Any] = {
@@ -82,7 +108,92 @@ def load_publish_config() -> dict[str, Any]:
     }
 
 
+def classify_publication_errors(errors: list[str] | None) -> str:
+    items = [str(item) for item in (errors or []) if item]
+    if not items:
+        return "ready"
+    if any(item in HARD_FAIL_ERRORS for item in items):
+        return "failed"
+    if items and all(item in SAFETY_BLOCK_ERRORS for item in items):
+        return "blocked"
+    return "failed"
+
+
+def _saved_publish_path() -> Path:
+    return _root() / "logs" / "public_publish.json"
+
+
+def _hydrate_publish_state() -> None:
+    global _HYDRATED
+    if _HYDRATED:
+        return
+    path = _saved_publish_path()
+    if path.exists():
+        try:
+            saved = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            saved = {}
+        if isinstance(saved, dict):
+            for key in _STATE:
+                if _STATE.get(key) is None and saved.get(key) is not None:
+                    _STATE[key] = saved[key]
+    _HYDRATED = True
+
+
+def read_snapshot_as_of(root: Path | None = None) -> str | None:
+    project = root or _root()
+    for path in (
+        project / "dist-public" / "data" / "meta.json",
+        project / "dist-public" / "data" / "snapshot.json",
+    ):
+        if not path.exists():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if path.name == "snapshot.json" and isinstance(payload, dict):
+            payload = payload.get("meta") or payload
+        if isinstance(payload, dict):
+            value = payload.get("as_of_date") or payload.get("as_of")
+            if value:
+                return str(value)[:10]
+    return None
+
+
+def _persist_publish_state() -> None:
+    path = _saved_publish_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {**_STATE, **load_publish_config(), "public_url": "https://korea-quant-research.pages.dev/"}
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def publish_sync_status(root: Path | None = None) -> dict[str, Any]:
+    _hydrate_publish_state()
+    project = root or _root()
+    readiness = publication_readiness(project)
+    published_as_of = _STATE.get("published_as_of") or read_snapshot_as_of(project)
+    current_local = readiness.get("current_local_as_of") or readiness.get("as_of_date")
+    current_expected = readiness.get("current_expected_as_of") or readiness.get("expected_price_date")
+    in_sync = bool(published_as_of and current_local and str(published_as_of)[:10] == str(current_local)[:10])
+    blocking = list(readiness.get("errors") or [])
+    return {
+        "last_successful_deploy_at": _STATE.get("last_success_at") or (_STATE.get("last_at") if _STATE.get("last_ok") else None),
+        "published_as_of": published_as_of,
+        "current_local_as_of": current_local,
+        "current_expected_as_of": current_expected,
+        "in_sync": in_sync,
+        "current_publish_readiness": readiness,
+        "blocking_reasons": blocking,
+        "deployment_url": _STATE.get("last_url") or "https://korea-quant-research.pages.dev/",
+        "last_deploy_kind": _STATE.get("last_deploy_kind"),
+        "last_event": _STATE.get("last_event"),
+        "block_kind": readiness.get("block_kind") or classify_publication_errors(blocking),
+    }
+
+
 def publish_status() -> dict[str, Any]:
+    _hydrate_publish_state()
     cfg = load_publish_config()
     return {**_STATE, **cfg, "public_url": "https://korea-quant-research.pages.dev/"}
 
@@ -179,14 +290,18 @@ def evaluate_publication_readiness(
         evidence_validation = validate_evidence_registry(evidence_registry)
         if not evidence_validation.get("valid"):
             errors.append("EVIDENCE_CONTRACT_INVALID")
+    unique_errors = list(dict.fromkeys(errors))
     return {
-        "ready": not errors,
-        "errors": list(dict.fromkeys(errors)),
+        "ready": not unique_errors,
+        "errors": unique_errors,
+        "block_kind": classify_publication_errors(unique_errors),
         "source_mode": quality.get("source_mode"),
         "quality_status": quality.get("status"),
         "as_of_date": screen_as_of or None,
         "expected_price_date": expected or None,
         "price_max_date": price_max or None,
+        "current_local_as_of": screen_as_of or price_max or None,
+        "current_expected_as_of": expected or None,
         "eligible_rows": int(eligible_rows),
         "evidence_validation": evidence_validation,
     }
@@ -205,7 +320,20 @@ def publication_readiness(root: Path | None = None) -> dict[str, Any]:
             missing.append("QUALITY_REPORT_MISSING")
         if not latest_path.exists():
             missing.append("LATEST_RESULTS_MISSING")
-        return {"ready": False, "errors": missing, "eligible_rows": 0}
+        try:
+            fresh = freshness_snapshot(settings)
+        except Exception:  # noqa: BLE001
+            fresh = {}
+        return {
+            "ready": False,
+            "errors": missing,
+            "block_kind": classify_publication_errors(missing),
+            "eligible_rows": 0,
+            "current_local_as_of": fresh.get("screen_as_of") or fresh.get("price_max_date"),
+            "current_expected_as_of": fresh.get("expected_price_date"),
+            "as_of_date": fresh.get("screen_as_of"),
+            "expected_price_date": fresh.get("expected_price_date"),
+        }
     try:
         quality = json.loads(quality_path.read_text(encoding="utf-8"))
         latest = pd.read_parquet(latest_path, columns=["universe_eligible"])
@@ -222,6 +350,7 @@ def publication_readiness(root: Path | None = None) -> dict[str, Any]:
         return {
             "ready": False,
             "errors": ["PUBLICATION_SOURCE_READ_FAILED"],
+            "block_kind": "failed",
             "detail": str(exc),
             "eligible_rows": 0,
         }
@@ -274,17 +403,24 @@ def publish_public_snapshot(
             if allow_warnings and override and override.get("blocking_errors"):
                 errors = override["blocking_errors"]
             error = "PUBLICATION_BLOCKED: " + ", ".join(errors)
-            _safe_print("[BLOCKED] " + error, flush=True)
-            _STATE.update(
-                {
-                    "last_ok": False,
-                    "last_at": datetime.now(timezone.utc).isoformat(),
-                    "last_error": error,
-                    "last_log": json.dumps({"readiness": readiness, "override": override}, ensure_ascii=False),
-                }
-            )
+            block_kind = classify_publication_errors(errors)
+            blocked = block_kind == "blocked"
+            _safe_print(("[BLOCKED] " if blocked else "[FAIL] ") + error, flush=True)
+            stamp = datetime.now(timezone.utc).isoformat()
+            update = {
+                "last_at": stamp,
+                "last_error": error,
+                "last_event": "blocked" if blocked else "failed",
+                "last_block_reasons": list(errors),
+                "last_log": json.dumps({"readiness": readiness, "override": override}, ensure_ascii=False),
+            }
+            if not blocked:
+                update["last_ok"] = False
+            _STATE.update(update)
+            _persist_publish_state()
             return {
                 "ok": False,
+                "blocked": blocked,
                 "step": "guard",
                 "error": error,
                 "readiness": readiness,
@@ -309,7 +445,17 @@ def publish_public_snapshot(
         return {"ok": False, "step": "build", "error": err, "cfg": cfg}
 
     if not deploy:
-        _STATE.update({"last_ok": True, "last_at": datetime.now(timezone.utc).isoformat(), "last_error": None, "last_log": log[-2000:]})
+        stamp = datetime.now(timezone.utc).isoformat()
+        _STATE.update(
+            {
+                "last_ok": True,
+                "last_at": stamp,
+                "last_error": None,
+                "last_log": log[-2000:],
+                "last_event": "code" if code_only else "success",
+            }
+        )
+        _persist_publish_state()
         return {
             "ok": True,
             "step": "build",
@@ -347,16 +493,25 @@ def publish_public_snapshot(
         _safe_print(f"     이번 배포: {url}", flush=True)
     else:
         _safe_print("[FAIL] 업로드 실패\n" + (err or ""), flush=True)
-    _STATE.update({
-        "last_ok": ok,
-        "last_at": datetime.now(timezone.utc).isoformat(),
-        "last_url": url if ok else None,
-        "last_error": err,
-        "last_log": log[-4000:],
-    })
-    status_path = root / "logs" / "public_publish.json"
-    status_path.parent.mkdir(parents=True, exist_ok=True)
-    status_path.write_text(json.dumps(publish_status(), ensure_ascii=False, indent=2), encoding="utf-8")
+    stamp = datetime.now(timezone.utc).isoformat()
+    published_as_of = _STATE.get("published_as_of")
+    if ok and not code_only:
+        published_as_of = read_snapshot_as_of(root) or readiness.get("as_of_date") or published_as_of
+    _STATE.update(
+        {
+            "last_ok": ok,
+            "last_at": stamp,
+            "last_url": url if ok else _STATE.get("last_url"),
+            "last_error": err,
+            "last_log": log[-4000:],
+            "last_event": ("code" if code_only else "success") if ok else "failed",
+            "last_deploy_kind": ("code" if code_only else "data") if ok else _STATE.get("last_deploy_kind"),
+            "last_success_at": stamp if ok else _STATE.get("last_success_at"),
+            "published_as_of": published_as_of if ok else _STATE.get("published_as_of"),
+            "last_block_reasons": None if ok else _STATE.get("last_block_reasons"),
+        }
+    )
+    _persist_publish_state()
     return {
         "ok": ok,
         "step": "deploy",
@@ -365,6 +520,7 @@ def publish_public_snapshot(
         "forced": bool(allow_warnings and not readiness.get("ready")),
         "code_only": code_only,
         "readiness": readiness,
+        "published_as_of": _STATE.get("published_as_of"),
     }
 
 
@@ -378,28 +534,38 @@ def maybe_publish_after_job(kind: str) -> dict[str, Any] | None:
 
 
 def get_deploy_status() -> dict[str, Any]:
+    _hydrate_publish_state()
     with _DEPLOY_LOCK:
         status = dict(_DEPLOY_STATUS)
+    sync = publish_sync_status()
+    status.update(sync)
     if status["state"] == "idle":
-        root = _root()
-        status_path = root / "logs" / "public_publish.json"
-        if status_path.exists():
-            try:
-                saved = json.loads(status_path.read_text(encoding="utf-8"))
-                if saved.get("last_ok") is True:
-                    status["state"] = "success"
-                    status["message"] = "공개판 갱신 완료"
-                    status["detail"] = "공개 사이트에서 최신 버전을 확인할 수 있습니다."
-                    status["finished_at"] = saved.get("last_at")
-                    status["last_url"] = saved.get("last_url")
-                elif saved.get("last_ok") is False:
-                    status["state"] = "failed"
-                    status["message"] = "공개판 갱신 실패"
-                    status["detail"] = saved.get("last_error") or "배포 중 오류가 발생했습니다."
-                    status["finished_at"] = saved.get("last_at")
-            except Exception:
-                pass
+        event = _STATE.get("last_event")
+        if event == "blocked" or (not _STATE.get("last_ok") and sync.get("block_kind") == "blocked" and _STATE.get("last_error")):
+            status["state"] = "blocked"
+            status["message"] = "공개판 안전 차단"
+            status["detail"] = _STATE.get("last_error") or "현재 로컬 데이터는 공개 품질 가드에 걸렸습니다."
+            status["finished_at"] = _STATE.get("last_at")
+        elif _STATE.get("last_ok") is True:
+            status["state"] = "success" if sync.get("in_sync") else "out_of_sync"
+            status["message"] = "공개판 갱신 완료" if sync.get("in_sync") else "마지막 공개 성공 · 현재 로컬과 날짜가 다름"
+            status["detail"] = (
+                "공개 사이트에서 최신 버전을 확인할 수 있습니다."
+                if sync.get("in_sync")
+                else (
+                    f"공개 기준일 {sync.get('published_as_of') or '—'} · 로컬 {sync.get('current_local_as_of') or '—'} · "
+                    f"기대 {sync.get('current_expected_as_of') or '—'}"
+                )
+            )
+            status["finished_at"] = _STATE.get("last_success_at") or _STATE.get("last_at")
+            status["last_url"] = _STATE.get("last_url")
+        elif _STATE.get("last_ok") is False:
+            status["state"] = "failed"
+            status["message"] = "공개판 갱신 실패"
+            status["detail"] = _STATE.get("last_error") or "배포 중 오류가 발생했습니다."
+            status["finished_at"] = _STATE.get("last_at")
     status["running"] = status["state"] == "running"
+    status["code_only"] = _STATE.get("last_deploy_kind") == "code"
     return status
 
 
@@ -438,6 +604,13 @@ def _deploy_worker(allow_warnings: bool = False, code_only: bool = False) -> Non
                     ),
                     "finished_at": datetime.now(timezone.utc).isoformat(),
                     "last_url": result.get("url"),
+                })
+            elif result.get("blocked"):
+                _DEPLOY_STATUS.update({
+                    "state": "blocked",
+                    "message": "공개판 안전 차단",
+                    "detail": result.get("error") or "현재 로컬 데이터는 공개 품질 가드에 걸렸습니다.",
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
                 })
             else:
                 _DEPLOY_STATUS.update({

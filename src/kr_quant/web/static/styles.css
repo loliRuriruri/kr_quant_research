@@ -5494,6 +5494,18 @@ td.num, th.num, td .meta, th {
   box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
 }
 
+.deploy-progress[data-state="blocked"],
+.deploy-progress[data-state="out_of_sync"] {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.deploy-progress[data-state="blocked"] .deploy-progress-dot,
+.deploy-progress[data-state="out_of_sync"] .deploy-progress-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2);
+}
+
 @keyframes deploy-pulse {
   0%, 100% { opacity: 0.5; transform: scale(0.9); }
   50% { opacity: 1; transform: scale(1.15); }

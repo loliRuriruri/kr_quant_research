@@ -162,7 +162,12 @@ def _flags(val: Any) -> list[str]:
 
 
 def load_all_stocks(settings) -> pd.DataFrame:
-    path = settings.output_dir / "latest_all_stocks.parquet"
+    try:
+        from kr_quant.run_generation import current_output_path
+
+        path = current_output_path(settings, "latest_all_stocks.parquet")
+    except Exception:  # noqa: BLE001
+        path = settings.output_dir / "latest_all_stocks.parquet"
     if not path.exists():
         return pd.DataFrame()
     df = pd.read_parquet(path)
@@ -390,7 +395,12 @@ def export(out_dir: Path) -> dict[str, Any]:
     settings = load_settings()
     out_dir.mkdir(parents=True, exist_ok=True)
     stocks = load_all_stocks(settings)
-    quality_path = settings.output_dir / "data_quality_report.json"
+    try:
+        from kr_quant.run_generation import current_output_path
+
+        quality_path = current_output_path(settings, "data_quality_report.json")
+    except Exception:  # noqa: BLE001
+        quality_path = settings.output_dir / "data_quality_report.json"
     quality = json.loads(quality_path.read_text(encoding="utf-8")) if quality_path.exists() else {}
     as_of = str(quality.get("as_of_date") or (stocks["as_of_date"].iloc[0] if not stocks.empty and "as_of_date" in stocks.columns else "미수집"))
     fresh = _clean(freshness_snapshot(settings, screen_as_of=as_of if as_of != "미수집" else None))
