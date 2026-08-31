@@ -6,6 +6,8 @@ from collections import deque
 from datetime import date, datetime, timezone
 from typing import Any, Callable
 
+import pandas as pd
+
 from kr_quant.settings import load_settings
 
 
@@ -147,7 +149,7 @@ HISTORY_DAYS = 750
 
 
 def job_krx_prices(as_of: str = "auto", lookback_days: int = 10) -> dict[str, Any]:
-    """KRX 일봉·마스터만 받는다. OpenDART와 Quant 재계산은 하지 않는다."""
+    """KRX 일봉·마스터·거래상태를 받는다. OpenDART와 Quant 재계산은 하지 않는다."""
     from kr_quant.freshness import freshness_snapshot
     from kr_quant.ingest.live import fetch_krx_master, fetch_krx_prices_range
 
@@ -158,16 +160,22 @@ def job_krx_prices(as_of: str = "auto", lookback_days: int = 10) -> dict[str, An
     days = max(3, min(int(lookback_days or 10), 40))
     master = fetch_krx_master(s, d)
     prices = fetch_krx_prices_range(s, d, lookback_days=days)
+    status_rows = 0
+    if s.status_csv.exists():
+        status = pd.read_csv(s.status_csv, dtype={"ticker": str})
+        status_rows = int((status["as_of_date"].astype(str) == d.isoformat()).sum())
     fresh = freshness_snapshot(s)
     return {
         "as_of": d.isoformat(),
         "kind": "krx-prices",
         "master_rows": int(len(master)),
         "price_rows": int(len(prices)),
+        "status_rows": status_rows,
+        "status_path": str(s.status_csv),
         "lookback_days": days,
         "freshness": fresh,
         "used_in_quant": False,
-        "note": "시세만 갱신했습니다.",
+        "note": "KRX 시세·종목기본정보·당일 거래상태를 함께 갱신했습니다.",
     }
 
 
@@ -183,6 +191,10 @@ def job_krx_history(as_of: str = "auto", lookback_days: int = HISTORY_DAYS) -> d
     days = max(80, min(int(lookback_days or HISTORY_DAYS), 2600))
     master = fetch_krx_master(s, d)
     prices = fetch_krx_prices_range(s, d, lookback_days=days, sleep_sec=0.08)
+    status_rows = 0
+    if s.status_csv.exists():
+        status = pd.read_csv(s.status_csv, dtype={"ticker": str})
+        status_rows = int((status["as_of_date"].astype(str) == d.isoformat()).sum())
     fresh = freshness_snapshot(s)
     n_dates = 0
     if prices is not None and not getattr(prices, "empty", True) and "trade_date" in prices.columns:
@@ -193,6 +205,8 @@ def job_krx_history(as_of: str = "auto", lookback_days: int = HISTORY_DAYS) -> d
         "master_rows": int(len(master)),
         "price_rows": int(len(prices)),
         "price_days": n_dates,
+        "status_rows": status_rows,
+        "status_path": str(s.status_csv),
         "lookback_days": days,
         "freshness": fresh,
         "used_in_quant": False,

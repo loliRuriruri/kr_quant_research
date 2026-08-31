@@ -102,7 +102,7 @@ class Settings:
 
     @property
     def status_csv(self) -> Path:
-        rel = self.config.get("status_feed", {}).get("path", "data/raw/status/manual_status.csv")
+        rel = self.config.get("status_feed", {}).get("path", "data/raw/status/krx_status.csv")
         p = Path(rel)
         return p if p.is_absolute() else self.root / p
 

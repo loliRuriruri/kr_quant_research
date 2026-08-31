@@ -32,8 +32,8 @@ WARNING_KO = {
 
 WARNING_FIX = {
     "STATUS_FEED_MISSING": (
-        "config의 status_feed.path(기본 data/raw/status/manual_status.csv)에 "
-        "ticker, as_of_date, status 열을 채워 거래정지·관리종목을 넣으세요. "
+        "KRX 종목기본정보와 당일매매정보를 다시 수집해 "
+        "data/raw/status/krx_status.csv의 해당 거래일 스냅샷을 생성하세요. "
         "파일이 없으면 거래 가능 여부를 확인할 수 없어 모든 후보 선정을 보류합니다."
     ),
     "MODEL_BREAK": "모델 버전이 바뀐 실행입니다. 전일과 점수 비교는 하지 말고 이번 결과만 보세요. 별도 수정은 필요 없습니다.",
@@ -66,7 +66,7 @@ def explain_run_status(quality: dict[str, Any] | None, *, status_csv_exists: boo
             why.append(WARNING_KO.get(code, code))
             improve.append(WARNING_FIX.get(code, "해당 경고 원인을 해소한 뒤 재계산하세요."))
         if "STATUS_FEED_MISSING" in warnings and not status_csv_exists:
-            improve.append("지금 status CSV 파일이 없습니다. 경로를 만들고 일별 거래정지 목록을 넣으면 완료로 올라갑니다.")
+            improve.append("현재 거래일 KRX 상태 스냅샷이 없습니다. 시세 받기를 실행해 종목기본정보·당일매매정보를 함께 갱신하세요.")
     elif status == "failed":
         why.append("스크리닝이 실패했습니다.")
         improve.append("실행 탭 로그에서 원인(시세 없음, 키 오류 등)을 보고 다시 실행하세요.")

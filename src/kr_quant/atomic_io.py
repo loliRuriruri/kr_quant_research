@@ -28,3 +28,30 @@ def write_parquet_atomic(frame: pd.DataFrame, path: Path, *, index: bool = False
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+def write_csv_atomic(
+    frame: pd.DataFrame,
+    path: Path,
+    *,
+    index: bool = False,
+    encoding: str = "utf-8-sig",
+) -> None:
+    """Write and validate a sibling CSV before atomically replacing the target."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        frame.to_csv(temporary, index=index, encoding=encoding)
+        validated = pd.read_csv(temporary, dtype=str, encoding=encoding)
+        if len(validated) != len(frame):
+            raise IOError(
+                f"csv validation failed for {path}: expected_rows={len(frame)} actual_rows={len(validated)}"
+            )
+        expected_columns = [str(column) for column in frame.columns]
+        if list(validated.columns) != expected_columns:
+            raise IOError(f"csv schema validation failed for {path}")
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()

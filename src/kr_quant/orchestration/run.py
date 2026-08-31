@@ -51,13 +51,20 @@ def code_commit(root: Path) -> str:
 def _load_status(path: Path, as_of: date) -> tuple[dict[str, str], bool]:
     if not path.exists():
         return {}, False
-    df = pd.read_csv(path)
-    df["as_of_date"] = pd.to_datetime(df["as_of_date"]).dt.date
-    df = df[df["as_of_date"] <= as_of]
+    try:
+        df = pd.read_csv(path, dtype={"ticker": str})
+    except Exception:  # noqa: BLE001
+        return {}, False
+    if not {"ticker", "as_of_date", "status"}.issubset(df.columns):
+        return {}, False
+    df["as_of_date"] = pd.to_datetime(df["as_of_date"], errors="coerce").dt.date
+    # Trading eligibility is a daily observation. Never reuse yesterday's
+    # ACTIVE value for today's ranking.
+    df = df[df["as_of_date"] == as_of]
     if df.empty:
-        return {}, True
-    latest = df.sort_values("as_of_date").drop_duplicates("ticker", keep="last")
-    return {str(r.ticker): str(r.status) for r in latest.itertuples()}, True
+        return {}, False
+    latest = df.drop_duplicates("ticker", keep="last")
+    return {str(r.ticker).zfill(6): str(r.status) for r in latest.itertuples()}, True
 
 
 def _csv_ready(df: pd.DataFrame) -> pd.DataFrame:
@@ -163,7 +170,15 @@ def run_from_staged(
 
     for n in names:
         apply_composite(n, cfg, as_of)
-        apply_universe_gates(n, cfg, as_of, status_map.get(n.inputs.ticker), status_ok)
+        ticker = str(n.inputs.ticker).zfill(6)
+        ticker_status_available = status_ok and ticker in status_map
+        apply_universe_gates(
+            n,
+            cfg,
+            as_of,
+            status_map.get(ticker),
+            ticker_status_available,
+        )
 
     db = connect(settings.db_path)
     init_db(db)

@@ -19,11 +19,13 @@ KRX_EXCLUDED_RISK_TOKENS = (
 TRADING_EXCLUDED_STATUSES = frozenset(
     {
         "SUSPENDED",
+        "NO_CURRENT_TRADE",
         "ADMIN_ISSUE",
         "DELIST_PROCESS",
         "INVESTMENT_INELIGIBLE",
     }
 )
+TRADING_UNVERIFIED_STATUSES = frozenset({"", "UNKNOWN", "UNVERIFIED"})
 
 CANDIDATE_HARD_EXCLUSIONS = frozenset(
     {
@@ -105,6 +107,8 @@ def trading_status_exclusion_reason(
     if required and not status_available:
         return "TRADING_STATUS_UNVERIFIED"
     normalized = str(status or "").strip().upper()
+    if required and status_available and normalized in TRADING_UNVERIFIED_STATUSES:
+        return "TRADING_STATUS_UNVERIFIED"
     if status_available and normalized in TRADING_EXCLUDED_STATUSES:
         return "TRADING_STATUS_EXCLUDED"
     return None

@@ -12,10 +12,10 @@ corporate_actions:
   listed_shares_adjustment: true
   allow_raw_price_as_adjusted: false
 
-# D2 권장안 B: 수동 상태 CSV가 없으면 run_status=partial
+# KRX 종목기본정보 + 당일매매정보로 자동 생성한다. 해당 거래일 스냅샷이 없으면 fail-closed 한다.
 status_feed:
   required_for_success: true
-  path: data/raw/status/manual_status.csv
+  path: data/raw/status/krx_status.csv
 
 universe:
   markets: [KOSPI, KOSDAQ]

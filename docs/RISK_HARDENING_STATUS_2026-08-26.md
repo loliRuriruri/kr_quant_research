@@ -49,7 +49,7 @@ git switch -c rollback/pre-risk-hardening savepoint-2026-08-26-pre-risk-hardenin
 
 ### P1-1. 공식 거래 상태 피드 자동 수집
 
-현재 안전 정책은 상태 피드가 없을 때 전체 후보를 차단하므로 오탐 허용 문제는 막았지만, 운영 실행은 `partial`이 될 수 있다. KRX가 제공하는 공식 관리종목·매매정지·정리매매·상장폐지 절차의 일별 원천과 명세를 확정한 뒤 `manual_status.csv`를 자동 스냅샷으로 교체해야 한다. 엔드포인트는 추측하지 않으며 응답 기준일과 원문을 보존해야 한다.
+2026-08-31 보강으로 승인된 KRX 종목기본정보와 당일매매정보를 결합해 `data/raw/status/krx_status.csv`를 자동 생성한다. `SECT_TP_NM`의 관리·투자주의환기·정리매매·상장폐지 분류를 보존하고, 당일 양수 가격·거래량이 확인되지 않은 종목은 `NO_CURRENT_TRADE` 또는 `UNVERIFIED`로 fail-closed 한다. 상태는 해당 거래일과 정확히 일치할 때만 사용하며 전일 `ACTIVE`를 재사용하지 않는다. 별도 상태 엔드포인트는 추측하지 않는다.
 
 완료 조건:
 

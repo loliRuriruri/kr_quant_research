@@ -159,7 +159,7 @@ def live_bootstrap(
     max_corps: int = typer.Option(400, min=10, max=3000),
     root: Optional[Path] = typer.Option(None),
 ) -> None:
-    """KRX 시세 + OpenDART 재무를 받아 staged/live 에 적재한다."""
+    """KRX 시세·거래상태 + OpenDART 재무를 받아 staged/live 에 적재한다."""
     s = _settings(root)
     setup_logging(s.log_dir, "live-bootstrap")
     if not s.krx_api_key or not s.opendart_api_key:

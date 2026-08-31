@@ -169,9 +169,17 @@ def test_required_status_feed_fails_closed_when_missing():
     assert trading_status_exclusion_reason(None, status_available=False, required=False) is None
 
 
-@pytest.mark.parametrize("status", ["SUSPENDED", "ADMIN_ISSUE", "DELIST_PROCESS", "INVESTMENT_INELIGIBLE"])
+@pytest.mark.parametrize(
+    "status",
+    ["SUSPENDED", "NO_CURRENT_TRADE", "ADMIN_ISSUE", "DELIST_PROCESS", "INVESTMENT_INELIGIBLE"],
+)
 def test_explicit_trading_status_is_excluded(status: str):
     assert trading_status_exclusion_reason(status, status_available=True, required=True) == "TRADING_STATUS_EXCLUDED"
+
+
+@pytest.mark.parametrize("status", [None, "", "UNKNOWN", "UNVERIFIED"])
+def test_unverified_status_is_not_allowed(status):
+    assert trading_status_exclusion_reason(status, status_available=True, required=True) == "TRADING_STATUS_UNVERIFIED"
 
 
 def test_universe_gate_blocks_candidate_when_required_status_feed_is_missing():

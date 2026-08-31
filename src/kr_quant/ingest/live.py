@@ -12,13 +12,15 @@ from xml.etree import ElementTree as ET
 
 import pandas as pd
 
-from kr_quant.atomic_io import write_parquet_atomic
+from kr_quant.atomic_io import write_csv_atomic, write_parquet_atomic
+from kr_quant.exceptions import SourceNotReady
 from kr_quant.ingest.krx import KrxOpenApiAdapter
 from kr_quant.ingest.opendart import OpenDartAdapter
 from kr_quant.ingest.store import write_raw_json
 from kr_quant.normalize.accounts import load_account_lookup, map_account, normalize_amount
 from kr_quant.normalize.security_master import normalize_krx_rows
 from kr_quant.settings import Settings
+from kr_quant.universe.tradability import normalize_krx_risk_class
 
 logger = logging.getLogger("kr_quant.ingest.live")
 
@@ -129,6 +131,112 @@ def fetch_krx_master(settings: Settings, as_of: date) -> pd.DataFrame:
     return master
 
 
+def _krx_status_from_risk_class(value: object) -> tuple[str | None, str | None]:
+    normalized = normalize_krx_risk_class(value)
+    if "상장폐지" in normalized or "정리매매" in normalized:
+        return "DELIST_PROCESS", "KRX_MASTER_RISK_CLASS"
+    if "관리종목" in normalized:
+        return "ADMIN_ISSUE", "KRX_MASTER_RISK_CLASS"
+    if "투자주의환기" in normalized:
+        return "INVESTMENT_INELIGIBLE", "KRX_MASTER_RISK_CLASS"
+    return None, None
+
+
+def build_krx_status_snapshot(
+    settings: Settings,
+    as_of: date,
+    *,
+    master: pd.DataFrame | None = None,
+    prices: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Create an auditable daily tradability snapshot from official KRX inputs.
+
+    This does not claim that a missing/zero-volume row is an official halt.
+    It records it as NO_CURRENT_TRADE or UNVERIFIED so the quant gate fails
+    closed until a current positive-price/volume observation is available.
+    """
+    folder = live_dir(settings)
+    if master is None:
+        path = folder / "krx_master.parquet"
+        master = pd.read_parquet(path) if path.exists() else pd.DataFrame()
+    if prices is None:
+        path = folder / "prices.parquet"
+        prices = pd.read_parquet(path) if path.exists() else pd.DataFrame()
+    required_master = {"ticker", "market", "sect"}
+    required_prices = {"ticker", "trade_date", "market", "close", "volume"}
+    if master.empty or not required_master.issubset(master.columns):
+        raise SourceNotReady("KRX status snapshot requires current master rows")
+    if prices.empty or not required_prices.issubset(prices.columns):
+        raise SourceNotReady("KRX status snapshot requires current daily price rows")
+
+    krx = master.copy()
+    krx["ticker"] = krx["ticker"].astype(str).str.zfill(6)
+    krx = krx.drop_duplicates("ticker", keep="last")
+    daily = prices.copy()
+    daily["ticker"] = daily["ticker"].astype(str).str.zfill(6)
+    daily["trade_date"] = pd.to_datetime(daily["trade_date"], errors="coerce").dt.date
+    daily = daily[daily["trade_date"] == as_of].copy()
+    if daily.empty:
+        raise SourceNotReady(f"KRX status snapshot has no daily rows for {as_of}")
+    expected_markets = set(settings.config["universe"]["markets"])
+    observed_markets = set(daily["market"].dropna().astype(str))
+    if not expected_markets.issubset(observed_markets):
+        missing = sorted(expected_markets - observed_markets)
+        raise SourceNotReady(f"KRX status snapshot missing markets for {as_of}: {missing}")
+    daily["close"] = pd.to_numeric(daily["close"], errors="coerce")
+    daily["volume"] = pd.to_numeric(daily["volume"], errors="coerce")
+    daily = daily.sort_values("trade_date").drop_duplicates("ticker", keep="last")
+    daily["daily_present"] = True
+
+    columns = ["ticker", "close", "volume", "daily_present"]
+    merged = krx.merge(daily[columns], on="ticker", how="left")
+    records: list[dict[str, Any]] = []
+    for row in merged.to_dict("records"):
+        risk_status, basis = _krx_status_from_risk_class(row.get("sect"))
+        present = row.get("daily_present") is True
+        close = pd.to_numeric(pd.Series([row.get("close")]), errors="coerce").iloc[0]
+        volume = pd.to_numeric(pd.Series([row.get("volume")]), errors="coerce").iloc[0]
+        if risk_status:
+            status = risk_status
+        elif not present:
+            status, basis = "UNVERIFIED", "KRX_DAILY_ROW_MISSING"
+        elif pd.isna(close) or pd.isna(volume) or float(close) <= 0 or float(volume) <= 0:
+            status, basis = "NO_CURRENT_TRADE", "KRX_DAILY_NON_POSITIVE_PRICE_OR_VOLUME"
+        else:
+            status, basis = "ACTIVE", "KRX_DAILY_TRADED"
+        records.append(
+            {
+                "ticker": str(row.get("ticker") or "").zfill(6),
+                "as_of_date": as_of.isoformat(),
+                "status": status,
+                "market": str(row.get("market") or ""),
+                "company": str(row.get("company") or ""),
+                "krx_risk_class": str(row.get("sect") or ""),
+                "daily_present": bool(present),
+                "close": None if pd.isna(close) else float(close),
+                "volume": None if pd.isna(volume) else float(volume),
+                "basis": basis,
+                "source": "KRX_OPEN_API_MASTER_AND_DAILY",
+            }
+        )
+    snapshot = pd.DataFrame(records)
+
+    destination = settings.status_csv
+    if destination.exists():
+        try:
+            old = pd.read_csv(destination, dtype={"ticker": str})
+            if {"ticker", "as_of_date"}.issubset(old.columns):
+                snapshot = pd.concat([old, snapshot], ignore_index=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Ignoring unreadable prior KRX status snapshot %s: %s", destination, exc)
+    snapshot["ticker"] = snapshot["ticker"].astype(str).str.zfill(6)
+    snapshot = snapshot.drop_duplicates(["ticker", "as_of_date"], keep="last")
+    snapshot = snapshot.sort_values(["as_of_date", "market", "ticker"]).reset_index(drop=True)
+    write_csv_atomic(snapshot, destination)
+    logger.info("KRX status snapshot %s rows=%s path=%s", as_of, len(records), destination)
+    return snapshot[snapshot["as_of_date"].astype(str) == as_of.isoformat()].copy()
+
+
 def calendar_guard(lookback_days: int) -> int:
     days = max(1, int(lookback_days))
     return max(days * 3, days + 80)
@@ -143,10 +251,20 @@ def fetch_krx_prices_range(
 ) -> pd.DataFrame:
     adapter = KrxOpenApiAdapter(settings.krx_api_key or "", settings.config["ingest"]["krx_base_url"])
     dest = live_dir(settings) / "prices.parquet"
+    configured_markets = list(settings.config["universe"]["markets"])
+    required_markets = set(configured_markets)
     have: set[date] = set()
     if dest.exists():
         old = pd.read_parquet(dest)
-        have = set(pd.to_datetime(old["trade_date"]).dt.date.tolist())
+        if {"trade_date", "market"}.issubset(old.columns):
+            old_dates = pd.to_datetime(old["trade_date"], errors="coerce").dt.date
+            old_markets = old["market"].astype(str)
+            coverage = pd.DataFrame({"trade_date": old_dates, "market": old_markets}).dropna()
+            have = {
+                trade_date
+                for trade_date, group in coverage.groupby("trade_date")
+                if required_markets.issubset(set(group["market"]))
+            }
 
     collected = 0
     cur = as_of
@@ -161,7 +279,7 @@ def fetch_krx_prices_range(
             continue
         frames = []
         empty = 0
-        for market in settings.config["universe"]["markets"]:
+        for market in configured_markets:
             rows = adapter.fetch_daily_maybe(cur, market)
             if not rows:
                 empty += 1
@@ -175,7 +293,7 @@ def fetch_krx_prices_range(
                 rows,
             )
             frames.append(normalize_krx_rows(rows, market, cur))
-        if frames and empty < 2:
+        if frames and empty == 0 and len(frames) == len(configured_markets):
             day = pd.concat(frames, ignore_index=True)
             upsert_parquet(dest, day, ["ticker", "trade_date"])
             have.add(cur)
@@ -187,7 +305,19 @@ def fetch_krx_prices_range(
             logger.info("KRX skip empty %s", cur)
         cur -= timedelta(days=1)
 
+    if collected < lookback_days:
+        raise SourceNotReady(
+            f"KRX complete-market history shortfall: collected={collected}, required={lookback_days}"
+        )
     prices = pd.read_parquet(dest) if dest.exists() else pd.DataFrame()
+    master_path = live_dir(settings) / "krx_master.parquet"
+    if master_path.exists():
+        build_krx_status_snapshot(
+            settings,
+            as_of,
+            master=pd.read_parquet(master_path),
+            prices=prices,
+        )
     return prices
 
 
@@ -512,10 +642,16 @@ def bootstrap_live(
         master = build_live_master(settings, as_of)
     facts_path = live_dir(settings) / "financial_facts.parquet"
     n_facts = len(pd.read_parquet(facts_path)) if facts_path.exists() else 0
+    status_rows = 0
+    if settings.status_csv.exists():
+        status = pd.read_csv(settings.status_csv, dtype={"ticker": str})
+        status_rows = int((status["as_of_date"].astype(str) == as_of.isoformat()).sum())
     return {
         "as_of": as_of.isoformat(),
         "targets": int(len(targets)),
         "facts": int(n_facts),
         "corp_map": int(len(corp)),
+        "status_rows": status_rows,
+        "status_path": str(settings.status_csv),
         "staged": str(live_dir(settings)),
     }
