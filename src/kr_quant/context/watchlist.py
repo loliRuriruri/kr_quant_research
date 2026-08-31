@@ -29,8 +29,12 @@ def save_watchlist(root: Path, rows: list[dict[str, Any]]) -> list[dict[str, Any
 
 
 def add_ticker(root: Path, ticker: str, company: str | None = None, note: str = "") -> list[dict[str, Any]]:
-    code = "".join(ch for ch in str(ticker) if ch.isdigit()).zfill(6)
-    rows = [r for r in load_watchlist(root) if str(r.get("ticker")) != code]
+    from kr_quant.universe.identifiers import canonical_ticker
+
+    code = canonical_ticker(ticker)
+    if not code:
+        return load_watchlist(root)
+    rows = [r for r in load_watchlist(root) if canonical_ticker(r.get("ticker")) != code]
     rows.insert(
         0,
         {
@@ -44,6 +48,8 @@ def add_ticker(root: Path, ticker: str, company: str | None = None, note: str = 
 
 
 def remove_ticker(root: Path, ticker: str) -> list[dict[str, Any]]:
-    code = "".join(ch for ch in str(ticker) if ch.isdigit()).zfill(6)
-    rows = [r for r in load_watchlist(root) if str(r.get("ticker")) != code]
+    from kr_quant.universe.identifiers import canonical_ticker
+
+    code = canonical_ticker(ticker)
+    rows = [r for r in load_watchlist(root) if canonical_ticker(r.get("ticker")) != code]
     return save_watchlist(root, rows)

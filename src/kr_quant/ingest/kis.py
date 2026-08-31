@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from kr_quant.flow.types import display_name, normalize_investor_type
+from kr_quant.universe.identifiers import UNSUPPORTED_TICKER_FORMAT, canonical_ticker, provider_symbol
 
 TOKEN_PATH = "/oauth2/tokenP"
 INVESTOR_PATH = "/uapi/domestic-stock/v1/quotations/inquire-investor"
@@ -37,7 +38,7 @@ def _num(value: Any) -> float | None:
 
 def parse_investor_payload(payload: dict[str, Any], ticker: str, *, source: str = "KIS") -> list[dict[str, Any]]:
     """Turn a KIS-like JSON blob into investor_flows_daily rows. No HTTP."""
-    code = "".join(ch for ch in str(ticker) if ch.isdigit()).zfill(6)
+    code = canonical_ticker(ticker)
     blocks: list[dict[str, Any]] = []
     output = payload.get("output") or payload.get("output1") or payload.get("output2")
     if isinstance(output, dict):
@@ -136,7 +137,9 @@ class KisInvestorAdapter:
         """Single-stock KIS inquire-investor. Not for the full universe."""
         import requests
 
-        code = "".join(ch for ch in str(ticker) if ch.isdigit()).zfill(6)
+        code, err = provider_symbol("kis", ticker)
+        if err:
+            raise RuntimeError(err)
         token = self.token()
         resp = requests.get(
             self.base_url + INVESTOR_PATH,
@@ -155,5 +158,8 @@ class KisInvestorAdapter:
         return resp.json()
 
     def collect_stock(self, ticker: str) -> list[dict[str, Any]]:
+        _code, err = provider_symbol("kis", ticker)
+        if err:
+            return []
         payload = self.fetch_stock_investor(ticker)
         return parse_investor_payload(payload, ticker, source="KIS")

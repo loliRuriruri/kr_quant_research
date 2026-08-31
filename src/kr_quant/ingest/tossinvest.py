@@ -104,10 +104,9 @@ def get_investor_trading(client_id: str, client_secret: str, symbol: str) -> dic
 
 
 def _digits_code(symbol: Any) -> str:
-    text = str(symbol or "").strip()
-    if text.startswith("A") and len(text) == 7:
-        text = text[1:]
-    return text.zfill(6) if len(text) < 6 and text.isdigit() else text
+    from kr_quant.universe.identifiers import canonical_ticker
+
+    return canonical_ticker(symbol)
 
 
 def _num(value: Any) -> float | None:

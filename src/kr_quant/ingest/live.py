@@ -147,7 +147,9 @@ def fetch_krx_master(settings: Settings, as_of: date) -> pd.DataFrame:
         )
         recs = []
         for raw in rows:
-            ticker = str(raw.get("ISU_SRT_CD") or "")[-6:].zfill(6)
+            from kr_quant.universe.identifiers import canonical_ticker
+
+            ticker = canonical_ticker(raw.get("ISU_SRT_CD") or "")
             recs.append(
                 {
                     "security_id": str(raw.get("ISU_CD") or ticker),

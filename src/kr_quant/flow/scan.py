@@ -256,7 +256,9 @@ def attach_live_quotes(payload: dict[str, Any], settings: Settings) -> dict[str,
                     continue
                 price = item.get("price") if isinstance(item.get("price"), dict) else item
                 symbol = str(item.get("symbol") or item.get("code") or "")
-                digits = "".join(ch for ch in symbol if ch.isdigit()).zfill(6)
+                from kr_quant.universe.identifiers import canonical_ticker
+
+                digits = canonical_ticker(symbol)
                 try:
                     last = float(str(price.get("lastPrice") or price.get("close") or item.get("lastPrice") or "").replace(",", "") or 0)
                 except ValueError:

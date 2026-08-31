@@ -22,7 +22,11 @@ def strip_html(text: str | None) -> str:
 
 def company_query(company: str | None, ticker: str | None) -> str:
     name = (company or "").strip()
-    code = "".join(ch for ch in str(ticker or "") if ch.isdigit()).zfill(6) if ticker else ""
+    from kr_quant.universe.identifiers import canonical_ticker, is_numeric_ticker
+
+    code = canonical_ticker(ticker) if ticker else ""
+    if code and not is_numeric_ticker(code):
+        code = ""
     if name and code:
         return f"{name} {code}"
     return name or code

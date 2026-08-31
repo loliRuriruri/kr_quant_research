@@ -75,6 +75,13 @@ def collect_official(settings: Settings, *, limit: int | None = None) -> dict[st
     try:
         for item in names:
             try:
+                from kr_quant.universe.identifiers import UNSUPPORTED_TICKER_FORMAT, provider_symbol
+
+                _symbol, err = provider_symbol("kis", item["ticker"])
+                if err:
+                    if err == UNSUPPORTED_TICKER_FORMAT:
+                        errors.append(f"{item['ticker']}: KIS 종목코드 미지원 (숫자 6자리가 아님)")
+                    continue
                 rows = adapter.collect_stock(item["ticker"])
                 for row in rows:
                     row["run_id"] = run_id

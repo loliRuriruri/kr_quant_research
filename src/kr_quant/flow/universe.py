@@ -15,8 +15,9 @@ TOSS_RANK_SPECS = (
 
 
 def _code(value: Any) -> str:
-    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
-    return digits.zfill(6) if digits else ""
+    from kr_quant.universe.identifiers import canonical_ticker
+
+    return canonical_ticker(value)
 
 
 # KRX stock master often omits ETFs; Toss rankings still include them by code.
@@ -215,7 +216,7 @@ def build_universe(
     def add(mapping: dict[str, str], src: str) -> None:
         for code, company in mapping.items():
             key = _code(code)
-            if not key.isdigit():
+            if not key:
                 continue
             label = str(company or "").strip()
             if label and label != key:
@@ -229,7 +230,7 @@ def build_universe(
     add(toss_mover_map(settings), "toss")
     add(liquid_map(settings), "liquid")
     add(watch_map(settings), "watch")
-    extra_map = {str(c).zfill(6): str(c).zfill(6) for c in (extra or [])}
+    extra_map = {_code(c): _code(c) for c in (extra or []) if _code(c)}
     add(extra_map, "extra")
     add(quant_top_map(settings), "quant")
     filled, _types = resolve_names(settings, list(names))

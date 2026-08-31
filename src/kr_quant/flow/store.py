@@ -132,7 +132,9 @@ def load_all_flows(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
 
 def load_ticker(con: duckdb.DuckDBPyConnection, ticker: str) -> list[dict[str, Any]]:
     init_investor_db(con)
-    code = "".join(ch for ch in str(ticker) if ch.isdigit()).zfill(6)
+    from kr_quant.universe.identifiers import canonical_ticker
+
+    code = canonical_ticker(ticker)
     cur = con.execute(
         f"""
         SELECT trade_date, ticker, investor_type, investor_type_raw,
@@ -162,7 +164,9 @@ def upsert_ownership(con: duckdb.DuckDBPyConnection, rows: list[dict[str, Any]])
     for row in rows:
         receipt = str(row.get("receipt_no") or row.get("rcept_no") or "none")
         holder = str(row.get("holder_name") or "")
-        ticker = "".join(ch for ch in str(row.get("ticker") or "") if ch.isdigit()).zfill(6)
+        from kr_quant.universe.identifiers import canonical_ticker
+
+        ticker = canonical_ticker(row.get("ticker") or "")
         if ticker == "000000":
             continue
         con.execute(
