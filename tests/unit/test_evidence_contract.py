@@ -40,6 +40,9 @@ def test_evidence_registry_covers_every_visible_research_menu(tmp_path):
     assert registry["menus"]["rank"]["sample"]["count"] == 1
     assert registry["menus"]["rank"]["used_in_quant"] is True
     assert registry["menus"]["strategy"]["used_in_quant"] is False
+    assert registry["menus"]["market"]["sample"]["count"] == 7
+    assert registry["menus"]["market"]["sources"][0]["name"] == "KRX"
+    assert "0점" in " ".join(registry["menus"]["market"]["limitations"])
     assert set(registry["menus"]) >= {
         "dash",
         "rank",

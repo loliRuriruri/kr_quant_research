@@ -4994,7 +4994,7 @@ function renderKrSentiment(sent) {
   if (!sent || !sent.components) return "";
   const st = sent.state || "NEUTRAL";
   const stKo = sent.state_ko || "중립";
-  const score = fmt(sent.score, 1);
+  const score = sent.score == null ? "—" : fmt(sent.score, 1);
   const comps = Object.entries(sent.components || {}).map(([, c]) => {
     const key = Object.keys(SENTIMENT_ITEM_GUIDE).find(k => (c.label || "").includes(k)) || "모멘텀";
     const g = SENTIMENT_ITEM_GUIDE[key] || {
@@ -5003,29 +5003,33 @@ function renderKrSentiment(sent) {
       down: "공포 및 침체 심리 증가",
       hint: "점수가 20점 이하일 때 역발상 분할매수를 고려하세요."
     };
+    const missing = c.available === false;
+    const contrib = c.contribution != null ? ` · 기여 ${fmt(c.contribution, 1)}` : "";
     return `<div class="sentiment-item has-tip"
                  data-tip-title="${escapeHtml(c.label)} (비중 ${c.weight}%)"
-                 data-tip="${escapeHtml(g.tip)}"
+                 data-tip="${escapeHtml(missing ? (c.missing_reason || "관측 없음") : g.tip)}"
                  data-tip-up="${escapeHtml(g.up)}"
                  data-tip-down="${escapeHtml(g.down)}"
-                 data-tip-hint="${escapeHtml(g.hint)}"
+                 data-tip-hint="${escapeHtml(c.as_of ? `기준일 ${c.as_of}` : g.hint)}"
                  tabindex="0">
-      <span>${escapeHtml(c.label)} (비중 ${c.weight}%)</span>
-      <b>${fmt(c.score, 1)}점</b>
+      <span>${escapeHtml(c.label)} (비중 ${c.weight}%${contrib})</span>
+      <b>${missing ? "미관측" : `${fmt(c.score, 1)}점`}</b>
     </div>`;
   }).join("");
+  const check = sent.score_check || {};
+  const conf = sent.confidence != null ? ` · 관측 가중치 ${Math.round(Number(sent.confidence) * 100)}%` : "";
 
   return `
     <div class="sentiment-box">
       <div class="sentiment-head">
         <div>
           <h3 style="margin:0 0 4px">자체 한국 시장 공포·탐욕 지수 (KR Market Sentiment)</h3>
-          <span class="hint">KRX 일봉 + 외인 5일 수급 기반 100점 만점 자체 감성 지수</span>
+          <span class="hint">KRX 일봉 기반 자체 감성 지수${sent.as_of ? ` · 기준일 ${escapeHtml(sent.as_of)}` : ""}${conf}</span>
         </div>
         <div class="sentiment-score-badge ${st} has-tip"
              data-tip-title="📊 공포·탐욕 지수 종합: ${score}점 (${escapeHtml(stKo)})"
-             data-tip="0~25점: 극단적 공포 (투매 및 역사적 저점 매수 구간), 25~45점: 공포, 45~55점: 중립, 55~75점: 탐욕, 75~100점: 극단적 탐욕 (과열 및 분할 익절 구간)"
-             data-tip-hint="워런 버핏의 '남들이 공포에 질려 있을 때 욕심을 내라'는 원칙을 시스템화한 지표입니다."
+             data-tip="빠진 항목은 0점이 아니라 가중치에서 제외합니다. 매수·매도 신호가 아닙니다."
+             data-tip-hint="${check.reproducible ? `기여 합 ${check.contributions_sum} = 점수 ${check.score}` : "기여 합으로 점수를 재현합니다."}"
              tabindex="0">
           ${score}점 · ${stKo}
         </div>
@@ -5059,25 +5063,41 @@ async function loadMarket(refresh) {
   };
 
   const metricCards = (data.components || []).map((c) => {
-    const val = c.value != null ? Number(c.value) : 50;
-    const tone = c.tone || "중립";
+    const available = c.available !== false && c.value != null;
+    const val = available ? Number(c.value) : 0;
+    const tone = c.tone || "미관측";
     const key = Object.keys(REGIME_COMPONENT_GUIDE).find(k => (c.label || "").includes(k)) || "60일 추세";
     const g = REGIME_COMPONENT_GUIDE[key] || { icon: "📊", tip: `${c.label} 지표 점수입니다.` };
-
+    const changeBits = [
+      c.change_1d != null ? `1일 ${c.change_1d > 0 ? "+" : ""}${fmt(c.change_1d, 1)}` : "",
+      c.change_1m != null ? `1개월 ${c.change_1m > 0 ? "+" : ""}${fmt(c.change_1m, 1)}` : "",
+    ].filter(Boolean).join(" · ");
+    const related = (c.related || []).map((item) => `${item.label} ${item.value ?? "—"} (${item.as_of || "날짜 없음"})`).join(" · ");
+    const tip = available
+      ? `${c.observation || g.tip}\n해석: ${c.opinion || ""}\n반증: ${c.falsification || ""}${related ? `\n참고: ${related}` : ""}`
+      : (c.missing_reason || "이 구성요소는 관측되지 않아 점수에 넣지 않았습니다.");
     return `
       <div class="regime-metric-box has-tip"
            data-tip-title="${g.icon} ${escapeHtml(c.label)}"
-           data-tip="${escapeHtml(g.tip)}"
-           data-tip-hint="점수: ${fmt(val, 1)}점 · 상태: ${escapeHtml(tone)}"
+           data-tip="${escapeHtml(tip)}"
+           data-tip-hint="${escapeHtml(c.formula || "")}"
            tabindex="0">
         <div class="regime-metric-top">
           <span>${g.icon} ${escapeHtml(c.label)}</span>
           <span class="regime-tone-badge ${tone}">${escapeHtml(tone)}</span>
         </div>
-        <div class="regime-metric-score">${fmt(val, 1)} <small style="font-size:11px;font-weight:normal;color:#94a3b8;">/ 100</small></div>
+        <div class="regime-metric-score">${available ? `${fmt(c.value, 1)} <small style="font-size:11px;font-weight:normal;color:#94a3b8;">/ 100</small>` : "미관측"}</div>
         <div class="regime-bar-track">
-          <div class="regime-bar-fill ${tone}" style="width:${Math.max(4, Math.min(100, val))}%;"></div>
+          <div class="regime-bar-fill ${tone}" style="width:${available ? Math.max(4, Math.min(100, val)) : 0}%;"></div>
         </div>
+        <div class="regime-metric-meta">
+          ${escapeHtml(c.source || "KRX")}${c.as_of ? ` · ${escapeHtml(c.as_of)}` : ""}${c.stale ? " · 시차" : ""}
+          ${c.lag_days ? ` · 시차 ${c.lag_days}일` : ""}
+          ${c.contribution != null && available ? ` · 기여 ${fmt(c.contribution, 1)}` : ""}
+          ${c.configured_weight != null ? ` · 가중 ${fmt(c.configured_weight, 0)}` : ""}
+        </div>
+        ${changeBits ? `<div class="regime-metric-meta">${escapeHtml(changeBits)}</div>` : ""}
+        ${c.sample_count != null ? `<div class="regime-metric-meta">표본 ${Number(c.sample_count).toLocaleString("ko-KR")}${escapeHtml(c.sample_unit || "")}</div>` : ""}
       </div>
     `;
   }).join("");
@@ -5097,8 +5117,15 @@ async function loadMarket(refresh) {
     `;
   }).join("");
 
-  const regimeScore = Number(data.regime_score || 50);
-  const regimeTone = regimeScore >= 55 ? "우호" : regimeScore <= 40 ? "부담" : "중립";
+  const regimeScore = data.regime_score == null ? null : Number(data.regime_score);
+  const regimeTone = regimeScore == null ? "중립" : regimeScore >= 55 ? "우호" : regimeScore <= 40 ? "부담" : "중립";
+  const check = data.score_check || {};
+  const contribLine = (data.contributions || [])
+    .map((item) => `${item.label} ${fmt(item.contribution, 1)}`)
+    .join(" + ");
+  const formulaLine = check.reproducible && contribLine
+    ? `${fmt(data.regime_score, 1)} = ${contribLine}`
+    : (data.formula || "");
 
   box.innerHTML = `
     ${krSentHtml}
@@ -5108,12 +5135,18 @@ async function loadMarket(refresh) {
       <div class="market-regime-header">
         <div>
           <h3 style="margin:0 0 4px;font-size:15px;color:#fff;">🏛️ 시장 내부 국면 & 건전성 진단 (Market Breadth Matrix)</h3>
-          <span class="hint">KRX 전 종목 일봉 기반 7대 내부 체력 지표 · 시세 기준일 ${escapeHtml(data.freshness?.price_max_date || "—")}</span>
+          <span class="hint">시세 기준일 ${escapeHtml(data.freshness?.price_max_date || "—")} · ${escapeHtml(data.confidence_label || "관측 가중치만 사용")}</span>
         </div>
         <div class="stance-badge ${regimeTone}" style="font-size:13px;padding:5px 12px;">
-          내부 국면: ${escapeHtml(data.label || data.regime || "중립")} (${fmt(data.regime_score, 1)}점)
+          내부 국면: ${escapeHtml(data.label || data.regime || "중립")} (${data.regime_score == null ? "—" : fmt(data.regime_score, 1)}점)
         </div>
       </div>
+      <p class="hint" style="margin:0 0 10px; line-height:1.55;">
+        관측 사실과 해석을 구분합니다. ${escapeHtml(data.opinion || "")}
+        ${formulaLine ? `<br><b style="color:#e2e8f0;">점수 재현:</b> ${escapeHtml(formulaLine)}` : ""}
+        ${data.falsification ? `<br>반증: ${escapeHtml(data.falsification)}` : ""}
+        <br>${escapeHtml(data.disclaimer || "")}
+      </p>
       <div class="market-regime-grid">
         ${metricCards}
       </div>

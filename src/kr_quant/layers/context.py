@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pandas as pd
 import yaml
@@ -56,45 +59,134 @@ def build_market_snapshot(settings: Settings, *, refresh: bool = False) -> dict[
             "freshness": freshness_snapshot(settings),
         }
     components = derive_market_components(prices)
+    krx_as_of = str((components.get("_meta") or {}).get("as_of") or "") or None
+    fred_compact: dict[str, Any] = {"configured": False, "used_in_quant": False, "series": []}
     if settings.fred_api_key:
         try:
             from kr_quant.ingest.fred import macro_snapshot
 
-            fred = macro_snapshot(settings.fred_api_key)
-            components = attach_macro(components, fred.get("series") or [])
-        except Exception:  # noqa: BLE001
-            pass
+            fred = macro_snapshot(settings.fred_api_key, refresh=refresh)
+            components = attach_macro(components, fred.get("series") or [], krx_as_of=krx_as_of)
+            fred_compact = components.get("_macro") or {
+                "configured": True,
+                "source": "FRED",
+                "used_in_quant": False,
+                "series": [],
+            }
+            fred_compact["configured"] = True
+        except Exception as exc:  # noqa: BLE001
+            fred_compact = {"configured": False, "used_in_quant": False, "error": str(exc)[:180], "series": []}
     from kr_quant.context.market_sentiment import compute_kr_market_sentiment
     from kr_quant.freshness import freshness_snapshot
 
     kr_sent = compute_kr_market_sentiment(prices)
     regime = market_regime(components, cfg)
     fresh = freshness_snapshot(settings)
+    details = regime.get("details") or {}
     rows = []
     for key, label in COMPONENT_KO.items():
+        detail = dict(details.get(key) or {})
         val = regime.get(key)
         if val is None:
-            tone = "미연결"
+            tone = "미관측"
         elif float(val) >= 60:
             tone = "우호"
         elif float(val) <= 40:
             tone = "부담"
         else:
             tone = "중립"
-        rows.append({"id": key, "label": label, "value": val, "tone": tone})
-    return {
+        rows.append(
+            {
+                "id": key,
+                "label": label,
+                "value": val,
+                "tone": tone,
+                "as_of": detail.get("as_of"),
+                "source": detail.get("source"),
+                "sample_count": detail.get("sample_count"),
+                "sample_unit": detail.get("sample_unit"),
+                "configured_weight": detail.get("configured_weight"),
+                "effective_weight": detail.get("effective_weight"),
+                "contribution": detail.get("contribution"),
+                "change_1d": detail.get("change_1d"),
+                "change_1m": detail.get("change_1m"),
+                "observed_value": detail.get("observed_value"),
+                "observed_unit": detail.get("observed_unit"),
+                "lag_days": detail.get("lag_days"),
+                "stale": detail.get("stale"),
+                "formula": detail.get("formula"),
+                "observation": detail.get("observation"),
+                "opinion": detail.get("opinion"),
+                "falsification": detail.get("falsification"),
+                "available": detail.get("available", val is not None),
+                "missing_reason": detail.get("missing_reason"),
+                "related": detail.get("related") or [],
+            }
+        )
+    ecos_as_of = None
+    for item in ecos.get("series") or []:
+        if isinstance(item, dict) and item.get("time"):
+            ecos_as_of = str(item.get("time"))
+    fred_as_of = None
+    for item in fred_compact.get("series") or []:
+        if isinstance(item, dict) and item.get("as_of"):
+            fred_as_of = str(item.get("as_of"))
+    payload = {
         "configured": True,
         "used_in_quant": False,
         "regime": regime.get("regime"),
         "label": regime.get("label"),
         "regime_score": regime.get("regime_score"),
+        "confidence": regime.get("confidence"),
+        "confidence_label": regime.get("confidence_label"),
+        "weight_policy": regime.get("weight_policy"),
+        "formula": regime.get("formula"),
+        "score_check": regime.get("score_check"),
+        "contributions": regime.get("contributions") or [],
+        "missing": regime.get("missing") or [],
+        "opinion": regime.get("opinion"),
+        "falsification": regime.get("falsification"),
         "kr_sentiment": kr_sent,
-        "disclaimer": "시장 국면은 조사 맥락입니다. Quant 순위와 합산하지 않습니다.",
+        "disclaimer": "시장 국면은 조사 맥락입니다. Quant 순위와 합산하지 않습니다. 빠진 지표는 0점이 아니라 가중치에서 제외합니다.",
         "components": rows,
         "ecos": ecos,
+        "macro": fred_compact,
         "fear_greed": fear,
         "freshness": fresh,
     }
+    _store_market_cache(
+        settings,
+        {
+            "as_of": krx_as_of,
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "regime_score": regime.get("regime_score"),
+            "available_count": len([row for row in rows if row.get("available")]),
+            "component_count": len(rows),
+            "missing": regime.get("missing") or [],
+            "confidence": regime.get("confidence"),
+            "fred_as_of": fred_as_of,
+            "ecos_as_of": ecos_as_of,
+            "used_in_quant": False,
+        },
+    )
+    return payload
+
+
+def _store_market_cache(settings: Settings, payload: dict[str, Any]) -> None:
+    path = settings.root / "data" / "cache" / "market_regime.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(path)
+    except OSError:
+        pass
+    finally:
+        if temporary.exists():
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
 
 
 def watchlist_state(settings: Settings) -> dict[str, Any]:

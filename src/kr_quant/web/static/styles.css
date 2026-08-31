@@ -3214,6 +3214,16 @@ body.modal-open { overflow: hidden; }
 .regime-tone-badge.우호 { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
 .regime-tone-badge.중립 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
 .regime-tone-badge.부담 { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+.regime-tone-badge.미관측,
+.regime-tone-badge.미연결 { background: rgba(148, 163, 184, 0.18); color: #94a3b8; }
+.regime-bar-fill.미관측,
+.regime-bar-fill.미연결 { background: #334155; }
+.regime-metric-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #94a3b8;
+}
 
 /* ECOS Visual Grid */
 .ecos-visual-grid {

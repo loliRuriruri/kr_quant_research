@@ -189,18 +189,44 @@ def build_evidence_registry(
             "일봉 기반 비용·유동성·가격제한폭 프록시이며 실시간 호가 재현은 아닙니다.",
         ],
     )
+    market_path = cache_dir / "market_regime.json"
+    market = _json(market_path)
+    live_prices = settings.staged_dir / "live" / "prices.parquet"
+    demo_prices = settings.staged_dir / "demo" / "prices.parquet"
+    price_file = live_prices if live_prices.exists() else demo_prices
+    market_as_of = str(market.get("as_of") or price_as_of or "") or None
+    market_observed = market.get("observed_at") or _mtime(price_file)
+    market_count = market.get("available_count")
+    if market_count is None:
+        market_count = market.get("component_count")
+    if market_count is None and market_as_of:
+        market_count = 7
+    fred_as_of = str(market.get("fred_as_of") or "") or None
+    ecos_as_of = str(market.get("ecos_as_of") or "") or None
+    market_missing = [str(item) for item in (market.get("missing") or [])]
+    market_limits = [
+        "지표별 발표 주기와 기준시각이 다르며 퀀트 점수에는 합산하지 않습니다.",
+        "빠진 구성요소는 0점이 아니라 가중치 분모에서 제외하고 재분배합니다.",
+        "미국 VIX·2Y/10Y는 원천과 시차를 표시하며, 넣지 않은 지표는 국면 점수에 섞지 않습니다.",
+    ]
+    if market_missing:
+        market_limits.append("현재 미관측: " + ", ".join(market_missing))
     menu["market"] = _entry(
         "market",
         "글로벌 매크로",
-        sources=[_source("ECOS/FRED/Yahoo/KRX", as_of=price_as_of, state="on_request", kind="mixed")],
-        as_of=price_as_of,
-        observed_at=None,
-        sample_count=None,
-        sample_unit="지표",
-        scope="거시·환율·원자재·시장 국면 오버레이",
-        state="READY_WITH_LIMITS" if price_as_of else "MISSING",
+        sources=[
+            _source("KRX", as_of=market_as_of, state=price_state),
+            _source("FRED", as_of=fred_as_of, state="cached" if fred_as_of else "on_request", kind="mixed"),
+            _source("ECOS", as_of=ecos_as_of, state="cached" if ecos_as_of else "on_request"),
+        ],
+        as_of=market_as_of,
+        observed_at=market_observed,
+        sample_count=None if market_count is None else int(market_count),
+        sample_unit="국면 구성요소",
+        scope="KRX 내부 국면 7항목 + FRED/ECOS 거시 오버레이",
+        state="READY_WITH_LIMITS" if market_as_of else "MISSING",
         used_in_quant=False,
-        limitations=["지표별 발표 주기와 기준시각이 다르며 퀀트 점수에는 합산하지 않습니다."],
+        limitations=market_limits,
     )
     menu["sector"] = _entry(
         "sector",

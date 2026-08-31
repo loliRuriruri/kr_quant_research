@@ -72,6 +72,8 @@ def test_index_and_status():
     assert "function sharpeLabel" in js
     assert "function precisionPanelHtml" in js
     assert "function tradeLogHtml" in js
+    assert "점수 재현" in js
+    assert "미관측" in js
     status = client.get("/api/status")
     assert status.status_code == 200
     body = status.json()
