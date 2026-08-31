@@ -5,8 +5,28 @@ universe: top20
 minimum_history_days: 40
 preferred_history_days: 750
 costs:
-  commission_bps: 0
+  # 증권사별 실제 수수료는 다르므로 기본 가정이며 화면에 그대로 공개한다.
+  commission_bps: 1.5
   slippage_bps: 5
+  # 국내 장내주식 매도 총 세부담 기본값. 날짜별 표가 우선한다.
+  sell_tax_bps: 30
+  sell_tax_schedule_bps:
+    - effective_from: "2019-06-03"
+      bps: 25
+    - effective_from: "2021-01-01"
+      bps: 23
+    - effective_from: "2023-01-01"
+      bps: 15
+    - effective_from: "2026-01-01"
+      bps: 20
+execution:
+  position_notional_krw: 10000000
+  max_participation_rate: 0.10
+  impact_bps_at_max_participation: 20
+  price_limit_pct: 0.30
+  lock_tolerance_pct: 0.005
+  max_pending_days: 3
+  block_zero_volume: true
 splits:
   oos_ratio: 0.20
 walk_forward:
@@ -15,4 +35,4 @@ walk_forward:
   step_days: 15
 robustness:
   minimum_trade_count: 8
-note: next-bar 시가 체결. 일봉 OHLC는 KRX. 실시간 호가 아님.
+note: 신호 다음 거래가능일 시가 체결. 세금·수수료·슬리피지·거래대금·일봉 상하한가 잠김 프록시 반영. 실시간 호가 아님.

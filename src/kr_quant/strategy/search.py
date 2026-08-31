@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from kr_quant.strategy.engine import BacktestResult, run_backtest
+from kr_quant.strategy.engine import BacktestResult, ExecutionModel, run_backtest
 from kr_quant.strategy.registry import StrategyDefinition
 
 
@@ -77,6 +77,7 @@ def _backtest_period(
     *,
     commission_bps: float,
     slippage_bps: float,
+    execution_model: ExecutionModel | dict[str, Any] | None = None,
 ) -> BacktestResult | None:
     """Calculate indicators with prior history, but trade only inside period."""
     if period is None or len(period) < 2:
@@ -90,6 +91,7 @@ def _backtest_period(
         signals,
         commission_bps=commission_bps,
         slippage_bps=slippage_bps,
+        execution_model=execution_model,
     )
 
 
@@ -100,6 +102,7 @@ def search_strategy(
     commission_bps: float = 0,
     slippage_bps: float = 5,
     minimum_trades: int = 8,
+    execution_model: ExecutionModel | dict[str, Any] | None = None,
 ) -> SearchResult:
     splits = chronological_splits(data)
     train = splits["TRAIN"]
@@ -113,6 +116,7 @@ def search_strategy(
                 spec.generate_signals(train, params),
                 commission_bps=commission_bps,
                 slippage_bps=slippage_bps,
+                execution_model=execution_model,
             )
             validation_result = _backtest_period(
                 train,
@@ -121,6 +125,7 @@ def search_strategy(
                 params,
                 commission_bps=commission_bps,
                 slippage_bps=slippage_bps,
+                execution_model=execution_model,
             )
         except Exception:  # noqa: BLE001
             continue
@@ -141,6 +146,7 @@ def search_strategy(
             best_params,
             commission_bps=commission_bps,
             slippage_bps=slippage_bps,
+            execution_model=execution_model,
         )
         if len(oos) >= 8
         else None
@@ -167,6 +173,7 @@ def walk_forward(
     step_days: int = 15,
     commission_bps: float = 0,
     slippage_bps: float = 5,
+    execution_model: ExecutionModel | dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     ordered = data.sort_values("date").reset_index(drop=True)
     rows: list[dict[str, Any]] = []
@@ -181,6 +188,7 @@ def walk_forward(
             commission_bps=commission_bps,
             slippage_bps=slippage_bps,
             minimum_trades=3,
+            execution_model=execution_model,
         )
         oos = _backtest_period(
             train,
@@ -189,6 +197,7 @@ def walk_forward(
             picked.parameters,
             commission_bps=commission_bps,
             slippage_bps=slippage_bps,
+            execution_model=execution_model,
         )
         if oos is None:
             start += max(1, step_days)

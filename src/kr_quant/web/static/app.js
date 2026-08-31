@@ -462,6 +462,27 @@ async function openStrategyBacktest(ticker, company) {
   await runCustomBacktest(code, { skipResolve: true, label: `${name} (${code})` });
 }
 
+function executionModelHtml(data) {
+  const model = data?.execution_model || {};
+  if (!Object.keys(model).length) return "";
+  const schedule = Array.isArray(model.sell_tax_schedule_bps) ? model.sell_tax_schedule_bps : [];
+  const latestTax = schedule.length ? schedule[schedule.length - 1]?.bps : model.sell_tax_bps;
+  const commission = Number(model.commission_bps || 0).toFixed(1);
+  const slippage = Number(model.slippage_bps || 0).toFixed(1);
+  const tax = Number(latestTax || 0).toFixed(1);
+  const notional = Number(model.position_notional_krw || 0);
+  const notionalText = notional ? `${Math.round(notional / 10000).toLocaleString("ko-KR")}만원` : "미설정";
+  const participation = Number(model.max_participation_rate || 0);
+  const participationText = participation ? `${(participation * 100).toFixed(0)}%` : "미적용";
+  const pendingDays = Number(model.max_pending_days || 0);
+  return `
+    <div style="padding:10px 14px; background:rgba(15,118,110,0.10); border:1px solid rgba(45,212,191,0.38); border-radius:8px; margin-bottom:12px; color:#ccfbf1; font-size:12px; line-height:1.65;">
+      <b style="color:#5eead4;">⚙️ 체결·비용 가정</b> · 신호 다음 거래일의 체결 가능한 시가 · 매수/매도 수수료 ${commission}bp · 기본 슬리피지 ${slippage}bp · 매도세 최신 ${tax}bp<br>
+      <span>주문 기준금액 ${notionalText} · 일 거래대금 참여율 상한 ${participationText} · 미체결 최대 ${pendingDays}일 재시도 · 거래량 0 및 일봉상 상·하한가 한 가격 잠김 차단</span><br>
+      <span style="color:#94a3b8;">실시간 호가·잔량은 없으므로 가격제한폭 잠김과 시장충격은 KRX 일봉 기반 보수적 프록시입니다.</span>
+    </div>`;
+}
+
 async function runCustomBacktest(query, opts = {}) {
   const raw = String(query || $("#custom-strategy-q")?.value || "").trim();
   if (!raw) {
@@ -552,6 +573,7 @@ async function runCustomBacktest(query, opts = {}) {
         </div>
 
         ${priceQualityHtml}
+        ${executionModelHtml(data)}
 
         <div style="padding:10px 14px; background:rgba(56,189,248,0.12); border:1px solid #38bdf8; border-radius:8px; margin-bottom:12px;">
           <b style="color:#38bdf8;">검증 구간 점수 1위: ${escapeHtml(data.best_name || "")} (${escapeHtml(data.best_params_ko || "")})</b>
@@ -5260,7 +5282,7 @@ function renderFlowStats(data) {
       ${bucketTable("사모 금액구간별 5일 성과", peRows, "pe_krw")}
     </div>
     <div class="smart-flow-note" style="margin-top:14px;">
-      <b>해석 주의</b><br />표본 수가 적으면 승률 100%도 신뢰하기 어렵습니다. 최근가와 당일 등락은 토스, 기술지표는 KRX 저장 일봉이며, 거래비용·슬리피지를 뺀 주문 성과가 아닙니다.
+      <b>해석 주의</b><br />표본 수가 적으면 승률 100%도 신뢰하기 어렵습니다. 최근가와 당일 등락은 토스, 기술지표와 백테스트는 KRX 저장 일봉입니다. 백테스트는 설정된 비용·매도세·슬리피지와 일봉 기반 체결 제한을 반영하지만 실시간 호가 재현은 아닙니다.
     </div>`;
 }
 
@@ -7197,6 +7219,8 @@ function renderStrategy(data) {
     <!-- Tier 1 AI Strategy Timing Synthesis Briefing (100% Free Engine) -->
     <div id="strategy-lab-tier1-briefing" style="margin: 12px 0 14px;"></div>
 
+    ${executionModelHtml(data)}
+
     <!-- 4-Step Intuitive Guide Deck -->
     <div class="strat-guide-grid">
       <div class="strat-guide-card">
@@ -7213,7 +7237,7 @@ function renderStrategy(data) {
       </div>
       <div class="strat-guide-card">
         <div class="strat-guide-head"><span class="strat-guide-icon">⏱️</span> 4. 현실적 체결 기준</div>
-        <div class="strat-guide-desc">신호 다음 거래일 시가 체결, 설정된 수수료와 슬리피지를 반영한 일봉 모의이며 실제 주문·호가 재현은 아닙니다.</div>
+        <div class="strat-guide-desc">신호 다음 거래일의 <b>체결 가능한 시가</b>를 사용하고 수수료·매도세·슬리피지·거래대금 충격을 차감합니다. 무거래와 상·하한가 한 가격 잠김은 주문을 미체결 처리하며, 실시간 호가 재현은 아닙니다.</div>
       </div>
     </div>
 

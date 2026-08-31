@@ -12,7 +12,7 @@ import yaml
 
 from kr_quant.settings import Settings
 from kr_quant.quality.price_integrity import latest_clean_price_segments
-from kr_quant.strategy.engine import run_backtest
+from kr_quant.strategy.engine import ExecutionModel, execution_model_from_mapping, run_backtest
 from kr_quant.strategy.registry import FAMILY_KO, SELECTION_KO, format_params_ko, strategy_comment, strategy_registry
 from kr_quant.strategy.search import search_strategy, stability_label, walk_forward, walk_forward_score
 
@@ -24,8 +24,36 @@ def cache_path(root: Path) -> Path:
 def _cfg(settings: Settings) -> dict[str, Any]:
     path = settings.root / "config" / "strategy_lab.yaml"
     if not path.exists():
-        return {"costs": {"slippage_bps": 5}, "splits": {"oos_ratio": 0.2}, "minimum_history_days": 40}
+        return {
+            "costs": {
+                "commission_bps": 1.5,
+                "slippage_bps": 5,
+                "sell_tax_bps": 20,
+                "sell_tax_schedule_bps": [{"effective_from": "2026-01-01", "bps": 20}],
+            },
+            "execution": {
+                "position_notional_krw": 10_000_000,
+                "max_participation_rate": 0.10,
+                "impact_bps_at_max_participation": 20,
+                "price_limit_pct": 0.30,
+                "lock_tolerance_pct": 0.005,
+                "max_pending_days": 3,
+                "block_zero_volume": True,
+            },
+            "splits": {"oos_ratio": 0.2},
+            "minimum_history_days": 40,
+        }
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def _execution_model(cfg: dict[str, Any]) -> ExecutionModel:
+    costs = dict(cfg.get("costs") or {})
+    raw = {**dict(cfg.get("execution") or {}), **costs}
+    return execution_model_from_mapping(
+        raw,
+        commission_bps=float(costs.get("commission_bps") or 0),
+        slippage_bps=float(costs.get("slippage_bps") or 5),
+    )
 
 
 def _prices(settings: Settings) -> pd.DataFrame:
@@ -61,6 +89,7 @@ def evaluate_ticker(
     oos_ratio: float,
     min_days: int,
     price_integrity_config: dict[str, Any] | None = None,
+    execution_model: ExecutionModel | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     raw_bars = 0 if data is None else int(len(data))
     clean_data, price_issues, price_quality = latest_clean_price_segments(data, price_integrity_config)
@@ -87,6 +116,7 @@ def evaluate_ticker(
             commission_bps=commission_bps,
             slippage_bps=slippage_bps,
             minimum_trades=min_trades,
+            execution_model=execution_model,
         )
         # Descriptive full-history metrics and displayed parameters must describe
         # the same selected strategy. Final OOS metrics remain separate below.
@@ -96,6 +126,7 @@ def evaluate_ticker(
             signals,
             commission_bps=commission_bps,
             slippage_bps=slippage_bps,
+            execution_model=execution_model,
         )
         metrics = dict(result.metrics)
         n_bars = int(len(data))
@@ -114,6 +145,7 @@ def evaluate_ticker(
                 step_days=step_d,
                 commission_bps=commission_bps,
                 slippage_bps=slippage_bps,
+                execution_model=execution_model,
             )
             if n_bars >= train_d + test_d
             else []
@@ -248,6 +280,7 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
     costs = cfg.get("costs") or {}
     commission = float(costs.get("commission_bps") or 0)
     slippage = float(costs.get("slippage_bps") or 5)
+    execution_model = _execution_model(cfg)
     oos_ratio = float((cfg.get("splits") or {}).get("oos_ratio") or 0.2)
     min_days = int(cfg.get("minimum_history_days") or 40)
     prices = _prices(settings)
@@ -267,6 +300,7 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
             oos_ratio=oos_ratio,
             min_days=min_days,
             price_integrity_config=settings.config.get("corporate_actions") or {},
+            execution_model=execution_model,
         )
         rows.append({"ticker": code, "company": company or code, **ev})
     source_price_as_of = None
@@ -285,7 +319,9 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
         "stale": False,
         "commission_bps": commission,
         "slippage_bps": slippage,
-        "execution": "next-bar open",
+        "execution": "signal close -> next tradable open",
+        "execution_model": execution_model.public(),
+        "execution_note": "수수료·매도세·기본 슬리피지·거래대금 참여율 충격과 무거래/상하한가 잠김을 일봉 프록시로 반영합니다.",
         "selection": SELECTION_KO,
         "disclaimer": "일봉 백테스트. 파라미터는 학습 구간에서만 고르고, 이후 구간·walk-forward로 봅니다. 실시간 호가·주문이 아닙니다.",
         "catalog": [
@@ -442,6 +478,7 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
     costs = cfg.get("costs") or {}
     commission = float(costs.get("commission_bps") or 0)
     slippage = float(costs.get("slippage_bps") or 5)
+    execution_model = _execution_model(cfg)
     oos_ratio = float((cfg.get("splits") or {}).get("oos_ratio") or 0.2)
     min_days = int(cfg.get("minimum_history_days") or 40)
 
@@ -453,6 +490,7 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
             oos_ratio=oos_ratio,
             min_days=min_days,
             price_integrity_config=settings.config.get("corporate_actions") or {},
+            execution_model=execution_model,
         )
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "ticker": code, "company": company or code, "error": f"백테스트 연산 실패: {exc}"}
@@ -492,4 +530,6 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
         "strategies": ev.get("strategies") or [],
         "playbook": generate_plain_strategy_playbook(ev.get("strategies") or [], company or code),
         "price_integrity": ev.get("price_integrity") or {},
+        "execution_model": execution_model.public(),
+        "execution_note": "수수료·매도세·기본 슬리피지·거래대금 참여율 충격과 무거래/상하한가 잠김을 일봉 프록시로 반영합니다.",
     }

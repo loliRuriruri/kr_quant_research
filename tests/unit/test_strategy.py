@@ -4,7 +4,7 @@ from dataclasses import replace
 import pandas as pd
 
 from kr_quant.settings import load_settings
-from kr_quant.strategy.engine import run_backtest
+from kr_quant.strategy.engine import ExecutionModel, run_backtest
 from kr_quant.strategy.registry import strategy_registry
 
 
@@ -26,6 +26,114 @@ def test_next_bar_execution_buys_next_open():
     assert result.metrics["trade_count"] == 1
     # buy next open 110, sell next open after exit signal: exit signal day2 close -> sell day3 open 130
     assert result.trades.iloc[0]["return"] == 130 / 110 - 1
+
+
+def test_execution_model_selects_sell_tax_by_trade_date():
+    model = ExecutionModel(
+        sell_tax_bps=30,
+        sell_tax_schedule_bps=(("2023-01-01", 15), ("2026-01-01", 20)),
+    )
+
+    assert model.tax_bps("2022-12-30") == 30
+    assert model.tax_bps("2025-12-30") == 15
+    assert model.tax_bps("2026-01-02") == 20
+
+
+def test_execution_costs_reduce_net_return_and_are_disclosed():
+    data = pd.DataFrame(
+        {
+            "date": pd.date_range("2026-01-02", periods=4, freq="B"),
+            "open": [100.0, 100.0, 110.0, 110.0],
+            "high": [101.0, 101.0, 111.0, 111.0],
+            "low": [99.0, 99.0, 109.0, 109.0],
+            "close": [100.0, 100.0, 110.0, 110.0],
+            "volume": [100_000] * 4,
+        }
+    )
+    signals = pd.DataFrame({"entry": [True, False, False, False], "exit": [False, False, True, False]})
+    gross = run_backtest(data, signals, commission_bps=0, slippage_bps=0)
+    net = run_backtest(
+        data,
+        signals,
+        execution_model=ExecutionModel(commission_bps=2, slippage_bps=5, sell_tax_bps=20),
+    )
+
+    assert net.metrics["total_return"] < gross.metrics["total_return"]
+    assert net.trades.iloc[0]["sell_tax_bps"] == 20
+    assert net.metrics["execution_model"]["commission_bps"] == 2
+    assert net.metrics["estimated_cost_ratio"] > 0
+
+
+def test_zero_volume_order_is_retried_at_next_tradable_open():
+    data = pd.DataFrame(
+        {
+            "date": pd.date_range("2026-01-02", periods=5, freq="B"),
+            "open": [100.0, 101.0, 102.0, 105.0, 106.0],
+            "high": [101.0, 102.0, 103.0, 106.0, 107.0],
+            "low": [99.0, 100.0, 101.0, 104.0, 105.0],
+            "close": [100.0, 101.0, 102.0, 105.0, 106.0],
+            "volume": [1000, 0, 1000, 1000, 1000],
+        }
+    )
+    signals = pd.DataFrame({"entry": [True, False, False, False, False], "exit": [False, False, True, False, False]})
+    result = run_backtest(
+        data,
+        signals,
+        execution_model=ExecutionModel(slippage_bps=0, block_zero_volume=True, max_pending_days=2),
+    )
+
+    assert result.trades.iloc[0]["entry_market_price"] == 102
+    assert result.metrics["blocked_order_reasons"] == {"ZERO_VOLUME": 1}
+
+
+def test_upper_limit_one_price_bar_does_not_fill_buy_order():
+    data = pd.DataFrame(
+        {
+            "date": pd.date_range("2026-01-02", periods=3, freq="B"),
+            "open": [100.0, 130.0, 131.0],
+            "high": [101.0, 130.0, 132.0],
+            "low": [99.0, 130.0, 130.0],
+            "close": [100.0, 130.0, 131.0],
+            "volume": [1000, 1000, 1000],
+        }
+    )
+    signals = pd.DataFrame({"entry": [True, False, False], "exit": [False, False, False]})
+    result = run_backtest(
+        data,
+        signals,
+        execution_model=ExecutionModel(slippage_bps=0, price_limit_pct=0.30, max_pending_days=0),
+    )
+
+    assert result.metrics["blocked_order_reasons"] == {"UPPER_LIMIT_LOCK": 1}
+    assert result.metrics["cancelled_order_count"] == 1
+    assert result.metrics["unclosed_position"] is False
+
+
+def test_liquidity_participation_limit_blocks_oversized_order():
+    data = pd.DataFrame(
+        {
+            "date": pd.date_range("2026-01-02", periods=3, freq="B"),
+            "open": [100.0, 100.0, 100.0],
+            "high": [101.0, 101.0, 101.0],
+            "low": [99.0, 99.0, 99.0],
+            "close": [100.0, 100.0, 100.0],
+            "volume": [1000, 1000, 1000],
+        }
+    )
+    signals = pd.DataFrame({"entry": [True, False, False], "exit": [False, False, False]})
+    result = run_backtest(
+        data,
+        signals,
+        execution_model=ExecutionModel(
+            slippage_bps=0,
+            position_notional_krw=1_000_000,
+            max_participation_rate=0.10,
+            max_pending_days=0,
+        ),
+    )
+
+    assert result.metrics["blocked_order_reasons"] == {"LIQUIDITY_LIMIT": 1}
+    assert result.metrics["max_participation_rate_observed"] == 10
 
 
 def test_registry_has_research_strategies():
