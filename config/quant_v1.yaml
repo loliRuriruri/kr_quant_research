@@ -6,12 +6,12 @@ model:
   score_max: 100
   risk_penalty_cap: 15
 
-# 공식 수정주가는 없다. 대신 KRX 상장주식수·시가총액으로 액면분할만 보정한다. 배당 재투자는 포함하지 않는다.
+# 공식 기업행위 parquet가 있을 때만 수정주가/배당 총수익을 만든다. 없으면 상장주식수·시가총액 프록시다.
 corporate_actions:
   adjusted_price_feed: false
   listed_shares_adjustment: true
   allow_raw_price_as_adjusted: false
-  # 기업행위 확정 피드가 없으므로 KRX 관측 필드로 가격 단절만 보수적으로 분리한다.
+  # 확정되지 않은 단절은 잇지 않는다. 전략 체결은 원시 OHLC, 모멘텀은 공식 adj 또는 시총 프록시.
   price_integrity:
     raw_return_break_threshold: 0.35
     market_cap_break_threshold: 0.35

@@ -58,11 +58,17 @@ def _execution_model(cfg: dict[str, Any]) -> ExecutionModel:
 
 
 def _prices(settings: Settings) -> pd.DataFrame:
+    from kr_quant.quality.corporate_actions import apply_official_adjustments, load_actions_from_settings
+
+    frame = pd.DataFrame()
     for folder in (settings.staged_dir / "live", settings.staged_dir / "demo"):
         path = folder / "prices.parquet"
         if path.exists():
-            return pd.read_parquet(path)
-    return pd.DataFrame()
+            frame = pd.read_parquet(path)
+            break
+    if frame.empty:
+        return frame
+    return apply_official_adjustments(frame, load_actions_from_settings(settings))
 
 
 def ohlc_for(prices: pd.DataFrame, ticker: str) -> pd.DataFrame:
@@ -78,7 +84,11 @@ def ohlc_for(prices: pd.DataFrame, ticker: str) -> pd.DataFrame:
         hist[col] = pd.to_numeric(hist[col], errors="coerce")
     hist["open"] = hist["open"].fillna(hist["close"])
     keep = ["date", "open", "high", "low", "close", "volume"]
-    keep.extend(column for column in ("listed_shares", "market_cap") if column in hist.columns)
+    keep.extend(
+        column
+        for column in ("listed_shares", "market_cap", "adj_close", "adj_factor", "price_return", "total_return")
+        if column in hist.columns
+    )
     return hist[keep].reset_index(drop=True)
 
 
@@ -91,10 +101,22 @@ def evaluate_ticker(
     min_days: int,
     price_integrity_config: dict[str, Any] | None = None,
     execution_model: ExecutionModel | dict[str, Any] | None = None,
+    actions: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     raw_bars = 0 if data is None else int(len(data))
+    from kr_quant.quality.corporate_actions import series_contract
+    from kr_quant.quality.price_integrity import attach_official_action_explanations
+
+    official = bool(
+        data is not None
+        and "adj_factor" in getattr(data, "columns", [])
+        and pd.to_numeric(data["adj_factor"], errors="coerce").fillna(1).ne(1).any()
+    )
     clean_data, price_issues, price_quality = latest_clean_price_segments(data, price_integrity_config)
     data = clean_data
+    price_issues, price_quality = attach_official_action_explanations(price_issues, price_quality, actions)
+    price_quality.update(series_contract(official=official))
+    price_quality["execution_price_basis"] = "raw_ohlc_next_open"
     price_quality["issues"] = price_issues.to_dict("records")
     if data is None or len(data) < min_days:
         warning = "가격 이력 부족"
@@ -293,6 +315,9 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
     oos_ratio = float((cfg.get("splits") or {}).get("oos_ratio") or 0.2)
     min_days = int(cfg.get("minimum_history_days") or 40)
     prices = _prices(settings)
+    from kr_quant.quality.corporate_actions import load_actions_from_settings
+
+    actions = load_actions_from_settings(settings)
     names: list[tuple[str, str]] = list(tickers or [])
     if not names:
         csv = settings.output_dir / "latest_top20.csv"
@@ -310,6 +335,7 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
             min_days=min_days,
             price_integrity_config=settings.config.get("corporate_actions") or {},
             execution_model=execution_model,
+            actions=actions,
         )
         rows.append({"ticker": code, "company": company or code, **ev})
     source_price_as_of = None
@@ -440,7 +466,10 @@ def generate_plain_strategy_playbook(strategies: list[dict[str, Any]], company: 
     }
 
 def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
+    from kr_quant.quality.corporate_actions import load_actions_from_settings
+
     prices = _prices(settings)
+    actions = load_actions_from_settings(settings)
     if prices.empty:
         return {"ok": False, "error": "주가 데이터(prices.parquet)가 없습니다."}
 
@@ -506,6 +535,7 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
             min_days=min_days,
             price_integrity_config=settings.config.get("corporate_actions") or {},
             execution_model=execution_model,
+            actions=actions,
         )
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "ticker": code, "company": company or code, "error": f"백테스트 연산 실패: {exc}"}

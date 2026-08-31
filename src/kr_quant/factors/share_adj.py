@@ -59,14 +59,43 @@ def high_52w(levels: list[tuple[date, float]], window: int = 252) -> float | Non
     return max(window_lv) if window_lv else None
 
 
+def _official_adj_levels(hist: pd.DataFrame) -> list[tuple[date, float]]:
+    if hist is None or hist.empty or "adj_close" not in hist.columns:
+        return []
+    if "adj_factor" in hist.columns:
+        factors = pd.to_numeric(hist["adj_factor"], errors="coerce")
+        if not bool((factors.fillna(1.0) - 1.0).abs().gt(1e-12).any()):
+            return []
+    work = hist.copy()
+    date_column = "trade_date" if "trade_date" in work.columns else "date"
+    work[date_column] = pd.to_datetime(work[date_column], errors="coerce")
+    work["adj_close"] = pd.to_numeric(work["adj_close"], errors="coerce")
+    work = work.dropna(subset=[date_column, "adj_close"])
+    work = work[work["adj_close"] > 0].sort_values(date_column)
+    return [(row[date_column].date(), float(row["adj_close"])) for row in work.to_dict("records")]
+
+
 def ticker_momentum(
     hist: pd.DataFrame,
     specs: dict[str, int],
     *,
     validate_integrity: bool = True,
 ) -> dict[str, float | None]:
-    # A market-cap proxy is split-safe, but it is not a complete adjusted-price
-    # feed. Do not bridge share-count changes or unexplained price jumps.
+    # Official adj_close may span a confirmed split. Unexplained jumps still
+    # use the isolated market-cap proxy and never invent a split.
+    official_levels = _official_adj_levels(hist)
+    if official_levels:
+        levels = official_levels
+        last = levels[-1][1]
+        high = high_52w(levels, specs.get("high_52w_distance", 252))
+        return {
+            "return_3m": lookback_return(levels, specs.get("return_3m", 63)),
+            "return_6m": lookback_return(levels, specs.get("return_6m", 126)),
+            "return_12m": lookback_return(levels, specs.get("return_12m", 252)),
+            "high_52w": high,
+            "adj_close": last,
+            "price_basis": "official_adjusted_price",
+        }
     if validate_integrity:
         from kr_quant.quality.price_integrity import latest_clean_price_segments
 
@@ -82,6 +111,7 @@ def ticker_momentum(
         "return_12m": lookback_return(levels, specs.get("return_12m", 252)),
         "high_52w": high,
         "adj_close": last,
+        "price_basis": "listed_shares_market_cap_proxy",
     }
 
 

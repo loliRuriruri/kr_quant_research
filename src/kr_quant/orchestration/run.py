@@ -141,12 +141,22 @@ def run_from_staged(
         columns=["observed_price_on_as_of", "as_of_date", "captured_at", "source_mode", "capture_state"],
         errors="ignore",
     )
+    from kr_quant.quality.corporate_actions import apply_official_adjustments, load_actions_from_settings
+    from kr_quant.quality.price_integrity import attach_official_action_explanations
+
+    actions = load_actions_from_settings(settings)
+    prices = apply_official_adjustments(prices, actions)
     hist = history_window(prices, as_of)
     current_tickers = set(day["ticker"].astype(str))
     hist = hist[hist["ticker"].astype(str).isin(current_tickers)].reset_index(drop=True)
     momentum_hist, price_integrity_issues, price_integrity_summary = latest_clean_price_segments(
         hist,
         cfg.get("corporate_actions") or {},
+    )
+    price_integrity_issues, price_integrity_summary = attach_official_action_explanations(
+        price_integrity_issues,
+        price_integrity_summary,
+        actions,
     )
     mom_by_ticker: dict[str, dict] = {}
     if cfg.get("factors", {}).get("momentum", {}).get("enabled") and cfg.get("corporate_actions", {}).get(

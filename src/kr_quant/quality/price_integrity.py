@@ -234,6 +234,26 @@ def latest_clean_price_segments(
     return cleaned, issues, summary
 
 
+def attach_official_action_explanations(
+    issues: pd.DataFrame,
+    summary: dict[str, Any],
+    actions: pd.DataFrame | None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    from kr_quant.quality.corporate_actions import explain_breaks_with_actions
+
+    explained = explain_breaks_with_actions(issues, actions)
+    payload = dict(summary)
+    matched = 0
+    if not explained.empty and "explained_by_official_action" in explained.columns:
+        matched = int(explained["explained_by_official_action"].sum())
+    payload["official_events_matched"] = matched
+    payload["unexplained_breaks"] = int(max(0, int(payload.get("issue_count") or 0) - matched))
+    payload["corporate_action_confirmation"] = matched > 0
+    if matched:
+        payload["source_fields"] = list(payload.get("source_fields") or []) + ["official_corporate_actions"]
+    return explained, payload
+
+
 def _summary(
     input_rows: int,
     ticker_count: int,
