@@ -641,7 +641,7 @@
                 <button type="button" class="preset-chip-btn active" data-pre-sort="score">🏆 종합 점수순</button>
                 <button type="button" class="preset-chip-btn" data-pre-sort="return">📈 5년 수익률순</button>
                 <button type="button" class="preset-chip-btn" data-pre-sort="winrate">🎯 5년 승률순</button>
-                <button type="button" class="preset-chip-btn" data-pre-sort="alpha">⚡ 초과알파순</button>
+                <button type="button" class="preset-chip-btn" data-pre-sort="alpha">📊 월간 중앙수익순</button>
               </div>
             </div>
 
@@ -678,18 +678,18 @@
 
                 <!-- Horizon Tabs -->
                 <div style="display:flex; align-items:center; gap:6px;">
-                  <span style="font-size:12px; font-weight:800; color:#94a3b8; white-space:nowrap;">🎯 진입 윈도우:</span>
+                  <span style="font-size:12px; font-weight:800; color:#94a3b8; white-space:nowrap;">🎯 관찰 범위:</span>
                   <div id="discovery-horizon-tabs" style="display:flex; gap:4px;">
                     <button type="button" class="preset-chip-btn active" data-horizon="90">🌐 전체 90일</button>
                     <button type="button" class="preset-chip-btn" data-horizon="7">⚡ 7일 (임박)</button>
-                    <button type="button" class="preset-chip-btn" data-horizon="30">🚀 30일 (사전 진입)</button>
+                    <button type="button" class="preset-chip-btn" data-horizon="30">🚀 30일 (근접 관찰)</button>
                   </div>
                 </div>
               </div>
 
               <!-- Right Side: Exclude Expired Pill -->
               <button type="button" id="btn-toggle-exclude-expired" class="preset-chip-btn active" style="border:1.5px solid #38bdf8; background:rgba(56,189,248,0.18); color:#38bdf8; font-weight:800; padding:5px 12px; border-radius:8px; cursor:pointer; white-space:nowrap;" title="클릭하여 시즌 종료 종목 포함/제외 토글">
-                ☑️ 시즌 종료 제외 (진입 유효만)
+                ☑️ 시즌 종료 제외 (관찰 중만)
               </button>
             </div>
 
@@ -712,7 +712,7 @@
                   <span style="font-size:11.5px; color:#94a3b8; white-space:nowrap;">상태:</span>
                   <select id="discovery-status-filter" style="background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:5px 10px; font-size:12px; min-width:150px;">
                     <option value="all">전체 상태</option>
-                    <option value="ACTIVE">🟢 ACTIVE (강력 추천)</option>
+                    <option value="ACTIVE">🟢 ACTIVE (근거 확인)</option>
                     <option value="WATCH">🟡 WATCH (관찰)</option>
                     <option value="DISCOVERY">🟣 DISCOVERY (발견)</option>
                     <option value="WEAKENING">🟠 WEAKENING (약화)</option>
@@ -735,15 +735,15 @@
               <thead>
                 <tr>
                   <th style="width:36px;">순위</th>
-                  <th>진입 타이밍</th>
+                  <th>피크 관찰 상태</th>
                   <th>상태</th>
                   <th>등급</th>
                   <th style="min-width:140px;">종목명 (코드)</th>
-                  <th style="min-width:160px;">반복 상승구간 (진입 ➔ 엑시트)</th>
+                  <th style="min-width:160px;">반복 상승구간 (관찰 ➔ 피크 감시)</th>
                   <th class="sortable" data-sort="seasonality_score">종합 스코어</th>
                   <th>과거 승률</th>
-                  <th>기대 수익률</th>
-                  <th>초과 Alpha</th>
+                  <th>월간 중앙수익</th>
+                  <th>벤치마크 알파</th>
                   <th style="min-width:240px;">연도별 실측 트랙 레코드</th>
                   <th>상세</th>
                 </tr>
@@ -1612,7 +1612,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px;">
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <span style="font-size:15px;">📊</span>
-              <b style="color:#38bdf8; font-size:13.5px;">계절성 사전 진입 윈도우 & 피크 알파 궤적 오버레이 차트</b>
+              <b style="color:#38bdf8; font-size:13.5px;">계절성 월간 수익 & 실측 피크 관찰 차트</b>
               <span id="disc-chart-status-badge" class="chip" style="background:rgba(52,211,153,0.15); color:#34d399; font-size:10.5px;">🟢 실측 데이터 겹치기</span>
             </div>
             
@@ -1620,7 +1620,7 @@
             <div class="chart-period-tabs" id="disc-chart-mode-tabs">
               <button type="button" class="chart-tab-btn active" data-chart-mode="seasonal_overlay">✨ 계절성 궤적 & 진입·피크 밴드</button>
               <button type="button" class="chart-tab-btn" data-chart-mode="candles_60d">🕯️ 60일 캔들스틱</button>
-              <button type="button" class="chart-tab-btn" data-chart-mode="monthly_alpha">📈 12개월 월별 알파</button>
+              <button type="button" class="chart-tab-btn" data-chart-mode="monthly_alpha">📈 12개월 월별 수익률</button>
             </div>
           </div>
 
@@ -1657,16 +1657,16 @@
             <b id="disc-modal-status-text" style="color:#10b981; font-size:13.5px;">🔥 상태 판정: 진입 유효 (ACTIVE)</b>
           </div>
           <div style="margin-top:4px; font-size:12px; color:#cbd5e1;">
-            과거 5~10년 계절성 패턴 + 올해 실적(EPS)/수급/상대강도(RS) 3중 검증 완료
+            과거 계절성 패턴과 현재 연결된 퀀트·수급 근거만 표시하며, 누락된 확인 항목은 별도로 밝힙니다.
           </div>
           <div id="disc-modal-recommendation" style="margin-top:6px; font-size:12px; color:#38bdf8; font-weight:700;">
-            💡 권장 대응: 반복 상승 Window 진입 시 분할 매수 및 계절성 목표가 대응 유효
+            💡 연구 대응: 실측 일봉 피크와 현재 확인 근거가 있을 때만 관찰 구간을 표시합니다.
           </div>
         </div>
 
         <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.9); border:1.5px solid rgba(56,189,248,0.35); border-radius:10px; padding:10px 16px;">
-          <span id="disc-modal-entry-win" style="color:#38bdf8; font-weight:800; font-size:13.5px;">📈 진입 권장: —</span>
-          <span id="disc-modal-exit-win" style="color:#fbbf24; font-weight:800; font-size:13.5px;">➔ 목표 엑시트: —</span>
+          <span id="disc-modal-entry-win" style="color:#38bdf8; font-weight:800; font-size:13.5px;">📈 과거 관찰 구간: —</span>
+          <span id="disc-modal-exit-win" style="color:#fbbf24; font-weight:800; font-size:13.5px;">➔ 역사적 피크 감시: —</span>
         </div>
 
         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:14px;">
@@ -1681,9 +1681,9 @@
             <span id="disc-modal-r3-sub" style="font-size:10px; color:#64748b;">최근 3년 —</span>
           </div>
           <div class="portfolio-kpi-item" style="background:rgba(30,41,59,0.8); padding:10px 12px; border-radius:8px;">
-            <span style="font-size:11px; color:#94a3b8;">중앙값 알파</span>
+            <span style="font-size:11px; color:#94a3b8;">월간 중앙수익</span>
             <b id="disc-modal-alpha" style="color:#38bdf8; font-size:15px;">—</b>
-            <span id="disc-modal-mdd-sub" style="font-size:10px; color:#f87171;">MDD —</span>
+            <span id="disc-modal-mdd-sub" style="font-size:10px; color:#f87171;">피크 전 하방 —</span>
           </div>
         </div>
 
@@ -1706,7 +1706,7 @@
               <span style="font-size:20px;">ℹ️</span>
               <h3 style="margin:0; font-size:18px; font-weight:800; color:#fff;">계절성 상태(Status) 분류 가이드</h3>
             </div>
-            <p style="margin:4px 0 0; font-size:12px; color:#94a3b8;">과거 5~10년 반복 통계 + 올해 실시간 검증 3단계 판정 체계</p>
+            <p style="margin:4px 0 0; font-size:12px; color:#94a3b8;">과거 반복 통계 + 현재 연결된 퀀트·모멘텀·수급 근거 판정 체계</p>
           </div>
           <button type="button" class="ghost" id="status-guide-close-btn" style="font-size:18px; padding:2px 8px; line-height:1;">✕</button>
         </div>
@@ -1714,20 +1714,20 @@
         <!-- 3-Step Principle Box -->
         <div style="margin-top:14px; background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.3); border-radius:10px; padding:12px 14px; font-size:12px; line-height:1.6; color:#cbd5e1;">
           <b style="color:#38bdf8; font-size:12.5px; display:block; margin-bottom:2px;">💡 상태(Status)는 어떻게 판정되나요?</b>
-          단순히 과거 주가 상승 통계만 보는 것이 아니라, <b>①과거 반복 통계(승률/알파)</b>, <b>②올해 이벤트 인과성</b>, <b>③실적(EPS Revision) 및 기관/외인 수급</b> 3중 검증을 통해 실시간으로 상태를 부여합니다.
+          <b>①월간 반복 수익률·승률</b>, <b>②설명 가능한 이벤트 가설</b>, <b>③실제로 연결된 최신 퀀트·3개월 모멘텀·기관/외인 수급</b>만 사용합니다. 벤치마크·거래량 등 미연결 자료는 점수에서 제외합니다.
         </div>
 
         <!-- Status 1: ACTIVE -->
         <div class="status-explanation-card" style="border-color:rgba(16,185,129,0.4); background:rgba(16,185,129,0.05);">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span class="status-pill status-active" style="font-size:12px; padding:4px 10px;">🟢 ACTIVE (진입 유효 / 강력 추천)</span>
+            <span class="status-pill status-active" style="font-size:12px; padding:4px 10px;">🟢 ACTIVE (현재 근거 확인)</span>
           </div>
           <p style="margin:8px 0 0; font-size:12.5px; color:#fff; line-height:1.5;">
-            과거 5~10년 계절성 패턴과 올해 실적(EPS)/수급/상대강도(RS) 3중 검증이 모두 완료된 <b>최우선 매수 공략 종목</b>입니다.
+            과거 반복 패턴에 더해 현재 연결된 퀀트·모멘텀 근거가 기준을 통과한 <b>우선 관찰 후보</b>입니다. 주문 신호는 아닙니다.
           </p>
           <div style="margin-top:8px; background:rgba(15,23,42,0.6); padding:8px 10px; border-radius:6px; font-size:11.5px; line-height:1.5;">
             <div style="color:#94a3b8;">• <b>판정 조건:</b> 계절성 점수 78점 이상 + 과거 승률 70% 이상 + 최근 3개월 수익률 양호</div>
-            <div style="color:#34d399; margin-top:2px;">• <b>대응 가이드:</b> 권장 사전 진입 Window 진입 시 분할 관찰/매수 및 목표 엑시트 대응 유효</div>
+            <div style="color:#34d399; margin-top:2px;">• <b>확인 가이드:</b> 실측 피크 경로·거래 가능성·누락 근거를 종목 상세에서 재확인</div>
           </div>
         </div>
 
@@ -1741,7 +1741,7 @@
           </p>
           <div style="margin-top:8px; background:rgba(15,23,42,0.6); padding:8px 10px; border-radius:6px; font-size:11.5px; line-height:1.5;">
             <div style="color:#94a3b8;">• <b>판정 조건:</b> 계절성 점수 68점 이상 또는 최근 3개년 승률 60% 이상</div>
-            <div style="color:#fde047; margin-top:2px;">• <b>대응 가이드:</b> 목표 D-Day 도달 시 거래량 급증 및 외인/기관 순매수 전환 확인 후 진입</div>
+            <div style="color:#fde047; margin-top:2px;">• <b>확인 가이드:</b> 거래량과 외인·기관 수급이 실제로 연결될 때까지 관찰</div>
           </div>
         </div>
 
@@ -1755,7 +1755,7 @@
           </p>
           <div style="margin-top:8px; background:rgba(15,23,42,0.6); padding:8px 10px; border-radius:6px; font-size:11.5px; line-height:1.5;">
             <div style="color:#94a3b8;">• <b>판정 조건:</b> 표본수 3년 이상 + 승률 67% 이상 + AI 원인 역추적 진행</div>
-            <div style="color:#c084fc; margin-top:2px;">• <b>대응 가이드:</b> 소액 분할 매수 또는 AI 리포트 분석 후 진입 권장</div>
+            <div style="color:#c084fc; margin-top:2px;">• <b>확인 가이드:</b> 표본 확대와 이벤트·현재 데이터 근거 추가 확인</div>
           </div>
         </div>
 
@@ -1765,11 +1765,11 @@
             <span class="status-pill status-weak" style="font-size:12px; padding:4px 10px;">🟠 WEAKENING (엣지 약화)</span>
           </div>
           <p style="margin:8px 0 0; font-size:12.5px; color:#fff; line-height:1.5;">
-            과거에는 강했으나 최근 3년간 승률이나 초과수익이 하락하여 <b>계절성 모멘텀이 둔화된 상태</b>입니다.
+            과거에는 강했으나 최근 3년간 승률이나 월간 수익률이 하락하여 <b>계절성 모멘텀이 둔화된 상태</b>입니다.
           </p>
           <div style="margin-top:8px; background:rgba(15,23,42,0.6); padding:8px 10px; border-radius:6px; font-size:11.5px; line-height:1.5;">
             <div style="color:#94a3b8;">• <b>판정 조건:</b> 최근 3개년 승률 50% 미만</div>
-            <div style="color:#fb923c; margin-top:2px;">• <b>대응 가이드:</b> 비중 축소 또는 다른 ACTIVE 종목으로 교체 매매 권장</div>
+            <div style="color:#fb923c; margin-top:2px;">• <b>확인 가이드:</b> 최근 실패 연도와 무효화 조건을 우선 검토</div>
           </div>
         </div>
 

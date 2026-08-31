@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -18,7 +19,7 @@ from kr_quant.universe.tradability import evaluate_candidate_tradability, evalua
 
 logger = logging.getLogger("kr_quant.strategy.seasonality")
 SEASONALITY_CACHE_VERSION = 2
-DISCOVERY_CACHE_VERSION = 3
+DISCOVERY_CACHE_VERSION = 4
 
 EVENT_PRESETS: dict[str, dict[str, Any]] = {
     "winter_heater": {
@@ -143,6 +144,7 @@ def cache_path(settings: Settings) -> Path:
 _TICKER_META_CACHE: dict[str, Any] = {"ts": 0.0, "map": {}}
 _SEASONALITY_DB_MEM: dict[str, Any] = {"ts": 0.0, "db": None}
 _REMAINING_PEAK_CACHE: dict[str, Any] = {"signature": None, "values": {}}
+_REMAINING_PEAK_LOCK = threading.RLock()
 _CLEAN_TICKERS_CACHE: dict[str, Any] = {
     "ts": 0.0,
     "signature": None,
@@ -190,6 +192,31 @@ def _load_scored_map(settings: Settings) -> dict[str, dict[str, Any]]:
         except Exception as exc:
             logger.debug("Scored output read failed for %s: %s", path, exc)
     return {}
+
+
+def _load_flow_confirmation_map(settings: Settings) -> dict[str, dict[str, Any]]:
+    """Load observed investor-flow fields without treating them as quant factors."""
+    path = settings.data_dir / "cache" / "investor_flow.json"
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    rows = payload.get("rows") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("ticker"):
+            continue
+        ticker = str(row["ticker"]).zfill(6)
+        out[ticker] = {
+            "foreign_net": row.get("foreign_net"),
+            "institution_net": row.get("institution_net"),
+            "flow_as_of": row.get("to"),
+        }
+    return out
 
 
 def _event_tags_for_ticker(ticker: Any) -> list[str]:
@@ -363,11 +390,29 @@ def seasonality_universe_stats(settings: Settings) -> dict[str, Any]:
     for info in listed.values():
         m = str(info.get("market") or "UNKNOWN")
         listed_markets[m] = listed_markets.get(m, 0) + 1
+    prices = _prices(settings)
+    price_as_of = None
+    if prices is not None and not prices.empty and "trade_date" in prices.columns:
+        newest = pd.to_datetime(prices["trade_date"], errors="coerce").max()
+        if not pd.isna(newest):
+            price_as_of = newest.date().isoformat()
+    updated_at = db.get("updated_at")
+    calculated_at = None
+    if updated_at:
+        try:
+            calculated_at = pd.to_datetime(float(updated_at), unit="s", utc=True).isoformat()
+        except (TypeError, ValueError, OverflowError):
+            calculated_at = None
     return {
         "universe_scanned": len(stocks),
         "universe_listed": len(listed),
         "markets": markets,
         "listed_markets": listed_markets,
+        "data_context": {
+            "price_as_of": price_as_of,
+            "calculated_at": calculated_at,
+            "source": "KRX 일봉 기반 월간 계절성",
+        },
     }
 
 
@@ -733,6 +778,7 @@ def rank_institutional_events(
     # Load recent context/snapshot metrics if available for confirmation.
     # Current runs write all_stocks.parquet; older runs used scored_all.parquet.
     scored_map = _load_scored_map(settings)
+    flow_map = _load_flow_confirmation_map(settings)
 
     ranked_items: list[dict[str, Any]] = []
 
@@ -776,44 +822,76 @@ def rank_institutional_events(
             p1_rec_wr = min(win_rate * 10.0, 10.0)
             # 3. Consistency (7 pts)
             p1_cons = 7.0 if cnt >= 3 and win_rate >= 0.67 else 4.0 if cnt >= 2 else 2.0
-            # 4. Median Excess Return (10 pts)
-            p1_alpha = min(max(med_ret, 0.0) * 80.0, 10.0)
-            # 5. MDD / Payoff (5 pts)
-            p1_mdd = 5.0 if avg_ret > 0.05 else 3.0 if avg_ret > 0 else 1.0
+            # 4. Median monthly return (10 pts); no benchmark alpha is inferred.
+            p1_return = min(max(med_ret, 0.0) * 80.0, 10.0)
+            # 5. Observed payoff (5 pts); no intramonth MDD is inferred.
+            p1_payoff = 5.0 if med_ret > 0.05 else 3.0 if med_ret > 0 else 0.0
             # 6. Sample reliability (3 pts)
             p1_sample = min(cnt * 0.75, 3.0)
 
-            score_historical = round(p1_wr + p1_rec_wr + p1_cons + p1_alpha + p1_mdd + p1_sample, 1)
+            score_historical = round(p1_wr + p1_rec_wr + p1_cons + p1_return + p1_payoff + p1_sample, 1)
             score_historical = min(score_historical, 45.0)
 
             # --- PILLAR 2: Current Confirmation (Max 35 pts) ---
-            sc_row = scored_map.get(ticker, {})
-            quant_score = float(sc_row.get("quant_score", 65.0) or 65.0)
-            ret_3m = float(sc_row.get("return_3m", 0.0) or 0.0)
-            ret_6m = float(sc_row.get("return_6m", 0.0) or 0.0)
+            sc_row = {**scored_map.get(ticker, {}), **flow_map.get(ticker, {})}
+
+            def _number(key: str) -> float | None:
+                value = sc_row.get(key)
+                if value is None:
+                    return None
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return None
+
+            quant_score = _number("quant_score")
+            ret_3m = _number("return_3m")
+            foreign_net = _number("foreign_net")
+            institution_net = _number("institution_net")
+            confirmation_evidence: list[str] = []
+            confirmation_missing: list[str] = []
 
             # EPS & Financial score proxy (11 pts)
-            p2_eps = min(quant_score * 0.13, 11.0)
+            if quant_score is None:
+                p2_eps = 0.0
+                confirmation_missing.append("최신 퀀트 점수")
+            else:
+                p2_eps = min(max(quant_score, 0.0) * 0.13, 11.0)
+                confirmation_evidence.append(f"퀀트 점수 {quant_score:.1f}")
             # Relative Strength RS20/RS60 (8 pts)
-            p2_rs = 8.0 if ret_3m > 0.05 else 5.0 if ret_3m > -0.05 else 2.0
+            if ret_3m is None:
+                p2_rs = 0.0
+                confirmation_missing.append("3개월 모멘텀")
+            else:
+                p2_rs = 8.0 if ret_3m > 0.05 else 5.0 if ret_3m > -0.05 else 2.0
+                confirmation_evidence.append(f"3개월 수익률 {ret_3m * 100:+.1f}%")
             # Foreign/Inst Flow (7 pts)
-            p2_flow = 7.0 if quant_score >= 70 else 5.0 if quant_score >= 60 else 3.0
-            # Volume & Momentum (6 pts)
-            p2_vol = 5.0
-            # Real confirmation (3 pts)
-            p2_real = 3.0
+            if foreign_net is None and institution_net is None:
+                p2_flow = 0.0
+                confirmation_missing.append("외국인·기관 수급")
+            else:
+                foreign = foreign_net or 0.0
+                institution = institution_net or 0.0
+                p2_flow = 7.0 if foreign > 0 and institution > 0 else 3.5 if foreign + institution > 0 else 0.0
+                confirmation_evidence.append(f"외인 {foreign:+,.0f}주 · 기관 {institution:+,.0f}주")
+            # No current volume/real-time confirmation source is attached here.
+            p2_vol = 0.0
+            p2_real = 0.0
+            confirmation_missing.extend(["거래량 확인", "실시간 이벤트 확인"])
 
             score_current = round(p2_eps + p2_rs + p2_flow + p2_vol + p2_real, 1)
 
             # Confirmation State
-            if ret_3m < -0.15 and quant_score < 50:
+            if not confirmation_evidence:
+                confirmation_state = "WEAK"
+            elif ret_3m is not None and quant_score is not None and ret_3m < -0.15 and quant_score < 50:
                 confirmation_state = "CONTRADICTED"
                 score_current = max(5.0, score_current - 15.0)
-            elif score_current >= 28.0:
+            elif score_current >= 20.0:
                 confirmation_state = "STRONG"
-            elif score_current >= 21.0:
+            elif score_current >= 14.0:
                 confirmation_state = "CONFIRMED"
-            elif score_current >= 15.0:
+            elif score_current >= 8.0:
                 confirmation_state = "NEUTRAL"
             else:
                 confirmation_state = "WEAK"
@@ -836,7 +914,7 @@ def rank_institutional_events(
             # Pre-pricing Penalty (-5 ~ -15 pts if stock already ran up > 25% in 3M without pullback)
             pre_pricing_flag = False
             pre_pricing_penalty = 0.0
-            if ret_3m > 0.30:
+            if ret_3m is not None and ret_3m > 0.30:
                 pre_pricing_flag = True
                 pre_pricing_penalty = 8.0
 
@@ -897,6 +975,8 @@ def rank_institutional_events(
                     "current_confirmation": score_current,
                     "event_quality": score_event,
                 },
+                "current_confirmation_evidence": confirmation_evidence,
+                "current_confirmation_missing": confirmation_missing,
                 "win_rate": win_rate,
                 "avg_return": avg_ret,
                 "median_return": med_ret,
@@ -938,11 +1018,6 @@ def _enrich_remaining_peak_rows(
         price_path.stat().st_size,
         date.today().isoformat(),
     ) if price_path is not None else None
-    if _REMAINING_PEAK_CACHE.get("signature") != signature:
-        _REMAINING_PEAK_CACHE["signature"] = signature
-        _REMAINING_PEAK_CACHE["values"] = {}
-    metric_cache: dict[tuple[str, int, int], dict[str, Any]] = _REMAINING_PEAK_CACHE["values"]
-
     requested: list[tuple[dict[str, Any], str, int, tuple[str, int, int]]] = []
     for source in rows:
         row = dict(source)
@@ -953,29 +1028,41 @@ def _enrich_remaining_peak_rows(
             target_month = int(row.get("target_start_month") or pd.Timestamp.now().month)
         requested.append((row, ticker, target_month, (ticker, target_month, int(lookback_years))))
 
-    missing_tickers = {ticker for _, ticker, _, key in requested if key not in metric_cache}
-    by_ticker: dict[str, pd.DataFrame] = {}
-    if missing_tickers:
-        prices = _prices(settings)
-        if prices is not None and not prices.empty and "ticker" in prices.columns:
-            ticker_values = prices["ticker"].astype(str).str.zfill(6)
-            work = prices.loc[ticker_values.isin(missing_tickers)].copy()
-            work["ticker"] = ticker_values.loc[work.index]
-            by_ticker = {ticker: group.copy() for ticker, group in work.groupby("ticker", sort=False)}
+    # The seasonality page requests highlights, discovery, themes and the Tier-1
+    # briefing concurrently.  Without a lock each request can start the same
+    # full-universe daily-path calculation before the shared cache is warm.
+    # Serialize only the cache fill; subsequent readers reuse the completed
+    # ticker/month metrics immediately.
+    with _REMAINING_PEAK_LOCK:
+        if _REMAINING_PEAK_CACHE.get("signature") != signature:
+            _REMAINING_PEAK_CACHE["signature"] = signature
+            _REMAINING_PEAK_CACHE["values"] = {}
+        metric_cache: dict[tuple[str, int, int], dict[str, Any]] = _REMAINING_PEAK_CACHE["values"]
+
+        missing_tickers = {ticker for _, ticker, _, key in requested if key not in metric_cache}
+        by_ticker: dict[str, pd.DataFrame] = {}
+        if missing_tickers:
+            prices = _prices(settings)
+            if prices is not None and not prices.empty and "ticker" in prices.columns:
+                ticker_values = prices["ticker"].astype(str).str.zfill(6)
+                work = prices.loc[ticker_values.isin(missing_tickers)].copy()
+                work["ticker"] = ticker_values.loc[work.index]
+                by_ticker = {ticker: group.copy() for ticker, group in work.groupby("ticker", sort=False)}
+
+        for _, ticker, target_month, cache_key in requested:
+            if cache_key not in metric_cache:
+                metric_cache[cache_key] = calculate_remaining_peak_upside(
+                    by_ticker.get(ticker, pd.DataFrame()),
+                    ticker,
+                    target_month,
+                    lookback_years=lookback_years,
+                )
 
     enriched: list[dict[str, Any]] = []
     for row, ticker, target_month, cache_key in requested:
-        metrics = metric_cache.get(cache_key)
-        if metrics is None:
-            metrics = calculate_remaining_peak_upside(
-                by_ticker.get(ticker, pd.DataFrame()),
-                ticker,
-                target_month,
-                lookback_years=lookback_years,
-            )
-            metric_cache[cache_key] = metrics
+        metrics = metric_cache[cache_key]
         row["remaining_peak"] = metrics
-        if metrics.get("target_peak_date"):
+        if metrics.get("available") is True and metrics.get("target_peak_date"):
             row["entry_window_str"] = metrics.get("entry_window_str")
             row["exit_window_str"] = metrics.get("exit_window_str")
             row["entry_stage"] = metrics.get("entry_stage")
@@ -1029,6 +1116,7 @@ def scan_seasonality_discovery(
         stocks_map = db.get("stocks", {})
 
         scored_map = _load_scored_map(settings)
+        flow_map = _load_flow_confirmation_map(settings)
 
         all_patterns: list[dict[str, Any]] = []
 
@@ -1036,7 +1124,7 @@ def scan_seasonality_discovery(
             company = s_info.get("company", ticker)
             market = s_info.get("market", "KOSPI")
             months = s_info.get("months", [])
-            sc_row = scored_map.get(ticker, {})
+            sc_row = {**scored_map.get(ticker, {}), **flow_map.get(ticker, {})}
 
             for m_stat in months:
                 pat = pattern_from_month_stat(ticker, company, market, m_stat, lookback_years=lookback_years)

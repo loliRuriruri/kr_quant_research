@@ -105,12 +105,12 @@ def calculate_theme_seasonality(
             float(row.get("avg_return", row.get("expected_p50", row.get("median_return", 0.0))) or 0.0)
             for row in matched_candidates
         ]
-        alphas = [float(row.get("median_alpha") or 0.0) for row in matched_candidates]
+        alphas = [float(row["median_alpha"]) for row in matched_candidates if row.get("median_alpha") is not None]
         win_rates = [float(row.get("win_rate") or 0.0) for row in matched_candidates]
         seasonality_scores = [float(row.get("seasonality_score") or 0.0) for row in matched_candidates]
 
         avg_return = float(np.mean(returns)) if returns else 0.0
-        avg_alpha = float(np.mean(alphas)) if alphas else 0.0
+        avg_alpha = float(np.mean(alphas)) if alphas else None
         avg_win_rate = float(np.mean(win_rates)) if win_rates else 0.0
         avg_seasonality_score = float(np.mean(seasonality_scores)) if seasonality_scores else 0.0
 
@@ -149,7 +149,7 @@ def calculate_theme_seasonality(
                 "excluded_count": max(len(configured_set) - len(matched_candidates), 0),
                 "pre_entry_count": len(pre_entry_tickers),
                 "avg_return": round(avg_return, 4),
-                "avg_alpha": round(avg_alpha, 4),
+                "avg_alpha": round(avg_alpha, 4) if avg_alpha is not None else None,
                 "avg_win_rate": round(avg_win_rate, 3),
                 "avg_seasonality_score": round(avg_seasonality_score, 1),
                 "top_leader_name": leader_name,

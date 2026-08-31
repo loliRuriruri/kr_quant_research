@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from statistics import median
 from typing import Any
 from kr_quant.strategy.discovery_engine import SeasonalityPattern
 
@@ -335,35 +336,76 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         explanation_mode = "RULE_BASED"
         explanation_source = context["source"]
 
-    # --- 1. Historical Pattern Score (Max 50 pts) ---
+    def number(key: str) -> float | None:
+        value = s_row.get(key)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    # --- 1. Historical Pattern Score (observed monthly returns only) ---
     # Win Rate (15)
     s_wr = min(pattern.win_rate * 15.0, 15.0)
-    # Median Alpha (15)
-    s_alpha = min(max(pattern.median_alpha, 0.0) * 120.0, 15.0)
-    # Avg MDD (10)
-    s_mdd = max(0.0, 10.0 - pattern.avg_mdd * 40.0)
-    # Sample Count (5)
-    s_cnt = min(pattern.sample_count * 1.0, 5.0)
+    # Median monthly return (15). This is not benchmark excess return.
+    s_return = min(max(pattern.median_return, 0.0) * 120.0, 15.0)
+    # Sample Count (10)
+    s_cnt = min(pattern.sample_count * 2.0, 10.0)
     # Payoff (5)
     s_payoff = 5.0 if pattern.median_return > 0.05 else 3.0
-    score_hist = round(s_wr + s_alpha + s_mdd + s_cnt + s_payoff, 1)
+    score_hist = round(s_wr + s_return + s_cnt + s_payoff, 1)
 
     # --- 2. Recent Validation Score (Max 20 pts) ---
     # Recent 3Y Win Rate (10)
     s_r3_wr = min(pattern.recent_3y_win_rate * 10.0, 10.0)
-    # Recent 3Y Median Alpha (10)
-    s_r3_alpha = min(max(pattern.recent_3y_median_alpha, 0.0) * 100.0, 10.0)
-    score_rec = round(s_r3_wr + s_r3_alpha, 1)
+    recent_returns = [float(row.get("return", 0.0) or 0.0) for row in pattern.years_track[-3:]]
+    recent_median_return = float(median(recent_returns)) if recent_returns else 0.0
+    s_r3_return = min(max(recent_median_return, 0.0) * 100.0, 10.0)
+    score_rec = round(s_r3_wr + s_r3_return, 1)
 
     # --- 3. Current Confirmation Score (Max 20 pts) ---
-    quant_score = float(s_row.get("quant_score", 65.0) or 65.0)
-    ret_3m = float(s_row.get("return_3m", 0.0) or 0.0)
+    quant_score = number("quant_score")
+    ret_3m = number("return_3m")
+    foreign_net = number("foreign_net")
+    institution_net = number("institution_net")
+    volume_ratio = number("volume_ratio")
 
-    s_rs = 5.0 if ret_3m > 0.03 else 3.0 if ret_3m > -0.05 else 1.0
-    s_eps = min(quant_score * 0.065, 5.0)
-    s_flow = 4.0 if quant_score >= 68 else 2.5
-    s_vol = 2.0
-    s_real = 4.0 if kb else 2.5
+    current_evidence: list[str] = []
+    current_missing: list[str] = []
+
+    s_rs = 0.0
+    if ret_3m is None:
+        current_missing.append("3개월 모멘텀")
+    else:
+        s_rs = 5.0 if ret_3m > 0.03 else 3.0 if ret_3m > -0.05 else 1.0
+        current_evidence.append(f"3개월 수익률 {ret_3m * 100:+.1f}%")
+
+    s_eps = 0.0
+    if quant_score is None:
+        current_missing.append("최신 퀀트 점수")
+    else:
+        s_eps = min(max(quant_score, 0.0) * 0.065, 5.0)
+        current_evidence.append(f"퀀트 점수 {quant_score:.1f}")
+
+    s_flow = 0.0
+    if foreign_net is None and institution_net is None:
+        current_missing.append("외국인·기관 수급")
+    else:
+        foreign = foreign_net or 0.0
+        institution = institution_net or 0.0
+        s_flow = 4.0 if foreign > 0 and institution > 0 else 2.0 if foreign + institution > 0 else 0.0
+        current_evidence.append(f"외인 {foreign:+,.0f}주 · 기관 {institution:+,.0f}주")
+
+    s_vol = 0.0
+    if volume_ratio is None:
+        current_missing.append("거래량 비율")
+    else:
+        s_vol = 2.0 if volume_ratio >= 1.2 else 1.0 if volume_ratio >= 1.0 else 0.0
+        current_evidence.append(f"거래량 비율 {volume_ratio:.2f}배")
+
+    # Curated event knowledge is explanatory context, not current confirmation.
+    s_real = 0.0
     score_curr = round(s_rs + s_eps + s_flow + s_vol + s_real, 1)
 
     # --- 4. Event Explanation Score (Max 10 pts) ---
@@ -382,7 +424,7 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
 
     # Pre-pricing Penalty
     pre_pricing = False
-    if ret_3m > 0.35:
+    if ret_3m is not None and ret_3m > 0.35:
         pre_pricing = True
         total_score = max(0.0, total_score - 10.0)
 
@@ -399,11 +441,13 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         grade = "D"
 
     # Status Determination
-    if ret_3m < -0.15 and quant_score < 48:
+    if not current_evidence:
+        status = "UNKNOWN"
+    elif ret_3m is not None and quant_score is not None and ret_3m < -0.15 and quant_score < 48:
         status = "BROKEN"
     elif pattern.recent_3y_win_rate < 0.50:
         status = "WEAKENING"
-    elif total_score >= 78.0 and pattern.win_rate >= 0.70 and ret_3m >= 0:
+    elif total_score >= 78.0 and pattern.win_rate >= 0.70 and ret_3m is not None and ret_3m >= 0:
         status = "ACTIVE"
     elif total_score >= 68.0:
         status = "WATCH"
@@ -444,6 +488,8 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
             "current_confirmation": score_curr,
             "event_explanation": score_expl,
         },
+        "current_confirmation_evidence": current_evidence,
+        "current_confirmation_missing": current_missing,
         "pre_pricing_flag": pre_pricing,
         "invalidating_conditions": invalidation,
         # Mobile Dashboard Playbook & Timing additions

@@ -1441,54 +1441,95 @@ def _rank_fallback_payload(context: dict[str, Any]) -> dict[str, Any]:
 @app.get("/api/flow/tier1-briefing")
 def api_flow_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.flow.priority import collect_universe
+    from kr_quant.flow.official import events_payload
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
-    uni = collect_universe(s, limit=15)
-    prompt_version = "flow_tier1_v2"
-    if not uni:
+    flow = events_payload(s, min_turn=5)
+    active_key = str(flow.get("active") or "official")
+    active = flow.get(active_key) if isinstance(flow.get(active_key), dict) else {}
+    source_name = "kis_investor_flow" if active_key == "official" else "toss_flow_cache"
+    by_ticker: dict[str, dict[str, Any]] = {}
+    for table_name in ("cum5", "consecutive", "paired", "turns"):
+        for row in (active.get(table_name) or [])[:15]:
+            if not isinstance(row, dict):
+                continue
+            ticker = str(row.get("ticker") or "").zfill(6)
+            if not ticker.strip("0"):
+                continue
+            item = by_ticker.setdefault(
+                ticker,
+                {
+                    "ticker": ticker,
+                    "company": row.get("company"),
+                    "source": row.get("source") or active.get("source"),
+                    "party": row.get("party_ko"),
+                    "last_date": row.get("last_date"),
+                    "today_primary": row.get("today_a"),
+                    "today_foreign": row.get("today_b"),
+                    "w5": row.get("w5"),
+                    "w20": row.get("w20"),
+                    "streak_days": row.get("days"),
+                    "direction": row.get("direction"),
+                    "paired": row.get("paired"),
+                    "paired_direction": row.get("paired_direction"),
+                    "turn": row.get("turn"),
+                    "event_types": [],
+                },
+            )
+            if table_name not in item["event_types"]:
+                item["event_types"].append(table_name)
+    evidence = list(by_ticker.values())[:15]
+    prompt_version = "flow_tier1_v3"
+    if not evidence:
         return tier1_unavailable(
             endpoint,
             code="TIER1_EVIDENCE_MISSING",
             message="수급 브리핑에 사용할 실제 종목 데이터가 없습니다.",
-            sources=["flow_priority"],
-            missing=["flow_candidates"],
+            sources=[source_name],
+            missing=["investor_flow_events"],
             prompt_version=prompt_version,
         )
-    
+
+    evidence_json = json.dumps(evidence, ensure_ascii=False, default=str)
     prompt = (
-        "당신은 여의도 최고의 기관 수급 분석 전문가입니다.\n"
-        f"최근 메이저 수급 추적 상위 15종목 유니버스:\n"
-        + "\n".join(f"- {item['company']} ({item['ticker']}): [{item['why']}] {item['detail']}" for item in uni)
-        + "\n\n제공된 후보에서 실제로 관찰되는 수급 공통점과 자료의 범위 한계를 2줄로 설명하세요. 후보에 없는 업종이나 원인을 만들지 말고 주문·비중 지시는 하지 마세요."
+        "당신은 기관 수급 데이터 감사자입니다.\n"
+        f"실제 투자자별 순매수 관측치(수량 단위, 금액 아님):\n{evidence_json}\n\n"
+        "w5/w20은 저장된 거래일 순매수 수량 합계이고 today_primary/today_foreign도 주수입니다. "
+        "제공된 수치와 이벤트 유형만 요약하세요. 업종·원인·지지선·매집 의도를 추정하지 말고, 표본 범위와 기준일을 밝히며 주문·비중 지시는 하지 마세요."
         + "\n반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 헤드라인\", \"briefing\": \"관찰된 수급 공통점과 한계 2줄\", \"focus_sectors\": [\"실제 후보에서 확인된 업종\"]}"
     )
+    sample_lines = [
+        f"{row.get('company') or row['ticker']}: 5일 {float(row.get('w5') or 0):+,.0f}주, {row.get('direction') or 'FLAT'} {int(row.get('streak_days') or 0)}일"
+        for row in evidence[:3]
+    ]
     fallback_payload = {
-        "headline": f"외인·기관 메이저 수급 집중 {len(uni)}개 종목 분석",
-        "briefing": f"최근 수급 순매수 상위 종목군({', '.join([u.get('company','') for u in uni[:3] if u.get('company')])})을 중심으로 유동성과 업종별 수급 쏠림을 관찰합니다.",
-        "focus_sectors": list({u.get("sector", "주요섹터") for u in uni[:4] if u.get("sector")}) or ["반도체/IT", "바이오", "2차전지"],
+        "headline": f"{active.get('source') or active_key.upper()} 실제 수급 이벤트 {len(evidence)}종목",
+        "briefing": " · ".join(sample_lines) + ". 수량 기반 제한 표본이며 전시장 업종 순위나 매수 의도를 뜻하지 않습니다.",
+        "focus_sectors": [],
     }
     result = tier1_cached_chat_json(
         s.root,
         endpoint,
         namespace="flow",
         prompt_version=prompt_version,
-        evidence=uni,
+        evidence=evidence,
         messages=[
             {"role": "system", "content": "You are a professional Korean institutional flow strategist. Output strictly in JSON."},
             {"role": "user", "content": prompt},
         ],
-        sources=["flow_priority"],
-        evidence_count=len(uni),
+        as_of=max((str(row.get("last_date") or "") for row in evidence), default=None) or None,
+        sources=[source_name],
+        evidence_count=len(evidence),
     )
     if result.get("ok"):
         return result
     return tier1_deterministic_fallback(
         endpoint,
         fallback_payload,
-        sources=["flow_priority"],
-        evidence_count=len(uni),
+        as_of=max((str(row.get("last_date") or "") for row in evidence), default=None) or None,
+        sources=[source_name],
+        evidence_count=len(evidence),
         prompt_version=prompt_version,
     )
 
@@ -2052,12 +2093,32 @@ def api_trade_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
-    prompt_version = "trade_tier1_v2"
+    prompt_version = "trade_tier1_v3"
 
     flow_data = load_flow(s, days=5)
-    rows = flow_data.get("rows") or []
-    top_trades = [f"{r.get('company')}({r.get('ticker')})" for r in rows[:5] if r.get("company")]
-    if not top_trades:
+    rows = flow_data.get("trading") or flow_data.get("rows") or []
+    evidence = []
+    for row in rows[:8]:
+        ta = row.get("ta") if isinstance(row.get("ta"), dict) else {}
+        evidence.append({
+            "ticker": row.get("ticker"),
+            "company": row.get("company"),
+            "flow_from": row.get("from"),
+            "flow_to": row.get("to"),
+            "last": row.get("last"),
+            "change_rate": row.get("change_rate"),
+            "foreign_net": row.get("foreign_net"),
+            "institution_net": row.get("institution_net"),
+            "pe_net": row.get("pe_net"),
+            "setup_notional_krw": max(float(row.get("dual_krw") or 0), float(row.get("pe_krw") or 0), float(row.get("empty_krw") or 0)),
+            "setups": row.get("setups") or [],
+            "stoch_k": ta.get("stoch_k"),
+            "stoch_d": ta.get("stoch_d"),
+            "ichimoku_signal": ta.get("ichimoku_signal") or ta.get("signal"),
+            "ret_5d": row.get("ret_5d"),
+            "ret_5d_status": (row.get("ret_5d_meta") or {}).get("status") if isinstance(row.get("ret_5d_meta"), dict) else None,
+        })
+    if not evidence:
         return tier1_unavailable(
             endpoint,
             code="TIER1_EVIDENCE_MISSING",
@@ -2067,29 +2128,35 @@ def api_trade_tier1_briefing_get() -> dict[str, Any]:
             prompt_version=prompt_version,
         )
 
+    evidence_json = json.dumps(evidence, ensure_ascii=False, default=str)
     prompt = (
         "당신은 실전 데이트레이딩 및 3~5일 단기 스윙 전략 헤드 트레이더입니다.\n"
-        f"현재 단기 트레이딩 랩 포착 종목군: {', '.join(top_trades) or '주요 유니버스 종목'}\n"
-        "제공된 후보와 실제 수급·기술 지표가 일치하는지 설명하고, 확인되지 않은 가격선이나 수익률을 만들지 마세요. 주문·목표가·손절가를 제시하지 마세요.\n"
+        f"현재 단기 트레이딩 랩 실제 근거:\n{evidence_json}\n"
+        "수급 주수, 추정금액, 스토캐스틱, 일목 신호 중 제공된 값만 설명하세요. ret_5d_status가 COMPLETE가 아니면 성과로 인용하지 마세요. "
+        "확인되지 않은 지지선·반등·수익률·원인을 만들지 말고 주문·목표가·손절가를 제시하지 마세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 트레이딩 랩 헤드라인\", \"trading_brief\": \"단기 수급/기술 지표 해설 2줄\", \"execution_guide\": \"해석상 무효화 조건과 주의점\"}"
     )
     fallback_payload = {
-        "headline": f"단기 수급·기술적 변곡점 포착 {len(rows)}종목 브리핑",
-        "trading_brief": f"스토캐스틱 및 거래대금 기준 수급 반등 구간에 진입한 {', '.join(top_trades[:3])} 종목의 단기 지지선 유효성을 확인합니다.",
-        "execution_guide": "단기 기술적 지표는 시장 지수 변동성에 민감하므로 거래대금 급감 시 손절 및 비중 관리가 필수적입니다.",
+        "headline": f"실제 수급·기술 근거가 연결된 단기 후보 {len(evidence)}종목",
+        "trading_brief": " · ".join(
+            f"{row.get('company') or row.get('ticker')}: 외인 {float(row.get('foreign_net') or 0):+,.0f}주, 기관 {float(row.get('institution_net') or 0):+,.0f}주, 스토K {row.get('stoch_k') if row.get('stoch_k') is not None else '미연결'}"
+            for row in evidence[:3]
+        ),
+        "execution_guide": "D+5 관측이 끝난 성과만 검증값으로 읽고, 기술 지표·가격선이 누락된 종목에는 방향성을 부여하지 않습니다.",
     }
     result = tier1_cached_chat_json(
         s.root,
         endpoint,
         namespace="trade",
         prompt_version=prompt_version,
-        evidence=rows[:5],
+        evidence=evidence,
         messages=[
             {"role": "system", "content": "You are a professional quantitative swing trading strategist. Output strictly in JSON."},
             {"role": "user", "content": prompt},
         ],
         sources=["flow_scan_5d"],
-        evidence_count=len(top_trades),
+        as_of=str(flow_data.get("fetched_at") or "") or None,
+        evidence_count=len(evidence),
     )
     if result.get("ok"):
         return result
@@ -2097,7 +2164,8 @@ def api_trade_tier1_briefing_get() -> dict[str, Any]:
         endpoint,
         fallback_payload,
         sources=["flow_scan_5d"],
-        evidence_count=len(top_trades),
+        as_of=str(flow_data.get("fetched_at") or "") or None,
+        evidence_count=len(evidence),
         prompt_version=prompt_version,
     )
 
@@ -2885,7 +2953,7 @@ def api_seasonality_discovery_get(
     lookback_years: int = 5,
     exclude_expired: bool = False,
 ) -> dict[str, Any]:
-    from kr_quant.strategy.seasonality import scan_seasonality_discovery
+    from kr_quant.strategy.seasonality import scan_seasonality_discovery, seasonality_universe_stats
 
     s = load_settings()
     rows = scan_seasonality_discovery(
@@ -2897,12 +2965,14 @@ def api_seasonality_discovery_get(
         lookback_years=lookback_years,
         exclude_expired=exclude_expired,
     )
+    stats = seasonality_universe_stats(s)
     return {
         "ok": True,
         "horizon_days": horizon_days,
         "lookback_years": lookback_years,
         "count": len(rows),
         "rows": rows,
+        "data_context": stats["data_context"],
     }
 
 
@@ -2927,7 +2997,7 @@ def api_seasonality_ranked_get(
     confirmation: str | None = None,
     query: str | None = None,
 ) -> dict[str, Any]:
-    from kr_quant.strategy.seasonality import rank_institutional_events
+    from kr_quant.strategy.seasonality import rank_institutional_events, seasonality_universe_stats
 
     s = load_settings()
     rows = rank_institutional_events(
@@ -2938,25 +3008,30 @@ def api_seasonality_ranked_get(
         confirmation_filter=confirmation,
         query=query,
     )
+    stats = seasonality_universe_stats(s)
     return {
         "ok": True,
         "horizon_days": horizon_days,
         "count": len(rows),
         "rows": rows,
+        "data_context": stats["data_context"],
     }
 
 
 @app.get("/api/seasonality/events")
 def api_seasonality_events_get(horizon_days: int = 180) -> dict[str, Any]:
     from kr_quant.strategy.event_calendar import get_upcoming_events
+    from kr_quant.strategy.seasonality import seasonality_universe_stats
 
+    s = load_settings()
     events = get_upcoming_events(horizon_days=horizon_days)
-    return {"ok": True, "horizon_days": horizon_days, "count": len(events), "events": events}
+    stats = seasonality_universe_stats(s)
+    return {"ok": True, "horizon_days": horizon_days, "count": len(events), "events": events, "data_context": stats["data_context"]}
 
 
 @app.get("/api/seasonality/themes")
 def api_seasonality_themes_get(horizon_days: int = 90, lookback_years: int = 5) -> dict[str, Any]:
-    from kr_quant.strategy.seasonality import EVENT_PRESETS, scan_seasonality
+    from kr_quant.strategy.seasonality import EVENT_PRESETS, scan_seasonality, seasonality_universe_stats
     from kr_quant.strategy.theme_engine import calculate_theme_seasonality
 
     s = load_settings()
@@ -2965,6 +3040,7 @@ def api_seasonality_themes_get(horizon_days: int = 90, lookback_years: int = 5) 
         for preset_key in EVENT_PRESETS
     }
     themes = calculate_theme_seasonality([], event_rows_by_preset=event_rows_by_preset)
+    stats = seasonality_universe_stats(s)
     return {
         "ok": True,
         "horizon_days": horizon_days,
@@ -2973,6 +3049,7 @@ def api_seasonality_themes_get(horizon_days: int = 90, lookback_years: int = 5) 
         "theme_source": "seasonality_event_presets",
         "pre_entry_overlap_source": "seasonality_discovery_client",
         "themes": themes,
+        "data_context": stats["data_context"],
     }
 
 
@@ -3023,6 +3100,7 @@ def api_seasonality_scan_get(
         "universe_scanned": stats["universe_scanned"],
         "universe_listed": stats["universe_listed"],
         "markets": stats["markets"],
+        "data_context": stats["data_context"],
     }
 
 

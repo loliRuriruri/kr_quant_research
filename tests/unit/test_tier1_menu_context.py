@@ -5,6 +5,8 @@ import json
 from fastapi.testclient import TestClient
 
 from kr_quant.context import macro_brief
+from kr_quant.flow import official as flow_official
+from kr_quant.flow import scan as flow_scan
 from kr_quant.research import analyze
 from kr_quant.web import app as web_app
 
@@ -112,3 +114,103 @@ def test_market_tier1_briefing_uses_actual_macro_rows(monkeypatch):
     assert body["evidence"]["item_count"] == 6
     assert body["evidence"]["missing"] == []
     assert body["drivers"][0]["id"] == "DGS10"
+
+
+def test_flow_tier1_briefing_receives_actual_share_evidence(monkeypatch):
+    captured: dict[str, str] = {}
+    row = {
+        "ticker": "999991",
+        "company": "수급검증",
+        "source": "KIS",
+        "party_ko": "기관합계",
+        "last_date": "2026-08-28",
+        "today_a": 1234,
+        "today_b": 567,
+        "w5": 4321,
+        "w20": 9876,
+        "days": 3,
+        "direction": "BUY",
+        "paired": True,
+        "paired_direction": "BUY",
+        "turn": None,
+    }
+    monkeypatch.setattr(
+        flow_official,
+        "events_payload",
+        lambda settings, min_turn=5: {
+            "active": "official",
+            "official": {"source": "KIS", "cum5": [row], "consecutive": [row], "paired": [row], "turns": []},
+            "toss": {},
+        },
+    )
+
+    def fake_tier1(_root, _endpoint, **kwargs):
+        captured["prompt"] = kwargs["messages"][-1]["content"]
+        return {
+            "ok": True,
+            "used_in_quant": False,
+            "headline": "실측 수급",
+            "briefing": "수량 기준",
+            "focus_sectors": [],
+            "evidence": {"sources": kwargs["sources"], "item_count": kwargs["evidence_count"]},
+        }
+
+    monkeypatch.setattr(web_app, "tier1_cached_chat_json", fake_tier1)
+
+    body = client.get("/api/flow/tier1-briefing").json()
+
+    assert body["ok"] is True
+    assert body["evidence"]["sources"] == ["kis_investor_flow"]
+    assert '"w5": 4321' in captured["prompt"]
+    assert "수량 단위, 금액 아님" in captured["prompt"]
+
+
+def test_trade_tier1_briefing_receives_actual_flow_and_technical_evidence(monkeypatch):
+    captured: dict[str, str] = {}
+    monkeypatch.setattr(
+        flow_scan,
+        "load_flow",
+        lambda settings, days=5: {
+            "fetched_at": 1788123456,
+            "trading": [
+                {
+                    "ticker": "999992",
+                    "company": "기술검증",
+                    "from": "2026-08-24",
+                    "to": "2026-08-28",
+                    "last": 12345,
+                    "change_rate": 0.012,
+                    "foreign_net": 3210,
+                    "institution_net": -210,
+                    "pe_net": 110,
+                    "dual_krw": 123000000,
+                    "pe_krw": 5000000,
+                    "empty_krw": 0,
+                    "setups": ["사모매집"],
+                    "ta": {"stoch_k": 18.2, "stoch_d": 22.1, "ichimoku_signal": "구름 아래"},
+                    "ret_5d": None,
+                    "ret_5d_meta": {"status": "PENDING"},
+                }
+            ],
+        },
+    )
+
+    def fake_tier1(_root, _endpoint, **kwargs):
+        captured["prompt"] = kwargs["messages"][-1]["content"]
+        return {
+            "ok": True,
+            "used_in_quant": False,
+            "headline": "실측 기술",
+            "trading_brief": "관측값만 사용",
+            "execution_guide": "D+5 대기",
+            "evidence": {"sources": kwargs["sources"], "item_count": kwargs["evidence_count"]},
+        }
+
+    monkeypatch.setattr(web_app, "tier1_cached_chat_json", fake_tier1)
+
+    body = client.get("/api/trade/tier1-briefing").json()
+
+    assert body["ok"] is True
+    assert '"foreign_net": 3210' in captured["prompt"]
+    assert '"stoch_k": 18.2' in captured["prompt"]
+    assert '"ret_5d_status": "PENDING"' in captured["prompt"]

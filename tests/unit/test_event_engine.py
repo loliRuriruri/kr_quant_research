@@ -54,6 +54,7 @@ def test_api_seasonality_ranked():
     assert res.status_code == 200
     data = res.json()
     assert data["ok"] is True
+    assert data["data_context"]["price_as_of"]
     assert "rows" in data
     assert len(data["rows"]) > 0
 

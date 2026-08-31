@@ -1,7 +1,7 @@
 import pandas as pd
 
 from kr_quant.flow.investor import classify_setups, filter_trading, search_empty_houses, summarize_records
-from kr_quant.flow.scan import attach_daily_prices, amount_bucket_stats, analyze_hit_rate, filter_by_min_krw
+from kr_quant.flow.scan import _fwd_return, _fwd_return_detail, attach_daily_prices, amount_bucket_stats, analyze_hit_rate, filter_by_min_krw
 from kr_quant.flow.universe import KNOWN_ETF, local_name
 
 
@@ -45,6 +45,40 @@ def test_hit_rate():
     assert abs(stats["hit"] - round(2 / 3, 3)) < 1e-9
     assert stats["avg"] > 0
     assert stats["median"] == 0.02
+
+
+def test_forward_return_waits_for_full_horizon():
+    prices = pd.DataFrame(
+        [
+            {"trade_date": f"2026-08-{day:02d}", "close": 100 + index * 10, "listed_shares": 1}
+            for index, day in enumerate(range(3, 8))
+        ]
+    )
+
+    detail = _fwd_return_detail(prices, pd.Timestamp("2026-08-03").date(), 5)
+
+    assert _fwd_return(prices, pd.Timestamp("2026-08-03").date(), 5) is None
+    assert detail["status"] == "PENDING"
+    assert detail["observed_sessions"] == 4
+    assert detail["required_sessions"] == 5
+    assert detail["complete"] is False
+
+
+def test_forward_return_uses_exact_completed_horizon():
+    prices = pd.DataFrame(
+        [
+            {"trade_date": f"2026-08-{day:02d}", "close": 100 + index * 10, "listed_shares": 1}
+            for index, day in enumerate(range(3, 10))
+        ]
+    )
+
+    detail = _fwd_return_detail(prices, pd.Timestamp("2026-08-03").date(), 5)
+
+    assert abs(_fwd_return(prices, pd.Timestamp("2026-08-03").date(), 5) - 0.5) < 1e-9
+    assert detail["status"] == "COMPLETE"
+    assert detail["observed_sessions"] == 5
+    assert detail["end_date"] == "2026-08-08"
+    assert abs(detail["return"] - 0.5) < 1e-9
 
 
 def test_amount_filter_and_buckets():

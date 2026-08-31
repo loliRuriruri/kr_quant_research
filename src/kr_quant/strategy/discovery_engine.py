@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 from typing import Any
 
 import numpy as np
@@ -26,12 +25,12 @@ class SeasonalityPattern:
     win_rate: float
     mean_return: float
     median_return: float
-    median_alpha: float
-    avg_mdd: float
+    median_alpha: float | None
+    avg_mdd: float | None
     best_year: dict[str, Any]
     worst_year: dict[str, Any]
     recent_3y_win_rate: float
-    recent_3y_median_alpha: float
+    recent_3y_median_alpha: float | None
     recent_5y_win_rate: float
     years_track: list[dict[str, Any]]
     failed_years: list[dict[str, Any]]
@@ -82,8 +81,8 @@ def pattern_from_month_stat(
                 "year": y,
                 "return": round(r, 4),
                 "is_win": bool(r > 0),
-                "market_alpha": round(r - 0.005, 4),
-                "mdd": round(abs(min(r, 0.0) * 0.8), 4),
+                "market_alpha": None,
+                "mdd": None,
             })
     else:
         if lookback_years and lookback_years > 0:
@@ -103,8 +102,8 @@ def pattern_from_month_stat(
                 "year": y,
                 "return": round(r, 4),
                 "is_win": bool(r > 0),
-                "market_alpha": round(r - 0.005, 4),
-                "mdd": round(abs(min(r, 0.0) * 0.8), 4),
+                "market_alpha": None,
+                "mdd": None,
             })
 
     years_count = len(years_track)
@@ -112,24 +111,25 @@ def pattern_from_month_stat(
         return None
 
     rets = [r["return"] for r in years_track]
-    alphas = [r["market_alpha"] for r in years_track]
     wins = [r for r in years_track if r["is_win"]]
     fails = [r for r in years_track if not r["is_win"]]
 
     wr = len(wins) / len(years_track) if years_track else 0.0
     med_ret = float(np.median(rets)) if rets else 0.0
-    med_alpha = float(np.median(alphas)) if alphas else 0.0
-    avg_mdd = float(np.mean([r["mdd"] for r in years_track])) if years_track else 0.0
+    # Benchmark and intramonth daily-path series are not part of the monthly
+    # statistic input.  Do not manufacture excess return or drawdown proxies.
+    med_alpha = None
+    avg_mdd = None
 
     recent_3y = years_track[-3:] if len(years_track) >= 3 else years_track
     r3_wr = len([r for r in recent_3y if r["is_win"]]) / len(recent_3y) if recent_3y else wr
-    r3_alpha = float(np.median([r["market_alpha"] for r in recent_3y])) if recent_3y else med_alpha
+    r3_alpha = None
 
     recent_5y = years_track[-5:] if len(years_track) >= 5 else years_track
     r5_wr = len([r for r in recent_5y if r["is_win"]]) / len(recent_5y) if recent_5y else wr
 
     # Pattern Confidence
-    if years_count >= 5 and wr >= 0.75 and med_alpha >= 0.03:
+    if years_count >= 5 and wr >= 0.75 and med_ret >= 0.03:
         conf = "HIGH"
     elif years_count >= 3 and wr >= 0.67:
         conf = "HIGH"
@@ -149,74 +149,17 @@ def pattern_from_month_stat(
     neg_rets = abs(sum([r for r in rets if r < 0]))
     profit_factor = round(pos_rets / neg_rets, 1) if neg_rets > 0.0001 else (9.9 if pos_rets > 0 else 1.0)
 
-    # Calculate Stock-Specific Peak Day & Tailored Timing Windows
-    ref_dt = pd.to_datetime(as_of_date).date() if as_of_date else date.today()
-    cur_m = ref_dt.month
-    cur_d = ref_dt.day
-
-    # Dynamic Historical Peak Day (Distributed across 08~26 based on stock traits & price dynamics)
-    try:
-        t_seed = int(ticker[-4:])
-    except Exception:
-        t_seed = hash(ticker) % 1000
-    peak_day = 8 + (t_seed % 18)  # Range: 08 ~ 25
-
-    entry_m = month - 1 if month > 1 else 12
-    # Tailored entry & exit windows around specific peak day
-    if peak_day <= 12:
-        entry_window_str = f"{entry_m:02d}/15 ~ {entry_m:02d}/28"
-        exit_window_str = f"{month:02d}/{max(1, peak_day - 2):02d} ~ {month:02d}/{min(28, peak_day + 4):02d}"
-    elif peak_day <= 18:
-        entry_window_str = f"{entry_m:02d}/20 ~ {month:02d}/05"
-        exit_window_str = f"{month:02d}/{peak_day - 3:02d} ~ {month:02d}/{min(28, peak_day + 4):02d}"
-    else:
-        entry_window_str = f"{entry_m:02d}/25 ~ {month:02d}/10"
-        exit_window_str = f"{month:02d}/{peak_day - 3:02d} ~ {month:02d}/{min(28, peak_day + 3):02d}"
-
-    # Compute exact D-Day from ref_dt to target peak date
-    if month == cur_m:
-        if cur_d < max(1, peak_day - 10):
-            entry_stage = "TODAY_ENTRY"
-            entry_stage_label = f"🔥 당월 진입 초반 (D+{cur_d})"
-        elif cur_d <= peak_day - 2:
-            entry_stage = "RALLY_ACTIVE"
-            entry_stage_label = f"📈 랠리 진행중 (D+{cur_d})"
-        elif cur_d <= min(28, peak_day + 3):
-            entry_stage = "EXIT_PEAK"
-            entry_stage_label = f"💰 피크 엑시트/매도 (D+{cur_d})"
-        else:
-            entry_stage = "SEASON_END"
-            entry_stage_label = f"🏁 시즌 종료 (D+{cur_d})"
-    else:
-        target_year = ref_dt.year if month > cur_m else ref_dt.year + 1
-        target_dt = date(target_year, month, max(1, peak_day - 10))
-        d_days = (target_dt - ref_dt).days
-
-        if 0 < d_days <= 10:
-            entry_stage = "TODAY_ENTRY"
-            entry_stage_label = f"🔥 사전 진입 집중 (D-{d_days})"
-        elif 10 < d_days <= 25:
-            entry_stage = "PRE_ENTRY_15"
-            entry_stage_label = f"⚡ 사전 진입 적기 (D-{d_days})"
-        elif 25 < d_days <= 45:
-            entry_stage = "PRE_ENTRY_30"
-            entry_stage_label = f"⚡ 분할 진입 구간 (D-{d_days})"
-        elif 45 < d_days <= 75:
-            entry_stage = "ACCUMULATE_60"
-            entry_stage_label = f"🎯 사전 준비 윈도우 (D-{d_days})"
-        else:
-            entry_stage = "WATCH"
-            entry_stage_label = f"👀 통계적 관찰 (D-{d_days})"
-
-    # Playbook rules
-    target_alpha_str = f"+{med_alpha * 100:.1f}%" if med_alpha > 0 else "+10.0%"
-    mdd_stop_str = f"-{avg_mdd * 100:.1f}%" if avg_mdd > 0 else "-5.0%"
-
+    # Exact entry/peak timing requires daily paths.  It is attached later by
+    # remaining_peak.py only when enough fresh observations exist.
+    entry_stage = "WATCH"
+    entry_stage_label = "실측 피크 산출 대기"
+    entry_window_str = ""
+    exit_window_str = ""
     playbook = {
-        "entry_timing": f"통계적 사전 진입 타이밍: 피크 시기({month:02d}/{peak_day:02d}) 도달 D-30일 ~ D-15일 전 분할 관찰/매수",
-        "exit_timing": f"목표 엑시트 시기: 계절성 피크({month:02d}/{peak_day:02d}) 도달 시점 또는 목표 알파({target_alpha_str}) 달성 시 분할 매도",
-        "stop_loss": f"리스크 방어 기준: 평균 MDD({mdd_stop_str}) 초과 하락 또는 외국인/기관 대규모 순매도 전환 시 손절",
-        "recommendation": f"반복 상승 Window({entry_window_str}) 진입 시 분할 관찰 및 계절성 목표가 대응 유효",
+        "entry_timing": "월간 수익률만으로는 진입일을 산출하지 않습니다. 신선한 일봉 경로와 3개년 이상 피크 표본이 필요합니다.",
+        "exit_timing": "역사적 피크 감시 구간은 일봉 경로 검증을 통과한 경우에만 별도로 표시합니다.",
+        "stop_loss": "월간 집계에는 경로상 최대낙폭이 없으므로 MDD 기반 손절선을 제시하지 않습니다.",
+        "recommendation": "월별 반복 수익률은 탐색 근거이며 주문·추천 신호가 아닙니다.",
     }
 
     return SeasonalityPattern(
@@ -235,12 +178,12 @@ def pattern_from_month_stat(
         win_rate=round(wr, 3),
         mean_return=round(float(np.mean(rets)), 4),
         median_return=round(med_ret, 4),
-        median_alpha=round(med_alpha, 4),
-        avg_mdd=round(avg_mdd, 4),
+        median_alpha=med_alpha,
+        avg_mdd=avg_mdd,
         best_year=best_y,
         worst_year=worst_y,
         recent_3y_win_rate=round(r3_wr, 3),
-        recent_3y_median_alpha=round(r3_alpha, 4),
+        recent_3y_median_alpha=r3_alpha,
         recent_5y_win_rate=round(r5_wr, 3),
         years_track=years_track,
         failed_years=fails,

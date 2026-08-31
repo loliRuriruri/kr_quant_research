@@ -15,7 +15,7 @@ from kr_quant.ingest.tossinvest import get_investor_trading
 from kr_quant.settings import Settings
 from kr_quant.timing.snapshot import attach_technicals
 
-FLOW_SCHEMA = 5
+FLOW_SCHEMA = 6
 
 
 def cache_path(root: Path) -> Path:
@@ -43,31 +43,63 @@ def candidate_tickers(settings: Settings, extra: list[str] | None = None) -> lis
     return rows
 
 
-def _fwd_return(hist: pd.DataFrame, start: date, horizon: int) -> float | None:
-    if hist is None or hist.empty:
-        return None
+def _fwd_return_detail(hist: pd.DataFrame, start: date, horizon: int) -> dict[str, Any]:
+    """Return a forward result only after the full trading-session horizon exists.
+
+    A D+5 return needs the signal session plus five later price observations.  The
+    previous implementation silently used the newest available price for immature
+    signals, which made D+5 and D+20 look like confirmed (and often identical)
+    results.  Keep immature observations explicit so they are never included in
+    hit-rate statistics.
+    """
+    detail: dict[str, Any] = {
+        "status": "PENDING",
+        "complete": False,
+        "horizon": int(horizon),
+        "observed_sessions": 0,
+        "required_sessions": int(horizon),
+        "start_date": None,
+        "end_date": None,
+    }
+    if hist is None or hist.empty or horizon <= 0:
+        return detail
     work = hist.copy()
     work["trade_date"] = pd.to_datetime(work["trade_date"]).dt.date
     work = work[work["trade_date"] >= start].sort_values("trade_date")
     if work.empty:
-        return None
-    work = work.sort_values("trade_date")
-    if len(work) < 2:
-        return None
-    from kr_quant.factors.share_adj import _levels
+        return detail
 
     levels = _levels(work)
-    if len(levels) < min(3, horizon):
-        if len(levels) < 2:
-            return None
-        start_lv, end_lv = levels[0][1], levels[-1][1]
-        return None if start_lv <= 0 else end_lv / start_lv - 1.0
-    # return from first day in window to +horizon if we have that many trading days
-    if len(levels) > horizon:
-        start_lv, end_lv = levels[0][1], levels[horizon][1]
-        return None if start_lv <= 0 else end_lv / start_lv - 1.0
-    start_lv, end_lv = levels[0][1], levels[-1][1]
-    return None if start_lv <= 0 else end_lv / start_lv - 1.0
+    if not levels:
+        return detail
+    detail["start_date"] = levels[0][0].isoformat()
+    detail["end_date"] = levels[-1][0].isoformat()
+    detail["observed_sessions"] = min(max(len(levels) - 1, 0), horizon)
+    if len(levels) <= horizon:
+        return detail
+
+    start_date, start_lv = levels[0]
+    end_date, end_lv = levels[horizon]
+    detail.update(
+        {
+            "status": "COMPLETE",
+            "complete": True,
+            "observed_sessions": horizon,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        }
+    )
+    if start_lv <= 0:
+        detail.update({"status": "INVALID", "complete": False})
+        return detail
+    detail["return"] = end_lv / start_lv - 1.0
+    return detail
+
+
+def _fwd_return(hist: pd.DataFrame, start: date, horizon: int) -> float | None:
+    detail = _fwd_return_detail(hist, start, horizon)
+    value = detail.get("return")
+    return float(value) if value is not None and detail.get("complete") else None
 
 
 def attach_daily_prices(summary: dict[str, Any], hist: pd.DataFrame) -> dict[str, Any]:
@@ -337,8 +369,12 @@ def scan_flow(
             hist = prices[prices["ticker"].astype(str).str.zfill(6) == code]
             start = date.fromisoformat(str(summary.get("from"))) if summary.get("from") else None
             if start and not hist.empty:
-                summary["ret_5d"] = _fwd_return(hist, start, 5)
-                summary["ret_20d"] = _fwd_return(hist, start, 20)
+                ret_5d = _fwd_return_detail(hist, start, 5)
+                ret_20d = _fwd_return_detail(hist, start, 20)
+                summary["ret_5d"] = ret_5d.get("return") if ret_5d.get("complete") else None
+                summary["ret_20d"] = ret_20d.get("return") if ret_20d.get("complete") else None
+                summary["ret_5d_meta"] = ret_5d
+                summary["ret_20d_meta"] = ret_20d
             if not hist.empty:
                 summary = attach_daily_prices(summary, hist)
                 last = float(pd.to_numeric(hist.sort_values("trade_date")["close"].iloc[-1], errors="coerce") or 0)

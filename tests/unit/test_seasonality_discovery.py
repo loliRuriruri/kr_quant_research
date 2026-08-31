@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
+import time
+
+import pandas as pd
 from fastapi.testclient import TestClient
 
 from kr_quant.web.app import app
@@ -32,6 +37,13 @@ def test_pattern_from_month_stat_with_playbook():
     assert "entry_timing" in pat.playbook
     assert "exit_timing" in pat.playbook
     assert "stop_loss" in pat.playbook
+    assert pat.median_alpha is None
+    assert pat.avg_mdd is None
+    assert pat.recent_3y_median_alpha is None
+    assert pat.entry_stage == "WATCH"
+    assert pat.entry_window_str == ""
+    assert pat.exit_window_str == ""
+    assert all(row["market_alpha"] is None and row["mdd"] is None for row in pat.years_track)
 
 
 def test_explain_and_score_pattern():
@@ -56,6 +68,80 @@ def test_explain_and_score_pattern():
     assert "expected_p90" in res
     assert "profit_factor" in res
     assert "playbook" in res
+    assert "퀀트 점수 75.0" in res["current_confirmation_evidence"]
+    assert any("3개월 수익률" in item for item in res["current_confirmation_evidence"])
+    assert "외국인·기관 수급" in res["current_confirmation_missing"]
+    assert "거래량 비율" in res["current_confirmation_missing"]
+
+
+def test_current_confirmation_does_not_award_missing_defaults():
+    m_stat = {
+        "month": 8,
+        "history": [0.12, 0.08, 0.18, -0.02, 0.07],
+    }
+    pat = pattern_from_month_stat("123456", "근거없음", "KOSPI", m_stat, lookback_years=5)
+
+    res = explain_and_score_pattern(pat, {})
+
+    assert res["score_breakdown"]["current_confirmation"] == 0.0
+    assert res["current_status"] == "UNKNOWN"
+    assert res["current_confirmation_evidence"] == []
+    assert set(res["current_confirmation_missing"]) == {
+        "3개월 모멘텀",
+        "최신 퀀트 점수",
+        "외국인·기관 수급",
+        "거래량 비율",
+    }
+
+
+def test_remaining_peak_cache_fill_is_shared_between_concurrent_requests(tmp_path, monkeypatch):
+    from kr_quant.strategy import seasonality
+
+    price_path = tmp_path / "staged" / "live" / "prices.parquet"
+    price_path.parent.mkdir(parents=True)
+    price_path.write_bytes(b"cache-signature")
+    settings = SimpleNamespace(staged_dir=tmp_path / "staged")
+    prices = pd.DataFrame(
+        {
+            "ticker": ["000001"],
+            "trade_date": ["2026-08-28"],
+            "close": [1000.0],
+        }
+    )
+    calls = 0
+
+    def fake_calculate(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        time.sleep(0.05)
+        return {"available": False, "status": "LOW_SAMPLE"}
+
+    monkeypatch.setattr(seasonality, "_prices", lambda _settings: prices)
+    monkeypatch.setattr(seasonality, "calculate_remaining_peak_upside", fake_calculate)
+    with seasonality._REMAINING_PEAK_LOCK:
+        seasonality._REMAINING_PEAK_CACHE["signature"] = None
+        seasonality._REMAINING_PEAK_CACHE["values"] = {}
+
+    rows = [
+        {
+            "ticker": "000001",
+            "window_name": "8월",
+            "entry_stage": "WATCH",
+            "entry_stage_label": "실측 피크 산출 대기",
+            "entry_window_str": "",
+            "exit_window_str": "",
+        }
+    ]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(
+            pool.map(
+                lambda _: seasonality._enrich_remaining_peak_rows(settings, rows, lookback_years=5),
+                range(2),
+            )
+        )
+
+    assert calls == 1
+    assert all(result[0]["remaining_peak"]["status"] == "LOW_SAMPLE" for result in results)
 
 
 def test_unmapped_ticker_gets_industry_specific_catalyst_evidence():
@@ -94,6 +180,8 @@ def test_api_seasonality_discovery_playbook():
     assert res.status_code == 200
     data = res.json()
     assert data["ok"] is True
+    assert data["data_context"]["price_as_of"]
+    assert data["data_context"]["source"] == "KRX 일봉 기반 월간 계절성"
     assert len(data["rows"]) > 0
     row = data["rows"][0]
     assert "entry_stage" in row
@@ -110,3 +198,7 @@ def test_api_seasonality_discovery_playbook():
         assert remaining["remaining_p50"] is not None
         assert remaining["peak_price_p50"] is not None
         assert remaining["sample_count"] >= 3
+    else:
+        assert row["entry_stage"] == "WATCH"
+        assert row["entry_window_str"] == ""
+        assert row["exit_window_str"] == ""

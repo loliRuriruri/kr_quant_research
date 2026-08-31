@@ -1478,6 +1478,7 @@ function switchView(name) {
     if (btnReports) btnReports.click();
   }
   if (name === "seasonality") {
+    setPageAsOf("계절성 데이터 시점 확인 중…", "KRX 일봉 기준일과 계절성 계산 시각을 불러오는 중입니다.");
     loadSeasonalityTier1Briefing().catch(() => {});
     if (currentV11Subtab === "pre-entry") loadPreEntryView().catch(() => {});
     else if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
@@ -1606,6 +1607,19 @@ function setPageAsOf(text, tip) {
     el.setAttribute("data-tip", tip);
     el.classList.add("has-tip");
   }
+}
+
+function setSeasonalityAsOf(payload) {
+  if (currentView !== "seasonality") return;
+  const context = payload?.data_context || {};
+  const parts = [];
+  if (context.price_as_of) parts.push(`KRX 일봉 ${context.price_as_of}`);
+  const calculated = fmtWhen(context.calculated_at);
+  if (calculated) parts.push(`계절성 계산 ${calculated}`);
+  setPageAsOf(
+    parts.join(" · ") || "계절성 데이터 시점 확인 불가",
+    `${context.source || "KRX 일봉 기반 월간 계절성"}입니다. 다른 메뉴의 공시·수급 시점과 공유하지 않습니다.`
+  );
 }
 
 function asofBanner(text) {
@@ -4877,12 +4891,19 @@ function analyzeHit(rows, key) {
   return { n: vals.length, hit, avg, median };
 }
 
-function flowHorizonIsDuplicated(rows) {
-  const pairs = (rows || [])
-    .filter((r) => r.ret_5d != null && r.ret_20d != null)
-    .map((r) => [Number(r.ret_5d), Number(r.ret_20d)])
-    .filter(([d5, d20]) => !Number.isNaN(d5) && !Number.isNaN(d20));
-  return pairs.length >= 3 && pairs.every(([d5, d20]) => Math.abs(d5 - d20) < 1e-9);
+function forwardReturnCell(row, horizon) {
+  const value = row?.[`ret_${horizon}d`];
+  const meta = row?.[`ret_${horizon}d_meta`];
+  if (value != null && !Number.isNaN(Number(value)) && meta?.complete !== false) {
+    const dates = meta?.start_date && meta?.end_date ? `${meta.start_date} → ${meta.end_date}` : "전체 관측 구간 충족";
+    return `<span class="has-tip" data-tip-title="D+${horizon} 확정 수익률" data-tip="${escapeHtml(dates)} · 신호일 이후 ${horizon}거래일을 모두 관측한 실측값입니다." tabindex="0">${pctCell(value)}</span>`;
+  }
+  if (meta?.status === "PENDING") {
+    const observed = Math.max(0, Number(meta.observed_sessions || 0));
+    const required = Math.max(horizon, Number(meta.required_sessions || horizon));
+    return `<span class="warn has-tip" data-tip-title="D+${horizon} 검증 대기" data-tip="현재 D+${observed}/${required}까지 관측했습니다. ${required}거래일이 모두 지난 뒤에만 수익률과 승률 표본에 포함합니다." tabindex="0">대기 D+${observed}/${required}</span>`;
+  }
+  return `<span class="hint has-tip" data-tip-title="D+${horizon} 검증 자료 없음" data-tip="새 수급 스키마로 다시 스캔한 뒤 관측 기간이 충족되면 표시합니다." tabindex="0">—</span>`;
 }
 
 function filterAmount(rows, key, minKrw) {
@@ -4958,7 +4979,7 @@ function flowHistoryTipAttrs(row, label, displayedValue = "") {
   return ` data-tip-title="${escapeHtml(title)}" data-tip="${escapeHtml(tip)}" data-tip-hint="${escapeHtml(summary)}" data-tip-hint-label="설정기간 집계" data-tip-layout="flow-history" tabindex="0"`;
 }
 
-function flowTable(title, rows, amountKey, tabId, duplicatedHorizon = false) {
+function flowTable(title, rows, amountKey, tabId) {
   const scope = tabId || (amountKey === "pe_krw" ? "flowPe" : "flowDual");
   const filteredRows = filterFlowQuery(rows);
 
@@ -4984,8 +5005,8 @@ function flowTable(title, rows, amountKey, tabId, duplicatedHorizon = false) {
       <td class="num has-tip ${r.institution_net > 0 ? 'text-emerald-400 font-bold' : r.institution_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "기관 누적 순매수", plainSignedInt(r.institution_net))}>${signedInt(r.institution_net)}</td>
       <td class="num has-tip ${r.pe_net > 0 ? 'text-purple-400 font-bold' : r.pe_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "사모펀드 누적 순매수", plainSignedInt(r.pe_net))}>${signedInt(r.pe_net)}</td>
       <td class="num has-tip font-bold text-accent-cyan"${flowHistoryTipAttrs(r, "수급 추정금액", krw(r[amountKey]))}>${escapeHtml(krw(r[amountKey]))}</td>
-      <td class="num font-bold">${pctCell(r.ret_5d)}</td>
-      <td class="num font-bold">${duplicatedHorizon ? '<span class="warn">검증 대기</span>' : pctCell(r.ret_20d)}</td>
+      <td class="num font-bold">${forwardReturnCell(r, 5)}</td>
+      <td class="num font-bold">${forwardReturnCell(r, 20)}</td>
     </tr>`)
     .join("");
   const more = left > 0
@@ -5006,8 +5027,8 @@ function flowTable(title, rows, amountKey, tabId, duplicatedHorizon = false) {
             <th class="sortable has-tip" data-sort="institution_net" data-tip-title="🏛️ 기관 누적 순매수" data-tip="금융투자, 보험, 투신, 사모 등 기관 투자자 전체의 합산 순매수 주수입니다." tabindex="0">기관(주)</th>
             <th class="sortable has-tip" data-sort="pe_net" data-tip-title="💼 사모펀드 누적 순매수" data-tip="가장 빠른 스마트머니인 사모펀드의 합산 순매수 주수입니다." tabindex="0">사모(주)</th>
             <th class="sortable has-tip" data-sort="${amountKey}" data-tip-title="💵 수급 유입 추정금액" data-tip="(외인+기관 순매수 주수) × 최근 종가로 환산한 실질 자금 유입 규모입니다." tabindex="0">추정금액</th>
-            <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="📈 수급 발생 후 5일 성과" data-tip="과거 수급 신호 발생 후 5거래일 동안의 주가 실측 수익률입니다." tabindex="0">이후 5일</th>
-            <th class="sortable has-tip" data-sort="ret_20d" data-tip-title="📈 수급 발생 후 20일 성과" data-tip="과거 수급 신호 발생 후 20거래일 동안의 주가 실측 수익률입니다. 5일 값과 동일하면 독립 검증 전까지 숨깁니다." tabindex="0">${duplicatedHorizon ? "20일 검증 대기" : "이후 20일"}</th>
+            <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="📈 수급 발생 후 5일 성과" data-tip="신호일 이후 5거래일을 모두 관측한 경우에만 표시하고 승률 표본에 포함합니다." tabindex="0">이후 5일</th>
+            <th class="sortable has-tip" data-sort="ret_20d" data-tip-title="📈 수급 발생 후 20일 성과" data-tip="신호일 이후 20거래일을 모두 관측한 경우에만 표시하고 승률 표본에 포함합니다." tabindex="0">이후 20일</th>
           </tr>
         </thead>
         <tbody>${body}</tbody>
@@ -5025,7 +5046,6 @@ function renderFlow(data) {
     return;
   }
   const minKrw = flowMinKrw();
-  const duplicatedHorizon = flowHorizonIsDuplicated(filterFlowUniverse(data.rows || []));
   const dualRows = sharedFlowRows(data.dual || [], "dual_krw");
   const peRows = sharedFlowRows(data.private_equity || [], "pe_krw");
   const tabs = [
@@ -5054,7 +5074,7 @@ function renderFlow(data) {
   if (active.id === "other_corp" && !active.rows.length) {
     panel = `<p class="hint" style="text-align:center; padding:30px;">토스 응답에 기타법인 항목이 없거나 순매수가 없습니다. 키가 있으면 이 탭에 붙습니다.</p>`;
   } else {
-    panel = flowTable(active.title, active.rows, active.key, `flow-${active.id}`, duplicatedHorizon);
+    panel = flowTable(active.title, active.rows, active.key, `flow-${active.id}`);
   }
 
   box.innerHTML = `
@@ -5109,7 +5129,6 @@ function renderFlow(data) {
     </div>
 
     <div class="h-tabs">${tabBtns}</div>
-    ${duplicatedHorizon ? `<div class="smart-flow-warning" style="margin-bottom:12px;"><b>⚠️ 20일 성과 검증 대기</b><br />현재 스냅샷의 20일 값이 5일 값과 동일하여 독립 성과로 표시하지 않습니다.</div>` : ""}
     <div class="flow-panel">${panel}</div>
     <p class="hint" style="margin-top:12px;">💡 최근가는 토스, 수급 데이터는 일별 합산입니다. 열 이름을 클릭하면 최근가, 외인/기관 순매수량, 추정금액으로 정렬할 수 있습니다.</p>
   `;
@@ -5130,7 +5149,6 @@ function renderFlowStats(data) {
   const peRows = withQuery(sharedFlowRows(data.private_equity || [], "pe_krw"));
   const tripleRows = withQuery(sharedFlowRows(data.dual_pe || [], "dual_krw"));
   const confluenceRows = withQuery(sharedFlowRows(data.rows || []).filter((r) => setupNotional(r) >= flowMinKrw() && taMatch(r, "confluence")));
-  const duplicatedHorizon = flowHorizonIsDuplicated(withQuery(sharedFlowRows(data.rows || [])));
   const groups = [
     ["외인·기관 쌍끌이", dualRows],
     ["사모펀드 순매수", peRows],
@@ -5148,10 +5166,10 @@ function renderFlowStats(data) {
       <td class="num">${d5.hit == null ? "—" : `${(d5.hit * 100).toFixed(0)}%`}</td>
       <td class="num">${pctCell(d5.avg)}</td>
       <td class="num">${pctCell(d5.median)}</td>
-      <td class="num">${duplicatedHorizon ? "—" : d20.n}</td>
-      <td class="num">${duplicatedHorizon || d20.hit == null ? "—" : `${(d20.hit * 100).toFixed(0)}%`}</td>
-      <td class="num">${duplicatedHorizon ? "—" : pctCell(d20.avg)}</td>
-      <td class="num">${duplicatedHorizon ? "—" : pctCell(d20.median)}</td>
+      <td class="num">${d20.n}</td>
+      <td class="num">${d20.hit == null ? "—" : `${(d20.hit * 100).toFixed(0)}%`}</td>
+      <td class="num">${pctCell(d20.avg)}</td>
+      <td class="num">${pctCell(d20.median)}</td>
     </tr>`;
   }).join("");
 
@@ -5177,7 +5195,7 @@ function renderFlowStats(data) {
     <div class="rank-card">
       <div class="card-h"><h3 style="margin:0;">📊 수급 셋업별 과거 성과 비교</h3></div>
       <p class="hint">현재 검색·금액·종목 범위를 적용한 뒤, 수급 신호 발생 후 실제 5일·20일 수익률의 양수 비율과 평균·중앙값을 비교합니다.</p>
-      ${duplicatedHorizon ? `<div class="smart-flow-warning" style="margin-bottom:12px;"><b>⚠️ 20일 성과 검증 대기</b><br />현재 스냅샷의 20일 값이 5일 값과 전부 동일합니다. 독립적인 20일 관측치로 확인될 때까지 20일 통계를 표시하지 않습니다.</div>` : ""}
+      <div class="smart-flow-warning" style="margin-bottom:12px;"><b>관측 완료 표본만 집계</b><br />D+5·D+20 거래일을 모두 지난 신호만 승률·평균·중앙값에 포함합니다. 진행 중인 신호는 각 표에서 D+n/목표로 표시됩니다.</div>
       <div class="table-wrap">
         <table class="rank-table">
           <thead><tr>
@@ -6262,7 +6280,7 @@ function renderEmpty(data) {
       <td class="num has-tip"${flowHistoryTipAttrs(r, "보유고 대비 이탈", r.holding_exit == null ? "—" : fmtPct(r.holding_exit, 2))}>${r.holding_exit == null ? "—" : fmtPct(r.holding_exit, 2)}</td>
       <td class="num has-tip font-bold text-accent-cyan"${flowHistoryTipAttrs(r, "이탈 추정금액", krw(r.empty_krw))}>${escapeHtml(krw(r.empty_krw))}</td>
       <td class="num has-tip"${flowHistoryTipAttrs(r, "연속 순매도", r.sell_streak ? `${r.sell_streak}일` : "—")}>${r.sell_streak ? `<b style="color:#f87171;">${r.sell_streak}일 연속</b>` : "—"}</td>
-      <td class="num has-tip font-bold"${flowHistoryTipAttrs(r, "신호 후 5일 성과", r.ret_5d == null ? "—" : fmtPct(r.ret_5d))}>${pctCell(r.ret_5d)}</td>
+      <td class="num has-tip font-bold"${flowHistoryTipAttrs(r, "신호 후 5일 성과", r.ret_5d == null ? "검증 대기" : fmtPct(r.ret_5d))}>${forwardReturnCell(r, 5)}</td>
     </tr>`
     )
     .join("");
@@ -6611,7 +6629,7 @@ function renderTrade(data) {
       <td class="num has-tip ${r.institution_net > 0 ? 'text-emerald-400 font-bold' : r.institution_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "기관 누적 순매수", plainSignedInt(r.institution_net))}>${signedInt(r.institution_net)}</td>
       <td class="num has-tip ${r.pe_net > 0 ? 'text-purple-400 font-bold' : r.pe_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "사모펀드 누적 순매수", plainSignedInt(r.pe_net))}>${signedInt(r.pe_net)}${r.pe_streak ? `<div class="meta" style="color:#c084fc;">${r.pe_streak}일 연속</div>` : ""}</td>
       <td class="num has-tip font-bold text-accent-cyan"${flowHistoryTipAttrs(r, "수급 추정금액", krw(setupNotional(r)))}>${escapeHtml(krw(setupNotional(r)))}</td>
-      <td class="num has-tip font-bold"${flowHistoryTipAttrs(r, "신호 후 5일 성과", r.ret_5d == null ? "—" : fmtPct(r.ret_5d))}>${pctCell(r.ret_5d)}</td>
+      <td class="num has-tip font-bold"${flowHistoryTipAttrs(r, "신호 후 5일 성과", r.ret_5d == null ? "검증 대기" : fmtPct(r.ret_5d))}>${forwardReturnCell(r, 5)}</td>
     </tr>`
     )
     .join("");
@@ -10077,7 +10095,6 @@ function renderDiscDeepPlaybook(r, months) {
   const remWarningHtml = remWarnings.length
     ? `<div style="margin-top:9px;color:#fbbf24;font-size:11.5px;line-height:1.5;">⚠️ ${remWarnings.map(escapeHtml).join("<br>⚠️ ")}</div>`
     : "";
-  const alpha = r.median_alpha ?? r.median_return ?? 0;
   const sample = r.sample_count || r.years_count || track.length || 0;
   const monthCells = renderPbMonthHeat(months, targetM);
 
@@ -10179,7 +10196,7 @@ function renderDiscDeepPlaybook(r, months) {
       ${escapeHtml(r.company || r.ticker)}(${escapeHtml(r.ticker)})은 ${escapeHtml(r.window_name || "해당")} 윈도우에서
       평균 ${pbPct(stats.mean)}, 표준편차 ${(stats.stdev * 100).toFixed(1)}%입니다.
       상방 변동성이 하방 대비 ${stats.skew.toFixed(2)}배로
-      ${stats.skew >= 2 ? "비대칭 계절성 알파 구조" : "대칭에 가까운 구조"}입니다.
+      ${stats.skew >= 2 ? "상방 편향이 큰 계절성 분포" : "대칭에 가까운 분포"}입니다.
       ${escapeHtml(failTxt)}.
       권장 비중은 과하지 않게 두고, 아래 무효화 조건이 뜨면 미련 없이 접는 편이 낫습니다.
     </p>`;
@@ -10193,9 +10210,9 @@ function renderDiscDeepPlaybook(r, months) {
         <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11px;">사전 진입 전략</span>
       </div>
       <ul style="margin:8px 0 0 16px; padding:0; font-size:12.5px; color:#cbd5e1; line-height:1.6;">
-        <li>${escapeHtml(pb.entry_timing || "통계적 사전 진입 타이밍: 피크 구간 도달 D-30일 ~ D-15일 전 분할 관찰/매수")}</li>
-        <li>${escapeHtml(pb.exit_timing || "목표 엑시트 시기: 계절성 피크 도달 시점 또는 목표 알파 달성 시 분할 매도")}</li>
-        <li style="color:#fca5a5;">${escapeHtml(pb.stop_loss || "리스크 방어 기준: 평균 MDD 초과 하락 시 손절")}</li>
+        <li>${escapeHtml(pb.entry_timing || "일봉 피크 경로가 검증된 경우에만 과거 관찰 구간을 표시합니다.")}</li>
+        <li>${escapeHtml(pb.exit_timing || "역사적 피크 감시 구간은 목표가가 아닌 과거 분포 참고치입니다.")}</li>
+        <li style="color:#fca5a5;">${escapeHtml(pb.stop_loss || "월간 집계에는 경로상 MDD가 없어 손절선을 추정하지 않습니다.")}</li>
       </ul>
       <div style="margin-top:12px;">
         <span style="font-size:11.5px; font-weight:700; color:#38bdf8;">📊 오늘 현재가 → 역사적 피크 구간 잔여 상승여력</span>
@@ -10228,11 +10245,11 @@ function renderDiscDeepPlaybook(r, months) {
       <b style="color:#34d399;">올해 유효성 확인 지표 (Current Confirmation)</b>
       <div class="pb-confirm-grid" style="margin-top:10px;">
         <div class="pb-confirm-cell"><span>역사적 승률</span><b>${((r.win_rate || 0) * 100).toFixed(1)}%</b></div>
-        <div class="pb-confirm-cell"><span>초과 알파</span><b>${pbPct(alpha)}</b></div>
-        <div class="pb-confirm-cell"><span>표본</span><b>${sample}개년</b></div>
+        <div class="pb-confirm-cell"><span>월간 중앙수익</span><b>${pbPct(r.median_return)}</b></div>
+        <div class="pb-confirm-cell"><span>현재 근거</span><b>${(r.current_confirmation_evidence || []).length}개</b></div>
         <div class="pb-confirm-cell"><span>상태</span><b>${escapeHtml(st)}</b></div>
       </div>
-      <p class="meta" style="margin:8px 0 0;">PC는 모바일의 RS60·EPS Revision 실시간 칸까지는 아직 안 붙입니다. 있는 지표만 정직하게 표시합니다.</p>
+      <p class="meta" style="margin:8px 0 0;">근거: ${escapeHtml((r.current_confirmation_evidence || []).join(" · ") || "연결된 현재 확인 근거 없음")}<br>미연결: ${escapeHtml((r.current_confirmation_missing || []).join(" · ") || "없음")}</p>
     </div>
 
     <div style="margin-top:14px;background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px 16px;">
@@ -10576,7 +10593,7 @@ async function openDiscoveryDetailModal(r) {
 
   const stagePill = $("#disc-modal-stage-pill");
   if (stagePill) {
-    stagePill.textContent = r.entry_stage_label || "⚡ 진입 유효";
+    stagePill.textContent = r.entry_stage_label || "실측 피크 산출 대기";
     let cls = "stage-today";
     if (r.entry_stage === "PRE_ENTRY_15" || r.entry_stage === "PRE_ENTRY_30") cls = "stage-pre-entry";
     else if (r.entry_stage === "ACCUMULATE_60") cls = "stage-accumulate";
@@ -10587,24 +10604,24 @@ async function openDiscoveryDetailModal(r) {
 
   setModalText("disc-modal-theme", r.common_event_cluster || "계절적 수요 증가 및 분기 실적 모멘텀");
 
-  const stKo = r.current_status === "ACTIVE" ? "🔥 상태 판정: 진입 유효 (ACTIVE)" :
+  const stKo = r.current_status === "ACTIVE" ? "🟢 상태 판정: 현재 근거 확인 (ACTIVE)" :
                r.current_status === "WATCH" ? "🟡 상태 판정: 관찰 대상 (WATCH)" :
                r.current_status === "WEAKENING" ? "🟠 상태 판정: 엣지 약화 (WEAKENING)" :
-               r.current_status === "BROKEN" ? "🔴 상태 판정: 진입 금지 (BROKEN)" : "🟣 상태 판정: 신규 발굴 (DISCOVERY)";
+               r.current_status === "BROKEN" ? "🔴 상태 판정: 가설 훼손 (BROKEN)" :
+               r.current_status === "UNKNOWN" ? "⚪ 상태 판정: 현재 근거 부족 (UNKNOWN)" : "🟣 상태 판정: 신규 발굴 (DISCOVERY)";
   setModalText("disc-modal-status-text", stKo);
 
   const pb = r.playbook || {};
-  setModalText("disc-modal-recommendation", `💡 권장 대응: ${pb.recommendation || "반복 상승 Window 진입 시 분할 매수 대응 유효"}`);
+  setModalText("disc-modal-recommendation", `💡 연구 대응: ${pb.recommendation || "월별 반복 수익률은 탐색 근거이며 주문 신호가 아닙니다."}`);
   setModalText("disc-modal-window", r.window_name || "—");
   setModalText("disc-modal-sample-sub", `${r.sample_count || r.years_count || 0}개년 Window 검증`);
   setModalText("disc-modal-winrate", `${((r.win_rate || 0) * 100).toFixed(1)}%`);
   setModalText("disc-modal-r3-sub", `최근 3년 ${((r.recent_3y_win_rate || 0) * 100).toFixed(0)}%`);
-  const alpha = r.median_alpha ?? r.median_return ?? 0;
   const remDownside = r.remaining_peak && r.remaining_peak.downside_before_peak_p50;
-  setModalText("disc-modal-alpha", `${alpha > 0 ? "+" : ""}${(alpha * 100).toFixed(1)}%`);
+  setModalText("disc-modal-alpha", pbPct(r.median_return));
   setModalText("disc-modal-mdd-sub", remDownside == null ? "피크 전 하방 —" : `피크 전 하방(P50) ${pbPct(remDownside)}`);
-  setModalText("disc-modal-entry-win", `📈 진입 권장: ${r.entry_window_str || "—"}`);
-  setModalText("disc-modal-exit-win", `➔ 목표 엑시트: ${r.exit_window_str || "—"}`);
+  setModalText("disc-modal-entry-win", `📈 과거 관찰 구간: ${r.entry_window_str || "실측 피크 산출 대기"}`);
+  setModalText("disc-modal-exit-win", `➔ 역사적 피크 감시: ${r.exit_window_str || "실측 피크 산출 대기"}`);
 
   // Reset embedded chart to hidden
   const chartBox = $("#disc-modal-chart-box");
@@ -10701,6 +10718,7 @@ async function loadPreEntryView() {
     api(`/api/seasonality/discovery?lookback_years=${currentV11Lookback}&horizon_days=90`),
     api(`/api/seasonality/themes?lookback_years=${currentV11Lookback}&horizon_days=90`),
   ]);
+  setSeasonalityAsOf(discRes);
 
   const allRows = discRes.rows || [];
   // The discovery response is already loaded beside the theme response. Use
@@ -10759,7 +10777,7 @@ async function loadPreEntryView() {
   } else if (currentPreEntrySort === "winrate") {
     filtered.sort((a, b) => (b.win_rate || 0) - (a.win_rate || 0));
   } else if (currentPreEntrySort === "alpha") {
-    filtered.sort((a, b) => (b.median_alpha || 0) - (a.median_alpha || 0));
+    filtered.sort((a, b) => (b.median_return || 0) - (a.median_return || 0));
   }
 
   const top10 = filtered.slice(0, 10);
@@ -10845,8 +10863,8 @@ async function loadPreEntryView() {
 
         <!-- Timing Window Strip -->
         <div class="pre-entry-timing-strip">
-          <span style="color:#38bdf8; font-weight:700;">📈 진입 권장: ${escapeHtml(r.entry_window_str || '08/15 ~ 09/05')}</span>
-          <span style="color:#fbbf24; font-weight:700;">➔ 목표 엑시트: ${escapeHtml(r.exit_window_str || '09/20 ~ 10/10')}</span>
+          <span style="color:#38bdf8; font-weight:700;">📈 과거 관찰 구간: ${escapeHtml(r.entry_window_str || '실측 피크 산출 대기')}</span>
+          <span style="color:#fbbf24; font-weight:700;">➔ 역사적 피크 감시: ${escapeHtml(r.exit_window_str || '실측 피크 산출 대기')}</span>
         </div>
 
         <!-- Year-by-Year Track Record Bar -->
@@ -10974,11 +10992,11 @@ function renderThemeDonutAndRanking(themes) {
 
 const STATUS_HOVER_GUIDE_DATA = {
   ACTIVE: {
-    title: "🟢 ACTIVE (진입 유효 / 강력 추천)",
+    title: "🟢 ACTIVE (현재 근거 확인)",
     color: "#10b981",
-    desc: "과거 5~10년 계절성 패턴과 올해 실적(EPS)/수급/상대강도(RS) 3중 검증 완료 (최우선 공략주)",
+    desc: "과거 반복 패턴과 현재 연결된 퀀트·모멘텀 근거가 기준을 통과한 우선 관찰 후보",
     criteria: "계절성 점수 78점 이상 + 과거 승률 70% 이상 + 최근 3M 수익률 양호",
-    action: "권장 사전 진입 Window 진입 시 분할 관찰/매수 및 목표 엑시트 대응 유효",
+    action: "실측 피크 경로·거래 가능성·누락 근거를 종목 상세에서 재확인",
     actionColor: "#34d399",
   },
   WATCH: {
@@ -10986,7 +11004,7 @@ const STATUS_HOVER_GUIDE_DATA = {
     color: "#eab308",
     desc: "과거 계절성 패턴은 우수하나, 올해 수급 유입이나 이벤트 촉매 발생 확인 대기 중",
     criteria: "계절성 점수 68점 이상 또는 최근 3개년 승률 60% 이상",
-    action: "목표 D-Day 도달 시 거래량 급증 및 외인/기관 순매수 전환 확인 후 진입",
+    action: "거래량과 외인·기관 수급이 실제로 연결될 때까지 관찰",
     actionColor: "#fde047",
   },
   DISCOVERY: {
@@ -10994,23 +11012,23 @@ const STATUS_HOVER_GUIDE_DATA = {
     color: "#a855f7",
     desc: "최근 3~5년간 새롭게 계절성 상승 패턴이 형성된 신규 발굴 후보주",
     criteria: "표본수 3년 이상 + 승률 67% 이상 + AI 원인 역추적 진행",
-    action: "소액 분할 매수 또는 AI 리포트 분석 후 진입 권장",
+    action: "표본 확대와 이벤트·현재 데이터 근거 추가 확인",
     actionColor: "#c084fc",
   },
   WEAKENING: {
     title: "🟠 WEAKENING (엣지 약화)",
     color: "#f97316",
-    desc: "과거에는 강했으나 최근 3년간 승률/초과수익이 하락하여 계절성 모멘텀이 둔화된 상태",
+    desc: "과거에는 강했으나 최근 3년간 승률/월간 수익률이 하락하여 계절성 모멘텀이 둔화된 상태",
     criteria: "최근 3개년 승률 50% 미만",
-    action: "비중 축소 또는 다른 ACTIVE 종목으로 교체 매매 권장",
+    action: "최근 실패 연도와 무효화 조건을 우선 검토",
     actionColor: "#fb923c",
   },
   BROKEN: {
-    title: "🔴 BROKEN (진입 금지 / 파기)",
+    title: "🔴 BROKEN (가설 훼손)",
     color: "#ef4444",
     desc: "최근 3개월간 급락했거나 올해 펀더멘털 악화/실적 쇼크로 계절성 룰이 깨진 종목",
     criteria: "3개월 수익률 -15% 이하 및 퀀트 종합점수 48점 미만",
-    action: "🚫 신규 매수 절대 금지 및 보유 시 즉시 리스크 관리(손절)",
+    action: "계절성 가설을 사용하지 말고 훼손 근거를 재검토",
     actionColor: "#f87171",
   },
 };
@@ -11106,6 +11124,7 @@ async function loadDiscoveryRanked() {
   if (q) params.set("query", q);
 
   const res = await api(`/api/seasonality/discovery?${params.toString()}`);
+  setSeasonalityAsOf(res);
   discoveryRows = res.rows || [];
 
   const countBadge = $("#discovery-count-val");
@@ -11140,7 +11159,7 @@ async function loadDiscoveryRanked() {
 
     const wr = ((r.win_rate || 0) * 100).toFixed(0);
     const avgRet = ((r.median_return || 0) * 100).toFixed(1);
-    const alpha = ((r.median_alpha || 0) * 100).toFixed(1);
+    const alpha = r.median_alpha == null ? "벤치마크 미연결" : `${r.median_alpha > 0 ? '+' : ''}${(r.median_alpha * 100).toFixed(1)}%`;
 
     const yearsTrackHtml = (r.years_track || []).map((y) => {
       const cls = y.is_win ? "year-track-win" : "year-track-loss";
@@ -11182,7 +11201,7 @@ async function loadDiscoveryRanked() {
         </td>
         <td class="font-bold">${wr}%</td>
         <td class="${r.median_return > 0 ? 'up font-bold' : 'down'}">${r.median_return > 0 ? '+' : ''}${avgRet}%</td>
-        <td class="font-bold text-emerald-400">${r.median_alpha > 0 ? '+' : ''}${alpha}%</td>
+        <td class="font-bold text-emerald-400">${alpha}</td>
         <td>
           <div class="year-track-bar" style="flex-wrap:wrap; gap:4px;">${yearsTrackHtml}</div>
         </td>
@@ -11240,6 +11259,7 @@ async function loadAIExplanations() {
   const q = seasonalitySearchQuery();
   const queryParam = q ? `&query=${encodeURIComponent(q)}` : "";
   const res = await api(`/api/seasonality/discovery?horizon_days=${currentV11Horizon}&lookback_years=${currentV11Lookback}&exclude_expired=${currentV11ExcludeExpired}${queryParam}`);
+  setSeasonalityAsOf(res);
   const rows = res.rows || [];
 
   const lookbackLabel = currentV11Lookback > 0 ? `최근 ${currentV11Lookback}개년` : "전체 기간";
@@ -11271,7 +11291,7 @@ async function loadAIExplanations() {
             <div style="margin-top:4px; font-size:10.5px; color:#64748b;">근거 방식: ${escapeHtml(r.event_explanation_source || '계절성 통계·업종 매핑')}</div>
           </div>
           <div style="text-align:right;">
-            <div style="font-size:14px; font-weight:800; color:#34d399;">승률 ${((r.win_rate || 0)*100).toFixed(0)}% · Alpha +${((r.median_alpha || 0)*100).toFixed(1)}%</div>
+            <div style="font-size:14px; font-weight:800; color:#34d399;">승률 ${((r.win_rate || 0)*100).toFixed(0)}% · 월간 중앙수익 ${pbPct(r.median_return)}</div>
             <div style="font-size:11.5px; color:#94a3b8;">${r.sample_count}개년 추적</div>
           </div>
         </div>
@@ -11431,7 +11451,7 @@ function setupV11SeasonalityUI() {
         btnToggleExclude.style.background = "rgba(56,189,248,0.2)";
         btnToggleExclude.style.borderColor = "#38bdf8";
         btnToggleExclude.style.color = "#38bdf8";
-        btnToggleExclude.textContent = "☑️ 시즌 종료 제외 (진입 유효만)";
+        btnToggleExclude.textContent = "☑️ 시즌 종료 제외 (관찰 중만)";
       } else {
         btnToggleExclude.classList.remove("active");
         btnToggleExclude.style.background = "rgba(30,41,59,0.5)";
@@ -11483,6 +11503,7 @@ async function loadInstitutionalRanked() {
   if (q) params.set("query", q);
 
   const res = await api(`/api/seasonality/ranked?${params.toString()}`);
+  setSeasonalityAsOf(res);
   institutionalRows = res.rows || [];
 
   if (!institutionalRows.length) {
@@ -11606,6 +11627,7 @@ async function loadInstitutionalCalendar() {
   if (!container) return;
 
   const res = await api(`/api/seasonality/events?horizon_days=${currentV11Horizon}`);
+  setSeasonalityAsOf(res);
   institutionalEvents = res.events || [];
 
   if (!institutionalEvents.length) {
@@ -11853,6 +11875,7 @@ async function loadSeasonality() {
   if (q) params.set("query", q);
 
   const data = await api(`/api/seasonality/scan?${params.toString()}`);
+  setSeasonalityAsOf(data);
   seasonalityRows = data.rows || [];
   renderSeasonalityPresetControls(data.presets || seasonalityPresetCatalog);
 
@@ -11992,15 +12015,11 @@ function playbookRowFromScan(row) {
     years_track: yearsTrackFromRow(row),
     all_months: row.all_months || [],
     sample_count: row.sample_count || row.years_count,
-    median_alpha: row.median_alpha ?? row.median_return,
+    median_alpha: row.median_alpha ?? null,
     entry_stage: row.entry_stage || (eventMode ? "WATCH" : undefined),
     entry_stage_label: row.entry_stage_label || (eventMode ? "📌 이벤트 관련 종목 · 타이밍 별도 확인" : undefined),
-    entry_window_str: row.entry_window_str || (eventMode
-      ? "18개 정량 이벤트 캘린더의 고유 진입 구간 확인"
-      : `${String(month).padStart(2, "0")}/01 ~ ${String(month).padStart(2, "0")}/15`),
-    exit_window_str: row.exit_window_str || (eventMode
-      ? "이벤트별 무효화 조건·목표 청산 구간 확인"
-      : `${String(month).padStart(2, "0")}/20 ~ ${String(month === 12 ? 1 : month + 1).padStart(2, "0")}/10`),
+    entry_window_str: row.entry_window_str || (eventMode ? "이벤트 캘린더 원문 일정 확인" : ""),
+    exit_window_str: row.exit_window_str || (eventMode ? "이벤트별 무효화 조건 확인" : ""),
   };
 }
 
