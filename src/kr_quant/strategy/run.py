@@ -15,7 +15,7 @@ from kr_quant.quality.price_integrity import latest_clean_price_segments
 from kr_quant.strategy.engine import ExecutionModel, execution_model_from_mapping, run_backtest
 from kr_quant.strategy.registry import FAMILY_KO, SELECTION_KO, format_params_ko, strategy_comment, strategy_registry
 from kr_quant.strategy.search import search_strategy, stability_label, walk_forward, walk_forward_score
-from kr_quant.universe.point_in_time import strategy_universe_evidence
+from kr_quant.universe.point_in_time import pit_portfolio_study, strategy_universe_evidence
 
 
 def cache_path(root: Path) -> Path:
@@ -363,6 +363,7 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
         "execution_model": execution_model.public(),
         "execution_note": "수수료·매도세·기본 슬리피지·거래대금 참여율 충격과 무거래/상하한가 잠김을 일봉 프록시로 반영합니다.",
         "universe_evidence": universe_evidence,
+        "pit_portfolio": pit_portfolio_study(settings.output_dir),
         "selection": SELECTION_KO,
         "disclaimer": "일봉 백테스트. 파라미터는 학습 구간에서만 고르고, 이후 구간·walk-forward로 봅니다. 실시간 호가·주문이 아닙니다.",
         "catalog": [

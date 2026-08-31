@@ -32,7 +32,13 @@ from kr_quant.scoring.composite import apply_composite, factor_specs
 from kr_quant.scoring.peers import assign_peer_scores
 from kr_quant.settings import Settings
 from kr_quant.universe.builder import apply_universe_gates, load_ksic_map, map_industry
-from kr_quant.universe.point_in_time import build_universe_snapshot
+from kr_quant.universe.point_in_time import (
+    build_universe_snapshot,
+    load_listing_history,
+    pit_cross_section,
+    save_listing_history,
+    update_listing_history,
+)
 
 logger = logging.getLogger("kr_quant.run")
 
@@ -128,12 +134,32 @@ def run_from_staged(
         ctx.status = "failed"
         ctx.warnings.append("SOURCE_NOT_READY")
         raise RuntimeError(f"no KRX prices for as_of={as_of}")
+    try:
+        listing_history = update_listing_history(load_listing_history(settings), master, as_of)
+        save_listing_history(settings, listing_history)
+        _, pit_evidence = pit_cross_section(
+            as_of,
+            master=master,
+            facts=facts,
+            output_dir=settings.output_dir,
+            history=listing_history,
+        )
+    except Exception:  # noqa: BLE001
+        listing_history = None
+        pit_evidence = {"reconstruction_source": "CURRENT_MASTER", "survivorship_bias_controlled": False}
     universe_snapshot, universe_evidence = build_universe_snapshot(
         master,
         day,
         as_of=as_of,
         source_mode=source_mode,
     )
+    universe_evidence["pit"] = pit_evidence
+    if universe_evidence.get("capture_state") != "CONTEMPORANEOUS":
+        pit_ok = bool(pit_evidence.get("survivorship_bias_controlled")) and pit_evidence.get("reconstruction_source") in {
+            "ARCHIVED_SNAPSHOT",
+            "LISTING_HISTORY",
+        }
+        universe_evidence["survivorship_bias_controlled"] = pit_ok
     # The master may contain names listed after a historical as-of date. Keep
     # unknown dates with an explicit coverage warning instead of inventing a
     # complete delisting history.
