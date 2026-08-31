@@ -13,6 +13,14 @@ import yaml
 from kr_quant.settings import Settings
 from kr_quant.quality.price_integrity import latest_clean_price_segments
 from kr_quant.strategy.engine import ExecutionModel, execution_model_from_mapping, run_backtest
+from kr_quant.strategy.precision import (
+    capacity_models,
+    compact_metrics,
+    cost_models,
+    public_trades,
+    sample_reliability,
+    ticker_listing_window,
+)
 from kr_quant.strategy.registry import FAMILY_KO, SELECTION_KO, format_params_ko, strategy_comment, strategy_registry
 from kr_quant.strategy.search import search_strategy, stability_label, walk_forward, walk_forward_score
 from kr_quant.universe.point_in_time import pit_portfolio_study, strategy_universe_evidence
@@ -43,6 +51,13 @@ def _cfg(settings: Settings) -> dict[str, Any]:
             },
             "splits": {"oos_ratio": 0.2},
             "minimum_history_days": 40,
+            "sensitivity": {
+                "cost": {
+                    "low": {"commission_bps": 0.5, "slippage_bps": 2, "impact_bps_at_max_participation": 10},
+                    "conservative": {"commission_bps": 3.0, "slippage_bps": 15, "impact_bps_at_max_participation": 40},
+                },
+                "capacity": {"small_krw": 2_000_000, "large_krw": 50_000_000},
+            },
         }
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
@@ -102,6 +117,8 @@ def evaluate_ticker(
     price_integrity_config: dict[str, Any] | None = None,
     execution_model: ExecutionModel | dict[str, Any] | None = None,
     actions: pd.DataFrame | None = None,
+    precision_cfg: dict[str, Any] | None = None,
+    include_trades: bool = False,
 ) -> dict[str, Any]:
     raw_bars = 0 if data is None else int(len(data))
     from kr_quant.quality.corporate_actions import series_contract
@@ -132,6 +149,13 @@ def evaluate_ticker(
         }
     rows: list[dict[str, Any]] = []
     min_trades = 8
+    model = execution_model_from_mapping(
+        execution_model,
+        commission_bps=commission_bps,
+        slippage_bps=slippage_bps,
+    )
+    cost_set = cost_models(model, precision_cfg)
+    capacity_set = capacity_models(model, precision_cfg)
     for spec in strategy_registry().values():
         searched = search_strategy(
             data,
@@ -139,19 +163,59 @@ def evaluate_ticker(
             commission_bps=commission_bps,
             slippage_bps=slippage_bps,
             minimum_trades=min_trades,
-            execution_model=execution_model,
+            execution_model=model,
         )
         # Descriptive full-history metrics and displayed parameters must describe
         # the same selected strategy. Final OOS metrics remain separate below.
+        # Cost/capacity scenarios reuse these params; they do not re-select.
         signals = spec.generate_signals(data, searched.parameters)
         result = run_backtest(
             data,
             signals,
             commission_bps=commission_bps,
             slippage_bps=slippage_bps,
-            execution_model=execution_model,
+            execution_model=model,
         )
         metrics = dict(result.metrics)
+        cost_sensitivity = {"default": compact_metrics(result)}
+        for name, scenario in cost_set.items():
+            if name == "default":
+                continue
+            cost_sensitivity[name] = compact_metrics(
+                run_backtest(
+                    data,
+                    signals,
+                    commission_bps=commission_bps,
+                    slippage_bps=slippage_bps,
+                    execution_model=scenario,
+                )
+            )
+        capacity_sensitivity: dict[str, Any] = {}
+        for name, scenario in capacity_set.items():
+            same_notional = float(scenario.position_notional_krw or 0) == float(model.position_notional_krw or 0)
+            if name == "default" and same_notional:
+                capacity_sensitivity[name] = compact_metrics(result)
+            else:
+                capacity_sensitivity[name] = compact_metrics(
+                    run_backtest(
+                        data,
+                        signals,
+                        commission_bps=commission_bps,
+                        slippage_bps=slippage_bps,
+                        execution_model=scenario,
+                    )
+                )
+        sample = sample_reliability(
+            trade_count=int(metrics.get("trade_count") or 0),
+            oos_trade_count=int((searched.oos or {}).get("trade_count") or 0),
+            min_trades=min_trades,
+        )
+        cagr = None
+        n_hist = int(len(data))
+        if sample.get("representative_annualized") and n_hist >= 252:
+            total = float(metrics.get("total_return") or 0)
+            if total > -0.999:
+                cagr = round((1 + total) ** (252 / n_hist) - 1, 4)
         n_bars = int(len(data))
         if n_bars >= 500:
             train_d, test_d, step_d = 250, 60, 60
@@ -204,8 +268,14 @@ def evaluate_ticker(
                 "selection_basis": "validation",
                 "n_combos": searched.n_combos,
                 **metrics,
+                "cagr": cagr,
+                "sample": sample,
+                "cost_sensitivity": cost_sensitivity,
+                "capacity_sensitivity": capacity_sensitivity,
             }
         )
+        if include_trades:
+            rows[-1]["trades"] = public_trades(result.trades)
         rows[-1]["params_ko"] = format_params_ko(rows[-1].get("params") if isinstance(rows[-1].get("params"), dict) else None)
         rows[-1]["family_ko"] = FAMILY_KO.get(str(rows[-1].get("family") or ""), "")
         rows[-1]["comment"] = strategy_comment(rows[-1])
@@ -220,6 +290,17 @@ def evaluate_ticker(
         warn = None
     if best.get("stability_label") == "LOW":
         warn = (warn or "") + " 안정성 LOW는 순위로 쓰지 마세요."
+    sample_note = (best.get("sample") or {}).get("warning")
+    if sample_note:
+        warn = f"{warn} {sample_note}".strip() if warn else sample_note
+    hold = {
+        "price_return": best.get("benchmark_price_return"),
+        "total_return": best.get("benchmark_total_return"),
+        "aligned": bool(best.get("benchmark_aligned", True)),
+        "bars": best.get("benchmark_aligned_bars") or int(len(data)),
+        "price_basis": best.get("benchmark_price_basis"),
+        "note": "같은 거래일에 맞춘 종목 단순보유입니다. 전략 체결은 원시 다음 시가, 보유 가격수익은 수정종가, 총수익은 공식 배당을 포함합니다.",
+    }
     return {
         "ok": True,
         "bars": int(len(data)),
@@ -236,6 +317,8 @@ def evaluate_ticker(
         "strategies": rows,
         "used_in_quant": False,
         "price_integrity": price_quality,
+        "buy_and_hold": hold,
+        "research_scope": "SINGLE_SECURITY_RULE_PATH",
     }
 
 
@@ -318,6 +401,9 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
     from kr_quant.quality.corporate_actions import load_actions_from_settings
 
     actions = load_actions_from_settings(settings)
+    from kr_quant.universe.point_in_time import load_listing_history
+
+    listing = load_listing_history(settings)
     names: list[tuple[str, str]] = list(tickers or [])
     if not names:
         csv = settings.output_dir / "latest_top20.csv"
@@ -336,8 +422,10 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
             price_integrity_config=settings.config.get("corporate_actions") or {},
             execution_model=execution_model,
             actions=actions,
+            precision_cfg=cfg,
         )
-        rows.append({"ticker": code, "company": company or code, **ev})
+        listing_note = ticker_listing_window(listing, code, ev.get("from"), ev.get("to"))
+        rows.append({"ticker": code, "company": company or code, "listing_window": listing_note, **ev})
     source_price_as_of = None
     if not prices.empty and "trade_date" in prices.columns:
         dates = pd.to_datetime(prices["trade_date"], errors="coerce").dropna()
@@ -365,7 +453,7 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
         "universe_evidence": universe_evidence,
         "pit_portfolio": pit_portfolio_study(settings.output_dir),
         "selection": SELECTION_KO,
-        "disclaimer": "일봉 백테스트. 파라미터는 학습 구간에서만 고르고, 이후 구간·walk-forward로 봅니다. 실시간 호가·주문이 아닙니다.",
+        "disclaimer": "일봉 백테스트. 파라미터는 학습 구간에서만 고르고, 이후 구간·walk-forward로 봅니다. 실시간 호가·주문이 아닙니다. 현재 TOP20 소급은 시장 전체 PIT 포트폴리오가 아닙니다.",
         "catalog": [
             {"id": s.strategy_id, "name": s.name, "family": s.family, "params": s.defaults}
             for s in strategy_registry().values()
@@ -537,6 +625,8 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
             price_integrity_config=settings.config.get("corporate_actions") or {},
             execution_model=execution_model,
             actions=actions,
+            precision_cfg=cfg,
+            include_trades=True,
         )
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "ticker": code, "company": company or code, "error": f"백테스트 연산 실패: {exc}"}
@@ -557,7 +647,9 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
         st["comment"] = strategy_comment(st)
 
     best = (ev.get("strategies") or [{}])[0]
+    from kr_quant.universe.point_in_time import load_listing_history
 
+    listing_note = ticker_listing_window(load_listing_history(settings), code, ev.get("from"), ev.get("to"))
     return {
         "ok": True,
         "ticker": code,
@@ -576,8 +668,10 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
         "strategies": ev.get("strategies") or [],
         "playbook": generate_plain_strategy_playbook(ev.get("strategies") or [], company or code),
         "price_integrity": ev.get("price_integrity") or {},
+        "buy_and_hold": ev.get("buy_and_hold") or {},
+        "listing_window": listing_note,
         "execution_model": execution_model.public(),
-        "execution_note": "수수료·매도세·기본 슬리피지·거래대금 참여율 충격과 무거래/상하한가 잠김을 일봉 프록시로 반영합니다.",
+        "execution_note": "수수료·매도세·기본 슬리피지·거래대금 참여율 충격과 무거래/상하한가 잠김을 일봉 프록시로 반영합니다. 호가 잔량 재현이 아닙니다.",
         "universe_evidence": {
             "selection_mode": "USER_SELECTED_CURRENT_SECURITY",
             "selection_as_of": ev.get("to"),

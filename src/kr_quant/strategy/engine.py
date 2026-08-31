@@ -100,6 +100,43 @@ def _number(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _text(frame: pd.DataFrame, index: int | None, column: str) -> str | None:
+    if frame is None or index is None or column not in frame.columns:
+        return None
+    if index < 0 or index >= len(frame):
+        return None
+    value = frame.iloc[index].get(column)
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _buy_hold_levels(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series, str]:
+    if "adj_close" in frame.columns:
+        adj = pd.to_numeric(frame["adj_close"], errors="coerce")
+        if adj.notna().any() and float(adj.dropna().iloc[0] or 0) > 0:
+            price = adj
+            basis = "adj_close"
+        else:
+            price = pd.to_numeric(frame.get("close"), errors="coerce")
+            basis = "close"
+    else:
+        price = pd.to_numeric(frame.get("close"), errors="coerce")
+        basis = "close"
+    first = float(price.iloc[0]) if len(price) and pd.notna(price.iloc[0]) and float(price.iloc[0]) > 0 else 0.0
+    price_level = price / first if first > 0 else pd.Series(1.0, index=frame.index)
+    if "total_return" in frame.columns:
+        daily = pd.to_numeric(frame["total_return"], errors="coerce").fillna(0.0)
+        total_level = (1.0 + daily).cumprod()
+        start = float(total_level.iloc[0]) if len(total_level) else 1.0
+        if start > 0:
+            total_level = total_level / start
+    else:
+        total_level = price_level
+    return price_level.fillna(1.0), total_level.fillna(1.0), basis
+
+
 def _fill_check(
     row: pd.Series,
     *,
@@ -147,9 +184,12 @@ def _simulate(data: pd.DataFrame, signals: pd.DataFrame, *, model: ExecutionMode
     shares = 0.0
     pending: str | None = None
     pending_days = 0
+    pending_from: int | None = None
     entry_value: float | None = None
     entry_market_price: float | None = None
     entry_index: int | None = None
+    entry_reason: str | None = None
+    entry_signal_date: Any = None
     trade_rows: list[dict[str, object]] = []
     equity_rows: list[dict[str, object]] = []
     turnover = 0.0
@@ -158,7 +198,7 @@ def _simulate(data: pd.DataFrame, signals: pd.DataFrame, *, model: ExecutionMode
     cancelled_orders = 0
     explicit_cost = 0.0
     max_participation = 0.0
-    first_open = _number(frame.iloc[0].get("open") or frame.iloc[0].get("close"))
+    bh_price, bh_total, bh_basis = _buy_hold_levels(frame)
 
     for index, row in frame.iterrows():
         open_price = _number(row.get("open") or row.get("close"))
@@ -182,6 +222,8 @@ def _simulate(data: pd.DataFrame, signals: pd.DataFrame, *, model: ExecutionMode
                 entry_value = execution_price
                 entry_market_price = open_price
                 entry_index = index
+                entry_reason = _text(signal_frame, pending_from, "entry_reason")
+                entry_signal_date = frame.iloc[pending_from]["date"] if pending_from is not None else None
                 turnover += cash
                 cash = 0.0
                 filled = True
@@ -207,6 +249,8 @@ def _simulate(data: pd.DataFrame, signals: pd.DataFrame, *, model: ExecutionMode
                     {
                         "entry_date": frame.iloc[entry_index]["date"] if entry_index is not None else None,
                         "exit_date": row["date"],
+                        "entry_signal_date": entry_signal_date,
+                        "exit_signal_date": frame.iloc[pending_from]["date"] if pending_from is not None else None,
                         "entry_market_price": entry_market_price,
                         "entry_execution_price": entry_value,
                         "exit_market_price": open_price,
@@ -216,6 +260,9 @@ def _simulate(data: pd.DataFrame, signals: pd.DataFrame, *, model: ExecutionMode
                         "holding_days": index - entry_index if entry_index is not None else 0,
                         "sell_tax_bps": tax_bps,
                         "impact_bps": impact_bps,
+                        "entry_reason": entry_reason,
+                        "exit_reason": _text(signal_frame, pending_from, "exit_reason"),
+                        "execution_price_basis": "raw_ohlc_next_open",
                     }
                 )
                 cash = proceeds
@@ -223,6 +270,8 @@ def _simulate(data: pd.DataFrame, signals: pd.DataFrame, *, model: ExecutionMode
                 entry_value = None
                 entry_market_price = None
                 entry_index = None
+                entry_reason = None
+                entry_signal_date = None
                 filled = True
             else:
                 blocked[str(reason)] = blocked.get(str(reason), 0) + 1
@@ -236,13 +285,23 @@ def _simulate(data: pd.DataFrame, signals: pd.DataFrame, *, model: ExecutionMode
                 if pending_days > model.max_pending_days:
                     pending = None
                     pending_days = 0
+                    pending_from = None
                     cancelled_orders += 1
 
         equity = cash + shares * close_price
         if shares > 0:
             exposed_days += 1
-        benchmark = close_price / first_open if first_open > 0 else 1.0
-        equity_rows.append({"date": row["date"], "equity": equity, "benchmark": benchmark})
+        price_bh = _number(bh_price.iloc[index], 1.0)
+        total_bh = _number(bh_total.iloc[index], price_bh)
+        equity_rows.append(
+            {
+                "date": row["date"],
+                "equity": equity,
+                "benchmark": price_bh,
+                "benchmark_price": price_bh,
+                "benchmark_total": total_bh,
+            }
+        )
 
         if pending is None:
             entry_signal = bool(signal_frame.iloc[index].get("entry", False))
@@ -250,9 +309,11 @@ def _simulate(data: pd.DataFrame, signals: pd.DataFrame, *, model: ExecutionMode
             if shares == 0 and entry_signal and index < len(frame) - 1:
                 pending = "BUY"
                 pending_days = 0
+                pending_from = index
             elif shares > 0 and exit_signal and index < len(frame) - 1:
                 pending = "SELL"
                 pending_days = 0
+                pending_from = index
 
     curve = pd.DataFrame(equity_rows)
     trades = pd.DataFrame(trade_rows)
@@ -272,6 +333,13 @@ def _simulate(data: pd.DataFrame, signals: pd.DataFrame, *, model: ExecutionMode
             "estimated_cost_ratio": explicit_cost,
             "max_participation_rate_observed": max_participation,
             "execution_model": model.public(),
+            "execution_price_basis": "raw_ohlc_next_open",
+            "benchmark_price_basis": bh_basis,
+            "return_bases": {
+                "strategy_equity": "raw_ohlc_next_open_net_of_costs",
+                "benchmark_price_return": bh_basis,
+                "benchmark_total_return": "adj_close_plus_official_dividends" if "total_return" in frame.columns else bh_basis,
+            },
         }
     )
     return BacktestResult(curve, trades, metrics)

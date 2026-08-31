@@ -492,11 +492,96 @@ function universeEvidenceHtml(data) {
   const background = controlled ? "rgba(34,197,94,0.08)" : "rgba(245,158,11,0.09)";
   const grade = evidence.research_grade || (controlled ? "PIT 구성 증거 있음" : "생존편향 제한");
   const snapshots = Number(evidence.archived_snapshot_count || 0);
+  const listing = data.listing_window || {};
+  const listingLine = listing.list_date || listing.delist_date || listing.listed_throughout === false
+    ? ` · 상장 ${escapeHtml(listing.list_date || "미상")} ~ ${escapeHtml(listing.delist_date || "유지")}${listing.listed_throughout === false ? " · 검증 구간 전체 상장 아님" : ""}`
+    : "";
   return `
     <div style="padding:10px 14px; background:${background}; border:1px solid ${border}; border-radius:8px; margin-bottom:12px; color:${color}; font-size:12px; line-height:1.65;">
-      <b>🧭 유니버스 검증 등급: ${escapeHtml(grade)}</b>${snapshots ? ` · 저장된 일별 구성 스냅샷 ${snapshots}개` : ""}<br>
+      <b>🧭 유니버스 검증 등급: ${escapeHtml(grade)}</b>${snapshots ? ` · 저장된 일별 구성 스냅샷 ${snapshots}개` : ""}${listingLine}<br>
       <span style="color:#e2e8f0;">${escapeHtml(evidence.limitation || "과거 시점 구성종목 증거 범위를 확인하세요.")}</span>
       ${evidence.next_step ? `<br><span style="color:#94a3b8;">보완 경로: ${escapeHtml(evidence.next_step)}</span>` : ""}
+      ${listing.limitation ? `<br><span style="color:#94a3b8;">${escapeHtml(listing.limitation)}</span>` : ""}
+    </div>`;
+}
+
+function metricPct(value) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  const n = Number(value);
+  return `${n > 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
+}
+
+function sharpeLabel(row, { oos = false } = {}) {
+  const sample = row?.sample || {};
+  const ok = oos ? sample.representative_oos_sharpe : sample.representative_sharpe;
+  const value = oos ? row?.oos_sharpe : row?.sharpe;
+  if (ok === false) return "표본 부족";
+  return value == null || Number.isNaN(Number(value)) ? "—" : fmt(value, 2);
+}
+
+function precisionPanelHtml(data, row) {
+  const cost = row?.cost_sensitivity || {};
+  const cap = row?.capacity_sensitivity || {};
+  const hold = data?.buy_and_hold || {};
+  const sample = row?.sample || {};
+  const costKeys = ["low", "default", "conservative"];
+  const costLabels = { low: "낮음", default: "기본", conservative: "보수적" };
+  const costLine = costKeys
+    .filter((key) => cost[key])
+    .map((key) => `${costLabels[key]} ${metricPct(cost[key].total_return)}`)
+    .join(" · ");
+  const capKeys = ["small", "default", "large"];
+  const capLabels = { small: "소규모", default: "기본", large: "대규모" };
+  const capLine = capKeys
+    .filter((key) => cap[key])
+    .map((key) => {
+      const blocked = cap[key].blocked_order_reasons || {};
+      const liq = blocked.LIQUIDITY_LIMIT ? ` · 유동성차단 ${blocked.LIQUIDITY_LIMIT}` : "";
+      return `${capLabels[key]} ${metricPct(cap[key].total_return)}${liq}`;
+    })
+    .join(" · ");
+  const holdLine = hold.price_return != null
+    ? `단순보유 가격수익 ${metricPct(hold.price_return)} · 총수익(배당포함) ${metricPct(hold.total_return)} · ${hold.bars || 0}거래일 정렬`
+    : "";
+  const warn = [sample.warning, sample.oos_warning].filter(Boolean).join(" ");
+  if (!costLine && !capLine && !holdLine && !warn) return "";
+  return `
+    <div style="padding:10px 14px; background:rgba(30,41,59,0.55); border:1px solid rgba(148,163,184,0.28); border-radius:8px; margin-bottom:12px; color:#cbd5e1; font-size:12px; line-height:1.65;">
+      <b style="color:#e2e8f0;">📐 적용 범위</b> · 파라미터는 기본 비용의 검증 구간에서만 골랐습니다. 민감도는 그 설정을 다시 쓰지 않습니다.<br>
+      ${costLine ? `<span>비용 낮음/기본/보수적: ${escapeHtml(costLine)}</span><br>` : ""}
+      ${capLine ? `<span>포지션 규모 민감도: ${escapeHtml(capLine)}</span><br>` : ""}
+      ${holdLine ? `<span>${escapeHtml(holdLine)}</span><br>` : ""}
+      <span style="color:#94a3b8;">일봉 프록시이며 호가 잔량을 재현하지 않습니다. 현재 TOP20 소급은 시장 전체 포트폴리오가 아닙니다.</span>
+      ${warn ? `<br><span style="color:#fde68a;">⚠️ ${escapeHtml(warn)}</span>` : ""}
+    </div>`;
+}
+
+function tradeLogHtml(row) {
+  const trades = row?.trades || [];
+  if (!trades.length) return "";
+  const body = trades.map((trade) => `
+      <tr>
+        <td>${escapeHtml(String(trade.entry_date || "").slice(0, 10))}</td>
+        <td>${escapeHtml(String(trade.exit_date || "").slice(0, 10))}</td>
+        <td class="num">${metricPct(trade.return)}</td>
+        <td>${escapeHtml(trade.entry_reason || "진입 신호 다음 시가")}</td>
+        <td>${escapeHtml(trade.exit_reason || "청산 신호 다음 시가")}</td>
+      </tr>`).join("");
+  return `
+    <div class="table-wrap" style="margin-bottom:12px;">
+      <table class="table" style="font-size:12px;">
+        <thead>
+          <tr>
+            <th>진입일</th>
+            <th>청산일</th>
+            <th>순수익률</th>
+            <th>진입 이유</th>
+            <th>청산 이유</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+      <p class="hint" style="margin:6px 0 0;">신호 종가일의 규칙 충족 여부입니다. 실제 체결은 다음 거래가능일 시가 프록시입니다.</p>
     </div>`;
 }
 
@@ -551,8 +636,8 @@ async function runCustomBacktest(query, opts = {}) {
         </div>`
       : `<div style="padding:8px 12px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.3); border-radius:8px; margin-bottom:12px; color:#86efac; font-size:12px;">🛡️ 검사 구간에서 가격·주식수 단절이 발견되지 않았습니다.</div>`;
     const rowsHtml = strats.map((s, idx) => {
-      const sh = s.sharpe != null ? fmt(s.sharpe, 2) : "—";
-      const oosSh = s.oos_sharpe != null ? fmt(s.oos_sharpe, 2) : "—";
+      const sh = sharpeLabel(s);
+      const oosSh = sharpeLabel(s, { oos: true });
       const valRet = s.validation_return != null ? `${s.validation_return > 0 ? "+" : ""}${(s.validation_return * 100).toFixed(1)}%` : "—";
       const oosRet = s.oos_return != null ? `${s.oos_return > 0 ? "+" : ""}${(s.oos_return * 100).toFixed(1)}%` : "—";
       const wfHit = s.wf_hit != null ? `${(s.wf_hit * 100).toFixed(0)}%` : "—";
@@ -577,6 +662,7 @@ async function runCustomBacktest(query, opts = {}) {
         </tr>
       `;
     }).join("");
+    const bestStratPreview = strats.find((s) => s.strategy_id === data.best_id) || strats[0] || {};
 
     resBox.innerHTML = `
       <div class="custom-backtest-hero">
@@ -592,6 +678,7 @@ async function runCustomBacktest(query, opts = {}) {
         ${priceQualityHtml}
         ${executionModelHtml(data)}
         ${universeEvidenceHtml(data)}
+        ${precisionPanelHtml(data, bestStratPreview)}
 
         <div style="padding:10px 14px; background:rgba(56,189,248,0.12); border:1px solid #38bdf8; border-radius:8px; margin-bottom:12px;">
           <b style="color:#38bdf8;">검증 구간 점수 1위: ${escapeHtml(data.best_name || "")} (${escapeHtml(data.best_params_ko || "")})</b>
@@ -619,6 +706,7 @@ async function runCustomBacktest(query, opts = {}) {
             </tbody>
           </table>
         </div>
+        ${tradeLogHtml(bestStratPreview)}
         ${renderPlaybookHtml(data.playbook)}
         <div id="custom-strat-ai-diag" style="margin-top:12px;">
           <div style="padding:10px 14px; background:rgba(30, 41, 59, 0.6); border:1px dashed rgba(56, 189, 248, 0.4); border-radius:8px; display:flex; align-items:center; gap:8px;">
@@ -636,9 +724,9 @@ async function runCustomBacktest(query, opts = {}) {
         ticker: data.ticker,
         company: data.company,
         strategy_name: bestStrat.name || data.best_name || "최적 전략",
-        cagr: bestStrat.cagr,
+        cagr: bestStrat.sample?.representative_annualized ? bestStrat.cagr : null,
         mdd: bestStrat.max_drawdown,
-        sharpe: bestStrat.sharpe,
+        sharpe: bestStrat.sample?.representative_sharpe === false ? null : bestStrat.sharpe,
         win_rate: bestStrat.wf_hit || bestStrat.win_rate,
         profit_factor: bestStrat.profit_factor,
         total_return: bestStrat.total_return,
@@ -646,7 +734,7 @@ async function runCustomBacktest(query, opts = {}) {
         validation_return: bestStrat.validation_return,
         validation_trades: bestStrat.validation_trade_count,
         oos_return: bestStrat.oos_return,
-        oos_sharpe: bestStrat.oos_sharpe,
+        oos_sharpe: bestStrat.sample?.representative_oos_sharpe === false ? null : bestStrat.oos_sharpe,
         oos_trades: bestStrat.oos_trade_count,
         stability_label: bestStrat.stability_label
       })
@@ -3897,8 +3985,8 @@ function openReportModal(rec, customTitle = null) {
     const strats = bt.strategies;
     const stratRows = strats.map((s, idx) => {
       const isBest = s.strategy_id === bt.best_id;
-      const sh = s.sharpe != null ? fmt(s.sharpe, 2) : "—";
-      const oosSh = s.oos_sharpe != null ? fmt(s.oos_sharpe, 2) : "—";
+      const sh = sharpeLabel(s);
+      const oosSh = sharpeLabel(s, { oos: true });
       const valRet = s.validation_return != null ? `${s.validation_return > 0 ? "+" : ""}${(s.validation_return * 100).toFixed(1)}%` : "—";
       const oosRet = s.oos_return != null ? `${s.oos_return > 0 ? "+" : ""}${(s.oos_return * 100).toFixed(1)}%` : "—";
       const wfHit = s.wf_hit != null ? `${(s.wf_hit * 100).toFixed(0)}%` : "—";
@@ -7239,7 +7327,10 @@ function renderStrategy(data) {
     return true;
   });
 
-  const allSharpes = allRows.map(r => ((r.strategies || [])[0] || {}).sharpe).filter(v => v != null);
+  const allSharpes = allRows
+    .map((r) => (r.strategies || [])[0] || {})
+    .filter((best) => best.sample?.representative_sharpe !== false && best.sharpe != null)
+    .map((best) => best.sharpe);
   const avgSharpe = allSharpes.length ? (allSharpes.reduce((a, b) => a + b, 0) / allSharpes.length).toFixed(2) : "—";
   const allMdds = allRows.map(r => ((r.strategies || [])[0] || {}).max_drawdown).filter(v => v != null);
   const avgMdd = allMdds.length ? ((allMdds.reduce((a, b) => a + b, 0) / allMdds.length) * 100).toFixed(1) + "%" : "—";
@@ -7347,7 +7438,7 @@ function renderStrategy(data) {
         </td>
         <td class="num has-tip" data-tip="선택에 쓰지 않은 마지막 20% 최종검증 결과입니다. 수익률·샤프·거래 수를 함께 봐야 합니다.">
           <b style="color:${Number(best.oos_return) > 0 ? '#38bdf8' : '#cbd5e1'}; font-size:13.5px;">${pctCell(best.oos_return)}</b>
-          <span class="meta">샤프 ${best.oos_sharpe == null ? "—" : fmt(best.oos_sharpe, 2)} · ${best.oos_trade_count ?? 0}회</span>
+          <span class="meta">샤프 ${sharpeLabel(best, { oos: true })} · ${best.oos_trade_count ?? 0}회</span>
         </td>
         <td class="num has-tip" data-tip="순환 검증(WF) 승률: 시기를 바꿔가며 테스트했을 때 플러스 수익을 낸 기간 비율">
           <span style="font-weight:800; color:${(best.wf_hit || 0) >= 0.6 ? '#4ade80' : '#f8fafc'}; font-size:13px;">${best.wf_hit == null ? "—" : `${(best.wf_hit * 100).toFixed(0)}%`}</span>
@@ -7391,7 +7482,7 @@ function renderStrategy(data) {
     <div class="strat-guide-grid">
       <div class="strat-guide-card">
         <div class="strat-guide-head"><span class="strat-guide-icon">🎯</span> 1. 백테스트 목적</div>
-        <div class="strat-guide-desc">재무 Quant TOP20 종목별로 네 가격 규칙을 같은 조건에서 비교하고 <b>검증 구간 1위와 최종검증 결과</b>를 분리해 보여줍니다.</div>
+        <div class="strat-guide-desc">재무 Quant TOP20 종목별로 네 가격 규칙을 같은 조건에서 비교하고 <b>검증 구간 1위와 최종검증 결과</b>를 분리해 보여줍니다. 현재 TOP20 소급이며 당시 시장 전체 PIT 포트폴리오가 아닙니다.</div>
       </div>
       <div class="strat-guide-card">
         <div class="strat-guide-head"><span class="strat-guide-icon">🧪</span> 2. 4대 전략 풀</div>
@@ -7417,9 +7508,9 @@ function renderStrategy(data) {
         <span>🟡 안정성 보통 (MED)</span>
         <b>${medCount} <small style="font-size:12px; color:#94a3b8; font-weight:normal;">개 종목</small></b>
       </div>
-      <div class="strat-summary-item has-tip" data-tip-title="📊 TOP20 평균 샤프 지수" data-tip="위험 1단위 감수 대비 초과수익 비율의 평균치입니다. 1.0 이상이면 시장 대비 탁월한 초과수익을 의미합니다." tabindex="0">
+      <div class="strat-summary-item has-tip" data-tip-title="📊 TOP20 전체기간 참고 샤프" data-tip="현재 TOP20 종목의 전체기간 참고 샤프 평균입니다. 시장 초과수익 보장도, 횡단면 PIT 포트폴리오 성과도 아닙니다. 거래 수가 부족한 종목은 평균에서 뺍니다." tabindex="0">
         <span>📊 TOP20 전체기간 참고 샤프</span>
-        <b>${avgSharpe} <small style="font-size:12px; color:#38bdf8; font-weight:normal;">(선택 지표 아님)</small></b>
+        <b>${avgSharpe} <small style="font-size:12px; color:#38bdf8; font-weight:normal;">(선택 지표 아님 · 표본 충분만)</small></b>
       </div>
       <div class="strat-summary-item has-tip" data-tip-title="🛡️ TOP20 평균 최대낙폭 (MDD)" data-tip="전략 보유 기간 중 겪었던 최대 하락폭의 평균치입니다. 낮을수록 하락장 방어력이 견고합니다." tabindex="0">
         <span>🛡️ TOP20 평균 최대낙폭</span>

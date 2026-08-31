@@ -35,4 +35,19 @@ walk_forward:
   step_days: 15
 robustness:
   minimum_trade_count: 8
-note: 신호 다음 거래가능일 시가 체결. 세금·수수료·슬리피지·거래대금·일봉 상하한가 잠김 프록시 반영. 실시간 호가 아님.
+  min_trades_for_sharpe: 8
+  thin_trade_count: 2
+sensitivity:
+  cost:
+    low:
+      commission_bps: 0.5
+      slippage_bps: 2
+      impact_bps_at_max_participation: 10
+    conservative:
+      commission_bps: 3.0
+      slippage_bps: 15
+      impact_bps_at_max_participation: 40
+  capacity:
+    small_krw: 2000000
+    large_krw: 50000000
+note: 신호 다음 거래가능일 시가 체결. 세금·수수료·슬리피지·거래대금·일봉 상하한가 잠김 프록시 반영. 실시간 호가 아님. 현재 TOP20 소급은 시장 전체 PIT 성과가 아님.

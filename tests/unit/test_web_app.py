@@ -69,6 +69,9 @@ def test_index_and_status():
     assert 'id="job-heartbeat-line"' in home.text
     assert "function cancelJob" in js
     assert "/api/jobs/cancel" in js
+    assert "function sharpeLabel" in js
+    assert "function precisionPanelHtml" in js
+    assert "function tradeLogHtml" in js
     status = client.get("/api/status")
     assert status.status_code == 200
     body = status.json()

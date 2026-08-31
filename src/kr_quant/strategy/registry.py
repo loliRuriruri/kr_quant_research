@@ -19,8 +19,21 @@ def _numeric(data: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def _signal_frame(entry: pd.Series, exit_: pd.Series) -> pd.DataFrame:
-    return pd.DataFrame({"entry": entry.fillna(False).astype(bool), "exit": exit_.fillna(False).astype(bool)})
+def _signal_frame(entry: pd.Series, exit_: pd.Series, extra: dict[str, pd.Series] | None = None) -> pd.DataFrame:
+    out = pd.DataFrame({"entry": entry.fillna(False).astype(bool), "exit": exit_.fillna(False).astype(bool)})
+    if extra:
+        for key, series in extra.items():
+            out[key] = series
+    return out
+
+
+def _reason_on(mask: pd.Series, values: pd.Series, formatter) -> pd.Series:
+    reason = pd.Series(pd.NA, index=mask.index, dtype="object")
+    active = mask.fillna(False) & values.notna()
+    if not bool(active.any()):
+        return reason
+    reason.loc[active] = [formatter(value) for value in values.loc[active]]
+    return reason
 
 
 def _rsi(series: pd.Series, period: int) -> pd.Series:
@@ -34,30 +47,81 @@ def _rsi(series: pd.Series, period: int) -> pd.Series:
 def rsi_signals(data: pd.DataFrame, params: dict[str, object]) -> pd.DataFrame:
     frame = _numeric(data)
     values = _rsi(frame["close"], int(params["period"]))
-    return _signal_frame(values < float(params["oversold"]), values > float(params["overbought"]))
+    oversold = float(params["oversold"])
+    overbought = float(params["overbought"])
+    entry = values < oversold
+    exit_ = values > overbought
+    return _signal_frame(
+        entry,
+        exit_,
+        {
+            "entry_reason": _reason_on(entry, values, lambda value: f"RSI {float(value):.1f} < 과매도 {oversold}"),
+            "exit_reason": _reason_on(exit_, values, lambda value: f"RSI {float(value):.1f} > 과매수 {overbought}"),
+        },
+    )
 
 
 def ma_cross_signals(data: pd.DataFrame, params: dict[str, object]) -> pd.DataFrame:
     frame = _numeric(data)
-    fast = frame["close"].rolling(int(params["fast"])).mean()
-    slow = frame["close"].rolling(int(params["slow"])).mean()
-    return _signal_frame((fast > slow) & (fast.shift(1) <= slow.shift(1)), fast < slow)
+    fast_n = int(params["fast"])
+    slow_n = int(params["slow"])
+    fast = frame["close"].rolling(fast_n).mean()
+    slow = frame["close"].rolling(slow_n).mean()
+    entry = (fast > slow) & (fast.shift(1) <= slow.shift(1))
+    exit_ = fast < slow
+    return _signal_frame(
+        entry,
+        exit_,
+        {
+            "entry_reason": _reason_on(entry, fast, lambda value: f"단기 {fast_n}일선이 장기 {slow_n}일선을 상향 돌파"),
+            "exit_reason": _reason_on(exit_, fast, lambda value: f"단기 {fast_n}일선이 장기 {slow_n}일선 아래"),
+        },
+    )
 
 
 def donchian_signals(data: pd.DataFrame, params: dict[str, object]) -> pd.DataFrame:
     frame = _numeric(data)
-    high = frame["high"].shift(1).rolling(int(params["entry_period"])).max()
-    low = frame["low"].shift(1).rolling(int(params["exit_period"])).min()
-    return _signal_frame(frame["close"] > high, frame["close"] < low)
+    entry_period = int(params["entry_period"])
+    exit_period = int(params["exit_period"])
+    high = frame["high"].shift(1).rolling(entry_period).max()
+    low = frame["low"].shift(1).rolling(exit_period).min()
+    entry = frame["close"] > high
+    exit_ = frame["close"] < low
+    return _signal_frame(
+        entry,
+        exit_,
+        {
+            "entry_reason": _reason_on(
+                entry, frame["close"], lambda value: f"종가 {float(value):.0f}가 {entry_period}일 고점 돌파"
+            ),
+            "exit_reason": _reason_on(
+                exit_, frame["close"], lambda value: f"종가 {float(value):.0f}가 {exit_period}일 저점 이탈"
+            ),
+        },
+    )
 
 
 def bollinger_signals(data: pd.DataFrame, params: dict[str, object]) -> pd.DataFrame:
     frame = _numeric(data)
     period = int(params["period"])
+    width = float(params["stddev"])
     middle = frame["close"].rolling(period).mean()
     deviation = frame["close"].rolling(period).std(ddof=0)
-    lower = middle - float(params["stddev"]) * deviation
-    return _signal_frame(frame["close"] < lower, frame["close"] > middle)
+    lower = middle - width * deviation
+    entry = frame["close"] < lower
+    exit_ = frame["close"] > middle
+    return _signal_frame(
+        entry,
+        exit_,
+        {
+            "entry_reason": _reason_on(
+                entry, frame["close"], lambda value: f"종가 {float(value):.0f}가 볼린저 하단({period}일, {width}σ) 이탈"
+            ),
+            "exit_reason": _reason_on(
+                exit_, frame["close"], lambda value: f"종가 {float(value):.0f}가 볼린저 중심선 복귀"
+            ),
+        },
+    )
 
 
 @dataclass(frozen=True)
