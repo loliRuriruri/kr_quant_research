@@ -1761,10 +1761,24 @@ function renderRunDiagnostics(status) {
   const dartCoverage = dart.coverage || {};
   if (dartDateEl) dartDateEl.textContent = dart.observed_date || fresh.financial_max_available_date || "적재 자료 없음";
   if (dartMetaEl) {
-    const pct = dartCoverage.coverage_pct;
+    const usable = dartCoverage.usable_pct != null ? dartCoverage.usable_pct : dartCoverage.coverage_pct;
+    const usableCount = dartCoverage.usable_tickers != null ? dartCoverage.usable_tickers : (dartCoverage.tickers || 0);
+    const universe = dartCoverage.universe_tickers || 0;
+    const usableLabel = usable != null
+      ? "사용가능 " + usableCount + "/" + universe + " (" + usable + "% / 목표 " + (dartCoverage.target_pct || 90) + "%)"
+      : "사용가능 " + usableCount + "/" + universe;
+    const attempted = dartCoverage.attempted_pct;
+    const response = dartCoverage.response_pct;
     const backfill = dart.backfill || {};
-    const progress = backfill.total_targets ? ` · 백필 ${backfill.cursor || 0}/${backfill.total_targets}` : "";
-    dartMetaEl.textContent = `공시 보유 ${dartCoverage.tickers || 0}/${dartCoverage.universe_tickers || 0}종목${pct != null ? ` · ${pct}%` : ""}${progress} · 공시 발생 기준`;
+    const progress = backfill.total_targets ? " · 커서 " + (backfill.cursor || 0) + "/" + backfill.total_targets : "";
+    const remaining = backfill.remaining_batches != null ? " · 남은 배치 " + backfill.remaining_batches : "";
+    const eta = backfill.eta_days != null ? " · 대략 " + backfill.eta_days + "일" : "";
+    const split = [
+      usableLabel,
+      attempted != null ? "시도 " + attempted + "%" : "",
+      response != null ? "정상응답 " + response + "%" : "",
+    ].filter(Boolean).join(" · ");
+    dartMetaEl.textContent = split + progress + remaining + eta + " · 공시 발생 기준";
   }
   if (dartBadge) {
     const partial = ["missing", "partial"].includes(dart.state);

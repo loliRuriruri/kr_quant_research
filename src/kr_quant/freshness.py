@@ -98,36 +98,31 @@ def _mtime_iso(path: Path) -> str | None:
     return datetime.fromtimestamp(path.stat().st_mtime, tz=KST).isoformat()
 
 
-def _financial_coverage(facts_path: Path, master_path: Path) -> dict[str, Any]:
-    fact_tickers = 0
-    master_tickers = 0
-    fact_rows = 0
+def _financial_coverage(facts_path: Path, master_path: Path, backfill_path: Path | None = None) -> dict[str, Any]:
+    from kr_quant.ingest.live import dart_coverage_report
+
+    facts = None
+    master = None
     if facts_path.exists():
         try:
             facts = pd.read_parquet(facts_path, columns=["ticker"])
-            fact_rows = int(len(facts))
-            fact_tickers = int(facts["ticker"].astype(str).str.zfill(6).nunique())
         except Exception:  # noqa: BLE001
-            pass
+            facts = None
     if master_path.exists():
         try:
             master = pd.read_parquet(master_path)
-            if "corp_code" in master.columns:
-                from kr_quant.ingest.live import select_ingest_targets
-
-                eligible = select_ingest_targets(master, None)
-            else:
-                eligible = master
-            master_tickers = int(eligible["ticker"].astype(str).str.zfill(6).nunique())
         except Exception:  # noqa: BLE001
-            pass
-    coverage = None if not master_tickers else round(fact_tickers / master_tickers * 100, 1)
-    return {
-        "rows": fact_rows,
-        "tickers": fact_tickers,
-        "universe_tickers": master_tickers,
-        "coverage_pct": coverage,
-    }
+            master = None
+    outcomes: dict[str, Any] = {}
+    if backfill_path and backfill_path.exists():
+        try:
+            payload = json.loads(backfill_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and isinstance(payload.get("ticker_outcomes"), dict):
+                outcomes = payload["ticker_outcomes"]
+        except (OSError, json.JSONDecodeError):
+            outcomes = {}
+    report = dart_coverage_report(master, facts, outcomes)
+    return report
 
 
 def _strategy_cache_date(path: Path) -> date | None:
@@ -164,6 +159,14 @@ def _backfill_progress(path: Path) -> dict[str, Any] | None:
             "coverage_pct",
             "completed_cycles",
             "completed_at",
+            "started_at",
+            "error",
+            "remaining_tickers",
+            "remaining_batches",
+            "eta_days",
+            "has_retryable",
+            "cycle_complete",
+            "coverage",
         )
     }
 
@@ -203,8 +206,9 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
         status = "fresh"
         label = "시세 최신"
     master_path = live / "master.parquet" if (live / "master.parquet").exists() else demo / "master.parquet"
-    financial_coverage = _financial_coverage(facts_path, master_path)
-    backfill_progress = _backfill_progress(live / "dart_backfill_state.json")
+    backfill_path = live / "dart_backfill_state.json"
+    financial_coverage = _financial_coverage(facts_path, master_path, backfill_path)
+    backfill_progress = _backfill_progress(backfill_path)
     strategy_path = settings.root / "data" / "cache" / "strategy_lab.json"
     strategy_day = _strategy_cache_date(strategy_path)
     strategy_lag = trading_session_lag(strategy_day, price_max or expected)

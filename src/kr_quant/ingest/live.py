@@ -23,7 +23,23 @@ from kr_quant.ingest.store import write_raw_json
 from kr_quant.normalize.accounts import load_account_lookup, map_account, normalize_amount
 from kr_quant.normalize.security_master import normalize_krx_rows
 from kr_quant.settings import Settings
+from kr_quant.universe.identifiers import canonical_ticker
 from kr_quant.universe.tradability import normalize_krx_risk_class
+
+DART_USABLE_FACTS = "usable_facts"
+DART_NO_FILING = "no_filing_for_period"
+DART_NO_CORP_MAPPING = "no_corp_mapping"
+DART_UNSUPPORTED = "unsupported_security"
+DART_RATE_LIMITED = "rate_limited"
+DART_TRANSIENT = "transient_error"
+DART_PERMANENT = "permanent_error"
+DART_USABLE_TARGET_PCT = 90.0
+DART_PERMANENT_STATUSES = frozenset({"010", "011", "012", "014", "021", "100", "900"})
+DART_RATE_STATUSES = frozenset({"020", "800"})
+DART_RESPONSE_OUTCOMES = frozenset({DART_USABLE_FACTS, DART_NO_FILING})
+DART_TERMINAL_OUTCOMES = frozenset(
+    {DART_USABLE_FACTS, DART_NO_FILING, DART_NO_CORP_MAPPING, DART_UNSUPPORTED, DART_PERMANENT}
+)
 
 logger = logging.getLogger("kr_quant.ingest.live")
 
@@ -70,6 +86,8 @@ def should_retry_dart_job(
     status = str(record.get("status") or "")
     if status == "000":
         return False
+    if status in DART_PERMANENT_STATUSES:
+        return False
     fetched = pd.to_datetime(record.get("fetched_at"), utc=True, errors="coerce")
     if pd.isna(fetched):
         return True
@@ -79,6 +97,152 @@ def should_retry_dart_job(
     age_hours = (current.astimezone(timezone.utc) - fetched.to_pydatetime()).total_seconds() / 3600
     retry_after = no_data_retry_hours if status == "013" else error_retry_hours
     return age_hours >= retry_after
+
+
+def opendart_status_from_error(exc: BaseException) -> str:
+    text = str(exc)
+    for token in (*sorted(DART_PERMANENT_STATUSES), *sorted(DART_RATE_STATUSES)):
+        if f"status={token}" in text:
+            return token
+    return "ERR"
+
+
+def dart_universe_partitions(master: pd.DataFrame) -> dict[str, list[str]]:
+    """Split the master into DART-eligible, unmapped, and unsupported names."""
+    df = master.copy()
+    if df.empty or "ticker" not in df.columns:
+        return {"eligible": [], "no_corp_mapping": [], "unsupported_security": []}
+    df["ticker"] = df["ticker"].map(canonical_ticker)
+    df = df[df["ticker"].astype(str) != ""].drop_duplicates("ticker")
+    if "corp_code" not in df.columns:
+        codes = df["ticker"].astype(str).tolist()
+        return {"eligible": codes, "no_corp_mapping": [], "unsupported_security": []}
+    for col in ("kind", "secu_group", "company", "corp_code"):
+        if col not in df.columns:
+            df[col] = ""
+    kind = df["kind"].astype(str)
+    group = df["secu_group"].astype(str)
+    name = df["company"].astype(str)
+    common = kind.str.contains("보통") | (kind == "")
+    not_pref = ~kind.str.contains("우선")
+    stock = group.str.contains("주권") | (group == "")
+    not_etf = ~name.str.contains("ETF|ETN|스팩|SPAC|리츠|REIT", case=False, regex=True)
+    security_ok = common & not_pref & stock & not_etf
+    has_corp = df["corp_code"].notna() & (df["corp_code"].astype(str).str.len() >= 8)
+    return {
+        "eligible": df.loc[security_ok & has_corp, "ticker"].astype(str).tolist(),
+        "no_corp_mapping": df.loc[security_ok & ~has_corp, "ticker"].astype(str).tolist(),
+        "unsupported_security": df.loc[~security_ok, "ticker"].astype(str).tolist(),
+    }
+
+
+def classify_dart_ticker_outcome(*, has_facts: bool, job_rows: list[dict[str, Any]] | None = None) -> str:
+    if has_facts:
+        return DART_USABLE_FACTS
+    statuses = [str(row.get("status") or "") for row in job_rows or []]
+    if not statuses:
+        return DART_TRANSIENT
+    if any(status in DART_RATE_STATUSES for status in statuses):
+        return DART_RATE_LIMITED
+    if any(status in DART_PERMANENT_STATUSES for status in statuses):
+        return DART_PERMANENT
+    if all(status in {"000", "013"} for status in statuses):
+        return DART_NO_FILING
+    return DART_TRANSIENT
+
+
+def ticker_outcome_retryable(record: dict[str, Any] | None, *, now: datetime | None = None) -> bool:
+    if not record:
+        return True
+    outcome = str(record.get("outcome") or "")
+    if outcome in {DART_USABLE_FACTS, DART_NO_CORP_MAPPING, DART_UNSUPPORTED, DART_PERMANENT}:
+        return False
+    stamp = {"fetched_at": record.get("updated_at") or record.get("fetched_at")}
+    if outcome == DART_NO_FILING:
+        return should_retry_dart_job({**stamp, "status": "013"}, now=now)
+    return should_retry_dart_job({**stamp, "status": "ERR"}, now=now)
+
+
+def dart_coverage_report(
+    master: pd.DataFrame | None,
+    facts: pd.DataFrame | None,
+    outcomes: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    parts = dart_universe_partitions(master if master is not None else pd.DataFrame())
+    eligible = [canonical_ticker(code) for code in parts["eligible"]]
+    eligible_set = {code for code in eligible if code}
+    fact_tickers: set[str] = set()
+    fact_rows = 0
+    if facts is not None and not getattr(facts, "empty", True) and "ticker" in facts.columns:
+        fact_rows = int(len(facts))
+        fact_tickers = {canonical_ticker(code) for code in facts["ticker"].tolist()}
+        fact_tickers.discard("")
+    labels = {canonical_ticker(key): value for key, value in (outcomes or {}).items()}
+    attempted = 0
+    response = 0
+    no_filing = 0
+    errors = 0
+    for ticker in eligible_set:
+        rec = labels.get(ticker)
+        outcome = rec.get("outcome") if isinstance(rec, dict) else rec
+        if ticker in fact_tickers:
+            outcome = DART_USABLE_FACTS
+        if not outcome:
+            continue
+        attempted += 1
+        if outcome in DART_RESPONSE_OUTCOMES:
+            response += 1
+        if outcome == DART_NO_FILING:
+            no_filing += 1
+        if outcome in {DART_TRANSIENT, DART_RATE_LIMITED, DART_PERMANENT}:
+            errors += 1
+    usable = len(fact_tickers & eligible_set) if eligible_set else len(fact_tickers)
+    universe = len(eligible_set)
+    def _pct(num: int) -> float | None:
+        return None if not universe else round(num / universe * 100, 1)
+    return {
+        "rows": fact_rows,
+        "tickers": usable,
+        "universe_tickers": universe,
+        "coverage_pct": _pct(usable),
+        "usable_tickers": usable,
+        "usable_pct": _pct(usable),
+        "attempted_tickers": attempted if attempted else usable,
+        "attempted_pct": _pct(attempted if attempted else usable),
+        "response_tickers": response if response else usable,
+        "response_pct": _pct(response if response else usable),
+        "no_filing_tickers": no_filing,
+        "no_corp_mapping_tickers": len(parts["no_corp_mapping"]),
+        "unsupported_tickers": len(parts["unsupported_security"]),
+        "error_tickers": errors,
+        "target_pct": DART_USABLE_TARGET_PCT,
+        "usable_target_met": bool(universe and usable / universe * 100 >= DART_USABLE_TARGET_PCT),
+    }
+
+
+def dart_backfill_eta(total: int, cursor: int, batch_size: int, *, batch_minutes: float = 8.0) -> dict[str, Any]:
+    size = max(1, int(batch_size or 50))
+    remaining = max(0, int(total) - int(cursor or 0))
+    batches = (remaining + size - 1) // size if remaining else 0
+    return {
+        "remaining_tickers": remaining,
+        "remaining_batches": batches,
+        "eta_days": batches,
+        "batch_minutes": batch_minutes,
+    }
+
+
+def needs_more_dart_backfill(coverage: dict[str, Any] | None, backfill: dict[str, Any] | None = None) -> bool:
+    payload = coverage or {}
+    usable = payload.get("usable_pct")
+    if usable is None:
+        usable = payload.get("coverage_pct")
+    if usable is not None and float(usable) >= DART_USABLE_TARGET_PCT:
+        return False
+    progress = backfill or {}
+    if int(progress.get("completed_cycles") or 0) >= 1 and not progress.get("has_retryable"):
+        return False
+    return True
 
 
 def _last_day(year: int, month: int) -> date:
@@ -550,7 +714,7 @@ def fetch_dart_financials(
     fetched = 0
     for target in targets:
         corp = str(target["corp_code"]).zfill(8)
-        ticker = str(target["ticker"]).zfill(6)
+        ticker = canonical_ticker(target["ticker"]) or str(target["ticker"]).zfill(6)
         acc_mt = int(target.get("acc_mt") or 12)
         for year, code in reports:
             for fs_div in ("CFS", "OFS"):
@@ -571,7 +735,7 @@ def fetch_dart_financials(
                             "year": year,
                             "reprt_code": code,
                             "fs_div": fs_div,
-                            "status": "ERR",
+                            "status": opendart_status_from_error(exc),
                             "n_mapped": 0,
                             "fetched_at": datetime.now(timezone.utc).isoformat(),
                         }
@@ -705,17 +869,17 @@ def plan_dart_backfill_targets(
     eligible = select_ingest_targets(master, None).copy()
     if eligible.empty:
         return eligible, {"cursor": 0, "total_targets": 0, "ticker_order": [], "completed_cycles": 0}
-    eligible["ticker"] = eligible["ticker"].astype(str).str.zfill(6)
-    eligible = eligible.drop_duplicates("ticker")
+    eligible["ticker"] = eligible["ticker"].map(lambda value: canonical_ticker(value) or str(value).zfill(6))
+    eligible = eligible[eligible["ticker"].astype(str) != ""].drop_duplicates("ticker")
     current = eligible["ticker"].tolist()
     current_set = set(current)
-    previous = [str(code).zfill(6) for code in (state or {}).get("ticker_order") or []]
+    previous = [canonical_ticker(code) or str(code).zfill(6) for code in (state or {}).get("ticker_order") or []]
     order = [code for code in previous if code in current_set]
     newcomers = [code for code in current if code not in set(order)]
     if not order:
         covered: set[str] = set()
         if facts is not None and not facts.empty and "ticker" in facts.columns:
-            covered = set(facts["ticker"].astype(str).str.zfill(6))
+            covered = {canonical_ticker(code) or str(code).zfill(6) for code in facts["ticker"].tolist()}
         missing = [code for code in current if code not in covered]
         present = [code for code in current if code in covered]
         order = missing + present
@@ -771,6 +935,24 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
             temporary.unlink()
 
 
+def _seed_partition_outcomes(
+    outcomes: dict[str, Any],
+    partitions: dict[str, list[str]],
+    *,
+    now: str,
+) -> dict[str, Any]:
+    merged = dict(outcomes)
+    for ticker in partitions.get("no_corp_mapping") or []:
+        code = canonical_ticker(ticker)
+        if code and (not isinstance(merged.get(code), dict) or not merged[code].get("outcome")):
+            merged[code] = {"outcome": DART_NO_CORP_MAPPING, "updated_at": now, "attempts": 0}
+    for ticker in partitions.get("unsupported_security") or []:
+        code = canonical_ticker(ticker)
+        if code and (not isinstance(merged.get(code), dict) or not merged[code].get("outcome")):
+            merged[code] = {"outcome": DART_UNSUPPORTED, "updated_at": now, "attempts": 0}
+    return merged
+
+
 def backfill_dart_financials(settings: Settings, as_of: date, *, batch_size: int = 50) -> dict[str, Any]:
     """Advance one resumable full-universe DART batch and persist its checkpoint."""
     folder = live_dir(settings)
@@ -784,40 +966,124 @@ def backfill_dart_financials(settings: Settings, as_of: date, *, batch_size: int
     state_path = folder / "dart_backfill_state.json"
     prior = _read_json(state_path)
     batch, progress = plan_dart_backfill_targets(master, facts, batch_size=batch_size, state=prior)
+    partitions = dart_universe_partitions(master)
+    started_at = datetime.now(timezone.utc).isoformat()
+    outcomes = _seed_partition_outcomes(prior.get("ticker_outcomes") or {}, partitions, now=started_at)
     started = {
-        **prior,
         **progress,
         "status": "running",
         "as_of": as_of.isoformat(),
-        "started_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": started_at,
+        "completed_at": None,
+        "error": None,
+        "ticker_outcomes": outcomes,
         "state_path": str(state_path),
+        "completed_cycles": int(progress.get("completed_cycles") or 0),
     }
     _write_json_atomic(state_path, started)
     if batch.empty:
-        finished = {**started, "status": "complete", "completed_at": datetime.now(timezone.utc).isoformat()}
+        coverage = dart_coverage_report(master, facts, outcomes)
+        eta = dart_backfill_eta(int(progress.get("total_targets") or 0), int(progress.get("next_cursor") or 0), batch_size)
+        finished = {
+            **started,
+            "status": "complete",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "coverage": coverage,
+            **eta,
+            "has_retryable": False,
+        }
         _write_json_atomic(state_path, finished)
         return finished
 
-    fetch_dart_companies(settings, batch["corp_code"].astype(str).tolist())
-    refreshed = build_live_master(settings, as_of)
-    refreshed["ticker"] = refreshed["ticker"].astype(str).str.zfill(6)
-    batch_codes = set(progress["last_batch_tickers"])
-    batch = refreshed[refreshed["ticker"].isin(batch_codes)].copy()
-    fetch_dart_financials(settings, batch.to_dict("records"), as_of=as_of)
+    skip_codes = []
+    fetch_rows = []
+    for row in batch.to_dict("records"):
+        ticker = canonical_ticker(row.get("ticker")) or str(row.get("ticker") or "").zfill(6)
+        previous = outcomes.get(ticker)
+        if previous and not ticker_outcome_retryable(previous):
+            skip_codes.append(ticker)
+            continue
+        fetch_rows.append(row)
+    prior_batch_start = prior.get("batch_start")
+    planned_batch_start = progress.get("batch_start")
+    same_batch = (
+        str(prior.get("as_of")) == as_of.isoformat()
+        and prior.get("status") in {"success", "complete"}
+        and list(prior.get("last_batch_tickers") or []) == list(progress.get("last_batch_tickers") or [])
+        and prior_batch_start is not None
+        and planned_batch_start is not None
+        and int(prior_batch_start) == int(planned_batch_start)
+    )
+    if same_batch and not fetch_rows:
+        coverage = dart_coverage_report(master, facts, outcomes)
+        eta = dart_backfill_eta(int(progress.get("total_targets") or 0), int(progress.get("next_cursor") or 0), batch_size)
+        finished = {
+            **started,
+            "status": "success",
+            "cursor": int(progress["next_cursor"]),
+            "processed_this_run": 0,
+            "skipped_already_done": skip_codes,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "coverage": coverage,
+            **eta,
+            "note": "같은 날 같은 배치를 다시 수집하지 않았습니다.",
+        }
+        _write_json_atomic(state_path, finished)
+        return finished
+
+    if fetch_rows:
+        fetch_dart_companies(settings, [str(row.get("corp_code") or "") for row in fetch_rows])
+        refreshed = build_live_master(settings, as_of)
+        refreshed["ticker"] = refreshed["ticker"].map(lambda value: canonical_ticker(value) or str(value).zfill(6))
+        fetch_codes = {canonical_ticker(row.get("ticker")) or str(row.get("ticker") or "").zfill(6) for row in fetch_rows}
+        batch = refreshed[refreshed["ticker"].isin(fetch_codes)].copy()
+        fetch_dart_financials(settings, batch.to_dict("records"), as_of=as_of)
+    else:
+        batch = batch.iloc[0:0].copy()
 
     facts = pd.read_parquet(facts_path) if facts_path.exists() else pd.DataFrame()
-    covered = 0
+    fact_tickers: set[str] = set()
     if not facts.empty and "ticker" in facts.columns:
-        covered = int(facts["ticker"].astype(str).str.zfill(6).nunique())
-    total = int(progress["total_targets"])
+        fact_tickers = {canonical_ticker(code) or str(code).zfill(6) for code in facts["ticker"].tolist()}
+    jobs_by_corp: dict[str, list[dict[str, Any]]] = {}
+    job_path = folder / "dart_jobs.parquet"
+    if job_path.exists():
+        jobs = pd.read_parquet(job_path)
+        for rec in jobs.to_dict("records"):
+            jobs_by_corp.setdefault(str(rec.get("corp_code") or "").zfill(8), []).append(rec)
+    stamp = datetime.now(timezone.utc).isoformat()
+    for row in fetch_rows:
+        ticker = canonical_ticker(row.get("ticker")) or str(row.get("ticker") or "").zfill(6)
+        corp = str(row.get("corp_code") or "").zfill(8)
+        outcome = classify_dart_ticker_outcome(has_facts=ticker in fact_tickers, job_rows=jobs_by_corp.get(corp) or [])
+        previous = outcomes.get(ticker) if isinstance(outcomes.get(ticker), dict) else {}
+        outcomes[ticker] = {
+            "outcome": outcome,
+            "updated_at": stamp,
+            "attempts": int((previous or {}).get("attempts") or 0) + 1,
+            "corp_code": corp,
+        }
+    coverage = dart_coverage_report(master, facts, outcomes)
+    eta = dart_backfill_eta(int(progress.get("total_targets") or 0), int(progress.get("next_cursor") or 0), batch_size)
+    has_retryable = any(
+        ticker_outcome_retryable(rec)
+        for ticker, rec in outcomes.items()
+        if canonical_ticker(ticker) in set(progress.get("ticker_order") or [])
+    ) or any(code not in outcomes for code in progress.get("ticker_order") or [])
     finished = {
         **started,
         "status": "success",
         "cursor": int(progress["next_cursor"]),
-        "processed_this_run": int(len(batch)),
-        "covered_tickers": covered,
-        "coverage_pct": None if not total else round(covered / total * 100, 1),
-        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_this_run": int(len(fetch_rows)),
+        "skipped_already_done": skip_codes,
+        "covered_tickers": coverage.get("usable_tickers"),
+        "coverage_pct": coverage.get("usable_pct"),
+        "coverage": coverage,
+        "ticker_outcomes": outcomes,
+        "completed_at": stamp,
+        "has_retryable": has_retryable,
+        "cycle_complete": bool(progress.get("completed_cycle")),
+        **eta,
     }
     _write_json_atomic(state_path, finished)
     return finished

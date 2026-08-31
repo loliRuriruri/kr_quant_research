@@ -265,7 +265,11 @@ def job_dart_backfill(as_of: str = "auto", batch_size: int = 50) -> dict[str, An
     backfill = backfill_dart_financials(s, d, batch_size=max(1, min(int(batch_size or 50), 500)))
     result = run_from_staged(s, d, s.staged_dir / "live", source_mode="live")
     out = _summarize(result)
-    out["dart_backfill"] = {key: value for key, value in backfill.items() if key != "ticker_order"}
+    out["dart_backfill"] = {
+        key: value
+        for key, value in backfill.items()
+        if key not in {"ticker_order", "ticker_outcomes"}
+    }
     out["freshness"] = freshness_snapshot(s, screen_as_of=out.get("as_of_date"))
     out["pipeline_status"] = "partial" if out["freshness"].get("required_stale") else "success"
     return out
@@ -429,8 +433,13 @@ def job_smart_sync(
     # --- DART ---
     current = freshness_snapshot(s)
     facts = ((current.get("sources") or {}).get("financial_facts") or {})
-    coverage = (facts.get("coverage") or {}).get("coverage_pct")
+    coverage_info = facts.get("coverage") or {}
+    coverage = coverage_info.get("usable_pct")
+    if coverage is None:
+        coverage = coverage_info.get("coverage_pct")
     dart_state = (ledger.get("steps") or {}).get("dart") or {}
+    from kr_quant.ingest.live import needs_more_dart_backfill
+
     if ledger_mod.step_done(dart_state) and dart_state.get("status") != "pending":
         ledger_mod.mark_step(
             ledger,
@@ -446,7 +455,7 @@ def job_smart_sync(
             status="skipped_already_success" if dart_state.get("status") == "success" else dart_state.get("status"),
             coverage_pct=coverage,
         )
-    elif coverage is None or float(coverage) < 90.0:
+    elif needs_more_dart_backfill(coverage_info, facts.get("backfill")):
         ledger_mod.mark_step(ledger, "dart", "running", s, ran_this_pass=True)
         _publish_progress(s, ledger)
         try:
