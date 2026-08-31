@@ -254,6 +254,9 @@ def test_research_reports_list_endpoint():
     assert "스마트 수급·타점" in html
     assert "flowHistoryTipAttrs" in js
     assert "설정기간 집계" in js
+    assert 'data-tip-layout="flow-history"' in js
+    assert "flowHistoryTipHtml" in js
+    assert "flow-tip-net-grid" in client.get("/static/styles.css").text
     assert 'data-view="us13f"' in html
     assert "13F" in html
     assert 'data-view="strategy"' in html

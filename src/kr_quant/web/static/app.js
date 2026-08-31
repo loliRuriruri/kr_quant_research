@@ -4955,7 +4955,7 @@ function flowHistoryTipAttrs(row, label, displayedValue = "") {
   const selectedDays = Number(row?.days || flowDays() || daily.length || 5);
   const current = displayedValue ? `현재 셀 ${displayedValue} · ` : "";
   const summary = `${current}설정 ${selectedDays}거래일 가격 ${priceWindow} · 외인 ${plainSignedInt(row?.foreign_net)} · 기관 ${plainSignedInt(row?.institution_net)} · 개인 ${plainSignedInt(row?.individual_net)} · 사모 ${plainSignedInt(row?.pe_net)}`;
-  return ` data-tip-title="${escapeHtml(title)}" data-tip="${escapeHtml(tip)}" data-tip-hint="${escapeHtml(summary)}" data-tip-hint-label="설정기간 집계" tabindex="0"`;
+  return ` data-tip-title="${escapeHtml(title)}" data-tip="${escapeHtml(tip)}" data-tip-hint="${escapeHtml(summary)}" data-tip-hint-label="설정기간 집계" data-tip-layout="flow-history" tabindex="0"`;
 }
 
 function flowTable(title, rows, amountKey, tabId, duplicatedHorizon = false) {
@@ -9215,10 +9215,62 @@ function floatTip() {
   }
   return floatTipEl;
 }
+
+function flowTipTone(value) {
+  const text = String(value || "").trim();
+  if (/^\+/.test(text)) return "up";
+  if (/^-/.test(text)) return "down";
+  return "flat";
+}
+
+function flowTipMetric(segment) {
+  const text = String(segment || "").trim();
+  const splitAt = text.indexOf(" ");
+  const label = splitAt > 0 ? text.slice(0, splitAt) : text;
+  const value = splitAt > 0 ? text.slice(splitAt + 1) : "—";
+  return `<div class="flow-tip-metric">
+    <span>${escapeHtml(label)}</span>
+    <b class="${flowTipTone(value)}">${escapeHtml(value)}</b>
+  </div>`;
+}
+
+function flowHistoryTipHtml(text) {
+  const lines = String(text || "").split("\n").map((line) => line.trim()).filter(Boolean);
+  if (!lines.length || !lines.some((line) => line.includes(" · "))) {
+    return `<div class="float-tip-body">${escapeHtml(text)}</div>`;
+  }
+  const rows = lines.map((line) => {
+    const parts = line.split(" · ").map((part) => part.trim());
+    const day = parts.shift() || "—";
+    const price = parts.shift() || "종가 —";
+    return `<div class="flow-tip-day-row">
+      <div class="flow-tip-day-head">
+        <time>${escapeHtml(day)}</time>
+        <strong>${escapeHtml(price)}</strong>
+      </div>
+      <div class="flow-tip-net-grid">${parts.map(flowTipMetric).join("")}</div>
+    </div>`;
+  }).join("");
+  return `<div class="flow-tip-history">${rows}</div>`;
+}
+
+function flowSummaryTipHtml(label, summary) {
+  const parts = String(summary || "").split(" · ").map((part) => part.trim()).filter(Boolean);
+  const metrics = parts.filter((part) => /^(외인|기관|개인|사모)\s/.test(part));
+  const priceLines = parts.filter((part) => !/^(외인|기관|개인|사모)\s/.test(part));
+  return `<div class="flow-tip-summary">
+    <div class="flow-tip-summary-title">🎯 ${escapeHtml(label || "설정기간 집계")}</div>
+    <div class="flow-tip-price-lines">${priceLines.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}</div>
+    <div class="flow-tip-net-grid flow-tip-summary-grid">${metrics.map(flowTipMetric).join("")}</div>
+  </div>`;
+}
+
 function showFloatTip(el) {
   const text = el.getAttribute("data-tip");
   if (!text) return;
   const box = floatTip();
+  const isFlowHistory = el.getAttribute("data-tip-layout") === "flow-history";
+  box.classList.toggle("flow-history-tip", isFlowHistory);
   const explicitTitle = el.getAttribute("data-tip-title");
   const title = explicitTitle || (el.getAttribute("aria-label") || el.textContent || "").trim().split("\n")[0].slice(0, 45);
   const upImpact = el.getAttribute("data-tip-up");
@@ -9230,10 +9282,12 @@ function showFloatTip(el) {
     <div class="float-tip-header">
       <h4 class="float-tip-title">${escapeHtml(title)}</h4>
     </div>
-    <div class="float-tip-body">${escapeHtml(text)}</div>
+    ${isFlowHistory ? flowHistoryTipHtml(text) : `<div class="float-tip-body">${escapeHtml(text)}</div>`}
   `;
 
-  if (upImpact || downImpact || hintImpact) {
+  if (isFlowHistory && hintImpact) {
+    html += flowSummaryTipHtml(hintLabel, hintImpact);
+  } else if (upImpact || downImpact || hintImpact) {
     html += `<div class="float-tip-impact">`;
     if (upImpact) html += `<div class="up-impact">🔺 <b>상승 시 영향:</b> ${escapeHtml(upImpact)}</div>`;
     if (downImpact) html += `<div class="down-impact">🔻 <b>하락 시 영향:</b> ${escapeHtml(downImpact)}</div>`;
@@ -9244,7 +9298,7 @@ function showFloatTip(el) {
   box.innerHTML = html;
   box.classList.remove("hidden");
   const r = el.getBoundingClientRect();
-  const maxW = Math.min(380, window.innerWidth - 24);
+  const maxW = Math.min(isFlowHistory ? 640 : 380, window.innerWidth - 24);
   box.style.width = `${maxW}px`;
   let left = Math.min(r.left, window.innerWidth - maxW - 12);
   left = Math.max(12, left);
