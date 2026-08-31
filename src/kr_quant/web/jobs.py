@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import logging
 import threading
+import time
 from collections import deque
 from datetime import date, datetime, timezone
 from typing import Any, Callable
@@ -9,6 +11,60 @@ from typing import Any, Callable
 import pandas as pd
 
 from kr_quant.settings import load_settings
+
+_JOB_HISTORY: list[dict[str, Any]] = []
+_HISTORY_LOADED = False
+
+
+def _history_path():
+    return load_settings().root / "logs" / "job_history.json"
+
+
+def _load_job_history() -> None:
+    global _HISTORY_LOADED
+    if _HISTORY_LOADED:
+        return
+    path = _history_path()
+    if path.exists():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, list):
+                _JOB_HISTORY[:] = [item for item in payload if isinstance(item, dict)][:30]
+        except (OSError, json.JSONDecodeError, TypeError, NameError):
+            pass
+    _HISTORY_LOADED = True
+
+
+def record_job_history(entry: dict[str, Any]) -> None:
+    _load_job_history()
+    item = {**entry, "recorded_at": datetime.now(timezone.utc).isoformat()}
+    _JOB_HISTORY.insert(0, item)
+    del _JOB_HISTORY[30:]
+    try:
+        path = _history_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(_JOB_HISTORY, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(path)
+    except OSError:
+        pass
+
+
+def job_history_summary() -> dict[str, Any]:
+    _load_job_history()
+
+    def pick(*statuses: str) -> dict[str, Any] | None:
+        for item in _JOB_HISTORY:
+            if item.get("status") in statuses:
+                return item
+        return None
+
+    return {
+        "recent": _JOB_HISTORY[:8],
+        "last_success": pick("success"),
+        "last_partial": pick("partial"),
+        "last_error": pick("error"),
+    }
 
 
 class _DequeHandler(logging.Handler):
@@ -20,6 +76,7 @@ class _DequeHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             self.buf.append(self.format(record))
+            RUNNER.set_progress(None)
         except Exception:  # noqa: BLE001
             pass
 
@@ -35,39 +92,135 @@ class JobRunner:
             "error": None,
             "result": None,
             "progress": None,
+            "heartbeat_at": None,
+            "elapsed_sec": 0,
+            "cancel_requested": False,
         }
         self.logs: deque[str] = deque(maxlen=400)
         self._thread: threading.Thread | None = None
+        self._cancel = threading.Event()
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
-            return {**self.state, "logs": list(self.logs)}
+            self._reap_locked()
+            self._pulse_locked()
+            state = {**self.state, "logs": list(self.logs)}
+        state["history"] = job_history_summary()
+        return state
+
+    def busy_reason(self) -> str | None:
+        snap = self.snapshot()
+        if snap.get("status") != "running":
+            return None
+        kind = snap.get("kind") or "작업"
+        step = (snap.get("progress") or {}).get("current_step")
+        started = str(snap.get("started_at") or "")[:19].replace("T", " ")
+        extra = f", 단계 {step}" if step else ""
+        return f"이미 실행 중인 작업이 있습니다: {kind} (시작 {started}{extra})"
 
     def start(self, kind: str, fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         with self._lock:
+            self._reap_locked()
             if self.state["status"] == "running":
-                raise RuntimeError("이미 실행 중인 작업이 있습니다.")
+                kind_now = self.state.get("kind") or "작업"
+                step = (self.state.get("progress") or {}).get("current_step")
+                started = str(self.state.get("started_at") or "")[:19].replace("T", " ")
+                extra = f", 단계 {step}" if step else ""
+                raise RuntimeError(f"이미 실행 중인 작업이 있습니다: {kind_now} (시작 {started}{extra})")
+            now = datetime.now(timezone.utc).isoformat()
+            self._cancel.clear()
             self.state = {
                 "status": "running",
                 "kind": kind,
-                "started_at": datetime.now(timezone.utc).isoformat(),
+                "started_at": now,
                 "finished_at": None,
                 "error": None,
                 "result": None,
-                "progress": None,
+                "progress": {"current_step": kind, "targets": None, "done": 0, "failed": 0},
+                "heartbeat_at": now,
+                "elapsed_sec": 0,
+                "cancel_requested": False,
             }
             self.logs.clear()
             self.logs.append(f"작업 시작: {kind}")
         self._thread = threading.Thread(target=self._run, args=(kind, fn), daemon=True)
         self._thread.start()
+        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         return self.snapshot()
 
     def is_running(self) -> bool:
         return self.snapshot().get("status") == "running"
 
+    def request_cancel(self) -> dict[str, Any]:
+        with self._lock:
+            self._reap_locked()
+            if self.state["status"] == "running":
+                self._cancel.set()
+                self.state["cancel_requested"] = True
+                self.logs.append("중단 요청: 현재 단계가 끝나는 시점에 멈춥니다.")
+        return self.snapshot()
+
+    def cancel_requested(self) -> bool:
+        return self._cancel.is_set()
+
     def set_progress(self, progress: dict[str, Any] | None) -> None:
         with self._lock:
-            self.state["progress"] = progress
+            current = dict(self.state.get("progress") or {})
+            if progress:
+                current.update(progress)
+            self.state["progress"] = current
+            self._pulse_locked()
+
+    def _pulse_locked(self) -> None:
+        if self.state.get("status") != "running":
+            return
+        now = datetime.now(timezone.utc)
+        self.state["heartbeat_at"] = now.isoformat()
+        started = self.state.get("started_at")
+        if started:
+            try:
+                t0 = datetime.fromisoformat(str(started).replace("Z", "+00:00"))
+                if t0.tzinfo is None:
+                    t0 = t0.replace(tzinfo=timezone.utc)
+                self.state["elapsed_sec"] = max(0, int((now - t0).total_seconds()))
+            except ValueError:
+                pass
+
+    def _reap_locked(self) -> None:
+        if self.state.get("status") != "running":
+            return
+        thread = self._thread
+        if thread is None or thread.is_alive():
+            return
+        self.state["status"] = "error"
+        self.state["error"] = "작업 스레드가 사라졌습니다. 실행 중 체크포인트를 중단으로 복구합니다."
+        self.state["finished_at"] = datetime.now(timezone.utc).isoformat()
+        self.logs.append(self.state["error"])
+        try:
+            from kr_quant.web.smart_ledger import recover_interrupted
+
+            recover_interrupted(runner_running=False)
+        except Exception:  # noqa: BLE001
+            pass
+        record_job_history(
+            {
+                "kind": self.state.get("kind"),
+                "status": "error",
+                "started_at": self.state.get("started_at"),
+                "finished_at": self.state.get("finished_at"),
+                "error": self.state.get("error"),
+            }
+        )
+
+    def _heartbeat_loop(self) -> None:
+        import time
+
+        while True:
+            time.sleep(5)
+            with self._lock:
+                if self.state.get("status") != "running":
+                    return
+                self._pulse_locked()
 
     def _run(self, kind: str, fn: Callable[[], dict[str, Any]]) -> None:
         logger = logging.getLogger("kr_quant")
@@ -83,18 +236,44 @@ class JobRunner:
                 "interrupted": "partial",
             }.get(pipeline, "success")
             with self._lock:
+                self._pulse_locked()
                 self.state["status"] = finished_status
                 self.state["result"] = result
                 self.state["finished_at"] = datetime.now(timezone.utc).isoformat()
-            self.logs.append(f"작업 {'일부 완료' if finished_status == 'partial' else '완료'}: {kind}")
-            _maybe_publish(kind)
-            _notify_job(kind, result=result)
+                history_row = {
+                    "kind": kind,
+                    "status": finished_status,
+                    "started_at": self.state.get("started_at"),
+                    "finished_at": self.state.get("finished_at"),
+                    "elapsed_sec": self.state.get("elapsed_sec"),
+                    "pipeline_status": pipeline,
+                    "cancelled": bool(result.get("cancelled")),
+                    "steps": result.get("steps"),
+                }
+            if pipeline == "interrupted" or result.get("cancelled"):
+                self.logs.append(f"작업 중단: {kind} · 완료된 단계는 유지됩니다.")
+            else:
+                self.logs.append(f"작업 {'일부 완료' if finished_status == 'partial' else '완료'}: {kind}")
+            record_job_history(history_row)
+            if pipeline != "interrupted" and not result.get("cancelled"):
+                _maybe_publish(kind)
+                _notify_job(kind, result=result)
+            else:
+                self.logs.append("중단되어 공개판 업로드와 알림을 건너뜁니다.")
         except Exception as exc:  # noqa: BLE001
             with self._lock:
                 self.state["status"] = "error"
                 self.state["error"] = str(exc)
                 self.state["finished_at"] = datetime.now(timezone.utc).isoformat()
+                history_row = {
+                    "kind": kind,
+                    "status": "error",
+                    "started_at": self.state.get("started_at"),
+                    "finished_at": self.state.get("finished_at"),
+                    "error": str(exc)[:240],
+                }
             self.logs.append(f"작업 실패: {exc}")
+            record_job_history(history_row)
             _notify_job(kind, error=str(exc))
         finally:
             logger.removeHandler(handler)
@@ -289,9 +468,18 @@ def probe_expected_krx(settings, as_of: date) -> dict[str, Any]:
 
 
 def _publish_progress(settings, ledger: dict[str, Any]) -> None:
-    from kr_quant.web.smart_ledger import public_snapshot
+    from kr_quant.web.smart_ledger import STEPS, public_snapshot
 
-    RUNNER.set_progress(public_snapshot(settings, ledger=ledger))
+    snap = public_snapshot(settings, ledger=ledger) or {}
+    rows = snap.get("steps") or {}
+    done = sum(1 for name in STEPS if (rows.get(name) or {}).get("status") not in {None, "pending", "running"})
+    failed = sum(
+        1
+        for name in STEPS
+        if (rows.get(name) or {}).get("status") in {"failed", "interrupted", "warning"}
+    )
+    snap.update({"targets": len(STEPS), "done": done, "failed": failed})
+    RUNNER.set_progress(snap)
 
 
 def job_smart_sync(
@@ -328,13 +516,55 @@ def job_smart_sync(
     warnings: list[str] = []
     before = freshness_snapshot(s)
     _ = max_corps  # API compatibility; daily DART work is the resumable batch.
+    section_t0 = time.monotonic()
+
+    def _lap() -> float:
+        nonlocal section_t0
+        elapsed = round(time.monotonic() - section_t0, 3)
+        section_t0 = time.monotonic()
+        return elapsed
 
     def _step_out(kind: str, label: str, **payload: Any) -> dict[str, Any]:
-        row = {"kind": kind, "label": label, **payload}
+        row = {"kind": kind, "label": label, **payload, "duration_sec": _lap()}
         steps.append(row)
         return row
 
+    def _stop_if_cancelled() -> dict[str, Any] | None:
+        if not RUNNER.cancel_requested():
+            return None
+        note = "중단 요청으로 현재 단계 경계에서 멈춥니다. 완료된 단계는 유지됩니다."
+        RUNNER.logs.append(note)
+        warnings.append(note)
+        for name, step in (ledger.get("steps") or {}).items():
+            if isinstance(step, dict) and step.get("status") == "running":
+                ledger_mod.mark_step(ledger, name, "interrupted", s, detail=note)
+        ledger_mod.finish(ledger, "interrupted", s)
+        _publish_progress(s, ledger)
+        final_now = freshness_snapshot(s)
+        facts = (((final_now.get("sources") or {}).get("financial_facts") or {}).get("coverage") or {})
+        return {
+            "kind": "smart-sync",
+            "as_of": expected.isoformat(),
+            "steps": steps,
+            "warnings": warnings,
+            "pipeline_status": "interrupted",
+            "cancelled": True,
+            "freshness": final_now,
+            "ledger": ledger_mod.public_snapshot(s, ledger=ledger),
+            "dart_coverage": {
+                "tickers": facts.get("tickers"),
+                "universe_tickers": facts.get("universe_tickers"),
+                "coverage_pct": facts.get("coverage_pct"),
+                "target_pct": 90.0,
+            },
+            "next_action": "완료된 단계는 유지됩니다. 다시 누르면 남은 단계부터 이어갑니다.",
+            "used_in_quant": False,
+        }
+
     # --- KRX ---
+    stopped = _stop_if_cancelled()
+    if stopped:
+        return stopped
     price_fresh = not bool(before.get("stale_price"))
     if price_fresh:
         ledger_mod.mark_step(ledger, "krx", "skipped_fresh", s, detail="시세 기준일이 이미 기대일과 같습니다.")
@@ -410,6 +640,9 @@ def job_smart_sync(
     krx_ok = ledger_mod.step_done((ledger.get("steps") or {}).get("krx"))
 
     # --- Quant ---
+    stopped = _stop_if_cancelled()
+    if stopped:
+        return stopped
     current = freshness_snapshot(s)
     quant = ((current.get("sources") or {}).get("quant_ranking") or {})
     if not krx_ok:
@@ -438,6 +671,9 @@ def job_smart_sync(
     _publish_progress(s, ledger)
 
     # --- DART ---
+    stopped = _stop_if_cancelled()
+    if stopped:
+        return stopped
     current = freshness_snapshot(s)
     facts = ((current.get("sources") or {}).get("financial_facts") or {})
     coverage_info = facts.get("coverage") or {}
@@ -498,6 +734,9 @@ def job_smart_sync(
     _publish_progress(s, ledger)
 
     # --- KIS ---
+    stopped = _stop_if_cancelled()
+    if stopped:
+        return stopped
     kis_state = (ledger.get("steps") or {}).get("kis") or {}
     if ledger_mod.step_done(kis_state) and kis_state.get("status") != "pending":
         ledger_mod.mark_step(
@@ -547,6 +786,9 @@ def job_smart_sync(
     _publish_progress(s, ledger)
 
     # --- Publish readiness (actual upload stays in JobRunner._maybe_publish) ---
+    stopped = _stop_if_cancelled()
+    if stopped:
+        return stopped
     RUNNER.logs.append("[5/5] 최종 최신성·품질 계약을 확인합니다.")
     final = freshness_snapshot(s)
     if final.get("stale_price") or final.get("contract_status") == "blocked":

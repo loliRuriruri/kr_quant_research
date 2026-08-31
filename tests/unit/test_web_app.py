@@ -65,6 +65,10 @@ def test_index_and_status():
     assert "seasonalityRows[idx]" in js
     assert 'id="dash-seasonality-banner"' in home.text
     assert "KOSPI/KOSDAQ 전종목 검색" in home.text
+    assert 'id="job-cancel-btn"' in home.text
+    assert 'id="job-heartbeat-line"' in home.text
+    assert "function cancelJob" in js
+    assert "/api/jobs/cancel" in js
     status = client.get("/api/status")
     assert status.status_code == 200
     body = status.json()
@@ -150,6 +154,7 @@ def test_external_web_is_read_only_and_hides_settings():
     assert public_client.get("/api/settings/raw").status_code == 403
 
     assert public_client.post("/api/jobs", json={"kind": "demo"}).status_code == 403
+    assert public_client.post("/api/jobs/cancel").status_code == 403
     assert public_client.post("/api/watchlist", json={"ticker": "005930"}).status_code == 403
     assert public_client.delete("/api/watchlist/005930").status_code == 403
 

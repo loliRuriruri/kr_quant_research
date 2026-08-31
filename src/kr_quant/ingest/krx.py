@@ -40,9 +40,18 @@ class KrxOpenApiAdapter(MarketDataAdapter):
         self.timeout = timeout
 
     def _get(self, endpoint: str, params: dict[str, str]) -> dict[str, Any]:
+        from kr_quant.ingest.http_retry import request_with_retry
+
         url = f"{self.base_url}/{endpoint}"
         headers = {"AUTH_KEY": self.api_key, "Accept": "application/json"}
-        resp = requests.get(url, params=params, headers=headers, timeout=self.timeout)
+        resp = request_with_retry(
+            "GET",
+            url,
+            params=params,
+            headers=headers,
+            timeout=self.timeout,
+            retries=2,
+        )
         resp.raise_for_status()
         return resp.json()
 

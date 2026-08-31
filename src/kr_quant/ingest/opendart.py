@@ -22,10 +22,12 @@ class OpenDartAdapter(FilingAdapter):
         self.timeout = timeout
 
     def _get(self, path: str, params: dict[str, str], raw: bool = False) -> Any:
+        from kr_quant.ingest.http_retry import request_with_retry
+
         time.sleep(self.sleep_sec)
         q = {"crtfc_key": self.api_key, **params}
         url = f"{self.base_url}/{path}"
-        resp = requests.get(url, params=q, timeout=self.timeout)
+        resp = request_with_retry("GET", url, params=q, timeout=self.timeout, retries=2)
         resp.raise_for_status()
         if raw:
             return resp.content

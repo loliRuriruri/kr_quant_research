@@ -49,6 +49,7 @@ def _patch_common(monkeypatch, tmp_path, *, stale=True, quant_state="stale", cov
     state = {"stale": stale, "quant": quant_state, "coverage": coverage}
     seen: list[str] = []
 
+    jobs.RUNNER._cancel.clear()
     monkeypatch.setattr(jobs, "load_settings", lambda: settings)
     monkeypatch.setattr(freshness, "expected_price_date", lambda now=None: date(2026, 8, 31))
     monkeypatch.setattr(
@@ -146,6 +147,29 @@ def test_source_not_ready_retries_krx_only(monkeypatch, tmp_path):
     saved = smart_ledger.load_ledger(settings)
     assert saved["steps"]["dart"]["status"] in {"success", "skipped_already_success"}
     assert saved["steps"]["kis"]["status"] in {"success", "skipped_already_success"}
+
+
+def test_cancel_between_krx_and_quant_keeps_completed_step(monkeypatch, tmp_path):
+    settings, state, seen = _patch_common(monkeypatch, tmp_path)
+
+    def krx(*args, **kwargs):
+        seen.append("krx")
+        jobs.RUNNER._cancel.set()
+        state["stale"] = False
+        return {"price_rows": 2700, "pipeline_status": "success"}
+
+    monkeypatch.setattr(jobs, "job_krx_prices", krx)
+    result = jobs.job_smart_sync()
+    jobs.RUNNER._cancel.clear()
+
+    assert result["cancelled"] is True
+    assert result["pipeline_status"] == "interrupted"
+    assert seen == ["krx"]
+    assert "quant" not in seen
+    saved = smart_ledger.load_ledger(settings)
+    assert saved["overall_status"] == "interrupted"
+    assert saved["steps"]["krx"]["status"] == "success"
+    assert saved["steps"]["quant"]["status"] == "pending"
 
 
 def test_job_runner_exposes_partial_pipeline_status(monkeypatch):

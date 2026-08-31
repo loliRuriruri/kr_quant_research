@@ -1591,6 +1591,7 @@ const STATUS_KO = {
   error: "오류",
   "no-run": "아직 실행 안 함",
   running: "실행 중",
+  interrupted: "중단 복구",
   idle: "대기",
   stale: "시세 지연",
   fresh: "시세 최신",
@@ -9248,12 +9249,45 @@ const JOB_KINDS = {
 
 function renderJob(job) {
   if (!job) return;
+  const elapsed = formatElapsed(job.elapsed_sec);
   const chip = $("#job-chip");
-  if (chip) chip.textContent = `${statusKo(job.status)}${job.kind ? " · " + (JOB_KINDS[job.kind] || job.kind) : ""}`;
+  if (chip) {
+    const extra = job.status === "running" && elapsed ? ` · ${elapsed}` : "";
+    chip.textContent = `${statusKo(job.status)}${job.kind ? " · " + (JOB_KINDS[job.kind] || job.kind) : ""}${extra}`;
+  }
   const logEl = $("#job-log");
   if (logEl) {
     logEl.textContent = (job.logs || []).join("\n");
     logEl.scrollTop = logEl.scrollHeight;
+  }
+  const hb = $("#job-heartbeat-line");
+  if (hb) {
+    if (job.status === "running") {
+      const progress = job.progress || {};
+      const step = progress.current_step;
+      const counts = progress.targets != null ? ` · 단계 ${progress.done || 0}/${progress.targets}` : "";
+      const failed = progress.failed ? ` · 실패 ${progress.failed}` : "";
+      const beat = job.heartbeat_at ? ` · heartbeat ${fmtWhen(job.heartbeat_at)}` : "";
+      const cancel = job.cancel_requested ? " · 중단 요청됨" : "";
+      hb.textContent = `경과 ${elapsed || "0초"}${step ? ` · 현재 ${SMART_STEP_LABELS[step] || step}` : ""}${counts}${failed}${beat}${cancel}`;
+    } else {
+      hb.textContent = "";
+    }
+  }
+  const histEl = $("#job-history-line");
+  if (histEl) {
+    const hist = job.history || {};
+    const bits = [];
+    if (hist.last_success) bits.push(`마지막 성공 ${fmtWhen(hist.last_success.finished_at || hist.last_success.recorded_at)}`);
+    if (hist.last_partial) bits.push(`마지막 일부완료 ${fmtWhen(hist.last_partial.finished_at || hist.last_partial.recorded_at)}`);
+    if (hist.last_error) bits.push(`마지막 실패 ${fmtWhen(hist.last_error.finished_at || hist.last_error.recorded_at)}`);
+    histEl.textContent = bits.join(" · ");
+  }
+  const cancelBtn = $("#job-cancel-btn");
+  if (cancelBtn) {
+    cancelBtn.hidden = job.status !== "running";
+    cancelBtn.disabled = Boolean(job.cancel_requested);
+    cancelBtn.textContent = job.cancel_requested ? "중단 요청됨" : "단계 경계에서 중단";
   }
 
   // Global Top Activity Chip & Animated Progress Line
@@ -9264,8 +9298,8 @@ function renderJob(job) {
     if (progBar) progBar.classList.remove("hidden");
     if (actChip) {
       actChip.className = "chip activity-running has-tip";
-      actChip.textContent = `⏳ ${title} 실행 중 (백그라운드)…`;
-      actChip.dataset.tip = "백그라운드에서 작업이 실행 중입니다. 브라우저를 닫거나 이동해도 계속 안전하게 실행됩니다. 클릭 시 실행 파이프라인으로 이동합니다.";
+      actChip.textContent = `⏳ ${title} 실행 중${elapsed ? " · " + elapsed : ""}…`;
+      actChip.dataset.tip = "백그라운드에서 작업이 실행 중입니다. heartbeat가 움직이면 살아 있는 작업입니다. 클릭 시 실행 파이프라인으로 이동합니다.";
     }
   } else {
     if (progBar) progBar.classList.add("hidden");
@@ -9326,11 +9360,16 @@ async function pollJob() {
       if (["success", "partial"].includes(job.status)) {
         const title = JOB_KINDS[job.kind] || job.kind || "작업";
         const partial = job.status === "partial";
+        const cancelled = Boolean(job.result?.cancelled) || job.result?.pipeline_status === "interrupted";
         const followup = partial ? escapeHtml(job.result?.next_action || "일부 데이터는 다음 실행에서 이어집니다.") : "";
         showToast(
-          partial ? `⚠️ <b>${title} 일부 완료</b><br>${followup}` : `✅ <b>${title} 완료</b>`,
-          partial ? "warning" : "success",
-          partial ? 5500 : 3500,
+          cancelled
+            ? `⏸ <b>${title} 중단</b><br>${followup}`
+            : partial
+              ? `⚠️ <b>${title} 일부 완료</b><br>${followup}`
+              : `✅ <b>${title} 완료</b>`,
+          cancelled || partial ? "warning" : "success",
+          cancelled || partial ? 5500 : 3500,
         );
         await loadStatus();
         await reloadActiveView();
@@ -9374,6 +9413,7 @@ async function startJob(kind) {
   }
 
   const krxBtn = $("#btn-krx-now");
+  const smartBtn = $("#smart-sync-btn");
   if (krxBtn && kind === "krx-prices") {
     krxBtn.textContent = "⏳ 시세 수신 중...";
     krxBtn.disabled = true;
@@ -9381,8 +9421,30 @@ async function startJob(kind) {
   const title = JOB_KINDS[kind] || kind;
   showToast(`⏳ <b>${title}</b> 시작 (백그라운드 실행 중…)`, "info", 3000);
 
-  await api("/api/jobs", { method: "POST", body: JSON.stringify(payload) });
-  pollJob();
+  try {
+    await api("/api/jobs", { method: "POST", body: JSON.stringify(payload) });
+    pollJob();
+  } catch (err) {
+    showToast(`⛔ <b>${title}</b>를 시작하지 못했습니다<br>${escapeHtml(err.message || "")}`, "error", 5500);
+    if (smartBtn) {
+      smartBtn.textContent = "▶ 스마트 실행";
+      smartBtn.disabled = false;
+    }
+    if (krxBtn) {
+      krxBtn.textContent = "시세 받기";
+      krxBtn.disabled = false;
+    }
+  }
+}
+
+async function cancelJob() {
+  try {
+    await api("/api/jobs/cancel", { method: "POST" });
+    showToast("중단을 요청했습니다. 현재 단계가 끝나는 시점에 멈춥니다.", "info", 4000);
+    pollJob();
+  } catch (err) {
+    showToast(escapeHtml(err.message || "중단 요청 실패"), "error", 4000);
+  }
 }
 
 function openMobileDrawer() {
@@ -10230,6 +10292,7 @@ $("#llm-model-select").addEventListener("change", () => {
 $$("[data-job]").forEach((btn) =>
   btn.addEventListener("click", () => startJob(btn.dataset.job).catch((err) => alert(err.message)))
 );
+$("#job-cancel-btn")?.addEventListener("click", () => cancelJob());
 
 decorateSelect($("#llm-provider"));
 decorateSelect($("#llm-model-select"));

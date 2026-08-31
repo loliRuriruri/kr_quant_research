@@ -44,7 +44,7 @@ from kr_quant.research.tier1_contract import (
 )
 from kr_quant.settings import load_settings
 from kr_quant.web.envfile import apply_env_to_process, mask_secret, upsert_env_file
-from kr_quant.web.jobs import RUNNER, job_dart_backfill, job_demo, job_krx_history, job_krx_prices, job_live, job_screen, job_smart_sync
+from kr_quant.web.jobs import RUNNER, job_dart_backfill, job_demo, job_history_summary, job_krx_history, job_krx_prices, job_live, job_screen, job_smart_sync
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -3650,6 +3650,16 @@ def api_job_start(body: JobIn) -> dict[str, Any]:
         )
     except RuntimeError as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+@app.post("/api/jobs/cancel")
+def api_job_cancel() -> dict[str, Any]:
+    return RUNNER.request_cancel()
+
+
+@app.get("/api/jobs/history")
+def api_job_history() -> dict[str, Any]:
+    return job_history_summary()
 
 
 @app.get("/api/scheduler")
