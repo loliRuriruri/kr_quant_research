@@ -9,6 +9,7 @@ import pandas as pd
 import yaml
 
 from kr_quant.settings import Settings
+from kr_quant.quality.price_integrity import latest_clean_price_segments
 from kr_quant.strategy.engine import run_backtest
 from kr_quant.strategy.registry import FAMILY_KO, SELECTION_KO, format_params_ko, strategy_comment, strategy_registry
 from kr_quant.strategy.search import search_strategy, stability_label, walk_forward, walk_forward_score
@@ -45,7 +46,9 @@ def ohlc_for(prices: pd.DataFrame, ticker: str) -> pd.DataFrame:
             hist[col] = hist["close"] if col != "volume" else 0
         hist[col] = pd.to_numeric(hist[col], errors="coerce")
     hist["open"] = hist["open"].fillna(hist["close"])
-    return hist[["date", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
+    keep = ["date", "open", "high", "low", "close", "volume"]
+    keep.extend(column for column in ("listed_shares", "market_cap") if column in hist.columns)
+    return hist[keep].reset_index(drop=True)
 
 
 def evaluate_ticker(
@@ -55,9 +58,24 @@ def evaluate_ticker(
     slippage_bps: float,
     oos_ratio: float,
     min_days: int,
+    price_integrity_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    raw_bars = 0 if data is None else int(len(data))
+    clean_data, price_issues, price_quality = latest_clean_price_segments(data, price_integrity_config)
+    data = clean_data
+    price_quality["issues"] = price_issues.to_dict("records")
     if data is None or len(data) < min_days:
-        return {"ok": False, "bars": 0 if data is None else int(len(data)), "strategies": [], "warning": "가격 이력 부족"}
+        warning = "가격 이력 부족"
+        if price_quality.get("issue_count"):
+            warning += " · 가격 단절 이전 구간 제외 후 최근 안전구간이 부족합니다."
+        return {
+            "ok": False,
+            "bars": 0 if data is None else int(len(data)),
+            "raw_bars": raw_bars,
+            "strategies": [],
+            "warning": warning,
+            "price_integrity": price_quality,
+        }
     rows: list[dict[str, Any]] = []
     min_trades = 8
     for spec in strategy_registry().values():
@@ -148,6 +166,7 @@ def evaluate_ticker(
     return {
         "ok": True,
         "bars": int(len(data)),
+        "raw_bars": raw_bars,
         "from": str(data["date"].iloc[0].date()) if len(data) else None,
         "to": str(data["date"].iloc[-1].date()) if len(data) else None,
         "best_id": best.get("strategy_id"),
@@ -159,6 +178,7 @@ def evaluate_ticker(
         "warning": warn.strip() if warn else None,
         "strategies": rows,
         "used_in_quant": False,
+        "price_integrity": price_quality,
     }
 
 
@@ -222,6 +242,7 @@ def scan_strategies(settings: Settings, *, tickers: list[tuple[str, str]] | None
             slippage_bps=slippage,
             oos_ratio=oos_ratio,
             min_days=min_days,
+            price_integrity_config=settings.config.get("corporate_actions") or {},
         )
         rows.append({"ticker": code, "company": company or code, **ev})
     out = {
@@ -391,9 +412,20 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
             slippage_bps=slippage,
             oos_ratio=oos_ratio,
             min_days=min_days,
+            price_integrity_config=settings.config.get("corporate_actions") or {},
         )
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "ticker": code, "company": company or code, "error": f"백테스트 연산 실패: {exc}"}
+    if not ev.get("ok"):
+        return {
+            "ok": False,
+            "ticker": code,
+            "company": company or code,
+            "error": ev.get("warning") or "가격 품질 검증 후 사용할 수 있는 이력이 부족합니다.",
+            "bars": ev.get("bars"),
+            "raw_bars": ev.get("raw_bars"),
+            "price_integrity": ev.get("price_integrity") or {},
+        }
 
     for st in ev.get("strategies") or []:
         st["params_ko"] = format_params_ko(st.get("params") if isinstance(st.get("params"), dict) else None)
@@ -407,6 +439,7 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
         "ticker": code,
         "company": company or code,
         "bars": ev.get("bars"),
+        "raw_bars": ev.get("raw_bars"),
         "from": ev.get("from"),
         "to": ev.get("to"),
         "best_id": ev.get("best_id"),
@@ -418,4 +451,5 @@ def backtest_single_stock(settings: Settings, query: str) -> dict[str, Any]:
         "warning": ev.get("warning"),
         "strategies": ev.get("strategies") or [],
         "playbook": generate_plain_strategy_playbook(ev.get("strategies") or [], company or code),
+        "price_integrity": ev.get("price_integrity") or {},
     }

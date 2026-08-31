@@ -22,6 +22,26 @@ def test_ticker_momentum_uses_market_cap():
     assert abs(mom["return_3m"]) < 1e-9
 
 
+def test_ticker_momentum_does_not_bridge_unexplained_market_cap_jump():
+    days = pd.date_range("2025-01-02", periods=70, freq="B")
+    market_cap = [1_000.0] * 65 + [2_000.0] * 5
+    hist = pd.DataFrame(
+        {
+            "trade_date": days,
+            "close": [100.0] * 65 + [200.0] * 5,
+            "listed_shares": [10.0] * 70,
+            "market_cap": market_cap,
+        }
+    )
+
+    mom = ticker_momentum(
+        hist,
+        {"return_3m": 63, "return_6m": 126, "return_12m": 252, "high_52w_distance": 252},
+    )
+
+    assert mom["return_3m"] is None
+
+
 def test_clean_reason_list_drops_empty_brackets():
     assert clean_reason_list("[]") == []
     assert clean_reason_list([]) == []

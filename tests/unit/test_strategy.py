@@ -106,6 +106,34 @@ def test_displayed_metrics_match_selected_parameters():
     assert "추천" not in playbook["actionable_reason"]
 
 
+def test_strategy_evaluation_uses_only_latest_clean_price_segment():
+    from kr_quant.strategy.run import evaluate_ticker
+
+    first = [100.0 + index * 0.1 for index in range(50)]
+    second = [200.0 + index * 0.1 for index in range(50)]
+    close = first + second
+    data = pd.DataFrame(
+        {
+            "date": pd.date_range("2025-01-02", periods=100, freq="B"),
+            "open": close,
+            "high": [value + 1 for value in close],
+            "low": [value - 1 for value in close],
+            "close": close,
+            "volume": [1_000] * 100,
+            "listed_shares": [1_000] * 100,
+            "market_cap": [value * 1_000 for value in close],
+        }
+    )
+
+    result = evaluate_ticker(data, slippage_bps=0, oos_ratio=0.2, min_days=40)
+
+    assert result["ok"] is True
+    assert result["raw_bars"] == 100
+    assert result["bars"] == 50
+    assert result["from"] == str(data.iloc[50]["date"].date())
+    assert result["price_integrity"]["issue_counts"] == {"UNEXPLAINED_PRICE_DISCONTINUITY": 1}
+
+
 def test_params_and_comments_are_korean():
     from kr_quant.strategy.registry import SELECTION_KO, format_params_ko, strategy_comment
     from kr_quant.strategy.run import annotate_strategy_payload

@@ -25,6 +25,7 @@ from kr_quant.history.changes import (
 )
 from kr_quant.models import RunContext, ScoredName
 from kr_quant.pit.filings import as_of_prices, history_window
+from kr_quant.quality.price_integrity import latest_clean_price_segments
 from kr_quant.ranking.daily import OUTPUT_COLS, export_table, flatten_flags, to_records, top_slice
 from kr_quant.reporting.quality import build_quality_report, write_json
 from kr_quant.scoring.composite import apply_composite, factor_specs
@@ -127,13 +128,19 @@ def run_from_staged(
         ctx.warnings.append("SOURCE_NOT_READY")
         raise RuntimeError(f"no KRX prices for as_of={as_of}")
     hist = history_window(prices, as_of)
+    current_tickers = set(day["ticker"].astype(str))
+    hist = hist[hist["ticker"].astype(str).isin(current_tickers)].reset_index(drop=True)
+    momentum_hist, price_integrity_issues, price_integrity_summary = latest_clean_price_segments(
+        hist,
+        cfg.get("corporate_actions") or {},
+    )
     mom_by_ticker: dict[str, dict] = {}
     if cfg.get("factors", {}).get("momentum", {}).get("enabled") and cfg.get("corporate_actions", {}).get(
         "listed_shares_adjustment"
     ):
         from kr_quant.factors.share_adj import compute_share_adj_momentum
 
-        mom_by_ticker = compute_share_adj_momentum(hist, as_of, cfg)
+        mom_by_ticker = compute_share_adj_momentum(momentum_hist, as_of, cfg, validate_integrity=False)
     ksic = load_ksic_map(settings.root / "config" / "sector_map_ksic.csv")
     master_map = master.drop_duplicates("ticker").set_index("ticker")
     company_by_ticker = {}
@@ -218,6 +225,7 @@ def run_from_staged(
     _csv_ready(top20).to_csv(dated / "top20.csv", index=False, encoding="utf-8-sig")
     if not events_df.empty:
         write_parquet_atomic(events_df, dated / "change_events.parquet")
+    write_parquet_atomic(price_integrity_issues, dated / "price_integrity_issues.parquet")
 
     persist_history(db, ctx, records)
     hist_path = settings.output_dir / "daily_history.parquet"
@@ -233,6 +241,7 @@ def run_from_staged(
         extra={
             "event_counts": events_df["event"].value_counts().to_dict() if not events_df.empty else {},
             "source_mode": source_mode,
+            "price_integrity": price_integrity_summary,
         },
     )
     write_json(dated / "data_quality_report.json", quality)
@@ -245,6 +254,7 @@ def run_from_staged(
         _csv_ready(top20).to_csv(settings.output_dir / "latest_top20.csv", index=False, encoding="utf-8-sig")
         write_parquet_atomic(hist_df, settings.output_dir / "daily_history.parquet")
         write_json(settings.output_dir / "data_quality_report.json", quality)
+        write_parquet_atomic(price_integrity_issues, settings.output_dir / "price_integrity_issues.parquet")
 
     manifest = {
         "run_id": ctx.run_id,

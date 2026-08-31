@@ -38,6 +38,10 @@ def test_demo_pipeline_deterministic(settings, tmp_path):
     assert (settings_tmp.output_dir / "data_quality_report.json").exists()
     assert (settings_tmp.output_dir / "daily_history.parquet").exists()
     assert (settings_tmp.output_dir / "latest_all_stocks.parquet").exists()
+    assert (out / "price_integrity_issues.parquet").exists()
+    assert (settings_tmp.output_dir / "price_integrity_issues.parquet").exists()
+    assert r1["quality"]["price_integrity"]["corporate_action_confirmation"] is False
+    assert r1["quality"]["price_integrity"]["policy"] == "latest_clean_segment_per_ticker"
 
     compact = sha256_json(
         [

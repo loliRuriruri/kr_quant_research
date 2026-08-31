@@ -59,8 +59,21 @@ def high_52w(levels: list[tuple[date, float]], window: int = 252) -> float | Non
     return max(window_lv) if window_lv else None
 
 
-def ticker_momentum(hist: pd.DataFrame, specs: dict[str, int]) -> dict[str, float | None]:
-    levels = _levels(hist)
+def ticker_momentum(
+    hist: pd.DataFrame,
+    specs: dict[str, int],
+    *,
+    validate_integrity: bool = True,
+) -> dict[str, float | None]:
+    # A market-cap proxy is split-safe, but it is not a complete adjusted-price
+    # feed. Do not bridge share-count changes or unexplained price jumps.
+    if validate_integrity:
+        from kr_quant.quality.price_integrity import latest_clean_price_segments
+
+        clean, _, _ = latest_clean_price_segments(hist)
+    else:
+        clean = hist
+    levels = _levels(clean)
     last = levels[-1][1] if levels else None
     high = high_52w(levels, specs.get("high_52w_distance", 252))
     return {
@@ -83,7 +96,13 @@ def market_median_return(by_ticker: dict[str, dict[str, float | None]], key: str
     return (vals[mid - 1] + vals[mid]) / 2.0
 
 
-def compute_share_adj_momentum(prices: pd.DataFrame, as_of: date, cfg: dict[str, Any]) -> dict[str, dict[str, float | None]]:
+def compute_share_adj_momentum(
+    prices: pd.DataFrame,
+    as_of: date,
+    cfg: dict[str, Any],
+    *,
+    validate_integrity: bool = True,
+) -> dict[str, dict[str, float | None]]:
     specs = {
         name: int(mspec.get("lookback", 63))
         for name, mspec in (cfg.get("factors", {}).get("momentum", {}).get("metrics") or {}).items()
@@ -95,7 +114,7 @@ def compute_share_adj_momentum(prices: pd.DataFrame, as_of: date, cfg: dict[str,
     out: dict[str, dict[str, float | None]] = {}
     markets: dict[str, list[str]] = {}
     for ticker, grp in work.groupby("ticker"):
-        mom = ticker_momentum(grp, specs)
+        mom = ticker_momentum(grp, specs, validate_integrity=validate_integrity)
         out[str(ticker)] = mom
         mkt = str(grp["market"].iloc[-1]) if "market" in grp.columns and not grp.empty else ""
         markets.setdefault(mkt, []).append(str(ticker))

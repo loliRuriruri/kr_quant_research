@@ -11,6 +11,12 @@ corporate_actions:
   adjusted_price_feed: false
   listed_shares_adjustment: true
   allow_raw_price_as_adjusted: false
+  # 기업행위 확정 피드가 없으므로 KRX 관측 필드로 가격 단절만 보수적으로 분리한다.
+  price_integrity:
+    raw_return_break_threshold: 0.35
+    market_cap_break_threshold: 0.35
+    listed_shares_change_threshold: 0.02
+    validate_ohlc: true
 
 # KRX 종목기본정보 + 당일매매정보로 자동 생성한다. 해당 거래일 스냅샷이 없으면 fail-closed 한다.
 status_feed:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pandas as pd
@@ -77,6 +77,22 @@ def _choose_fs_div(facts: pd.DataFrame) -> pd.DataFrame:
     if (facts["fs_div"] == "CFS").any():
         return facts[facts["fs_div"] == "CFS"]
     return facts[facts["fs_div"] == "OFS"]
+
+
+def listed_shares_12m_ago(price_hist: pd.DataFrame, ticker: str, as_of: date) -> float | None:
+    """Last observed listed-share count on or before the 12-month cutoff."""
+    if price_hist is None or price_hist.empty or "listed_shares" not in price_hist.columns:
+        return None
+    hist_t = price_hist[price_hist["ticker"].astype(str) == str(ticker)].copy()
+    if hist_t.empty:
+        return None
+    hist_t["trade_date"] = pd.to_datetime(hist_t["trade_date"], errors="coerce").dt.date
+    target = as_of - timedelta(days=365)
+    eligible = hist_t[hist_t["trade_date"] <= target].sort_values("trade_date")
+    if eligible.empty:
+        return None
+    value = pd.to_numeric(pd.Series([eligible.iloc[-1].get("listed_shares")]), errors="coerce").iloc[0]
+    return None if pd.isna(value) or float(value) <= 0 else float(value)
 
 
 def build_inputs_for_security(
@@ -286,12 +302,7 @@ def build_inputs_for_security(
     shares = _num(extra.get("shares_latest", price_row.get("listed_shares")))
     shares_12m = _num(extra.get("shares_12m_ago"))
     if shares_12m is None and price_hist is not None and not price_hist.empty:
-        hist_t = price_hist[price_hist["ticker"] == ticker].copy()
-        if not hist_t.empty:
-            hist_t["trade_date"] = pd.to_datetime(hist_t["trade_date"]).dt.date
-            old = hist_t.sort_values("trade_date")
-            if len(old) > 0:
-                shares_12m = _num(old.iloc[0].get("listed_shares"))
+        shares_12m = listed_shares_12m_ago(price_hist, ticker, as_of)
 
     inp = FactorInputs(
         ticker=ticker,

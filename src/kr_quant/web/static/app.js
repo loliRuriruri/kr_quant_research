@@ -501,6 +501,17 @@ async function runCustomBacktest(query, opts = {}) {
     }
 
     const strats = data.strategies || [];
+    const priceQuality = data.price_integrity || {};
+    const priceIssueCount = Number(priceQuality.issue_count || 0);
+    const nonTradingBars = Number(priceQuality.non_trading_bar_count || 0);
+    const breakCount = Math.max(0, priceIssueCount - nonTradingBars);
+    const excludedBars = Math.max(0, Number(data.raw_bars || data.bars || 0) - Number(data.bars || 0));
+    const priceQualityHtml = priceIssueCount
+      ? `<div style="padding:10px 14px; background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.45); border-radius:8px; margin-bottom:12px; color:#fde68a; font-size:12.5px; line-height:1.55;">
+          <b>🛡️ 가격 품질 게이트 적용</b> · 비체결 행 ${nonTradingBars}개 제거 · 가격/주식수 단절 ${breakCount}건 감지 · 원본 ${data.raw_bars || data.bars || 0}일 중 ${excludedBars}일을 연결하지 않고 최근 안전구간 ${data.bars || 0}일만 검증했습니다.<br>
+          <span style="color:#cbd5e1;">KRX 상장주식수·시가총액은 기업행위 추정 근거이며, 기업행위 확정 공시로 표시하지 않습니다.</span>
+        </div>`
+      : `<div style="padding:8px 12px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.3); border-radius:8px; margin-bottom:12px; color:#86efac; font-size:12px;">🛡️ 검사 구간에서 가격·주식수 단절이 발견되지 않았습니다.</div>`;
     const rowsHtml = strats.map((s, idx) => {
       const sh = s.sharpe != null ? fmt(s.sharpe, 2) : "—";
       const oosSh = s.oos_sharpe != null ? fmt(s.oos_sharpe, 2) : "—";
@@ -539,6 +550,8 @@ async function runCustomBacktest(query, opts = {}) {
             분석 기간: ${escapeHtml(data.from || "")} ~ ${escapeHtml(data.to || "")} (${data.bars || 0}거래일)
           </div>
         </div>
+
+        ${priceQualityHtml}
 
         <div style="padding:10px 14px; background:rgba(56,189,248,0.12); border:1px solid #38bdf8; border-radius:8px; margin-bottom:12px;">
           <b style="color:#38bdf8;">검증 구간 점수 1위: ${escapeHtml(data.best_name || "")} (${escapeHtml(data.best_params_ko || "")})</b>
@@ -7016,6 +7029,12 @@ function renderStrategy(data) {
       const paramsKo = r.best_params_ko || best.params_ko || "";
       const familyKo = r.best_family_ko || best.family_ko || "";
       const stab = r.stability_label || "LOW";
+      const priceQuality = r.price_integrity || {};
+      const qualityIssues = Number(priceQuality.issue_count || 0);
+      const excludedBars = Math.max(0, Number(r.raw_bars || r.bars || 0) - Number(r.bars || 0));
+      const qualityChip = qualityIssues
+        ? `<span class="chip warn has-tip" data-tip-title="가격 품질 게이트 적용" data-tip="비체결 행과 가격·주식수 단절을 원시 수익률로 연결하지 않았습니다. 기업행위 확정 판정이 아니라 KRX 관측 필드 기반 보수적 분리입니다." data-tip-hint="원본 ${r.raw_bars || r.bars || 0}일 중 ${excludedBars}일 제외 · 최근 안전구간 ${r.bars || 0}일" tabindex="0">🛡️ 품질분리 ${qualityIssues}건</span>`
+        : "";
 
       const fam = (r.best_family || "").includes("rsi") || (r.best_name || "").includes("RSI")
         ? "rsi"
@@ -7092,6 +7111,7 @@ function renderStrategy(data) {
             <div class="meta" style="color:#94a3b8; font-size:11px; display:flex; align-items:center; gap:5px;">
               <span class="tag" style="background:#1e293b; color:#38bdf8; font-family:monospace; font-weight:700; font-size:10.5px; padding:1px 5px; border:1px solid rgba(56,189,248,0.25); border-radius:4px;">${escapeHtml(r.ticker || "")}</span>
               <span>${r.bars || 0}거래일</span>
+              ${qualityChip}
             </div>
           </div>
         </td>

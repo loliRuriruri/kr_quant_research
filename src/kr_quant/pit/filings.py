@@ -26,7 +26,10 @@ def as_of_prices(prices: pd.DataFrame, as_of: date) -> pd.DataFrame:
     return day
 
 
-def history_window(prices: pd.DataFrame, as_of: date, lookback: int = 80) -> pd.DataFrame:
+def history_window(prices: pd.DataFrame, as_of: date, lookback: int = 400) -> pd.DataFrame:
     df = prices.copy()
     df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
-    return df[df["trade_date"] <= as_of]
+    df = df[df["trade_date"] <= as_of].sort_values(["ticker", "trade_date"])
+    if lookback <= 0:
+        return df.iloc[0:0].copy()
+    return df.groupby("ticker", sort=False, group_keys=False).tail(int(lookback)).reset_index(drop=True)
