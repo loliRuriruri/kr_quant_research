@@ -38,6 +38,9 @@ def test_export_snapshot_has_no_settings_and_recomputes(tmp_path):
     assert "quant_score" in data
     assert "연기금" not in (tmp_path / "flow.json").read_text(encoding="utf-8") or "기금" in (tmp_path / "flow.json").read_text(encoding="utf-8")
     assert "quant_score" in FORMULAS
+    evidence = json.loads((tmp_path / "evidence_registry.json").read_text(encoding="utf-8"))
+    assert evidence["contract_version"] == "1.0"
+    assert evidence["menus"]["rank"]["sources"]
 
 
 def test_full_public_ui_snapshot_allowlist_and_sanitizer():

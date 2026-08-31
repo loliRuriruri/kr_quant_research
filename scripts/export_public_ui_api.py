@@ -284,6 +284,7 @@ def export(out_dir: Path) -> dict[str, Any]:
                 data["public_mode"] = True
                 data["keys"] = {}
                 data.pop("project_root", None)
+                ((data.get("evidence_registry") or {}).get("menus") or {}).pop("settings", None)
             filename = f"{slug(route)}.json"
             (out_dir / filename).write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
             manifest["routes"][route] = filename

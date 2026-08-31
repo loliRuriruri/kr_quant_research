@@ -1479,6 +1479,7 @@ function switchView(name) {
     $("#page-title").textContent = name;
     $("#page-sub").textContent = "";
   }
+  renderPageEvidence(name);
   const modeBadge = $("#top-mode-badge");
   if (modeBadge) {
     if (name === "dash" || name === "rank" || name === "screens") {
@@ -1660,6 +1661,37 @@ function setPageAsOf(text, tip) {
     el.setAttribute("data-tip", tip);
     el.classList.add("has-tip");
   }
+}
+
+function renderPageEvidence(name = currentView) {
+  const el = $("#page-evidence");
+  if (!el) return;
+  const item = lastStatus?.evidence_registry?.menus?.[name];
+  if (!item) {
+    el.className = "page-evidence has-tip evidence-pending";
+    el.textContent = "🔎 근거 계약 확인 중…";
+    el.setAttribute("data-tip", "이 메뉴의 출처·기준일·표본·계산 상태를 불러오는 중입니다.");
+    return;
+  }
+  const states = {
+    READY: ["검증 가능", "evidence-ready"],
+    READY_WITH_LIMITS: ["제한 포함", "evidence-limited"],
+    STALE: ["갱신 필요", "evidence-stale"],
+    MISSING: ["근거 누락", "evidence-missing"],
+    LOCAL_ONLY: ["로컬 관리", "evidence-local"],
+  };
+  const [stateLabel, stateClass] = states[item.calculation_state] || [item.calculation_state || "상태 미상", "evidence-limited"];
+  const sources = (item.sources || []).map((source) => source.name).filter(Boolean).join(" + ") || "출처 미상";
+  const sample = item.sample || {};
+  const sampleText = sample.count == null ? sample.scope || "표본 확인 필요" : `${Number(sample.count).toLocaleString("ko-KR")}${sample.unit || ""}`;
+  const quantText = item.used_in_quant ? "퀀트 점수 반영" : "오버레이·설명 전용";
+  const limits = (item.limitations || []).join(" / ") || "별도 한계 없음";
+  el.className = `page-evidence has-tip ${stateClass}`;
+  el.textContent = `🔎 근거 ${stateLabel} · ${sources} · ${sampleText} · ${quantText}`;
+  el.setAttribute(
+    "data-tip",
+    `기준일 ${item.as_of || "시장시점 아님"} · 범위 ${sample.scope || "—"} · 계산상태 ${item.calculation_state || "—"} · 한계: ${limits}`
+  );
 }
 
 function setSeasonalityAsOf(payload) {
@@ -4066,6 +4098,7 @@ async function loadDash() {
   reportRows = archive.rows || [];
   lastStatus = status;
   lastStatusExplain = status.status_explain || null;
+  renderPageEvidence(currentView);
   renderFreshChip(status.freshness);
   if (currentView === "dash" || currentView === "rank") {
     stampFromStatus();

@@ -488,6 +488,26 @@ tr.clickable { cursor: pointer; }
   pointer-events: none;
   transition: opacity 0.12s ease;
 }
+.page-evidence {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(900px, 92vw);
+  margin: 3px 0 0;
+  padding: 3px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  color: #cbd5e1;
+  background: rgba(30, 41, 59, 0.55);
+  font-size: 11px;
+  line-height: 1.45;
+  cursor: help;
+}
+.page-evidence.evidence-ready { color: #86efac; border-color: rgba(34, 197, 94, 0.38); background: rgba(34, 197, 94, 0.08); }
+.page-evidence.evidence-limited { color: #fde68a; border-color: rgba(245, 158, 11, 0.38); background: rgba(245, 158, 11, 0.08); }
+.page-evidence.evidence-stale,
+.page-evidence.evidence-missing { color: #fda4af; border-color: rgba(244, 63, 94, 0.42); background: rgba(244, 63, 94, 0.08); }
+.page-evidence.evidence-local,
+.page-evidence.evidence-pending { color: #93c5fd; border-color: rgba(59, 130, 246, 0.36); background: rgba(59, 130, 246, 0.08); }
 .float-tip.flow-history-tip {
   max-width: 640px;
   padding: 13px 14px 14px;

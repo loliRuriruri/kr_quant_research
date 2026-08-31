@@ -72,6 +72,25 @@ def test_publication_readiness_blocks_demo_partial_stale_and_empty_results():
     }
 
 
+def test_publication_readiness_blocks_invalid_evidence_contract():
+    result = evaluate_publication_readiness(
+        {"source_mode": "live", "status": "success", "warnings": [], "as_of_date": "2026-08-26"},
+        {
+            "expected_price_date": "2026-08-26",
+            "price_max_date": "2026-08-26",
+            "screen_as_of": "2026-08-26",
+            "stale_price": False,
+            "stale_screen": False,
+        },
+        eligible_rows=100,
+        evidence_registry={"contract_version": "1.0", "menus": {}},
+    )
+
+    assert result["ready"] is False
+    assert "EVIDENCE_CONTRACT_INVALID" in result["errors"]
+    assert result["evidence_validation"]["valid"] is False
+
+
 def test_publication_guard_stops_before_build_or_deploy(monkeypatch, tmp_path):
     monkeypatch.setattr(publish, "_root", lambda: tmp_path)
     monkeypatch.setattr(

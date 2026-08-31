@@ -367,6 +367,7 @@ def resolve_status_label(settings) -> str:
 @app.get("/api/status")
 def api_status(request: Request) -> dict[str, Any]:
     from kr_quant.freshness import freshness_snapshot
+    from kr_quant.web.evidence import build_evidence_registry
     from kr_quant.web.scheduler import scheduler_status
 
     from kr_quant.web.guide import explain_run_status
@@ -375,6 +376,7 @@ def api_status(request: Request) -> dict[str, Any]:
     quality = _quality(s)
     live_prices = s.staged_dir / "live" / "prices.parquet"
     fresh = freshness_snapshot(s, screen_as_of=(quality or {}).get("as_of_date"))
+    evidence_registry = build_evidence_registry(s, quality=quality, freshness=fresh)
     status_explain = explain_run_status(quality, status_csv_exists=s.status_csv.exists())
     is_public = public_share_mode(request)
     return {
@@ -393,6 +395,7 @@ def api_status(request: Request) -> dict[str, Any]:
         "quality": quality,
         "status_explain": status_explain,
         "freshness": fresh,
+        "evidence_registry": evidence_registry,
         "scheduler": scheduler_status(),
         "llm_provider": s.llm_provider,
         "llm_model": resolve_status_model(s),

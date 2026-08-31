@@ -21,6 +21,7 @@ from kr_quant.factors.scorecard import build_factor_scorecard
 from kr_quant.freshness import freshness_snapshot
 from kr_quant.settings import load_settings
 from kr_quant.web.guide import EXCLUSION_KO, WARNING_FIX, WARNING_KO, explain_run_status
+from kr_quant.web.evidence import build_evidence_registry
 
 SECRET_KEY_RE = re.compile(r"(api[_-]?key|secret|token|password|authorization|bearer|cookie)", re.I)
 NAN = {None}
@@ -393,6 +394,10 @@ def export(out_dir: Path) -> dict[str, Any]:
     quality = json.loads(quality_path.read_text(encoding="utf-8")) if quality_path.exists() else {}
     as_of = str(quality.get("as_of_date") or (stocks["as_of_date"].iloc[0] if not stocks.empty and "as_of_date" in stocks.columns else "미수집"))
     fresh = _clean(freshness_snapshot(settings, screen_as_of=as_of if as_of != "미수집" else None))
+    evidence_registry = _clean(build_evidence_registry(settings, quality=quality, freshness=fresh))
+    # The public build has no API-settings screen. Do not publish even its
+    # descriptive contract entry.
+    (evidence_registry.get("menus") or {}).pop("settings", None)
     explain = explain_run_status(quality, status_csv_exists=settings.status_csv.exists())
 
     prices = pd.DataFrame()
@@ -488,6 +493,7 @@ def export(out_dir: Path) -> dict[str, Any]:
         "quality": _clean(quality),
         "sources": sources_catalog(as_of),
         "formulas": FORMULAS,
+        "evidence_registry": evidence_registry,
     }
     (out_dir / "snapshot.json").write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     for name, data in payload.items():

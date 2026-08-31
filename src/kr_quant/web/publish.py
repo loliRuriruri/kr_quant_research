@@ -150,6 +150,7 @@ def evaluate_publication_readiness(
     freshness: dict[str, Any],
     *,
     eligible_rows: int,
+    evidence_registry: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a deterministic, fail-closed decision for public publication."""
     errors: list[str] = []
@@ -171,6 +172,13 @@ def evaluate_publication_readiness(
         errors.append("AS_OF_DATE_MISMATCH")
     if eligible_rows <= 0:
         errors.append("NO_ELIGIBLE_CANDIDATES")
+    evidence_validation: dict[str, Any] | None = None
+    if evidence_registry is not None:
+        from kr_quant.web.evidence import validate_evidence_registry
+
+        evidence_validation = validate_evidence_registry(evidence_registry)
+        if not evidence_validation.get("valid"):
+            errors.append("EVIDENCE_CONTRACT_INVALID")
     return {
         "ready": not errors,
         "errors": list(dict.fromkeys(errors)),
@@ -180,6 +188,7 @@ def evaluate_publication_readiness(
         "expected_price_date": expected or None,
         "price_max_date": price_max or None,
         "eligible_rows": int(eligible_rows),
+        "evidence_validation": evidence_validation,
     }
 
 
@@ -204,6 +213,9 @@ def publication_readiness(root: Path | None = None) -> dict[str, Any]:
             .sum()
         )
         fresh = freshness_snapshot(settings, screen_as_of=quality.get("as_of_date"))
+        from kr_quant.web.evidence import build_evidence_registry
+
+        evidence_registry = build_evidence_registry(settings, quality=quality, freshness=fresh)
     except Exception as exc:
         return {
             "ready": False,
@@ -211,7 +223,12 @@ def publication_readiness(root: Path | None = None) -> dict[str, Any]:
             "detail": str(exc),
             "eligible_rows": 0,
         }
-    return evaluate_publication_readiness(quality, fresh, eligible_rows=eligible_rows)
+    return evaluate_publication_readiness(
+        quality,
+        fresh,
+        eligible_rows=eligible_rows,
+        evidence_registry=evidence_registry,
+    )
 
 
 def evaluate_manual_override(readiness: dict[str, Any]) -> dict[str, Any]:
@@ -222,6 +239,7 @@ def evaluate_manual_override(readiness: dict[str, Any]) -> dict[str, Any]:
         "LATEST_RESULTS_MISSING",
         "PUBLICATION_SOURCE_READ_FAILED",
         "NO_ELIGIBLE_CANDIDATES",
+        "EVIDENCE_CONTRACT_INVALID",
     }
     blocking = [error for error in errors if error in hard_errors]
     source_mode = str(readiness.get("source_mode") or "").strip().lower()
