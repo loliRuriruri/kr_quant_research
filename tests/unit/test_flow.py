@@ -1,6 +1,8 @@
+import pandas as pd
+
 from kr_quant.flow.investor import classify_setups, filter_trading, search_empty_houses, summarize_records
+from kr_quant.flow.scan import attach_daily_prices, amount_bucket_stats, analyze_hit_rate, filter_by_min_krw
 from kr_quant.flow.universe import KNOWN_ETF, local_name
-from kr_quant.flow.scan import amount_bucket_stats, analyze_hit_rate, filter_by_min_krw
 
 
 def test_dual_and_pe_from_toss_shape():
@@ -31,6 +33,7 @@ def test_dual_and_pe_from_toss_shape():
     assert out["dual_pe_retail"] is True
     assert out["foreign_net"] == 110
     assert out["pe_net"] == 35
+    assert out["daily"][0]["individual"] == -150
     assert out["used_in_quant"] is False
     assert out["empty"] is False
     assert out["comeback"] is False
@@ -87,6 +90,7 @@ def test_empty_house_and_comeback():
     assert out["sell_streak"] == 0
     assert out["foreign_holding_rate"] == 0.04
     assert out["foreign_rate_chg"] == 0.04 - 0.05
+    assert out["daily"][0]["foreign_holding_rate"] == 0.04
 
     sold = [
         _day("2026-08-20", -10, -8, 18, 0.02),
@@ -112,6 +116,29 @@ def test_empty_house_and_comeback():
     assert [r["ticker"] for r in search_empty_houses(rows, query="베타", mode="all")] == ["000002"]
     assert [r["ticker"] for r in search_empty_houses(rows, mode="low_foreign")] == ["000001"]
     assert [r["ticker"] for r in search_empty_houses(rows, mode="empty", min_exit_krw=1_000_000_000)] == ["000001"]
+
+
+def test_daily_flow_rows_receive_matching_krx_prices():
+    summary = {
+        "daily": [
+            {"date": "2026-08-20", "foreign": 10, "institution": 20},
+            {"date": "2026-08-19", "foreign": -5, "institution": -8},
+        ]
+    }
+    prices = pd.DataFrame(
+        [
+            {"trade_date": "2026-08-18", "open": 90, "high": 101, "low": 89, "close": 100},
+            {"trade_date": "2026-08-19", "open": 101, "high": 112, "low": 99, "close": 110},
+            {"trade_date": "2026-08-20", "open": 111, "high": 125, "low": 108, "close": 121},
+        ]
+    )
+
+    out = attach_daily_prices(summary, prices)
+
+    assert out["daily"][0]["close"] == 121.0
+    assert out["daily"][0]["price_change_rate"] == 0.1
+    assert out["daily"][1]["open"] == 101.0
+    assert out["daily"][1]["price_change_rate"] == 0.1
 
 
 def test_pe_accum_and_trading_filter():

@@ -505,6 +505,7 @@ tr.clickable { cursor: pointer; }
 .float-tip-body {
   color: #cbd5e1;
   margin: 0 0 6px;
+  white-space: pre-line;
 }
 .float-tip-impact {
   margin-top: 6px;
@@ -5097,7 +5098,7 @@ body.modal-open { overflow: hidden; }
 
 .smart-flow-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 8px;
 }
 

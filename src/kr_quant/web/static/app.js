@@ -988,9 +988,9 @@ const titles = {
   reports: ["리포트 보관함", "발간된 AI 심층 분석 리포트 및 검증 아카이브"],
   run: ["실행 파이프라인", "실데이터 수집, 시세 갱신 및 퀀트 재계산"],
   settings: ["API 설정", "API 키 및 LLM 모델 환경설정"],
-  flow: ["스마트 수급·타점", "외국인·기관·사모 수급, 기술적 타점 및 신호 후 성과 통합 검증"],
-  empty: ["빈집 발굴", "기관·외인 이탈 후 수급 복귀 조짐 종목"],
-  trade: ["스마트 수급·타점", "외국인·기관·사모 수급, 기술적 타점 및 신호 후 성과 통합 검증"],
+  flow: ["스마트 수급·타점", "외국인·기관·사모 수급, 빈집·복귀, 기술적 타점 및 신호 후 성과 통합 검증"],
+  empty: ["스마트 수급·타점", "외국인·기관·사모 수급, 빈집·복귀, 기술적 타점 및 신호 후 성과 통합 검증"],
+  trade: ["스마트 수급·타점", "외국인·기관·사모 수급, 빈집·복귀, 기술적 타점 및 신호 후 성과 통합 검증"],
   us13f: ["월가 대가 포트폴리오 (13F)", "워런 버핏·마이클 버리 등 글로벌 대가들의 SEC 13F 보유 비중 & 신규 편입 종목"],
   strategy: ["전략·백테스트", "일봉 기반 퀀트 전략 백테스트 및 검증"],
   investor: ["메이저 수급 & 지분", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
@@ -1009,7 +1009,6 @@ let lastStatusExplain = null;
 let sortState = {};
 let screenCache = null;
 let tradeCache = null;
-let emptyCache = null;
 let flowTab = "dual";
 let smartFlowTab = "overview";
 let flowLimit = {};
@@ -1403,10 +1402,14 @@ async function applyPublicShareMode() {
 
 function switchView(name) {
   if (publicShareMode && name === "settings") name = "dash";
-  // Backward compatibility: the former "쌍끌이 수급" route now opens the
-  // overview tab inside the unified smart-flow screen.
+  // Backward compatibility: retired flow/empty routes open their matching
+  // tabs inside the unified smart-flow screen.
   if (name === "flow") {
     smartFlowTab = "overview";
+    name = "trade";
+  }
+  if (name === "empty") {
+    smartFlowTab = "vacancy";
     name = "trade";
   }
   currentView = name;
@@ -1452,7 +1455,6 @@ function switchView(name) {
   }
   if (name === "sunzi") loadSunzi().catch((err) => alert(err.message));
   if (name === "nps") loadNps().catch((err) => alert(err.message));
-  if (name === "empty") loadEmpty().catch((err) => alert(err.message));
   if (name === "trade") loadTrade().catch((err) => alert(err.message));
   if (name === "us13f") loadUs13f().catch((err) => alert(err.message));
   if (name === "toss") loadTossRankings().catch((err) => alert(err.message));
@@ -4924,6 +4926,38 @@ function quoteCell(r) {
   return `${Number(r.last).toLocaleString("ko-KR")}<div class="meta">${pctCell(r.change_rate)}</div>`;
 }
 
+function plainSignedInt(value) {
+  const n = Number(value || 0);
+  return `${n > 0 ? "+" : ""}${n.toLocaleString("ko-KR")}`;
+}
+
+function flowHistoryTipAttrs(row, label, displayedValue = "") {
+  const daily = Array.isArray(row?.daily) ? row.daily.filter((d) => d && d.date).slice(0, 20) : [];
+  const recent = daily.slice(0, 5);
+  const title = `${row?.company || row?.ticker || "종목"} · ${label}`;
+  const tip = recent.length
+    ? recent.map((d) => {
+        const day = String(d.date || "").slice(5);
+        const price = d.close == null
+          ? "종가 —"
+          : `종가 ${Number(d.close).toLocaleString("ko-KR")}원${d.price_change_rate == null ? "" : ` (${fmtPct(d.price_change_rate)})`}`;
+        return `${day} · ${price} · 외인 ${plainSignedInt(d.foreign)} · 기관 ${plainSignedInt(d.institution)} · 개인 ${plainSignedInt(d.individual)} · 사모 ${plainSignedInt(d.pe)}`;
+      }).join("\n")
+    : "최근 5거래일 일별 수급·가격 이력이 없습니다. 수급 다시 스캔을 실행하면 새 스키마로 저장됩니다.";
+  const priced = daily.filter((d) => d.close != null && Number(d.close) > 0);
+  let priceWindow = "가격 이력 없음";
+  if (priced.length) {
+    const newest = Number(priced[0].close);
+    const oldest = Number(priced[priced.length - 1].close);
+    const rangeReturn = oldest > 0 ? newest / oldest - 1 : null;
+    priceWindow = `${oldest.toLocaleString("ko-KR")}원 → ${newest.toLocaleString("ko-KR")}원${rangeReturn == null ? "" : ` (${fmtPct(rangeReturn)})`}`;
+  }
+  const selectedDays = Number(row?.days || flowDays() || daily.length || 5);
+  const current = displayedValue ? `현재 셀 ${displayedValue} · ` : "";
+  const summary = `${current}설정 ${selectedDays}거래일 가격 ${priceWindow} · 외인 ${plainSignedInt(row?.foreign_net)} · 기관 ${plainSignedInt(row?.institution_net)} · 개인 ${plainSignedInt(row?.individual_net)} · 사모 ${plainSignedInt(row?.pe_net)}`;
+  return ` data-tip-title="${escapeHtml(title)}" data-tip="${escapeHtml(tip)}" data-tip-hint="${escapeHtml(summary)}" data-tip-hint-label="설정기간 집계" tabindex="0"`;
+}
+
 function flowTable(title, rows, amountKey, tabId, duplicatedHorizon = false) {
   const scope = tabId || (amountKey === "pe_krw" ? "flowPe" : "flowDual");
   const filteredRows = filterFlowQuery(rows);
@@ -4945,11 +4979,11 @@ function flowTable(title, rows, amountKey, tabId, duplicatedHorizon = false) {
         </div>
         ${rowNote(amountKey === "pe_krw" ? (r.comment_pe_short || r.comment_pe) : (r.comment_flow_short || r.comment_flow))}
       </td>
-      <td class="num">${quoteCell(r)}</td>
-      <td class="num ${r.foreign_net > 0 ? 'text-emerald-400 font-bold' : r.foreign_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.foreign_net)}</td>
-      <td class="num ${r.institution_net > 0 ? 'text-emerald-400 font-bold' : r.institution_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.institution_net)}</td>
-      <td class="num ${r.pe_net > 0 ? 'text-purple-400 font-bold' : r.pe_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.pe_net)}</td>
-      <td class="num font-bold text-accent-cyan">${escapeHtml(krw(r[amountKey]))}</td>
+      <td class="num has-tip"${flowHistoryTipAttrs(r, "최근가", r.last == null ? "—" : `${Number(r.last).toLocaleString("ko-KR")}원`)}>${quoteCell(r)}</td>
+      <td class="num has-tip ${r.foreign_net > 0 ? 'text-emerald-400 font-bold' : r.foreign_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "외국인 누적 순매수", plainSignedInt(r.foreign_net))}>${signedInt(r.foreign_net)}</td>
+      <td class="num has-tip ${r.institution_net > 0 ? 'text-emerald-400 font-bold' : r.institution_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "기관 누적 순매수", plainSignedInt(r.institution_net))}>${signedInt(r.institution_net)}</td>
+      <td class="num has-tip ${r.pe_net > 0 ? 'text-purple-400 font-bold' : r.pe_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "사모펀드 누적 순매수", plainSignedInt(r.pe_net))}>${signedInt(r.pe_net)}</td>
+      <td class="num has-tip font-bold text-accent-cyan"${flowHistoryTipAttrs(r, "수급 추정금액", krw(r[amountKey]))}>${escapeHtml(krw(r[amountKey]))}</td>
       <td class="num font-bold">${pctCell(r.ret_5d)}</td>
       <td class="num font-bold">${duplicatedHorizon ? '<span class="warn">검증 대기</span>' : pctCell(r.ret_20d)}</td>
     </tr>`)
@@ -6055,6 +6089,7 @@ async function loadNps() {
 }
 
 function smartFlowBox(tab = smartFlowTab) {
+  if (tab === "vacancy") return $("#empty-box");
   if (tab === "technical") return $("#trade-box");
   if (tab === "stats") return $("#flow-stats-box");
   return $("#flow-box");
@@ -6074,7 +6109,10 @@ function syncSmartFlowTabs() {
 function renderSmartFlowActive(data = flowCache) {
   syncSmartFlowTabs();
   if (!data) return;
-  if (smartFlowTab === "technical") {
+  if (smartFlowTab === "vacancy") {
+    loadEmptyTier1Briefing().catch(() => {});
+    renderEmpty(data);
+  } else if (smartFlowTab === "technical") {
     loadTradeTier1Briefing().catch(() => {});
     renderTrade(data);
   } else if (smartFlowTab === "stats") {
@@ -6085,7 +6123,7 @@ function renderSmartFlowActive(data = flowCache) {
 }
 
 function setSmartFlowTab(tab) {
-  smartFlowTab = ["overview", "technical", "stats"].includes(tab) ? tab : "overview";
+  smartFlowTab = ["overview", "vacancy", "technical", "stats"].includes(tab) ? tab : "overview";
   renderSmartFlowActive(flowCache);
 }
 
@@ -6118,18 +6156,18 @@ async function runFlowSearch(query) {
     throw new Error(`'${raw}'에 해당하는 종목을 찾지 못했습니다.`);
   }
   if (smartFlowTab === "stats") setSmartFlowTab("overview");
-  const target = smartFlowTab === "technical" ? "#trade-box" : "#flow-box";
-  const scope = smartFlowTab === "technical" ? "trade" : "flow";
+  const target = smartFlowTab === "technical" ? "#trade-box" : smartFlowTab === "vacancy" ? "#empty-box" : "#flow-box";
+  const scope = smartFlowTab === "technical" ? "trade" : smartFlowTab === "vacancy" ? "empty" : "flow";
   await fetchOnDemandFlow(code, target, scope);
 }
 
 function emptyFilters() {
   const rateRaw = $("#empty-rate")?.value;
   return {
-    q: ($("#empty-q")?.value || "").trim().toLowerCase(),
+    q: ($("#flow-q")?.value || "").trim().toLowerCase(),
     mode: $("#empty-mode")?.value || "empty",
     maxRate: rateRaw === "" || rateRaw == null ? null : Number(rateRaw),
-    minKrw: Number($("#empty-min-krw")?.value || 0),
+    minKrw: flowMinKrw(),
   };
 }
 
@@ -6151,7 +6189,7 @@ function emptyTags(r) {
 function filterEmptyRows(rows) {
   const { q, mode, maxRate, minKrw } = emptyFilters();
   const rateCap = mode === "low_foreign" && maxRate == null ? 0.05 : maxRate;
-  return rows.filter((r) => {
+  return filterFlowUniverse(rows).filter((r) => {
     const hay = `${r.ticker || ""} ${r.company || ""}`.toLowerCase();
     const chosung = getChosung(r.company || "");
     if (q && !hay.includes(q) && !chosung.includes(q)) return false;
@@ -6184,7 +6222,8 @@ function renderEmpty(data) {
     seen.add(k);
     uniq.push(r);
   }
-  const rows = filterEmptyRows(uniq);
+  const scoped = filterFlowUniverse(uniq);
+  const rows = filterEmptyRows(scoped);
   const mode = emptyFilters().mode;
   if (!sortState.empty) {
     sortState.empty = { key: mode === "low_foreign" ? "foreign_holding_rate" : "empty_krw", dir: mode === "low_foreign" ? "asc" : "desc" };
@@ -6213,24 +6252,24 @@ function renderEmpty(data) {
         <div class="meta" style="margin-top:2px;">${renderEmptyBadgeTags(r)}</div>
         ${rowNote(r.comment_empty_short || r.comment_empty)}
       </td>
-      <td class="num">${quoteCell(r)}</td>
-      <td class="num font-bold" style="color:#e2e8f0;">${r.foreign_holding_rate == null ? "—" : fmtPct(r.foreign_holding_rate, 2)}</td>
-      <td class="num">${r.foreign_rate_chg == null ? "—" : pctCell(r.foreign_rate_chg)}</td>
-      <td class="num ${r.foreign_net < 0 ? 'text-rose-400 font-bold' : r.foreign_net > 0 ? 'text-emerald-400 font-bold' : ''}">${signedInt(r.foreign_net)}</td>
-      <td class="num ${r.institution_net < 0 ? 'text-rose-400 font-bold' : r.institution_net > 0 ? 'text-emerald-400 font-bold' : ''}">${signedInt(r.institution_net)}</td>
-      <td class="num ${r.individual_net > 0 ? 'text-amber-400 font-bold' : r.individual_net < 0 ? 'text-slate-400' : ''}">${signedInt(r.individual_net)}</td>
-      <td class="num">${r.empty_share == null ? "—" : fmtPct(r.empty_share, 0)}</td>
-      <td class="num">${r.holding_exit == null ? "—" : fmtPct(r.holding_exit, 2)}</td>
-      <td class="num font-bold text-accent-cyan">${escapeHtml(krw(r.empty_krw))}</td>
-      <td class="num">${r.sell_streak ? `<b style="color:#f87171;">${r.sell_streak}일 연속</b>` : "—"}</td>
-      <td class="num font-bold">${pctCell(r.ret_5d)}</td>
+      <td class="num has-tip"${flowHistoryTipAttrs(r, "최근가", r.last == null ? "—" : `${Number(r.last).toLocaleString("ko-KR")}원`)}>${quoteCell(r)}</td>
+      <td class="num has-tip font-bold" style="color:#e2e8f0;"${flowHistoryTipAttrs(r, "외국인 보유 지분", r.foreign_holding_rate == null ? "—" : fmtPct(r.foreign_holding_rate, 2))}>${r.foreign_holding_rate == null ? "—" : fmtPct(r.foreign_holding_rate, 2)}</td>
+      <td class="num has-tip"${flowHistoryTipAttrs(r, "외국인 지분 변화", r.foreign_rate_chg == null ? "—" : fmtPct(r.foreign_rate_chg, 2))}>${r.foreign_rate_chg == null ? "—" : pctCell(r.foreign_rate_chg)}</td>
+      <td class="num has-tip ${r.foreign_net < 0 ? 'text-rose-400 font-bold' : r.foreign_net > 0 ? 'text-emerald-400 font-bold' : ''}"${flowHistoryTipAttrs(r, "외국인 누적 순매수", plainSignedInt(r.foreign_net))}>${signedInt(r.foreign_net)}</td>
+      <td class="num has-tip ${r.institution_net < 0 ? 'text-rose-400 font-bold' : r.institution_net > 0 ? 'text-emerald-400 font-bold' : ''}"${flowHistoryTipAttrs(r, "기관 누적 순매수", plainSignedInt(r.institution_net))}>${signedInt(r.institution_net)}</td>
+      <td class="num has-tip ${r.individual_net > 0 ? 'text-amber-400 font-bold' : r.individual_net < 0 ? 'text-slate-400' : ''}"${flowHistoryTipAttrs(r, "개인 누적 순매수", plainSignedInt(r.individual_net))}>${signedInt(r.individual_net)}</td>
+      <td class="num has-tip"${flowHistoryTipAttrs(r, "수급 이탈 비중", r.empty_share == null ? "—" : fmtPct(r.empty_share, 0))}>${r.empty_share == null ? "—" : fmtPct(r.empty_share, 0)}</td>
+      <td class="num has-tip"${flowHistoryTipAttrs(r, "보유고 대비 이탈", r.holding_exit == null ? "—" : fmtPct(r.holding_exit, 2))}>${r.holding_exit == null ? "—" : fmtPct(r.holding_exit, 2)}</td>
+      <td class="num has-tip font-bold text-accent-cyan"${flowHistoryTipAttrs(r, "이탈 추정금액", krw(r.empty_krw))}>${escapeHtml(krw(r.empty_krw))}</td>
+      <td class="num has-tip"${flowHistoryTipAttrs(r, "연속 순매도", r.sell_streak ? `${r.sell_streak}일` : "—")}>${r.sell_streak ? `<b style="color:#f87171;">${r.sell_streak}일 연속</b>` : "—"}</td>
+      <td class="num has-tip font-bold"${flowHistoryTipAttrs(r, "신호 후 5일 성과", r.ret_5d == null ? "—" : fmtPct(r.ret_5d))}>${pctCell(r.ret_5d)}</td>
     </tr>`
     )
     .join("");
 
   const when = fmtWhen(data.fetched_at);
   const asof = when ? `빈집 데이터 ${when} · ${data.days || 5}거래일` : `빈집 스캔 시점 없음 · ${data.days || 5}거래일`;
-  if (currentView === "empty") setPageAsOf(asof, "수급 스캔과 같은 토스 데이터입니다. 다시 스캔하면 갱신됩니다.");
+  if (currentView === "trade" && smartFlowTab === "vacancy") setPageAsOf(asof, "수급 스캔과 같은 토스 데이터입니다. 다시 스캔하면 갱신됩니다.");
 
   box.innerHTML = `
     <div class="kpis" style="grid-template-columns:repeat(4,1fr); margin:0 0 16px;">
@@ -6238,18 +6277,18 @@ function renderEmpty(data) {
         <span>조건 종목</span><b style="color:#00e5ff;">${rows.length}</b>
       </div>
       <div class="kpi has-tip" data-tip-title="🚪 외인·기관 쌍매도 빈집" data-tip="외국인과 기관이 2일 이상 동반 순매도하여 수급 공백이 발생한 종목입니다." tabindex="0">
-        <span>쌍매도 빈집</span><b style="color:#f87171;">${(data.empty || []).length}</b>
+        <span>쌍매도 빈집</span><b style="color:#f87171;">${scoped.filter((r) => r.empty).length}</b>
       </div>
       <div class="kpi has-tip" data-tip-title="🔄 수급 복귀 조짐 (턴어라운드)" data-tip="외인·기관의 연속 매도세가 멈추고 최근 1~2거래일 재매수가 유입된 턴어라운드 종목입니다." tabindex="0">
-        <span>복귀 조짐</span><b style="color:#4ade80;">${(data.comeback || []).length}</b>
+        <span>복귀 조짐</span><b style="color:#4ade80;">${scoped.filter((r) => r.comeback).length}</b>
       </div>
       <div class="kpi has-tip" data-tip-title="📉 외인 지분 5% 이하" data-tip="외국인 보유 비중이 5% 이하로 떨어져 추가 매도 압력이 현저히 낮아진 바닥권 종목입니다." tabindex="0">
-        <span>외인 5%↓</span><b style="color:#c084fc;">${(data.low_foreign || []).length}</b>
+        <span>외인 5%↓</span><b style="color:#c084fc;">${scoped.filter((r) => r.foreign_holding_rate != null && Number(r.foreign_holding_rate) <= 0.05).length}</b>
       </div>
     </div>
 
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-      <span class="chip" style="background:rgba(239,68,68,0.12); color:#f87171;">스캔 ${data.scanned || 0}종목 · ${data.days || 5}거래일 순매도 합산</span>
+      <span class="chip" style="background:rgba(239,68,68,0.12); color:#f87171;">스캔 ${data.scanned || 0}종목 · ${data.days || 5}거래일 합산 · ${escapeHtml(flowUniverseLabel())}${flowMinKrw() ? ` · ${krw(flowMinKrw())} 이상` : ""}</span>
       <span class="meta">${hitLine("선택 집합", hit)}</span>
     </div>
 
@@ -6275,22 +6314,14 @@ function renderEmpty(data) {
         <tbody>${body || `<tr><td colspan="13" class="hint" style="text-align:center; padding:30px;">조건에 맞는 종목이 없습니다. 유형을 바꾸거나 다시 스캔해 보세요.</td></tr>`}</tbody>
       </table>
     </div>
-    <p class="hint" style="margin-top:10px;">💡 이탈 추정금액은 (외인+기관 순매도 주수) × 종가 기준입니다. 열 이름을 클릭하면 외인 지분, 이탈금액, 연속매도 일수로 정렬할 수 있습니다.</p>
+    <p class="hint" style="margin-top:10px;">💡 숫자 셀에 마우스를 올리거나 키보드로 초점을 이동하면 최근 5거래일의 종가·외인·기관·개인·사모 수급과 선택 기간 전체 집계를 확인할 수 있습니다.</p>
   `;
-  emptyCache = data;
   paintSortHeaders("empty");
 }
 
 async function loadEmpty(force) {
-  const box = $("#empty-box");
-  if (!box) return;
-  loadEmptyTier1Briefing().catch(() => {});
-  box.innerHTML = "<p>빈집 종목을 불러오는 중…</p>";
-  if (force || !(flowCache && Array.isArray(flowCache.empty) && !flowCache.need_scan)) {
-    box.innerHTML = "<p>토스 수급을 스캔하는 중… 빈집 분류를 위해 1분 안팎 걸릴 수 있습니다.</p>";
-  }
-  const data = await ensureFlow(force);
-  renderEmpty(data);
+  smartFlowTab = "vacancy";
+  return loadSmartFlow(Boolean(force));
 }
 
 function tradeFilters() {
@@ -6573,14 +6604,14 @@ function renderTrade(data) {
         </div>
         ${rowNote(r.comment_trade_short || r.comment_trade)}
       </td>
-      <td class="num">${quoteCell(r)}</td>
+      <td class="num has-tip"${flowHistoryTipAttrs(r, "최근가", r.last == null ? "—" : `${Number(r.last).toLocaleString("ko-KR")}원`)}>${quoteCell(r)}</td>
       <td class="num">${renderStochCell(r)}</td>
       <td>${renderTechBadges(r)}</td>
-      <td class="num ${r.foreign_net > 0 ? 'text-emerald-400 font-bold' : r.foreign_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.foreign_net)}</td>
-      <td class="num ${r.institution_net > 0 ? 'text-emerald-400 font-bold' : r.institution_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.institution_net)}</td>
-      <td class="num ${r.pe_net > 0 ? 'text-purple-400 font-bold' : r.pe_net < 0 ? 'text-rose-400' : ''}">${signedInt(r.pe_net)}${r.pe_streak ? `<div class="meta" style="color:#c084fc;">${r.pe_streak}일 연속</div>` : ""}</td>
-      <td class="num font-bold text-accent-cyan">${escapeHtml(krw(setupNotional(r)))}</td>
-      <td class="num font-bold">${pctCell(r.ret_5d)}</td>
+      <td class="num has-tip ${r.foreign_net > 0 ? 'text-emerald-400 font-bold' : r.foreign_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "외국인 누적 순매수", plainSignedInt(r.foreign_net))}>${signedInt(r.foreign_net)}</td>
+      <td class="num has-tip ${r.institution_net > 0 ? 'text-emerald-400 font-bold' : r.institution_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "기관 누적 순매수", plainSignedInt(r.institution_net))}>${signedInt(r.institution_net)}</td>
+      <td class="num has-tip ${r.pe_net > 0 ? 'text-purple-400 font-bold' : r.pe_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "사모펀드 누적 순매수", plainSignedInt(r.pe_net))}>${signedInt(r.pe_net)}${r.pe_streak ? `<div class="meta" style="color:#c084fc;">${r.pe_streak}일 연속</div>` : ""}</td>
+      <td class="num has-tip font-bold text-accent-cyan"${flowHistoryTipAttrs(r, "수급 추정금액", krw(setupNotional(r)))}>${escapeHtml(krw(setupNotional(r)))}</td>
+      <td class="num has-tip font-bold"${flowHistoryTipAttrs(r, "신호 후 5일 성과", r.ret_5d == null ? "—" : fmtPct(r.ret_5d))}>${pctCell(r.ret_5d)}</td>
     </tr>`
     )
     .join("");
@@ -9132,28 +9163,10 @@ if ($("#trade-universe")) {
     if (flowCache) renderSmartFlowActive(flowCache);
   });
 }
-if ($("#empty-refresh")) {
-  $("#empty-refresh").addEventListener("click", () => loadEmpty(true).catch((err) => alert(err.message)));
-}
-if ($("#empty-q")) {
-  $("#empty-q").addEventListener("input", () => { if (flowCache) renderEmpty(flowCache); });
-  $("#empty-q").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (flowCache) renderEmpty(flowCache);
-    }
-  });
-}
-if ($("#btn-empty-search")) {
-  $("#btn-empty-search").addEventListener("click", () => { if (flowCache) renderEmpty(flowCache); });
-}
-["empty-mode", "empty-rate", "empty-min-krw"].forEach((id) => {
+["empty-mode", "empty-rate"].forEach((id) => {
   const el = document.getElementById(id);
-  if (el) el.addEventListener("change", () => { if (flowCache) renderEmpty(flowCache); });
+  if (el) el.addEventListener("change", () => { if (flowCache && smartFlowTab === "vacancy") renderEmpty(flowCache); });
 });
-if ($("#empty-q")) {
-  $("#empty-q").addEventListener("input", () => { if (flowCache) renderEmpty(flowCache); });
-}
 ["trade-mode", "trade-ta"].forEach((id) => {
   const el = document.getElementById(id);
   if (el) el.addEventListener("change", () => { if (flowCache) renderSmartFlowActive(flowCache); });
@@ -9182,14 +9195,6 @@ function bindStockSearchers() {
   $("#btn-custom-strategy")?.addEventListener("click", () => {
     runCustomBacktest($("#custom-strategy-q")?.value || "");
   });
-  const emptyInput = $("#empty-q");
-  const emptyMenu = $("#empty-q-menu");
-  if (emptyInput && emptyMenu) {
-    setupStockAutocomplete(emptyInput, emptyMenu, (selected) => {
-      emptyInput.value = `${selected.company || ""} ${selected.ticker || ""}`.trim();
-      fetchOnDemandFlow(selected.ticker, "#empty-box", "empty");
-    });
-  }
   const flowInput = $("#flow-q");
   const flowMenu = $("#flow-q-menu");
   if (flowInput && flowMenu) {
@@ -9219,6 +9224,7 @@ function showFloatTip(el) {
   const upImpact = el.getAttribute("data-tip-up");
   const downImpact = el.getAttribute("data-tip-down");
   const hintImpact = el.getAttribute("data-tip-hint");
+  const hintLabel = el.getAttribute("data-tip-hint-label") || "핵심 판정 팁";
 
   let html = `
     <div class="float-tip-header">
@@ -9231,7 +9237,7 @@ function showFloatTip(el) {
     html += `<div class="float-tip-impact">`;
     if (upImpact) html += `<div class="up-impact">🔺 <b>상승 시 영향:</b> ${escapeHtml(upImpact)}</div>`;
     if (downImpact) html += `<div class="down-impact">🔻 <b>하락 시 영향:</b> ${escapeHtml(downImpact)}</div>`;
-    if (hintImpact) html += `<div class="hint-impact">🎯 <b>핵심 판정 팁:</b> ${escapeHtml(hintImpact)}</div>`;
+    if (hintImpact) html += `<div class="hint-impact">🎯 <b>${escapeHtml(hintLabel)}:</b> ${escapeHtml(hintImpact)}</div>`;
     html += `</div>`;
   }
 
@@ -9543,7 +9549,7 @@ document.addEventListener("click", (e) => {
       else if (String(scope).startsWith("flow")) {
         if (flowCache) renderFlow(flowCache);
       } else if (scope === "empty") {
-        if (emptyCache || flowCache) renderEmpty(emptyCache || flowCache);
+        if (flowCache) renderEmpty(flowCache);
       } else if (scope === "trade") {
         if (tradeCache || flowCache) renderTrade(tradeCache || flowCache);
       } else if (scope === "screens" && screenCache) renderScreens(screenCache);

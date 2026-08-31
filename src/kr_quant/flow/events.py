@@ -308,13 +308,20 @@ def daily_from_toss_records(records: list[dict[str, Any]], days: int = 20) -> li
     for rec in records[: max(1, days)]:
         if not isinstance(rec, dict):
             continue
+        holding = rec.get("foreignerHolding") if isinstance(rec.get("foreignerHolding"), dict) else {}
+        try:
+            holding_rate = float(str(holding.get("holdingRate")).replace(",", ""))
+        except (TypeError, ValueError):
+            holding_rate = None
         out.append(
             {
                 "date": _as_date(rec.get("date")),
                 "foreign": net_of(rec.get("foreigner")),
                 "institution": net_of(rec.get("institution")),
+                "individual": net_of(rec.get("individual")),
                 "pension": _breakdown_net(rec, "pensionFund") + _breakdown_net(rec, "pension"),
                 "pe": _breakdown_net(rec, "privateEquityFund"),
+                "foreign_holding_rate": holding_rate,
             }
         )
     return out

@@ -15,7 +15,7 @@ from kr_quant.ingest.tossinvest import get_investor_trading
 from kr_quant.settings import Settings
 from kr_quant.timing.snapshot import attach_technicals
 
-FLOW_SCHEMA = 4
+FLOW_SCHEMA = 5
 
 
 def cache_path(root: Path) -> Path:
@@ -68,6 +68,38 @@ def _fwd_return(hist: pd.DataFrame, start: date, horizon: int) -> float | None:
         return None if start_lv <= 0 else end_lv / start_lv - 1.0
     start_lv, end_lv = levels[0][1], levels[-1][1]
     return None if start_lv <= 0 else end_lv / start_lv - 1.0
+
+
+def attach_daily_prices(summary: dict[str, Any], hist: pd.DataFrame) -> dict[str, Any]:
+    """Attach same-date KRX OHLC prices to newest-first Toss flow rows."""
+    daily = summary.get("daily")
+    if not isinstance(daily, list) or not daily or hist is None or hist.empty or "trade_date" not in hist.columns:
+        return summary
+    work = hist.copy()
+    work["_flow_date"] = pd.to_datetime(work["trade_date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    work = work.dropna(subset=["_flow_date"]).sort_values("_flow_date")
+    if work.empty:
+        return summary
+    for key in ("open", "high", "low", "close"):
+        if key in work.columns:
+            work[key] = pd.to_numeric(work[key], errors="coerce")
+    if "close" in work.columns:
+        work["price_change_rate"] = work["close"].pct_change(fill_method=None)
+    price_by_date: dict[str, dict[str, Any]] = {}
+    for _, price_row in work.iterrows():
+        point: dict[str, Any] = {}
+        for key in ("open", "high", "low", "close", "price_change_rate"):
+            value = price_row.get(key)
+            if value is not None and not pd.isna(value):
+                point[key] = round(float(value), 6)
+        price_by_date[str(price_row["_flow_date"])] = point
+    for flow_row in daily:
+        if not isinstance(flow_row, dict):
+            continue
+        day = str(flow_row.get("date") or "")[:10]
+        if day in price_by_date:
+            flow_row.update(price_by_date[day])
+    return summary
 
 
 def analyze_hit_rate(rows: list[dict[str, Any]], key: str = "ret_5d") -> dict[str, Any]:
@@ -308,6 +340,7 @@ def scan_flow(
                 summary["ret_5d"] = _fwd_return(hist, start, 5)
                 summary["ret_20d"] = _fwd_return(hist, start, 20)
             if not hist.empty:
+                summary = attach_daily_prices(summary, hist)
                 last = float(pd.to_numeric(hist.sort_values("trade_date")["close"].iloc[-1], errors="coerce") or 0)
                 if (not company or company == code) and "company" in hist.columns:
                     hist_name = str(hist.sort_values("trade_date")["company"].iloc[-1] or "")
@@ -451,6 +484,7 @@ def diagnose_ticker_flow(settings: Settings, query: str, days: int = 5) -> dict[
     from kr_quant.strategy.run import _prices
     prices = _prices(settings)
     hist = prices[prices["ticker"].astype(str).str.zfill(6) == code] if not prices.empty else pd.DataFrame()
+    summary = attach_daily_prices(summary, hist)
     last = float(pd.to_numeric(hist.sort_values("trade_date")["close"].iloc[-1], errors="coerce") or 0) if not hist.empty else 0.0
 
     smart = (summary.get("foreign_net") or 0) + (summary.get("institution_net") or 0)

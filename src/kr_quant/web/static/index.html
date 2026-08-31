@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=1200, user-scalable=yes" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%236ee7b7'%3EQ%3C/text%3E%3C/svg%3E" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.70.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.71.0" />
 </head>
 <body>
   <aside class="nav">
@@ -26,8 +26,7 @@
     <button class="nav-btn" data-view="sector" data-tip="KSIC 업종별 상대강도(RS), 확산도, 실적성장 6축 종합 랭킹 및 모멘텀 차트입니다."><span class="nav-icon">🔄</span><span>업종·섹터</span></button>
     <div class="nav-group">⚡ Smart Flow</div>
     <button class="nav-btn" data-view="investor" data-tip="공식 수급 추적 및 DART 국민연금 5% 대량보유 공시 통합 분석입니다."><span class="nav-icon">👥</span><span>메이저 수급</span></button>
-    <button class="nav-btn" data-view="empty" data-tip="외인·기관 빈집 털이 및 수급 복귀 조짐 종목 발굴입니다."><span class="nav-icon">🏚️</span><span>빈집 발굴</span></button>
-    <button class="nav-btn" data-view="trade" data-tip="외인·기관·사모 수급 현황과 스토캐스틱·일목 타점, 과거 성과를 한 화면에서 검증합니다."><span class="nav-icon">🎯</span><span>스마트 수급·타점</span></button>
+    <button class="nav-btn" data-view="trade" data-tip="외인·기관·사모 수급, 빈집·복귀, 기술적 타점과 과거 성과를 한 화면에서 검증합니다."><span class="nav-icon">🎯</span><span>스마트 수급·타점</span></button>
     <button class="nav-btn" data-view="seasonality" data-tip="12개월 캘린더 모멘텀 아노말리 및 이벤트 드리븐(폭염/난방/갤럭시/배당) 고승률 스크리너입니다."><span class="nav-icon">📅</span><span>시즌 모멘텀·캘린더</span></button>
     <button class="nav-btn" data-view="watch" data-tip="나만의 포트폴리오 팩터 분석 및 발간된 AI 심층 리포트 통합 보관함입니다."><span class="nav-icon">⭐</span><span>관심종목 & AI리포트</span></button>
     <div class="nav-group">🏛️ Global Research</div>
@@ -356,85 +355,19 @@
       </article>
     </section>
 
-    <section id="view-empty" class="view hidden">
-      <!-- Tier 1 AI Empty House Turnaround Briefing (100% Free Engine) -->
-      <div id="empty-tier1-briefing" style="margin-bottom:14px;"></div>
-
-      <article class="card">
-        <div class="card-h">
-          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <h2 style="margin:0;">🚪 메이저 수급 이탈 &amp; 빈집 복귀 발굴</h2>
-            <span class="chip" style="background:rgba(239,68,68,0.15); color:#f87171; font-weight:700;">외인·기관 동시 이탈 후 수급 턴어라운드(복귀) 사전 포착 레이더</span>
-          </div>
-        </div>
-        <p class="hint" style="margin-bottom:14px;">외국인·기관의 연속 동반 순매도(쌍매도)로 수급이 비워진 종목 및 최근 메이저 수급이 재유입되기 시작한 복귀 조짐 종목을 분석합니다.</p>
-
-        <!-- Modern Unified Empty House Filter Toolbar -->
-        <div class="trade-toolbar-container">
-          <div class="trade-filter-bar">
-            <!-- Search Box Group -->
-            <div class="trade-search-wrap">
-              <div class="autocomplete-wrap">
-                <input id="empty-q" type="text" autocomplete="off" placeholder="종목명 또는 6자리 코드 검색" />
-                <ul id="empty-q-menu" class="stock-autocomplete-menu" style="display:none;"></ul>
-              </div>
-              <button type="button" id="btn-empty-search" class="primary search-btn" style="height:38px; padding:0 14px; font-size:12.5px; font-weight:700; white-space:nowrap; border-radius:8px;">🔍 검색</button>
-            </div>
-
-            <!-- Filter Controls Group -->
-            <div class="trade-filter-group">
-              <label class="trade-filter-label has-tip" data-tip-title="🚪 빈집 수급 분류 유형" data-tip="외인·기관 동시 이탈(쌍매도), 저지분 바닥권, 수급 재유입(복귀 조짐) 등 분석 모드를 선택합니다." tabindex="0">
-                <span class="filter-tag">수급 유형</span>
-                <select id="empty-mode" class="trade-select">
-                  <option value="empty" selected>🚪 쌍매도 빈집</option>
-                  <option value="comeback">🔄 복귀 조짐 (재매수)</option>
-                  <option value="low_foreign">📉 외인 지분 낮음</option>
-                  <option value="retail">🛒 개인만 받음</option>
-                  <option value="all">✨ 스캔 전체</option>
-                </select>
-              </label>
-
-              <label class="trade-filter-label has-tip" data-tip-title="📉 외국인 보유 지분율 상한" data-tip="외국인 지분이 일정 수준 이하로 떨어져 추가 매도 압력이 사실상 소멸된 바닥권 종목을 스캔합니다." tabindex="0">
-                <span class="filter-tag">외인 지분 상한</span>
-                <select id="empty-rate" class="trade-select">
-                  <option value="" selected>제한 없음</option>
-                  <option value="0.03">3% 이하 (초극저지분)</option>
-                  <option value="0.05">5% 이하</option>
-                  <option value="0.10">10% 이하</option>
-                </select>
-              </label>
-
-              <label class="trade-filter-label has-tip" data-tip-title="💰 최소 이탈 금액" data-tip="외인과 기관이 던진 최소 매도 추정금액 필터입니다. 유의미한 수급 공백 종목만 엄선합니다." tabindex="0">
-                <span class="filter-tag">최소 이탈금액</span>
-                <select id="empty-min-krw" class="trade-select">
-                  <option value="0">전체 금액</option>
-                  <option value="1000000000" selected>💰 10억 이상</option>
-                  <option value="5000000000">💰 50억 이상</option>
-                  <option value="10000000000">💰 100억 이상</option>
-                </select>
-              </label>
-
-              <button type="button" class="trade-refresh-btn has-tip" id="empty-refresh" data-tip-title="🔄 빈집 데이터 갱신" data-tip="외인·기관 순매도 및 지분율 변화 최신 데이터를 다시 스캔합니다." tabindex="0">🔄 빈집 다시 스캔</button>
-            </div>
-          </div>
-        </div>
-
-        <div id="empty-box" class="quality"></div>
-      </article>
-    </section>
-
     <section id="view-trade" class="view hidden">
       <article class="card">
         <div class="card-h">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <h2 style="margin:0;">🎯 스마트 수급·타점 통합 연구소</h2>
-            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">토스 수급 × KRX 일봉 기술지표 × 신호 후 성과 검증</span>
+            <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">토스 수급·빈집 × KRX 일봉 기술지표 × 신호 후 성과 검증</span>
           </div>
         </div>
-        <p class="hint" style="margin-bottom:14px;">같은 수급 스캔을 중복 호출하지 않고, 수급 원본·기술적 타점·과거 성과를 같은 기준일과 필터로 이어서 검증합니다.</p>
+        <p class="hint" style="margin-bottom:14px;">같은 수급 스캔을 중복 호출하지 않고, 수급 원본·빈집 복귀·기술적 타점·과거 성과를 같은 기준일과 필터로 이어서 검증합니다.</p>
 
         <div class="h-tabs smart-flow-tabs" role="tablist" aria-label="스마트 수급 분석 화면">
           <button type="button" class="on" data-smart-flow-tab="overview" role="tab" aria-selected="true">🌊 수급 현황</button>
+          <button type="button" data-smart-flow-tab="vacancy" role="tab" aria-selected="false">🏚️ 빈집·복귀</button>
           <button type="button" data-smart-flow-tab="technical" role="tab" aria-selected="false">🎯 기술적 타점</button>
           <button type="button" data-smart-flow-tab="stats" role="tab" aria-selected="false">📊 성과 검증</button>
         </div>
@@ -486,6 +419,37 @@
         <section id="smart-flow-panel-overview" class="smart-flow-panel" data-smart-flow-panel="overview">
           <div id="flow-tier1-briefing" style="margin:14px 0;"></div>
           <div id="flow-box" class="quality"></div>
+        </section>
+
+        <section id="smart-flow-panel-vacancy" class="smart-flow-panel hidden" data-smart-flow-panel="vacancy">
+          <div class="trade-toolbar-container smart-flow-secondary-toolbar">
+            <div class="trade-filter-bar">
+              <div class="trade-filter-group">
+                <label class="trade-filter-label has-tip" data-tip-title="🚪 빈집 수급 분류 유형" data-tip="외인·기관 동시 이탈, 수급 재유입, 외인 저지분, 개인 흡수 등 빈집 상태를 선택합니다." tabindex="0">
+                  <span class="filter-tag">빈집 유형</span>
+                  <select id="empty-mode" class="trade-select">
+                    <option value="empty" selected>🚪 쌍매도 빈집</option>
+                    <option value="comeback">🔄 복귀 조짐</option>
+                    <option value="low_foreign">📉 외인 지분 낮음</option>
+                    <option value="retail">🛒 개인만 받음</option>
+                    <option value="all">✨ 전체 상태</option>
+                  </select>
+                </label>
+
+                <label class="trade-filter-label has-tip" data-tip-title="📉 외국인 보유 지분율 상한" data-tip="외국인 지분이 지정 수준 이하인 종목만 남깁니다. 제한 없음이면 빈집 유형 자체의 조건만 적용됩니다." tabindex="0">
+                  <span class="filter-tag">외인 지분 상한</span>
+                  <select id="empty-rate" class="trade-select">
+                    <option value="" selected>제한 없음</option>
+                    <option value="0.03">3% 이하</option>
+                    <option value="0.05">5% 이하</option>
+                    <option value="0.10">10% 이하</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div id="empty-tier1-briefing" style="margin:14px 0;"></div>
+          <div id="empty-box" class="quality"></div>
         </section>
 
         <section id="smart-flow-panel-technical" class="smart-flow-panel hidden" data-smart-flow-panel="technical">
@@ -1890,6 +1854,6 @@
     </div>
 
 
-  <script src="/static/app.js?v=2.70.0"></script>
+  <script src="/static/app.js?v=2.71.0"></script>
 </body>
 </html>
