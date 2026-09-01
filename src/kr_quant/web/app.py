@@ -2954,6 +2954,7 @@ def api_seasonality_discovery_get(
     lookback_years: int = 5,
     exclude_expired: bool = False,
 ) -> dict[str, Any]:
+    from kr_quant.strategy.event_explainer import repeated_generic_catalysts
     from kr_quant.strategy.seasonality import scan_seasonality_discovery, seasonality_universe_stats
 
     s = load_settings()
@@ -2973,6 +2974,7 @@ def api_seasonality_discovery_get(
         "lookback_years": lookback_years,
         "count": len(rows),
         "rows": rows,
+        "explanation_quality": repeated_generic_catalysts(rows),
         "data_context": stats["data_context"],
     }
 

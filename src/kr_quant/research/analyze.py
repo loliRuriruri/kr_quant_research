@@ -296,6 +296,13 @@ def get_tier1_insights(
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     endpoint = resolve_tier1_endpoint(settings)
+    model_id = str(getattr(endpoint, "model", "") or "")
+    provider_id = str(getattr(endpoint, "provider", "") or "")
+    configured_label = str(getattr(endpoint, "label", "") or "")
+    if ":free" in model_id.lower():
+        tier_label = f"{configured_label or model_id} · 설정 모델 {model_id}"
+    else:
+        tier_label = configured_label or f"{provider_id} {model_id}".strip() or "설정된 설명 모델"
 
     news_list = news.get("news", []) if isinstance(news, dict) else (news if isinstance(news, list) else [])
     events_list = events.get("rows", []) if isinstance(events, dict) else (events if isinstance(events, list) else [])
@@ -326,6 +333,55 @@ def get_tier1_insights(
         + sum(value not in (None, "", {}, []) for value in (tech or {}).values())
         + sum(value not in (None, "", {}, []) for value in (flow or {}).values())
     )
+    observations: list[str] = []
+    if news_list:
+        observations.append(f"뉴스 {len(news_list[:5])}건: {news_list[0].get('title') or '제목 없음'}")
+    if events_list:
+        observations.append(
+            f"공시 {len(events_list[:4])}건: {events_list[0].get('title') or events_list[0].get('event_ko') or '제목 없음'}"
+        )
+    if any(value not in (None, "", {}, []) for value in (tech or {}).values()):
+        observations.append("기술 스냅샷 제공됨")
+    if any(value not in (None, "", {}, []) for value in (flow or {}).values()):
+        observations.append("수급 스냅샷 제공됨")
+    missing_bits = [
+        name
+        for name, present in (("뉴스", news_list), ("공시", events_list), ("기술", tech), ("수급", flow))
+        if not present
+    ]
+
+    if evidence_count <= 0:
+        gap = "제공된 뉴스·공시·지표가 없어 종목별 촉매를 만들지 않습니다."
+        result = {
+            "ticker": code,
+            "company": company,
+            "as_of": today,
+            "model": endpoint.model,
+            "provider": endpoint.provider,
+            "tier": tier_label,
+            "status": "INSUFFICIENT_EVIDENCE",
+            "ok": True,
+            "ai_generated": False,
+            "used_in_quant": False,
+            "prompt_version": "stock_tier1_insights_v3",
+            "evidence_hash": evidence_hash,
+            "evidence": {"item_count": 0, "coverage": "NONE", "sources": [], "missing": missing_bits},
+            "error_code": "TIER1_EVIDENCE_MISSING",
+            "observations": [],
+            "calculations": [],
+            "interpretation": "근거 부족",
+            "falsification": "뉴스·공시·수급·기술 스냅샷이 채워지면 설명을 다시 생성합니다.",
+            "data_limits": ["원천이 없으면 가격·확률·목표가를 만들지 않습니다.", "LLM이 퀀트 점수를 바꾸지 않습니다."],
+            "news_analysis": {"summary": gap, "sentiment": "근거 부족", "key_driver": "근거 부족"},
+            "events_analysis": {"commentary": gap, "risk_level": "판단 불가", "key_point": "근거 부족"},
+            "tech_flow_analysis": {"action_guide": gap, "posture": "근거 부족", "timing_tip": "원본 지표 확인"},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            cache_file.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        return result
 
     combined_prompt = f"""당신은 최고 수준의 퀀트/주식 리서치 전략가입니다.
 종목: {company} ({code})
@@ -361,16 +417,26 @@ def get_tier1_insights(
 
 제공되지 않은 사실, 가격선, 수익률, 매수·매도·비중·목표가·손절가를 만들지 마세요."""
 
-    news_analysis = {"summary": "AI 뉴스 해석을 생성하지 못했습니다.", "sentiment": "판단 불가", "key_driver": "원본 뉴스 확인 필요"}
-    events_analysis = {"commentary": "AI 공시 해석을 생성하지 못했습니다.", "risk_level": "판단 불가", "key_point": "원본 공시 확인 필요"}
-    tech_flow_analysis = {"action_guide": "AI 기술·수급 해석을 생성하지 못했습니다.", "posture": "판단 불가", "timing_tip": "원본 지표 확인 필요"}
-    status = "UNAVAILABLE"
+    news_analysis = {
+        "summary": "제공된 뉴스 제목만 확인했습니다. 모델 해석은 없습니다.",
+        "sentiment": "근거 확인 필요",
+        "key_driver": (news_list[0].get("title") if news_list else "근거 부족"),
+    }
+    events_analysis = {
+        "commentary": "제공된 공시 제목만 확인했습니다. 모델 해석은 없습니다.",
+        "risk_level": "판단 불가",
+        "key_point": ((events_list[0].get("title") or events_list[0].get("event_ko")) if events_list else "근거 부족"),
+    }
+    tech_flow_analysis = {
+        "action_guide": "제공된 기술·수급 스냅샷만 있습니다. 매수·매도 문구를 만들지 않습니다.",
+        "posture": "근거 확인 필요",
+        "timing_tip": "원본 지표 확인",
+    }
+    status = "DETERMINISTIC_FALLBACK"
     ai_generated = False
     error_code: str | None = None
 
     try:
-        if evidence_count <= 0:
-            raise ValueError("tier1 evidence missing")
         raw_text, _ = call_chat(
             endpoint,
             [{"role": "system", "content": "You are a professional Korean equity research analyst. Output strictly in valid JSON."},
@@ -389,7 +455,7 @@ def get_tier1_insights(
             status = "GENERATED"
             ai_generated = True
     except Exception as exc:
-        error_code = "TIER1_EVIDENCE_MISSING" if evidence_count <= 0 else "TIER1_GENERATION_FAILED"
+        error_code = "TIER1_GENERATION_FAILED"
         print(f"Tier 1 insight unavailable: {exc}")
 
     result = {
@@ -398,19 +464,25 @@ def get_tier1_insights(
         "as_of": today,
         "model": endpoint.model,
         "provider": endpoint.provider,
-        "tier": "Tier 1 (100% 무료 일상 엔진)",
+        "tier": tier_label,
         "status": status,
-        "ok": status == "GENERATED",
+        "ok": True,
         "ai_generated": ai_generated,
         "used_in_quant": False,
-        "prompt_version": "stock_tier1_insights_v2",
+        "prompt_version": "stock_tier1_insights_v3",
         "evidence_hash": evidence_hash,
         "evidence": {
             "item_count": evidence_count,
-            "coverage": "NONE" if evidence_count <= 0 else "PARTIAL",
+            "coverage": "PARTIAL",
             "sources": ["naver_news", "dart_events", "technical_snapshot", "flow_snapshot"],
+            "missing": missing_bits,
         },
         "error_code": error_code,
+        "observations": observations,
+        "calculations": [],
+        "interpretation": "모델 해석" if ai_generated else "제공된 항목만 나열한 결정론적 요약입니다.",
+        "falsification": "제공된 뉴스·공시가 바뀌면 이 설명을 폐기합니다.",
+        "data_limits": ["제공되지 않은 사실·목표가·확률을 만들지 않습니다.", "LLM이 퀀트 점수를 바꾸지 않습니다."],
         "news_analysis": news_analysis,
         "events_analysis": events_analysis,
         "tech_flow_analysis": tech_flow_analysis,

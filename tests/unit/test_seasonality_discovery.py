@@ -168,11 +168,55 @@ def test_unmapped_ticker_gets_industry_specific_catalyst_evidence():
     )
 
     assert res["event_explanation_mode"] == "RULE_BASED"
-    assert "전력망" in res["common_event_cluster"]
+    assert "계절성" in res["common_event_cluster"]
     assert "5개년" in res["common_event_cluster"]
+    assert "전력망" in (res.get("event_hypothesis") or "")
+    assert "전력망" in (res.get("interpretation") or "")
     assert "중앙값" in res["secondary_cluster"]
     assert "수주잔고" in res["secondary_cluster"]
+    assert res["used_in_quant"] is False
     assert "계절적 수요 증가 및 분기 실적 모멘텀" not in res["common_event_cluster"]
+
+
+def test_insufficient_sample_does_not_invent_catalyst():
+    m_stat = {
+        "month": 9,
+        "history": [0.12, -0.04],
+        "win_rate": 0.50,
+        "avg_return": 0.04,
+        "median_return": 0.04,
+        "years_count": 2,
+    }
+    pat = pattern_from_month_stat("888888", "표본부족", "KOSPI", m_stat, lookback_years=2)
+    res = explain_and_score_pattern(pat, {"company": "표본부족", "industry": "전기장비"})
+    assert res["event_explanation_mode"] == "INSUFFICIENT_EVIDENCE"
+    assert res["common_event_cluster"] == "근거 부족"
+    assert res["event_hypothesis"] is None
+    assert "목표가" not in res["common_event_cluster"]
+    assert res["used_in_quant"] is False
+
+
+def test_ten_tickers_sharing_month_hypothesis_are_flagged():
+    from kr_quant.strategy.event_explainer import repeated_generic_catalysts
+
+    rows = []
+    for index in range(10):
+        ticker = f"{index + 1:06d}"
+        m_stat = {
+            "month": 8,
+            "history": [0.12, 0.08, -0.03, 0.15, 0.07],
+            "win_rate": 0.80,
+            "median_return": 0.08,
+            "years_count": 5,
+        }
+        pat = pattern_from_month_stat(ticker, f"가상종목{index}", "KOSPI", m_stat, lookback_years=5)
+        rows.append(explain_and_score_pattern(pat, {"company": f"가상종목{index}"}))
+    quality = repeated_generic_catalysts(rows, min_tickers=10)
+    assert quality["ok"] is False
+    assert quality["flag"] == "GENERIC_CATALYST_REPEAT"
+    assert quality["repeats"][0]["ticker_count"] >= 10
+    headlines = {row["common_event_cluster"] for row in rows}
+    assert len(headlines) == 10
 
 
 def test_api_seasonality_discovery_playbook():

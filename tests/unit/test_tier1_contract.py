@@ -69,6 +69,31 @@ def test_tier1_cache_identity_changes_with_evidence_model_and_prompt():
     assert base["cache_key"] != changed_model["cache_key"]
 
 
+def test_stock_insights_without_evidence_do_not_invent_catalysts(tmp_path, monkeypatch):
+    from kr_quant.research.analyze import get_tier1_insights
+
+    settings = SimpleNamespace(root=tmp_path, openrouter_api_key=None)
+    monkeypatch.setattr(
+        "kr_quant.research.providers.resolve_tier1_endpoint",
+        lambda _settings: SimpleNamespace(provider="openrouter", model="paid/model", label="설정된 모델", api_key=None),
+    )
+    called = {"n": 0}
+
+    def boom(*_args, **_kwargs):
+        called["n"] += 1
+        raise AssertionError("LLM should not run without evidence")
+
+    monkeypatch.setattr("kr_quant.research.analyze.call_chat", boom)
+    result = get_tier1_insights("005930", "삼성전자", news=[], events=[], tech={}, flow={}, settings=settings)
+    assert called["n"] == 0
+    assert result["status"] == "INSUFFICIENT_EVIDENCE"
+    assert result["ai_generated"] is False
+    assert result["used_in_quant"] is False
+    assert result["news_analysis"]["key_driver"] == "근거 부족"
+    assert "100% 무료" not in str(result.get("tier") or "")
+    assert "quant_score" not in result
+
+
 def test_tier1_cached_chat_reuses_only_successful_generation(tmp_path, monkeypatch):
     endpoint = SimpleNamespace(provider="OPENROUTER", model="free-model")
     calls = {"count": 0}

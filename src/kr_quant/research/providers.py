@@ -321,7 +321,7 @@ def resolve_tier1_endpoint(settings: Any) -> LlmEndpoint:
     if or_key:
         return LlmEndpoint(
             provider="openrouter",
-            label="NVIDIA Nemotron 550B (100% 무료)",
+            label="NVIDIA Nemotron 550B (OpenRouter :free 라우트)",
             base_url="https://openrouter.ai/api/v1",
             model="nvidia/nemotron-3-ultra-550b-a55b:free",
             api_key=or_key,

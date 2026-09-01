@@ -11266,11 +11266,16 @@ async function loadPreEntryView() {
       return `<span class="year-track-cell ${cls}" style="padding:4px 8px; font-size:11.5px;" title="${y.year}년">${shortYear}년 ${y.return > 0 ? '+' : ''}${retStr}%</span>`;
     }).join("");
 
-    const catalyst = r.common_event_cluster || "계절성 촉매 가설을 산출할 수 없습니다.";
+    const insufficient = r.event_explanation_mode === "INSUFFICIENT_EVIDENCE";
+    const catalyst = insufficient ? "근거 부족" : (r.common_event_cluster || "계절성 촉매 가설을 산출할 수 없습니다.");
     const catalystEvidence = r.secondary_cluster || "실측 표본과 업종별 확인 포인트가 없습니다.";
     const explanationMode = r.event_explanation_mode || "RULE_BASED";
     const explanationSource = r.event_explanation_source || "계절성 통계·업종 매핑";
-    const catalystLabel = explanationMode === "CURATED_TICKER" ? "검토된 핵심 촉매 & 모멘텀" : "통계 기반 촉매 가설 & 모멘텀";
+    const catalystLabel = explanationMode === "CURATED_TICKER"
+      ? "검토된 핵심 촉매 & 모멘텀"
+      : insufficient
+        ? "근거 부족"
+        : "통계 관측 + 업종 가설";
 
     return `
       <div class="pre-entry-card ${rankCls}" data-ticker="${escapeHtml(r.ticker)}" data-index="${idx}" role="button" tabindex="0">
@@ -11726,7 +11731,11 @@ async function loadAIExplanations() {
   const cards = rows.slice(0, 30).map((r) => {
     const failedListHtml = (r.failed_analysis || []).map((f) => `<li style="color:#fca5a5; font-size:12px;">${escapeHtml(f)}</li>`).join("");
     const explanationMode = r.event_explanation_mode || "RULE_BASED";
-    const explanationLabel = explanationMode === "CURATED_TICKER" ? "검토된 이벤트" : "규칙 기반 가설";
+    const explanationLabel = explanationMode === "CURATED_TICKER"
+      ? "검토된 이벤트"
+      : explanationMode === "INSUFFICIENT_EVIDENCE"
+        ? "근거 부족"
+        : "통계 관측 + 업종 가설";
 
     return `
       <div class="event-timeline-card">
@@ -11738,7 +11747,7 @@ async function loadAIExplanations() {
               <span class="chip" style="background:rgba(139,92,246,0.2); color:#c084fc;">${explanationLabel} · 신뢰도 ${r.event_confidence}</span>
             </div>
             <div style="margin-top:8px; font-size:13.5px; color:#38bdf8; font-weight:700;">
-              💡 핵심 촉매: ${escapeHtml(r.common_event_cluster)}
+              💡 ${explanationMode === "INSUFFICIENT_EVIDENCE" ? "근거 부족" : "관측 요약"}: ${escapeHtml(r.common_event_cluster || "근거 부족")}
             </div>
             <div style="margin-top:4px; font-size:12.5px; color:#cbd5e1;">
               📌 통계 근거·확인 포인트: ${escapeHtml(r.secondary_cluster || '실측 표본과 확인 포인트가 없습니다.')}

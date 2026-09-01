@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import re
 from statistics import median
 from typing import Any
 from kr_quant.strategy.discovery_engine import SeasonalityPattern
@@ -251,6 +252,9 @@ def _pct_text(value: Any, digits: int = 1) -> str:
     return f"{number * 100:+.{digits}f}%"
 
 
+MIN_SAMPLE_FOR_CATALYST = 3
+
+
 def _fallback_event_context(pattern: SeasonalityPattern, stock_row: dict[str, Any]) -> dict[str, str]:
     """Build a stock/industry-aware catalyst hypothesis for uncurated tickers."""
     ticker = str(pattern.ticker).zfill(6)
@@ -282,14 +286,26 @@ def _fallback_event_context(pattern: SeasonalityPattern, stock_row: dict[str, An
     }
 
 
+def _year_win_count(pattern: SeasonalityPattern) -> tuple[int, int]:
+    years = max(int(pattern.sample_count or 0), 0)
+    wins = sum(1 for row in pattern.years_track if float(row.get("return", 0.0) or 0.0) > 0)
+    return wins, years
+
+
+def _statistical_headline(pattern: SeasonalityPattern) -> str:
+    wins, years = _year_win_count(pattern)
+    month = int(getattr(pattern, "target_start_month", 0) or 0)
+    name = _text_value(pattern.company) or str(pattern.ticker).zfill(6)
+    return f"{name} {month}월 계절성 · {wins}/{years}개년 상승 · 중앙값 {_pct_text(pattern.median_return)}"
+
+
 def _append_statistical_evidence(
     pattern: SeasonalityPattern,
     event: str,
     focus: str,
 ) -> tuple[str, str]:
     """Keep the headline readable while exposing the actual sample evidence."""
-    years = max(int(pattern.sample_count or 0), 0)
-    wins = sum(1 for row in pattern.years_track if float(row.get("return", 0.0) or 0.0) > 0)
+    wins, years = _year_win_count(pattern)
     month = int(getattr(pattern, "target_start_month", 0) or 0)
     headline = f"{event} · {month}월 {wins}/{years}개년 상승"
     evidence = (
@@ -299,12 +315,59 @@ def _append_statistical_evidence(
     return headline, evidence
 
 
+def normalize_hypothesis_phrase(text: str) -> str:
+    cleaned = str(text or "").strip()
+    cleaned = re.sub(r"\d+월", "", cleaned)
+    cleaned = re.sub(r"\d+/?\d*\s*개년", "", cleaned)
+    cleaned = re.sub(r"[+\-]?\d+(?:\.\d+)?%", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ·-")
+    return cleaned
+
+
+def repeated_generic_catalysts(rows: list[dict[str, Any]], *, min_tickers: int = 10) -> dict[str, Any]:
+    """Flag identical uncurated hypotheses reused across many tickers."""
+    buckets: dict[str, set[str]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        mode = str(row.get("event_explanation_mode") or "")
+        if mode in {"CURATED_TICKER", "INSUFFICIENT_EVIDENCE"}:
+            continue
+        stem = normalize_hypothesis_phrase(str(row.get("event_hypothesis") or ""))
+        if len(stem) < 8:
+            continue
+        ticker = str(row.get("ticker") or "").zfill(6)
+        buckets.setdefault(stem, set()).add(ticker)
+    repeats = [
+        {"phrase": phrase, "ticker_count": len(tickers), "tickers": sorted(tickers)[:20]}
+        for phrase, tickers in buckets.items()
+        if len(tickers) >= min_tickers
+    ]
+    repeats.sort(key=lambda item: (-int(item["ticker_count"]), str(item["phrase"])))
+    return {
+        "ok": not repeats,
+        "min_tickers": min_tickers,
+        "repeat_count": len(repeats),
+        "repeats": repeats,
+        "flag": "GENERIC_CATALYST_REPEAT" if repeats else None,
+        "used_in_quant": False,
+    }
+
+
 def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, Any] | None = None) -> dict[str, Any]:
     """Assigns AI explanation, computes 100-pt v1.1 discovery score, and determines current status."""
     ticker = str(pattern.ticker).zfill(6)
     s_row = stock_row or {}
 
     kb = EVENT_KNOWLEDGE_BASE.get(ticker)
+    sample_count = max(int(pattern.sample_count or 0), 0)
+    observations: list[str] = []
+    calculations: list[str] = [
+        f"표본 {sample_count}개년",
+        f"승률 {_pct_text(pattern.win_rate, 0)}",
+        f"중앙값 {_pct_text(pattern.median_return)}",
+        f"최근 3년 승률 {_pct_text(pattern.recent_3y_win_rate, 0)}",
+    ]
     if kb:
         common_event, statistical_evidence = _append_statistical_evidence(
             pattern,
@@ -312,6 +375,7 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
             kb["secondary_event"],
         )
         sec_event = statistical_evidence
+        event_hypothesis = kb["common_event"]
         event_conf = kb["confidence"]
         failed_analysis = [
             f"{yr}년: {kb['failed_causes'].get(str(yr), '대외 매크로 변동 및 단기 차익 실현')}"
@@ -320,21 +384,37 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         invalidation = kb["invalidating_rules"]
         explanation_mode = "CURATED_TICKER"
         explanation_source = "종목별 검토 이벤트 지식베이스"
+        interpretation = f"검토된 이벤트 가설입니다. {kb['common_event']}"
+        observations.append(f"{pattern.company} {int(getattr(pattern, 'target_start_month', 0) or 0)}월 창")
+    elif sample_count < MIN_SAMPLE_FOR_CATALYST:
+        common_event = "근거 부족"
+        sec_event = f"계절성 표본이 {sample_count}개년이라 종목별 촉매를 만들지 않습니다. 승률·가격·확률을 추정하지 않습니다."
+        event_hypothesis = None
+        event_conf = "UNKNOWN"
+        failed_analysis = []
+        invalidation = "표본이 늘어나기 전에는 촉매 문장을 사용하지 않습니다."
+        explanation_mode = "INSUFFICIENT_EVIDENCE"
+        explanation_source = "표본 부족"
+        interpretation = "근거 부족"
+        observations.append(f"표본 {sample_count}개년")
     else:
         context = _fallback_event_context(pattern, s_row)
-        common_event, sec_event = _append_statistical_evidence(
-            pattern,
-            context["event"],
-            context["focus"],
+        common_event = _statistical_headline(pattern)
+        sec_event = (
+            f"계산: 중앙값 {_pct_text(pattern.median_return)} · 최근 3년 승률 {_pct_text(pattern.recent_3y_win_rate, 0)}"
+            f" · 가설: {context['event']} · 확인: {context['focus']}"
         )
+        event_hypothesis = context["event"]
         event_conf = "MEDIUM" if pattern.pattern_confidence == "HIGH" else "UNKNOWN"
         failed_analysis = [
             f"{f['year']}년: {context['risk']}로 계절성 가설 무효화 (수익률 {f['return']*100:+.1f}%)"
             for f in pattern.failed_years
         ]
-        invalidation = f"{context['risk']}, FY1 EPS Revision 음전환, 거래대금 급감, RS60 < -10% 이탈"
+        invalidation = f"{context['risk']}, 거래대금 급감, RS60 < -10% 이탈"
         explanation_mode = "RULE_BASED"
         explanation_source = context["source"]
+        interpretation = f"업종·월 매핑 가설이지 실시간 뉴스가 아닙니다. {context['event']}"
+        observations.append(_statistical_headline(pattern))
 
     def number(key: str) -> float | None:
         value = s_row.get(key)
@@ -476,9 +556,20 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         "failed_analysis": failed_analysis,
         "common_event_cluster": common_event,
         "secondary_cluster": sec_event,
+        "event_hypothesis": event_hypothesis,
         "event_confidence": event_conf,
         "event_explanation_mode": explanation_mode,
         "event_explanation_source": explanation_source,
+        "observations": observations,
+        "calculations": calculations,
+        "interpretation": interpretation,
+        "falsification": invalidation,
+        "data_limits": [
+            "계절성 창의 과거 수익률 통계입니다. 실시간 호가·실적 컨센서스가 아닙니다.",
+            "LLM이 퀀트 점수나 순위를 바꾸지 않습니다.",
+            *( [f"올해 확인 자료 없음: {', '.join(current_missing)}"] if current_missing else [] ),
+        ],
+        "used_in_quant": False,
         "current_status": status,
         "grade": grade,
         "seasonality_score": total_score,
