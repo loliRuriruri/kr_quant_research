@@ -14,16 +14,25 @@ function Get-ListenerProcessIds {
 function Get-QuantServerProcessIds {
     $ids = New-Object System.Collections.Generic.List[int]
     foreach ($processId in @(Get-ListenerProcessIds)) {
-        $ids.Add([int]$processId)
         $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$processId" -ErrorAction SilentlyContinue
         if (-not $proc) { continue }
         $parent = Get-CimInstance Win32_Process -Filter "ProcessId=$($proc.ParentProcessId)" -ErrorAction SilentlyContinue
-        if ($parent -and $parent.CommandLine -match 'kr_quant\.web\.app') {
-            $ids.Add([int]$parent.ProcessId)
+
+        $isQuant = ($proc.CommandLine -match 'kr_quant' -or 
+                    $proc.ExecutablePath -match 'kr_quant' -or 
+                    ($parent -and $parent.CommandLine -match 'kr_quant'))
+
+        if ($isQuant) {
+            $ids.Add([int]$processId)
+            if ($parent -and $parent.CommandLine -match 'kr_quant\.web\.app') {
+                $ids.Add([int]$parent.ProcessId)
+            }
+            Get-CimInstance Win32_Process -Filter "ParentProcessId=$processId" -ErrorAction SilentlyContinue |
+                Where-Object { $_.CommandLine -match 'kr_quant\.web\.app' } |
+                ForEach-Object { $ids.Add([int]$_.ProcessId) }
+        } else {
+            Write-Warning "포트 ${Port}의 프로세스 (PID ${processId}, 경로: $($proc.ExecutablePath))는 KR Quant 프로세스가 아닙니다. 무관한 프로세스를 보호하기 위해 종료하지 않습니다."
         }
-        Get-CimInstance Win32_Process -Filter "ParentProcessId=$processId" -ErrorAction SilentlyContinue |
-            Where-Object { $_.CommandLine -match 'kr_quant\.web\.app' } |
-            ForEach-Object { $ids.Add([int]$_.ProcessId) }
     }
     return @($ids | Select-Object -Unique)
 }

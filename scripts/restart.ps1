@@ -15,16 +15,25 @@ function Get-ListenerProcessIds {
 function Get-QuantServerProcessIds {
     $ids = New-Object System.Collections.Generic.List[int]
     foreach ($processId in @(Get-ListenerProcessIds)) {
-        $ids.Add([int]$processId)
         $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$processId" -ErrorAction SilentlyContinue
         if (-not $proc) { continue }
         $parent = Get-CimInstance Win32_Process -Filter "ProcessId=$($proc.ParentProcessId)" -ErrorAction SilentlyContinue
-        if ($parent -and $parent.CommandLine -match 'kr_quant\.web\.app') {
-            $ids.Add([int]$parent.ProcessId)
+
+        $isQuant = ($proc.CommandLine -match 'kr_quant' -or 
+                    $proc.ExecutablePath -match 'kr_quant' -or 
+                    ($parent -and $parent.CommandLine -match 'kr_quant'))
+
+        if ($isQuant) {
+            $ids.Add([int]$processId)
+            if ($parent -and $parent.CommandLine -match 'kr_quant\.web\.app') {
+                $ids.Add([int]$parent.ProcessId)
+            }
+            Get-CimInstance Win32_Process -Filter "ParentProcessId=$processId" -ErrorAction SilentlyContinue |
+                Where-Object { $_.CommandLine -match 'kr_quant\.web\.app' } |
+                ForEach-Object { $ids.Add([int]$_.ProcessId) }
+        } else {
+            throw "포트 ${Port}가 다른 프로그램(PID ${processId}: $($proc.ExecutablePath))에 의해 사용 중입니다. 무관한 프로세스 보호를 위해 서버를 시작하지 않습니다."
         }
-        Get-CimInstance Win32_Process -Filter "ParentProcessId=$processId" -ErrorAction SilentlyContinue |
-            Where-Object { $_.CommandLine -match 'kr_quant\.web\.app' } |
-            ForEach-Object { $ids.Add([int]$_.ProcessId) }
     }
     return @($ids | Select-Object -Unique)
 }

@@ -316,6 +316,7 @@ KIS·수급 저장소 일부가 코드에서 숫자만 남겼다. `0220W0` → `
 | `savepoint-before-p2-2-browser-e2e-20260901` | `phase-p2-2-browser-e2e-20260901` |
 | `savepoint-before-p2-3-public-snapshot-20260901` | `phase-p2-3-public-snapshot-20260901` |
 | `savepoint-before-p2-4-performance-20260901` | `phase-p2-4-performance-20260901` |
+| `savepoint-before-p2-5-windows-ops-20260901` | `phase-p2-5-windows-ops-20260901` |
 
 특정 단계만 되돌릴 때는 `git reset --hard`보다 해당 커밋 `git revert`를 우선한다.
 
@@ -367,9 +368,30 @@ KIS·수급 저장소 일부가 코드에서 숫자만 남겼다. `0220W0` → `
 
 ---
 
+## P2-5. Windows 운영 자동화 및 프로세스 안전성 강화
+
+태그: `phase-p2-5-windows-ops-20260901`
+
+### 이전
+- FastAPI 서버가 켜져 있을 때만 예약이 동작하여, 퇴근이나 재부팅으로 서버가 오프라인이었을 경우 장 마감 후 데이터 수집이 누락됨.
+- `scripts/stop.ps1` 및 `restart.ps1`에서 포트 8790을 점유하는 프로세스를 검증 없이 강제 종료하여 무관한 다른 프로그램이 종료될 위험이 있었음.
+- Windows 부팅/로그인 시 서버 자동 시작 등록 스크립트 부재.
+
+### 이후
+- **오프라인 누락 감지 및 자동 보충 실행 (`_catch_up_due`)**:
+  - `src/kr_quant/web/scheduler.py`: 평일 장 마감 후 예약 시점에 PC가 꺼져 있었더라도, 이후 서버가 시작되면 이전 거래일 가격 데이터 신선도(`stale_price`)를 감지하여 자동으로 누락된 작업을 안전하게 보충 실행 (1시간 내 재발 방지 스로틀링 포함).
+- **포트 8790 충돌 방지 및 무관한 프로세스 보호**:
+  - `scripts/stop.ps1`, `scripts/restart.ps1`, `scripts/launch.ps1`: 포트 8790을 점유 중인 프로세스의 `CommandLine`과 `ExecutablePath`를 정밀 검사하여, 오직 `kr_quant` 프로세스만 종료하고 무관한 외부 프로세스는 PID와 실행 경로를 표시하며 안전하게 종료를 거부(Fail-Safe).
+- **Windows 작업 스케줄러 자동 등록/삭제 스크립트 신설**:
+  - `scripts/install-task-scheduler.ps1`: 현재 사용자 로그인 시 백그라운드로 안전하게 서버를 기동하도록 작업 스케줄러(`KR-Quant-Research-Server`) 등록 (배터리 모드 허용, 실패 시 3회 재시작).
+  - `scripts/uninstall-task-scheduler.ps1`: 등록된 스케줄러 작업 안전 삭제.
+- **전용 단위 테스트**: `tests/unit/test_windows_ops.py` 3종 추가 통과.
+
+---
+
 ## 다음 계획 — 어디까지인가
 
-인계서 기준 **P0는 P0-6까지 끝났다.** **P1-1 ~ P1-5도 코드에 들어갔다.** **P2-1, P2-2, P2-3, P2-4도 완료되었다.**
+인계서 기준 **P0는 P0-6까지 끝났다.** **P1-1 ~ P1-5도 코드에 들어갔다.** **P2-1, P2-2, P2-3, P2-4, P2-5까지 Phase 2 전체가 100% 완료되었다.**
 
 공식 이벤트 parquet(`data/staged/live/corporate_actions.parquet`)가 확정 행을 줄 때만 수정주가와 배당 총수익을 만든다. 설명 안 된 가격 단절은 여전히 잇지 않는다. 전략 체결은 원시 OHLC, 모멘텀은 공식 adj 또는 시총 프록시다.
 
@@ -377,11 +399,13 @@ KIS·수급 저장소 일부가 코드에서 숫자만 남겼다. `0220W0` → `
 
 ### 바로 다음
 
-인계서 기준 **P2-4(데이터/화면 성능 최적화)까지 완료되었다.** 다음 본작업은 **P2-5 (Windows 운영 자동화)**이다.
+인계서 기준 **P2-5(Windows 운영 자동화)까지 Phase 2 전체가 완료되었다.** 다음 본작업은 **P3 (유지보수 및 문서 최신화)**이다.
 
-### 그다음
+### 그다음 (P3)
 
-1. **P2-5** Windows에서 서버가 꺼져 있을 때 예약 보충 및 자동 시작
+1. Starlette TestClient / httpx deprecation 정리 (`httpx2` 경고 대응)
+2. `README.md`, `ARCHITECTURE.md`, 오래된 핸드오프 문서 최신화
+3. JSON/CSV 원자적 교체 통일 및 로그 보존 정책 정비
 
 ### 유지보수 (P3)
 

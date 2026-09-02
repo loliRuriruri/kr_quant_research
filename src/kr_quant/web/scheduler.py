@@ -204,35 +204,56 @@ def _scheduled_smart() -> dict[str, Any]:
 
 
 def _catch_up_due(cfg: dict[str, Any], now: datetime | None = None) -> bool:
-    """Return true once when today's scheduled maintenance was missed."""
+    """Return true when scheduled maintenance was missed because server was offline."""
     current = (now or datetime.now(KST)).astimezone(KST)
-    if not is_default_trading_day(current.date()):
-        return False
-    scheduled = current.replace(
-        hour=int(cfg.get("hour") or 19),
-        minute=int(cfg.get("minute") or 10),
-        second=0,
-        microsecond=0,
-    )
-    if current < scheduled:
-        return False
-    last_fire = _STATE.get("last_fire")
-    if last_fire:
-        try:
-            if datetime.fromisoformat(str(last_fire)).astimezone(KST).date() == current.date():
-                return False
-        except ValueError:
-            pass
+    job_kind = cfg.get("job_kind") or "smart-sync"
+
+    # 1. Evening missed run on today's trading session
+    if is_default_trading_day(current.date()):
+        scheduled = current.replace(
+            hour=int(cfg.get("hour") or 19),
+            minute=int(cfg.get("minute") or 10),
+            second=0,
+            microsecond=0,
+        )
+        if current >= scheduled:
+            last_fire = _STATE.get("last_fire")
+            if last_fire:
+                try:
+                    if datetime.fromisoformat(str(last_fire)).astimezone(KST).date() == current.date():
+                        return False
+                except ValueError:
+                    pass
+            try:
+                from kr_quant.freshness import freshness_snapshot
+
+                fresh = freshness_snapshot(load_settings(), now=current)
+                quant = (fresh.get("sources") or {}).get("quant_ranking") or {}
+                if job_kind in {"smart-sync", "live"}:
+                    return bool(fresh.get("stale_price")) or quant.get("state") != "fresh"
+                return bool(fresh.get("stale_price"))
+            except Exception:  # noqa: BLE001
+                return True
+
+    # 2. Offline catch-up: computer was off overnight/weekend and prices are stale
     try:
         from kr_quant.freshness import freshness_snapshot
 
         fresh = freshness_snapshot(load_settings(), now=current)
-        quant = ((fresh.get("sources") or {}).get("quant_ranking") or {})
-        if (cfg.get("job_kind") or "smart-sync") in {"smart-sync", "live"}:
-            return bool(fresh.get("stale_price")) or quant.get("state") != "fresh"
-        return bool(fresh.get("stale_price"))
+        if bool(fresh.get("stale_price")):
+            last_fire = _STATE.get("last_fire")
+            if last_fire:
+                try:
+                    fired_dt = datetime.fromisoformat(str(last_fire)).astimezone(KST)
+                    if (current - fired_dt).total_seconds() < 3600:
+                        return False
+                except ValueError:
+                    pass
+            return True
     except Exception:  # noqa: BLE001
-        return True
+        pass
+
+    return False
 
 
 def _retry_due(now: datetime | None = None) -> bool:

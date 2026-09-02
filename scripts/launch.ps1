@@ -34,6 +34,18 @@ function Test-QuantServer {
 }
 
 if (-not (Test-QuantServer)) {
+    if (Test-QuantListen) {
+        $listeners = @(Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
+            Where-Object { $_.State -eq 'Listen' -and $_.OwningProcess -gt 0 } |
+            Select-Object -ExpandProperty OwningProcess -Unique)
+        foreach ($pidNum in $listeners) {
+            $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$pidNum" -ErrorAction SilentlyContinue
+            if ($proc -and $proc.CommandLine -notmatch 'kr_quant' -and $proc.ExecutablePath -notmatch 'kr_quant') {
+                throw "포트 ${Port}를 다른 프로그램(PID ${pidNum}: $($proc.ExecutablePath))이 점유하고 있습니다. 충돌 방지를 위해 서버를 실행하지 않습니다."
+            }
+        }
+    }
+
     $stdout = Join-Path $LogsDir 'web.stdout.log'
     $stderr = Join-Path $LogsDir 'web.stderr.log'
     $launcher = Join-Path $RuntimeDir 'start-web.cmd'

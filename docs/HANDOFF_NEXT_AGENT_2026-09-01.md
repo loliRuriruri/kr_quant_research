@@ -247,20 +247,19 @@ P2-2 커밋 이후 **바로 다음부터** 이 순서. 한 단계씩 저장점 �
 - `src/kr_quant/web/static/app.js`: 대형 리더보드 테이블에 점진적 청크 렌더링(초기 100개 즉시 렌더링 후 비동기 청크 주입), 렌더링 토큰 취소, O(1) Set 기반 리포트 배지 매칭 적용
 - `tests/unit/test_performance.py`: 신규 성능 및 푸시다운 전용 단위 테스트 5종 추가 통과
 
-### P2-5. Windows 운영 자동화  ← 다음 본작업
+### P2-5. Windows 운영 자동화 (완료)
 
-예약은 지금 FastAPI가 켜져 있을 때만 돈다.
+완료 태그: `phase-p2-5-windows-ops-20260901`  
+저장점 태그: `savepoint-before-p2-5-windows-ops-20260901`
 
-- 작업 스케줄러: 로그인/부팅 후 서버 시작
-- 평일 예약 시각에 서버가 꺼져 있으면 시작 후 스마트 작업
-- 실행 계정·작업 폴더 명시
-- Defender/AdGuard를 끄거나 광범위 예외 추가 금지
-- 8790 충돌 시 소유 PID·실행 파일만 보여 주고 무관한 프로세스 종료 금지
-- 시작/정지 = `Start-KR-Quant.bat`, `Stop-KR-Quant.bat`
-- 실패 로그 한글 UTF-8
-- 같은 서버 중복 실행 없음
+완료된 항목:
+- `src/kr_quant/web/scheduler.py`: PC가 오프라인이었을 때 놓친 장 마감 수집을 서버 기동 시 감지하여 자동 보충하는 `_catch_up_due` 구현
+- `scripts/stop.ps1`, `scripts/restart.ps1`, `scripts/launch.ps1`: 포트 8790 점유 프로세스를 검증하여 무관한 프로세스 종료를 원천 차단하고 PID 및 실행 파일 경로 명시
+- `scripts/install-task-scheduler.ps1`: Windows 작업 스케줄러(`KR-Quant-Research-Server`) 등록 스크립트 작성 (로그온 시 백그라운드 자동 기동)
+- `scripts/uninstall-task-scheduler.ps1`: 작업 스케줄러 등록 해제 스크립트 작성
+- `tests/unit/test_windows_ops.py`: 오프라인 보충 수집 및 스케줄러 발화 조건 검증 단위 테스트 3종 추가 통과
 
-### P3. 유지보수 (P2 다음)
+### P3. 유지보수 (P2 완료 후 다음 본작업)  ← 다음 본작업
 
 - Starlette TestClient / httpx deprecation (`httpx2` 경고가 이미 남)
 - `README.md`, `ARCHITECTURE.md`, 오래된 `docs/GROK_BUILD_HANDOFF.md` 동기화
