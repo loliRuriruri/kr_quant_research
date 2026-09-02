@@ -1,0 +1,1 @@
+# Browser E2E package. Fixtures do not call live KRX/OpenDART.

@@ -309,6 +309,20 @@ def run_from_staged(
     )
     write_json(dated / "data_quality_report.json", quality)
 
+    manifest: dict[str, Any] = {
+        "run_id": ctx.run_id,
+        "status": ctx.status,
+        "as_of_date": as_of.isoformat(),
+        "decision_date": ctx.decision_date.isoformat(),
+        "result_hash": ctx.result_hash,
+        "config_hash": ctx.config_hash,
+        "source_bundle_hash": ctx.source_bundle_hash,
+        "warnings": ctx.warnings,
+        "source_mode": source_mode,
+        "universe_evidence": universe_evidence,
+        "output_dir": str(dated),
+    }
+
     # Keep the last known-good local snapshot intact when a run is partial.
     # Dated outputs above remain available for diagnosis and audit.
     if publish_latest and ctx.status == "success":
@@ -346,19 +360,6 @@ def run_from_staged(
             except Exception:  # noqa: BLE001
                 pass
 
-    manifest = {
-        "run_id": ctx.run_id,
-        "status": ctx.status,
-        "as_of_date": as_of.isoformat(),
-        "decision_date": ctx.decision_date.isoformat(),
-        "result_hash": ctx.result_hash,
-        "config_hash": ctx.config_hash,
-        "source_bundle_hash": ctx.source_bundle_hash,
-        "warnings": ctx.warnings,
-        "source_mode": source_mode,
-        "universe_evidence": universe_evidence,
-        "output_dir": str(dated),
-    }
     write_json(dated / "run_manifest.json", manifest)
     logger.info("run complete status=%s names=%s top20=%s", ctx.status, len(names), len(top20))
     return {

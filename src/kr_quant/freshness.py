@@ -68,7 +68,10 @@ def _read_price_days(path: Path) -> int:
 def _read_financial_max(path: Path) -> date | None:
     if not path.exists():
         return None
-    df = pd.read_parquet(path)
+    try:
+        df = pd.read_parquet(path)
+    except Exception:  # noqa: BLE001
+        return None
     for col in ("available_date", "rcept_dt", "period_end"):
         if col in df.columns:
             hit = _max_date(df[col])
