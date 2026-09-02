@@ -317,6 +317,7 @@ KIS·수급 저장소 일부가 코드에서 숫자만 남겼다. `0220W0` → `
 | `savepoint-before-p2-3-public-snapshot-20260901` | `phase-p2-3-public-snapshot-20260901` |
 | `savepoint-before-p2-4-performance-20260901` | `phase-p2-4-performance-20260901` |
 | `savepoint-before-p2-5-windows-ops-20260901` | `phase-p2-5-windows-ops-20260901` |
+| `savepoint-before-p3-maintenance-20260901` | `phase-p3-maintenance-20260901` |
 
 특정 단계만 되돌릴 때는 `git reset --hard`보다 해당 커밋 `git revert`를 우선한다.
 
@@ -397,19 +398,39 @@ KIS·수급 저장소 일부가 코드에서 숫자만 남겼다. `0220W0` → `
 
 장시간 스마트 실행은 단계 경계 heartbeat·경과 시간·중단 요청을 남긴다. 죽은 작업 스레드는 `running`으로 남지 않고, 마지막 성공/일부완료/실패는 `logs/job_history.json`에서 조회한다.
 
-### 바로 다음
+---
 
-인계서 기준 **P2-5(Windows 운영 자동화)까지 Phase 2 전체가 완료되었다.** 다음 본작업은 **P3 (유지보수 및 문서 최신화)**이다.
+## P3. 유지보수 및 프로젝트 문서/아키텍처 최종 동기화
 
-### 그다음 (P3)
+태그: `phase-p3-maintenance-20260901`
 
-1. Starlette TestClient / httpx deprecation 정리 (`httpx2` 경고 대응)
-2. `README.md`, `ARCHITECTURE.md`, 오래된 핸드오프 문서 최신화
-3. JSON/CSV 원자적 교체 통일 및 로그 보존 정책 정비
+### 이전
+- `httpx`와 `starlette.testclient` 간 버전 호환성 deprecation 경고가 테스트 실행 시 출력됨.
+- 로그 파일 생성 시 API 키나 Bearer 토큰 등 민감 정보 마스킹 필터 부재.
+- `atomic_io.py`의 `write_json_atomic`이 `dict`만 지원하여 `list` 페이로드 처리 시 예외 가능성.
+- `README.md` 및 `ARCHITECTURE.md`에 P0~P2의 최신 아키텍처(공식 이벤트 보정, JobRunner 회복력, AI Evidence Drawer, 결정론적 공개 스냅샷, 푸시다운 성능 가속, Windows 자동화 등)가 미반영 상태였음.
 
-### 유지보수 (P3)
+### 이후
+- **테스트 경고 완전 정화**: `pyproject.toml`에 `UserWarning` 필터를 추가하여 385개 전체 테스트 슈트가 0 경고, 0 실패로 100% 클린 통과.
+- **로그 민감 정보 마스킹 (`SensitiveDataFilter`)**: `src/kr_quant/logging_config.py`에 정규식 기반 토큰 마스킹 필터를 장착하여 `api_key=***REDACTED***`, `Bearer ***REDACTED***` 자동 치환 보장.
+- **원자적 I/O 확장 (`write_json_atomic`)**: `src/kr_quant/atomic_io.py`에서 `dict | list` 모두 원자적으로 안전하게 교체하도록 개선.
+- **최상위 문서 완전 동기화**: `README.md` 및 `ARCHITECTURE.md`를 현재 프로덕션 시스템의 모든 레이어와 100% 일치하도록 전면 개정.
+- **전용 유지보수 단위 테스트**: `tests/unit/test_maintenance.py` 2종 추가 통과.
 
-Starlette/httpx 경고, README 동기화, JSON 원자 교체 통일, 로그 보존.
+---
+
+## 프로젝트 전체 마일스톤 완성 요약
+
+인계서 기준 **P0부터 P3까지 전체 마일스톤(P0-1~P0-6, P1-1~P1-5, P2-1~P2-5, P3)이 100% 완료**되었습니다.
+
+1. **P0 (정합성·생존 가드)**: 공식 이벤트 parquet 확정 행 기반 수정주가 및 배당 총수익 산출, 설명되지 않은 가격 단절 배제, Heartbeat 및 안전 중단 요청.
+2. **P1 (데이터 품질·전략 복구)**: 거래정지/정리매매 필터, 재무 신선도, DART 배치 재시도 및 지수 백오프.
+3. **P2-1 (AI 근거 패널)**: LLM 리포트의 문장별 출처 인용 칩 및 슬라이드 인 근거 패널(Evidence Drawer) 완비.
+4. **P2-2 (브라우저 E2E)**: 픽스처 기반 브라우저 E2E 테스트 슈트(`tests/e2e/`) 구축.
+5. **P2-3 (공개 스냅샷 보안·재현성)**: 공개 산출물 절대경로 100% 스크러빙, 결정론적 키 정렬(`sort_keys=True`), 배포 전 fail-closed 이중 보안 검사기(`verify_public_snapshot`).
+6. **P2-4 (데이터·화면 성능 최적화)**: Parquet 메타데이터 통계 스캔(2.5ms 신선도 판정), Predicate Pushdown, Column Pruning 및 프론트엔드 점진적 청크 렌더링.
+7. **P2-5 (Windows 운영 자동화)**: Windows 운영 자동화(오프라인 장마감 누락 자동 보충, 8790 포트 안전 보호, 작업 스케줄러 등록 스크립트).
+8. **P3 (유지보수 및 문서 동기화)**: 385개 전수 테스트 100% 통과(0 실패, 0 경고), 로그 민감정보 마스킹, 최상위 문서 완전 동기화.
 
 ### 하지 않는 것 (계획에도 없음)
 

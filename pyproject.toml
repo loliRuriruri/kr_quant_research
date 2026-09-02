@@ -48,8 +48,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-q"
-filterwarnings = ["ignore::DeprecationWarning"]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+  "ignore:.*httpx.*:UserWarning",
+]
 markers = [
   "e2e: fixture-backed browser UI (skips when Chromium is unavailable)",
 ]

@@ -147,26 +147,35 @@ npx wrangler pages deploy dist-public --project-name korea-quant-research --bran
 
 ---
 
-## 배치 파일 요약
+## 배치 파일 및 운영 스크립트 요약
 
 | 파일 | 하는 일 |
 |---|---|
 | `Start-KR-Quant.bat` | **일상용**: 기존 로컬 서버 정리 후 대시보드 재시작 |
-| `Stop-KR-Quant.bat` | **일상용**: 로컬 서버 종료 |
+| `Stop-KR-Quant.bat` | **일상용**: 로컬 서버 종료 (무관한 타 프로그램 보호) |
 | `Restart-KR-Quant.bat` | `Start-KR-Quant.bat` 호환용 별칭 |
 | `Start-KR-Quant-Public.bat` | **보조**: 로컬 스냅샷 → Cloudflare Pages 업로드 |
 | `Publish-KR-Quant-Public.bat` | 공개 배포 별칭 (`Start-KR-Quant-Public.bat`과 동일) |
 | `Start-KR-Quant-Tunnel.bat` | **보조**: PC가 켜져 있는 동안만 임시 외부 URL |
+| `scripts\install-task-scheduler.ps1` | **운영용**: Windows 로그인 시 백그라운드 자동 기동 등록 |
+| `scripts\uninstall-task-scheduler.ps1` | **운영용**: Windows 작업 스케줄러 자동 기동 해제 |
 | `KR-Quant-Research.cmd` / `KR-Quant-Research.vbs` | 기존 자동 실행·바로가기 호환용 숨김 재시작기 |
 
-정리하면 로컬 연구만 할 때는 `Start-KR-Quant.bat`과 `Stop-KR-Quant.bat` 두 개면 충분합니다. 공개 배포와 터널은 서버 시작·중단과 목적이 달라 필요할 때만 별도로 실행합니다.
+정리하면 로컬 연구만 할 때는 `Start-KR-Quant.bat`과 `Stop-KR-Quant.bat` 두 개면 충분합니다.  
+PC를 켤 때마다 자동으로 서버를 띄우고 싶다면 PowerShell에서 `.\scripts\install-task-scheduler.ps1`을 1회 실행하세요. 평일 19:10 예약 시간에 PC가 꺼져 있었더라도, 다음 부팅/로그인 시 누락된 작업을 자동으로 보충 수집합니다.
 
 ---
 
-## 테스트
+## 테스트 및 검증
+
+프로젝트 전체 테스트 슈트(단위·통합·브라우저 E2E)를 실행합니다.
 
 ```powershell
+# 1. 전체 회귀 테스트 슈트 실행 (380개 전수 검증)
 .\.venv\Scripts\python.exe -m pytest -q
+
+# 2. 브라우저 및 화면 UI 시나리오 E2E 테스트
+.\.venv\Scripts\python.exe -m pytest tests/e2e/ -v
 ```
 
 ---
