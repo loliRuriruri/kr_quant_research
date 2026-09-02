@@ -97,3 +97,52 @@ def test_public_stock_detail_is_rich_and_read_only():
     assert payload["sunzi"]["parts"]["dao"]
     assert payload["naver"]["configured"] is False
     assert "api_key" not in json.dumps(payload, ensure_ascii=False).lower()
+
+
+def test_snapshot_has_no_local_absolute_paths_and_valid_schema(tmp_path):
+    s = load_settings()
+    if not (s.output_dir / "latest_all_stocks.parquet").exists():
+        return
+    meta = export(tmp_path)
+    assert meta["schema_version"] == "1.1.0"
+    assert "git_commit" in meta
+
+    import re
+    local_path_re = re.compile(
+        r"(?<![A-Za-z])(?:[A-Za-z]:[\\/](?:Users|home|kr_quant|[A-Za-z0-9_.-]+\\[A-Za-z0-9_.-]+)|/(?:home|Users)/[A-Za-z0-9_.-]+)",
+        re.IGNORECASE,
+    )
+    for p in tmp_path.glob("*.json"):
+        txt = p.read_text(encoding="utf-8")
+        matches = local_path_re.findall(txt)
+        assert not matches, f"Local path leaked in {p.name}: {matches}"
+
+
+def test_deterministic_export_reproducibility(tmp_path):
+    import hashlib
+
+    s = load_settings()
+    if not (s.output_dir / "latest_all_stocks.parquet").exists():
+        return
+    dir_a = tmp_path / "run_a"
+    dir_b = tmp_path / "run_b"
+    export(dir_a)
+    export(dir_b)
+
+    for name in ["ranking.json", "formulas.json", "sources.json", "watchlist.json"]:
+        hash_a = hashlib.sha256((dir_a / name).read_bytes()).hexdigest()
+        hash_b = hashlib.sha256((dir_b / name).read_bytes()).hexdigest()
+        assert hash_a == hash_b, f"Deterministic hash mismatch for {name}"
+
+    reg_a = json.loads((dir_a / "evidence_registry.json").read_text(encoding="utf-8"))
+    reg_b = json.loads((dir_b / "evidence_registry.json").read_text(encoding="utf-8"))
+    assert reg_a["contract_version"] == reg_b["contract_version"]
+    assert reg_a["validation"] == reg_b["validation"]
+    reg_a.pop("generated_at", None)
+    reg_b.pop("generated_at", None)
+    if "run" in reg_a.get("menus", {}):
+        reg_a["menus"]["run"].pop("observed_at", None)
+    if "run" in reg_b.get("menus", {}):
+        reg_b["menus"]["run"].pop("observed_at", None)
+    assert reg_a["menus"] == reg_b["menus"]
+

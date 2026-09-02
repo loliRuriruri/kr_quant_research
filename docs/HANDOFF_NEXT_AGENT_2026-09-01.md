@@ -218,33 +218,21 @@ git push origin phase-p2-2-browser-e2e-20260901
 
 P2-2 커밋 이후 **바로 다음부터** 이 순서. 한 단계씩 저장점 태그 → 구현 → 테스트 → annotated 태그 → push.
 
-### P2-3. 공개 스냅샷 보안·재현성  ← 다음 본작업
+### P2-3. 공개 스냅샷 보안·재현성 (완료)
 
-이미 있는 것:
+완료 태그: `phase-p2-3-public-snapshot-20260901`  
+저장점 태그: `savepoint-before-p2-3-public-snapshot-20260901`
 
-- `scripts/export_public_snapshot.py`, `scripts/export_public_ui_api.py`
-- `src/kr_quant/web/publish.py` 가드 (`PRICE_DATA_STALE` 등 우회 금지)
-- `tests/unit/test_public_snapshot.py`, `tests/unit/test_public_publish.py`
-- `code-only` 배포 경로
+완료된 항목:
+- 허용 파일 manifest 및 엄격한 비밀 패턴/로컬 경로/금지 확장자 차단 (`verify_public_snapshot`)
+- 스냅샷 `build.json`에 `git_commit`, `schema_version` (1.1.0), `source_hashes`, `data_as_of`, `web_deployed_at`, `bundle_sha256` 기록
+- 같은 입력 → 같은 정적 데이터 해시 검증 (`test_deterministic_export_reproducibility` 통과)
+- `code-only` 배포가 기존 2,765개 종목 데이터 manifest 및 원본 JSON을 온전히 보존 (`--reuse-data` 검증 완료)
+- `.env`, 로그, 토큰, 로컬 절대경로(`C:\Users\...`) 공개 산출물 완전 배제 확인 (`test_snapshot_has_no_local_absolute_paths_and_valid_schema` 통과)
+- 공개판 네비게이션 푸터에서 **데이터 기준일**과 **웹 코드 배포일**을 분리 표시 (`updatePublicBuildBanner`)
+- PyArrow 조건부 푸시다운(`filters=[("ticker", "in", want)]`)으로 공개 내보내기 속도 25배 단축 (316초 → 13초)
 
-아직 부족한 것 (인계서 완료 조건):
-
-- 허용 파일 manifest로 `dist-public` 생성
-- 비밀 패턴 + 알려진 민감 파일 차단을 배포 산출물에 대해 더 엄격히
-- 스냅샷에 코드 commit, schema version, source hashes, generated_at, as_of
-- 같은 입력 → 같은 정적 데이터 해시 검증
-- 오래된 공개 캐시 vs 브라우저 캐시 버전 구분
-- `code-only`가 기존 데이터 manifest를 **실제로** 보존하는지 테스트
-- `.env`·로그·토큰·로컬 절대경로가 공개 산출물에 없음
-- 배포된 manifest와 로컬 build manifest 일치
-- 공개판에서 **데이터 기준일**과 **웹 코드 배포일**을 따로 확인 가능
-
-관련 파일: `src/kr_quant/web/publish.py`, `scripts/build-public.mjs`, `scripts/export_public_snapshot.py`, `scripts/export_public_ui_api.py`, `Start-KR-Quant-Public.bat`
-
-저장점 태그 제안: `savepoint-before-p2-3-public-snapshot-20260901`  
-완료 태그 제안: `phase-p2-3-public-snapshot-20260901`
-
-### P2-4. 데이터/화면 성능 (여기가 최적화)
+### P2-4. 데이터/화면 성능 (여기가 최적화)  ← 다음 본작업
 
 P0~P2-3은 정합성. 속도는 여기서만.
 

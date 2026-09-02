@@ -61,6 +61,12 @@ ROUTES: dict[str, str] = {
 }
 
 
+PATH_PATTERN = re.compile(
+    r"([A-Za-z]:\\[^\s\"'>{}]+|[A-Za-z]:/[^\s\"'>{}]+|/(?:home|Users)/[^\s\"'>{}]+)",
+    re.IGNORECASE,
+)
+
+
 def clean(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(k): clean(v) for k, v in value.items() if not SENSITIVE_KEY.search(str(k))}
@@ -74,6 +80,7 @@ def clean(value: Any) -> Any:
         except Exception:
             pass
     if isinstance(value, str):
+        value = PATH_PATTERN.sub("[local path omitted]", value)
         root_variants = {str(ROOT), str(ROOT).replace("\\", "/")}
         if any(root.lower() in value.lower() for root in root_variants):
             return "[local path omitted]"
@@ -260,7 +267,7 @@ def export_research_details(
         rel = f"research/{bucket}/{code}--{as_of}.json"
         path = out_dir / rel
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")), encoding="utf-8")
         result[bucket][f"{code}|{as_of}"] = rel
         result[f"{bucket}_latest"].setdefault(code, rel)
     result["count"] = len(result["analysis"]) + len(result["reports"])
@@ -272,6 +279,7 @@ def export(out_dir: Path) -> dict[str, Any]:
     manifest: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "mode": "full-ui-readonly-snapshot",
+        "schema_version": "1.1.0",
         "routes": {},
         "screens": {},
     }
@@ -286,7 +294,7 @@ def export(out_dir: Path) -> dict[str, Any]:
                 data.pop("project_root", None)
                 ((data.get("evidence_registry") or {}).get("menus") or {}).pop("settings", None)
             filename = f"{slug(route)}.json"
-            (out_dir / filename).write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+            (out_dir / filename).write_text(json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")), encoding="utf-8")
             manifest["routes"][route] = filename
             route_data[route] = data
 
@@ -297,7 +305,7 @@ def export(out_dir: Path) -> dict[str, Any]:
                 continue
             data = get_json(client, f"/api/screens?id={screen_id}&include_quant=true")
             filename = f"screen-{re.sub(r'[^a-zA-Z0-9_-]+', '-', screen_id)}.json"
-            (out_dir / filename).write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+            (out_dir / filename).write_text(json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")), encoding="utf-8")
             manifest["screens"][screen_id] = filename
 
         manifest["stock_details"] = export_stock_details(
@@ -312,7 +320,7 @@ def export(out_dir: Path) -> dict[str, Any]:
             list((route_data.get("/api/research/reports") or {}).get("rows") or []),
         )
 
-    (out_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    (out_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
     return {
         "routes": len(manifest["routes"]),
         "screens": len(manifest["screens"]),

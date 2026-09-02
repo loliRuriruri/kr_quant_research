@@ -25,8 +25,10 @@ const SECRET_PATTERNS = [
   /sk-[A-Za-z0-9_-]{10,}/,
   /xai-[A-Za-z0-9_-]{10,}/,
   /Bearer\s+[A-Za-z0-9._\-]+/i,
-  /OPENDART_API_KEY\s*=/,
-  /KIS_APP_SECRET\s*=/,
+  /(?:OPENDART|DART|KRX|ECOS|FRED)_API_KEY\s*=\s*[^\s]/i,
+  /KIS_APP_SECRET\s*=\s*[^\s]/i,
+  /ghp_[A-Za-z0-9]{30,}/,
+  /github_pat_[A-Za-z0-9_]{40,}/,
   /BEGIN (RSA |OPENSSH )?PRIVATE KEY/,
 ];
 
@@ -36,6 +38,27 @@ const FORBIDDEN_NAMES = [
   "cloudflared.exe",
   "app.py",
   "Start-KR-Quant.bat",
+  "Stop-KR-Quant.bat",
+];
+
+const FORBIDDEN_EXTENSIONS = [
+  ".env",
+  ".log",
+  ".parquet",
+  ".tmp",
+  ".bak",
+  ".ps1",
+  ".bat",
+  ".py",
+  ".cmd",
+  ".sh",
+  ".exe",
+];
+
+const LOCAL_PATH_PATTERNS = [
+  /[A-Za-z]:\\(?:Users|home)\b/i,
+  /[A-Za-z]:\/(?:Users|home)\b/i,
+  /(?:^|["'\s])\/(?:Users|home)\/[A-Za-z0-9_.-]+/i,
 ];
 
 function walk(dir, acc = []) {
@@ -115,9 +138,14 @@ function scanSecrets() {
   const localSecrets = configuredSecrets();
   for (const file of files) {
     const rel = relative(dist, file).replaceAll("\\", "/");
-    const base = rel.split("/").pop();
+    const base = rel.split("/").pop() || "";
     if (FORBIDDEN_NAMES.includes(base) || rel.includes(".env")) {
       hits.push(`forbidden file ${rel}`);
+      continue;
+    }
+    const lowerBase = base.toLowerCase();
+    if (FORBIDDEN_EXTENSIONS.some((ext) => lowerBase.endsWith(ext))) {
+      hits.push(`forbidden extension file ${rel}`);
       continue;
     }
     const buf = readFileSync(file);
@@ -128,6 +156,9 @@ function scanSecrets() {
     }
     for (const secret of localSecrets) {
       if (text.includes(secret.value)) hits.push(`configured ${secret.name} value in ${rel}`);
+    }
+    for (const pathRe of LOCAL_PATH_PATTERNS) {
+      if (pathRe.test(text)) hits.push(`local absolute path pattern ${pathRe} in ${rel}`);
     }
   }
   if (!files.some((f) => relative(dist, f).replaceAll("\\", "/").endsWith("index.html"))) {
@@ -147,9 +178,48 @@ function writeBuildInfo() {
     hash.update(rel);
     hash.update(readFileSync(join(dist, rel)));
   }
+
+  let gitCommit = "unknown";
+  try {
+    const gitRes = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf-8" });
+    if (gitRes.status === 0 && gitRes.stdout) {
+      gitCommit = gitRes.stdout.trim();
+    }
+  } catch (e) {}
+
+  let dataAsOf = null;
+  let sourceHashes = {};
+  const metaPath = join(dist, "data", "meta.json");
+  if (existsSync(metaPath)) {
+    try {
+      const m = JSON.parse(readFileSync(metaPath, "utf-8"));
+      dataAsOf = m.as_of_date || m.as_of || null;
+      sourceHashes = {
+        source_bundle_hash: m.source_bundle_hash || null,
+        result_hash: m.result_hash || null,
+        config_hash: m.config_hash || null,
+      };
+    } catch (e) {}
+  }
+  if (!dataAsOf) {
+    const manifestPath = join(dist, "data", "api", "manifest.json");
+    if (existsSync(manifestPath)) {
+      try {
+        const man = JSON.parse(readFileSync(manifestPath, "utf-8"));
+        dataAsOf = man.as_of || null;
+      } catch (e) {}
+    }
+  }
+
   const info = {
     project: "korea-quant-research",
+    schema_version: "1.1.0",
+    git_commit: gitCommit,
+    data_as_of: dataAsOf,
+    source_hashes: sourceHashes,
     generated_at: new Date().toISOString(),
+    web_deployed_at: new Date().toISOString(),
+    reuse_existing_data: reuseExistingData,
     files,
     bundle_sha256: hash.digest("hex"),
     full_local_ui: true,

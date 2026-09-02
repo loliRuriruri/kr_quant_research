@@ -161,6 +161,73 @@ def read_snapshot_as_of(root: Path | None = None) -> str | None:
     return None
 
 
+def read_build_info(root: Path | None = None) -> dict[str, Any] | None:
+    path = (root or _root()) / "dist-public" / "build.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def verify_public_snapshot(dist_dir: Path) -> dict[str, Any]:
+    """Verify that dist-public meets all security, privacy, and integrity contracts."""
+    if not dist_dir.exists():
+        return {"valid": False, "errors": ["DIST_DIR_NOT_FOUND"]}
+    build_json_path = dist_dir / "build.json"
+    if not build_json_path.exists():
+        return {"valid": False, "errors": ["BUILD_JSON_MISSING"]}
+    try:
+        build_info = json.loads(build_json_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"valid": False, "errors": [f"BUILD_JSON_INVALID: {exc}"]}
+
+    errors: list[str] = []
+    if not build_info.get("git_commit"):
+        errors.append("GIT_COMMIT_MISSING")
+    if not build_info.get("schema_version"):
+        errors.append("SCHEMA_VERSION_MISSING")
+    if not build_info.get("data_as_of"):
+        errors.append("DATA_AS_OF_MISSING")
+
+    local_path_pattern = re.compile(
+        r"(?<![A-Za-z])(?:[A-Za-z]:(?:\\\\|[\\/])(?:Users|home|kr_quant|[A-Za-z0-9_.-]+(?:\\\\|[\\/])[A-Za-z0-9_.-]+)|/(?:home|Users)/[A-Za-z0-9_.-]+)",
+        re.IGNORECASE,
+    )
+    secret_pattern = re.compile(r"\b(?:sk|xai)-[A-Za-z0-9_-]{10,}", re.IGNORECASE)
+    for p in dist_dir.rglob("*"):
+        if not p.is_file():
+            continue
+        rel = str(p.relative_to(dist_dir)).replace("\\", "/")
+        base = p.name.lower()
+        if any(base.endswith(ext) for ext in [".env", ".log", ".parquet", ".tmp", ".bak", ".ps1", ".bat", ".py", ".cmd", ".sh", ".exe"]):
+            errors.append(f"FORBIDDEN_FILE: {rel}")
+            continue
+        if p.name == "build.json" or base.endswith((".png", ".jpg", ".ico")):
+            continue
+        try:
+            txt = p.read_text(encoding="utf-8", errors="ignore")
+            if secret_pattern.search(txt):
+                errors.append(f"SECRET_PATTERN_LEAK: {rel}")
+            if local_path_pattern.search(txt):
+                errors.append(f"LOCAL_PATH_LEAK: {rel}")
+        except Exception:
+            pass
+
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "build_info": {
+            "git_commit": build_info.get("git_commit"),
+            "schema_version": build_info.get("schema_version"),
+            "data_as_of": build_info.get("data_as_of"),
+            "web_deployed_at": build_info.get("web_deployed_at"),
+            "files_count": len(build_info.get("files") or []),
+        },
+    }
+
+
 def _persist_publish_state() -> None:
     path = _saved_publish_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -172,7 +239,8 @@ def publish_sync_status(root: Path | None = None) -> dict[str, Any]:
     _hydrate_publish_state()
     project = root or _root()
     readiness = publication_readiness(project)
-    published_as_of = _STATE.get("published_as_of") or read_snapshot_as_of(project)
+    build_info = read_build_info(project) or {}
+    published_as_of = _STATE.get("published_as_of") or build_info.get("data_as_of") or read_snapshot_as_of(project)
     current_local = readiness.get("current_local_as_of") or readiness.get("as_of_date")
     current_expected = readiness.get("current_expected_as_of") or readiness.get("expected_price_date")
     in_sync = bool(published_as_of and current_local and str(published_as_of)[:10] == str(current_local)[:10])
@@ -189,6 +257,13 @@ def publish_sync_status(root: Path | None = None) -> dict[str, Any]:
         "last_deploy_kind": _STATE.get("last_deploy_kind"),
         "last_event": _STATE.get("last_event"),
         "block_kind": readiness.get("block_kind") or classify_publication_errors(blocking),
+        "build_info": {
+            "git_commit": build_info.get("git_commit"),
+            "schema_version": build_info.get("schema_version"),
+            "data_as_of": build_info.get("data_as_of"),
+            "web_deployed_at": build_info.get("web_deployed_at"),
+            "bundle_sha256": build_info.get("bundle_sha256"),
+        } if build_info else None,
     }
 
 
@@ -443,6 +518,16 @@ def publish_public_snapshot(
         _safe_print("[FAIL] 스냅샷 생성 실패\n" + err, flush=True)
         _STATE.update({"last_ok": False, "last_at": datetime.now(timezone.utc).isoformat(), "last_error": "build failed", "last_log": log[-4000:]})
         return {"ok": False, "step": "build", "error": err, "cfg": cfg}
+
+    dist_dir = root / "dist-public"
+    if dist_dir.exists():
+        verification = verify_public_snapshot(dist_dir)
+        if not verification.get("valid"):
+            err = "SNAPSHOT_VERIFICATION_FAILED: " + ", ".join(verification.get("errors") or [])
+            _safe_print("[FAIL] 배포 전 공개 스냅샷 무결성/보안 검사 실패\n" + err, flush=True)
+            _STATE.update({"last_ok": False, "last_at": datetime.now(timezone.utc).isoformat(), "last_error": err, "last_log": log[-4000:]})
+            _persist_publish_state()
+            return {"ok": False, "step": "verify", "error": err, "verification": verification, "cfg": cfg}
 
     if not deploy:
         stamp = datetime.now(timezone.utc).isoformat()

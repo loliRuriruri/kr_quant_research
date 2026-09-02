@@ -305,3 +305,76 @@ def test_code_only_status_keeps_published_as_of(monkeypatch, tmp_path):
         publish._STATE.clear()
         publish._STATE.update(prior)
         publish._HYDRATED = hydrated
+
+
+def test_verify_public_snapshot_detects_secrets_and_local_paths(tmp_path):
+    dist = tmp_path / "dist-public"
+    dist.mkdir()
+
+    # Missing build.json
+    res = publish.verify_public_snapshot(dist)
+    assert res["valid"] is False
+    assert "BUILD_JSON_MISSING" in res["errors"]
+
+    # Write valid build.json
+    build_info = {
+        "project": "korea-quant-research",
+        "schema_version": "1.1.0",
+        "git_commit": "abc1234",
+        "data_as_of": "2026-09-01",
+        "web_deployed_at": "2026-09-02T18:00:00Z",
+        "files": ["index.html", "data/test.json"],
+    }
+    (dist / "build.json").write_text(publish.json.dumps(build_info), encoding="utf-8")
+    (dist / "index.html").write_text("<html>safe</html>", encoding="utf-8")
+    (dist / "data").mkdir()
+    (dist / "data" / "test.json").write_text('{"safe": true}', encoding="utf-8")
+
+    clean_res = publish.verify_public_snapshot(dist)
+    assert clean_res["valid"] is True
+    assert clean_res["errors"] == []
+    assert clean_res["build_info"]["git_commit"] == "abc1234"
+
+    # Leak secret pattern
+    (dist / "data" / "leak.json").write_text('{"key": "sk-1234567890abcdef"}', encoding="utf-8")
+    leak_res = publish.verify_public_snapshot(dist)
+    assert leak_res["valid"] is False
+    assert any("SECRET_PATTERN_LEAK" in e for e in leak_res["errors"])
+    (dist / "data" / "leak.json").unlink()
+
+    # Leak local path
+    (dist / "data" / "path_leak.json").write_text('{"path": "C:\\\\Users\\\\alice\\\\quant\\\\data"}', encoding="utf-8")
+    path_res = publish.verify_public_snapshot(dist)
+    assert path_res["valid"] is False
+    assert any("LOCAL_PATH_LEAK" in e for e in path_res["errors"])
+    (dist / "data" / "path_leak.json").unlink()
+
+    # Forbidden file
+    (dist / ".env").write_text("SECRET=123", encoding="utf-8")
+    env_res = publish.verify_public_snapshot(dist)
+    assert env_res["valid"] is False
+    assert any("FORBIDDEN_FILE" in e for e in env_res["errors"])
+
+
+def test_publish_sync_status_includes_build_info(monkeypatch, tmp_path):
+    dist = tmp_path / "dist-public"
+    dist.mkdir()
+    build_info = {
+        "project": "korea-quant-research",
+        "schema_version": "1.1.0",
+        "git_commit": "feedbeef123",
+        "data_as_of": "2026-09-01",
+        "web_deployed_at": "2026-09-02T18:30:00Z",
+        "bundle_sha256": "fakehash",
+    }
+    (dist / "build.json").write_text(publish.json.dumps(build_info), encoding="utf-8")
+    monkeypatch.setattr(publish, "_root", lambda: tmp_path)
+    monkeypatch.setattr(publish, "publication_readiness", lambda root=None: {"current_local_as_of": "2026-09-01", "errors": []})
+
+    status = publish.publish_sync_status(tmp_path)
+    assert status["build_info"] is not None
+    assert status["build_info"]["git_commit"] == "feedbeef123"
+    assert status["build_info"]["schema_version"] == "1.1.0"
+    assert status["build_info"]["data_as_of"] == "2026-09-01"
+    assert status["build_info"]["web_deployed_at"] == "2026-09-02T18:30:00Z"
+

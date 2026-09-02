@@ -314,6 +314,7 @@ KIS·수급 저장소 일부가 코드에서 숫자만 남겼다. `0220W0` → `
 | `savepoint-before-p1-5-market-regime-20260901` | `phase-p1-5-market-regime-20260901` |
 | `savepoint-before-p2-1-ai-evidence-20260901` | `phase-p2-1-ai-evidence-20260901` |
 | `savepoint-before-p2-2-browser-e2e-20260901` | `phase-p2-2-browser-e2e-20260901` |
+| `savepoint-before-p2-3-public-snapshot-20260901` | `phase-p2-3-public-snapshot-20260901` |
 
 특정 단계만 되돌릴 때는 `git reset --hard`보다 해당 커밋 `git revert`를 우선한다.
 
@@ -321,9 +322,28 @@ KIS·수급 저장소 일부가 코드에서 숫자만 남겼다. `0220W0` → `
 
 ---
 
+## P2-3. 공개 스냅샷 보안·재현성 강화 및 배포 메타데이터 분리
+
+태그: `phase-p2-3-public-snapshot-20260901`
+
+### 이전
+- `dist-public` 생성 시 `market.json`, `snapshot.json` 등의 정적 데이터에 로컬 절대 경로(`C:\Users\...`)가 누출될 수 있었음.
+- 정적 JSON 내보내기 시 키 정렬(`sort_keys=True`)이 누락되어 동일 데이터라도 생성 시점에 따라 파일 해시가 달라질 수 있었음.
+- 공개판 UI에서 데이터 기준일과 웹 코드 배포 시점이 분리되지 않아 최신성 구분이 모호했음.
+
+### 이후
+- `scripts/export_public_snapshot.py` 및 `export_public_ui_api.py`에 강력한 경로 스크러빙(`[local path omitted]`) 및 결정론적 키 정렬(`sort_keys=True`) 적용.
+- `scripts/build-public.mjs` 및 `src/kr_quant/web/publish.py`에 엄격한 비밀 패턴/로컬 경로/금지 확장자(`*.env`, `*.log`, `*.bat`, `*.py` 등) 배포 전 fail-closed 차단 검사(`verify_public_snapshot`) 구축.
+- `build.json` 메타데이터에 `git_commit`, `schema_version` (1.1.0), `data_as_of`, `web_deployed_at`, `source_hashes`, `bundle_sha256` 기록.
+- `code-only` 배포 시 기존 2,765개 종목 데이터 manifest 및 원본 JSON을 100% 보존하면서 프론트엔드 파일만 안전하게 갱신.
+- 공개판 화면의 네비게이션 푸터에서 `📅 데이터 기준`과 `🌐 웹 배포 (커밋 해시)`를 분리 표시.
+- `prices.parquet` 로딩 시 대상 종목만 PyArrow 조건부 푸시다운(`filters=[("ticker", "in", want)]`) 적용하여 내보내기 속도를 316초에서 13초로 25배 대폭 단축.
+
+---
+
 ## 다음 계획 — 어디까지인가
 
-인계서 기준 **P0는 P0-6까지 끝났다.** **P1-1 ~ P1-5도 코드에 들어갔다.** **P2-1과 P2-2도 완료되었다.**
+인계서 기준 **P0는 P0-6까지 끝났다.** **P1-1 ~ P1-5도 코드에 들어갔다.** **P2-1, P2-2, P2-3도 완료되었다.**
 
 공식 이벤트 parquet(`data/staged/live/corporate_actions.parquet`)가 확정 행을 줄 때만 수정주가와 배당 총수익을 만든다. 설명 안 된 가격 단절은 여전히 잇지 않는다. 전략 체결은 원시 OHLC, 모멘텀은 공식 adj 또는 시총 프록시다.
 
@@ -331,13 +351,12 @@ KIS·수급 저장소 일부가 코드에서 숫자만 남겼다. `0220W0` → `
 
 ### 바로 다음
 
-인계서 기준 **P2-2(브라우저 E2E)까지 완료되었다.** 다음 본작업은 **P2-3 (공개 스냅샷 보안·재현성)**이다.
+인계서 기준 **P2-3(공개 스냅샷 보안·재현성)까지 완료되었다.** 다음 본작업은 **P2-4 (데이터/화면 성능 최적화)**이다.
 
 ### 그다음
 
-1. **P2-3** 공개 스냅샷 재현성·비밀검사 강화
-2. **P2-4** 성능 (여기가 최적화)
-3. **P2-5** Windows에서 서버가 꺼져 있을 때 예약 보충
+1. **P2-4** 성능 (Parquet predicate pushdown 및 대형 표 가상화)
+2. **P2-5** Windows에서 서버가 꺼져 있을 때 예약 보충 및 자동 시작
 
 ### 유지보수 (P3)
 

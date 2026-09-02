@@ -1527,6 +1527,30 @@ function lockPublicAdminUi() {
   });
 }
 
+async function updatePublicBuildBanner() {
+  if (!publicShareMode) return;
+  try {
+    const res = await fetch("/build.json");
+    if (!res.ok) return;
+    const build = await res.json();
+    const navFoot = document.querySelector(".nav-foot");
+    if (navFoot && build) {
+      const asOf = build.data_as_of || "확인 불가";
+      const deployed = build.web_deployed_at ? new Date(build.web_deployed_at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+      const commitShort = (build.git_commit || "").slice(0, 7);
+      navFoot.innerHTML = `
+        <p>KR Quant Research<br />v2.17 Engine (공개판)</p>
+        <div style="margin-top:6px; font-size:11px; line-height:1.4; color:var(--text-muted, #9ca3af);">
+          <div>📅 데이터 기준: <b>${escapeHtml(asOf)}</b></div>
+          <div>🌐 웹 배포: <b>${escapeHtml(deployed)}</b> ${commitShort ? `(${escapeHtml(commitShort)})` : ""}</div>
+        </div>
+      `;
+    }
+  } catch {
+    // Keep standard footer if build.json fetch fails
+  }
+}
+
 async function applyPublicShareMode() {
   try {
     const st = await api("/api/status");
@@ -1536,6 +1560,7 @@ async function applyPublicShareMode() {
   }
   document.body.classList.toggle("public-mode", publicShareMode);
   lockPublicAdminUi();
+  updatePublicBuildBanner();
   if (publicShareMode && currentView === "settings") {
     switchView("dash");
   }

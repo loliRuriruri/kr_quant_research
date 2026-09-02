@@ -93,10 +93,22 @@ def _num(x: Any) -> float | None:
     return float(x)
 
 
+PATH_PATTERN = re.compile(
+    r"([A-Za-z]:\\[^\s\"'>{}]+|[A-Za-z]:/[^\s\"'>{}]+|/(?:home|Users)/[^\s\"'>{}]+)",
+    re.IGNORECASE,
+)
+
+
+def _scrub_string(val: str) -> str:
+    return PATH_PATTERN.sub("[local path omitted]", val)
+
+
 def _clean(obj: Any) -> Any:
+    if isinstance(obj, str):
+        return _scrub_string(obj)
     if isinstance(obj, dict):
         return {str(k): _clean(v) for k, v in obj.items() if not SECRET_KEY_RE.search(str(k))}
-    if isinstance(obj, list):
+    if isinstance(obj, (list, tuple, set)):
         return [_clean(v) for v in obj]
     if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
         return None
@@ -180,7 +192,7 @@ def sparkline(prices: pd.DataFrame, ticker: str, n: int = 60) -> list[float]:
     if prices.empty or "ticker" not in prices.columns:
         return []
     code = str(ticker).zfill(6)
-    hist = prices[prices["ticker"].astype(str).str.zfill(6) == code]
+    hist = prices[prices["ticker"] == code]
     if hist.empty or "close" not in hist.columns:
         return []
     hist = hist.copy()
@@ -410,13 +422,6 @@ def export(out_dir: Path) -> dict[str, Any]:
     (evidence_registry.get("menus") or {}).pop("settings", None)
     explain = explain_run_status(quality, status_csv_exists=settings.status_csv.exists())
 
-    prices = pd.DataFrame()
-    for folder in (settings.staged_dir / "live", settings.staged_dir / "demo"):
-        p = folder / "prices.parquet"
-        if p.exists():
-            prices = pd.read_parquet(p, columns=["ticker", "trade_date", "close"])
-            break
-
     watch_raw = load_watchlist(settings.root)
     watch_codes = [str(w.get("ticker") or "").zfill(6) for w in watch_raw]
 
@@ -432,9 +437,24 @@ def export(out_dir: Path) -> dict[str, Any]:
             want.update(stocks.loc[stocks["top100_eligible"] == True, "ticker"].astype(str).str.zfill(6).tolist())
         elif ranking_rows:
             want.update(r["ticker"] for r in ranking_rows[:100])
+
+        prices = pd.DataFrame()
+        for folder in (settings.staged_dir / "live", settings.staged_dir / "demo"):
+            p = folder / "prices.parquet"
+            if p.exists():
+                try:
+                    prices = pd.read_parquet(p, columns=["ticker", "trade_date", "close"], filters=[("ticker", "in", list(want))])
+                except Exception:
+                    prices = pd.read_parquet(p, columns=["ticker", "trade_date", "close"])
+                if not prices.empty and "ticker" in prices.columns:
+                    prices["ticker"] = prices["ticker"].astype(str).str.zfill(6)
+                break
+
         hit = stocks[stocks["ticker"].isin(want)]
         for _, r in hit.iterrows():
             details[str(r["ticker"]).zfill(6)] = stock_detail(r, as_of, prices)
+    else:
+        prices = pd.DataFrame()
 
     watch = []
     for w in watch_raw:
@@ -464,15 +484,27 @@ def export(out_dir: Path) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         portfolio = {"missing": True, "error": "미수집", "detail": str(exc)[:160]}
 
+    import subprocess
+    git_commit = None
+    try:
+        r = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=str(settings.root), check=False)
+        if r.returncode == 0 and r.stdout:
+            git_commit = r.stdout.strip()
+    except Exception:
+        pass
+
     match_n = sum(1 for d in details.values() if d.get("recompute", {}).get("match"))
     meta = {
         "product": "KR Quant Research",
         "mode": "public-readonly-snapshot",
+        "schema_version": "1.1.0",
+        "git_commit": git_commit,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "as_of_date": as_of,
         "cutoff_ts": str(stocks["cutoff_ts"].iloc[0]) if not stocks.empty and "cutoff_ts" in stocks.columns else None,
         "model_version": quality.get("model_version") or (str(stocks["model_version"].iloc[0]) if not stocks.empty and "model_version" in stocks.columns else None),
         "run_id": quality.get("run_id"),
+        "source_bundle_hash": quality.get("source_bundle_hash"),
         "result_hash": quality.get("result_hash"),
         "config_hash": (quality.get("config_hash") or "")[:16],
         "orders": False,
@@ -505,9 +537,9 @@ def export(out_dir: Path) -> dict[str, Any]:
         "formulas": FORMULAS,
         "evidence_registry": evidence_registry,
     }
-    (out_dir / "snapshot.json").write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    (out_dir / "snapshot.json").write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")), encoding="utf-8")
     for name, data in payload.items():
-        (out_dir / f"{name}.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        (out_dir / f"{name}.json").write_text(json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
     return meta
 
 
