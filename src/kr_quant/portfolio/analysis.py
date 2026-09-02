@@ -15,11 +15,18 @@ WARN_KO = {
 }
 
 
-def _prices(settings: Settings) -> pd.DataFrame:
+def _prices(settings: Settings, tickers: list[str] | None = None) -> pd.DataFrame:
     for folder in (settings.staged_dir / "live", settings.staged_dir / "demo"):
         path = folder / "prices.parquet"
         if path.exists():
-            return pd.read_parquet(path)
+            cols = ["ticker", "trade_date", "close"]
+            try:
+                if tickers:
+                    codes = [str(t).zfill(6) for t in tickers]
+                    return pd.read_parquet(path, columns=cols, filters=[("ticker", "in", codes)])
+                return pd.read_parquet(path, columns=cols)
+            except Exception:
+                return pd.read_parquet(path)
     return pd.DataFrame()
 
 
@@ -58,7 +65,8 @@ def analyze_top20(settings: Settings, *, max_sector_weight: float = 0.40, max_na
 
     avg_corr = None
     effective = float(n)
-    prices = _prices(settings)
+    tickers = holdings["ticker"].tolist() if n >= 2 else []
+    prices = _prices(settings, tickers=tickers) if tickers else pd.DataFrame()
     if not prices.empty and n >= 2:
         tickers = holdings["ticker"].tolist()
         px = prices.copy()

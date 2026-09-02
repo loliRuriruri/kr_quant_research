@@ -255,7 +255,10 @@ def _has_usable_rank_rows(path: Path) -> bool:
         if path.suffix.lower() == ".csv":
             frame = pd.read_csv(path, dtype={"ticker": str})
         else:
-            frame = pd.read_parquet(path)
+            try:
+                frame = pd.read_parquet(path, columns=["quant_rank", "universe_eligible"])
+            except Exception:
+                frame = pd.read_parquet(path)
     except Exception:  # noqa: BLE001
         return False
     if frame.empty or "quant_rank" not in frame.columns:
@@ -986,21 +989,33 @@ def api_all(limit: int = 300, eligible_only: bool = True, as_of: str | None = No
     }
 
 
+_CORP_CODE_CACHE: dict[str, str] = {}
+
+
 def _corp_code(ticker: str, profile: dict[str, Any]) -> str:
     code = str(profile.get("corp_code") or "").zfill(8)
     if code and code != "00000000":
         return code
+    t_code = str(ticker).zfill(6)
+    if t_code in _CORP_CODE_CACHE:
+        return _CORP_CODE_CACHE[t_code]
     s = load_settings()
     path = s.staged_dir / "live" / "company.parquet"
     if not path.exists():
         return ""
-    df = pd.read_parquet(path)
-    if "stock_code" not in df.columns:
+    try:
+        df = pd.read_parquet(path, columns=["stock_code", "corp_code"])
+    except Exception:
+        try:
+            df = pd.read_parquet(path)
+        except Exception:
+            return ""
+    if "stock_code" not in df.columns or "corp_code" not in df.columns:
         return ""
-    hit = df[df["stock_code"].astype(str).str.zfill(6) == str(ticker).zfill(6)]
-    if hit.empty:
-        return ""
-    return str(hit.iloc[0].get("corp_code") or "").zfill(8)
+    for sc, cc in zip(df["stock_code"].astype(str).str.zfill(6), df["corp_code"].astype(str).str.zfill(8)):
+        if sc and cc and cc != "00000000":
+            _CORP_CODE_CACHE[sc] = cc
+    return _CORP_CODE_CACHE.get(t_code, "")
 
 
 def _dart_company(corp_code: str) -> dict[str, Any]:
@@ -3326,7 +3341,10 @@ def _local_company_names() -> dict[str, str]:
         path = folder / "master.parquet"
         if not path.exists():
             continue
-        df = pd.read_parquet(path)
+        try:
+            df = pd.read_parquet(path, columns=["ticker", "company"])
+        except Exception:
+            df = pd.read_parquet(path)
         if "ticker" not in df.columns or "company" not in df.columns:
             continue
         for rec in df[["ticker", "company"]].drop_duplicates("ticker").to_dict("records"):

@@ -2112,7 +2112,10 @@ function renderTop20(rows, count = currentDashTopN) {
   if (dnaTitleEl) dnaTitleEl.textContent = `🧬 TOP ${n} 팩터 DNA 분석`;
 }
 
+let _rankRenderToken = 0;
+
 function renderRank(q = "") {
+  const currentToken = ++_rankRenderToken;
   const needle = q.trim().toLowerCase();
   const rows = rankRows.filter((r) => {
     if (!needle) return true;
@@ -2122,9 +2125,14 @@ function renderRank(q = "") {
     return tickerMatch || nameMatch || chosungMatch;
   });
   const ordered = sortedCopy(rows, "rank", "quant_rank", "asc");
-  $("#rank-body").innerHTML = ordered
-    .map(
-      (r) => `<tr class="clickable" data-ticker="${padTicker(r.ticker)}">
+  const target = $("#rank-body");
+  if (!target) return;
+
+  const reportedSet = new Set(
+    (reportRows || []).filter((x) => x.kind === "AI 분석 리포트").map((x) => padTicker(x.ticker))
+  );
+
+  const renderRow = (r) => `<tr class="clickable" data-ticker="${padTicker(r.ticker)}">
       <td class="num">${rankMedal(r.quant_rank)}</td>
       <td>${padTicker(r.ticker)} <a class="ext inline" href="${naverUrl(r.ticker)}" target="_blank" rel="noopener">네이버</a></td>
       <td class="name-cell"><b>${r.company || ""}</b> ${aiReportBtn(r.ticker, r.company)} ${faChip(r)}${rowNote(r.comment_short || r.comment)}</td>
@@ -2136,11 +2144,37 @@ function renderRank(q = "") {
       <td class="num">${penCell(r.risk_penalty)}</td>
       <td class="num">${fmt((r.weighted_metric_coverage || 0) * 100, 0)}%</td>
       <td class="num">${confCell(r.data_confidence)}</td>
-      <td>${reportBadge(r.ticker)}</td>
-    </tr>`
-    )
-    .join("");
+      <td>${reportedSet.has(padTicker(r.ticker)) ? '<span class="chip ok">리포트</span>' : ''}</td>
+    </tr>`;
+
+  const CHUNK_SIZE = 100;
+  const initial = ordered.slice(0, CHUNK_SIZE);
+  target.innerHTML = initial.map(renderRow).join("");
   paintSortHeaders("rank");
+
+  if (ordered.length > CHUNK_SIZE) {
+    let offset = CHUNK_SIZE;
+    function renderNextChunk() {
+      if (currentToken !== _rankRenderToken) return;
+      const nextBatch = ordered.slice(offset, offset + CHUNK_SIZE);
+      if (nextBatch.length > 0) {
+        target.insertAdjacentHTML("beforeend", nextBatch.map(renderRow).join(""));
+        offset += CHUNK_SIZE;
+        if (offset < ordered.length) {
+          if (typeof requestIdleCallback !== "undefined") {
+            requestIdleCallback(renderNextChunk);
+          } else {
+            setTimeout(renderNextChunk, 16);
+          }
+        }
+      }
+    }
+    if (typeof requestIdleCallback !== "undefined") {
+      requestIdleCallback(renderNextChunk);
+    } else {
+      setTimeout(renderNextChunk, 16);
+    }
+  }
 }
 
 function reportBadge(ticker) {

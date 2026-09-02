@@ -1042,7 +1042,10 @@ def _enrich_remaining_peak_rows(
         missing_tickers = {ticker for _, ticker, _, key in requested if key not in metric_cache}
         by_ticker: dict[str, pd.DataFrame] = {}
         if missing_tickers:
-            prices = _prices(settings)
+            try:
+                prices = _prices(settings, tickers=list(missing_tickers))
+            except TypeError:
+                prices = _prices(settings)
             if prices is not None and not prices.empty and "ticker" in prices.columns:
                 ticker_values = prices["ticker"].astype(str).str.zfill(6)
                 work = prices.loc[ticker_values.isin(missing_tickers)].copy()

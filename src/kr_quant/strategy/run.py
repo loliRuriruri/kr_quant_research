@@ -72,14 +72,26 @@ def _execution_model(cfg: dict[str, Any]) -> ExecutionModel:
     )
 
 
-def _prices(settings: Settings) -> pd.DataFrame:
+def _prices(settings: Settings, columns: list[str] | None = None, tickers: list[str] | None = None) -> pd.DataFrame:
     from kr_quant.quality.corporate_actions import apply_official_adjustments, load_actions_from_settings
 
     frame = pd.DataFrame()
     for folder in (settings.staged_dir / "live", settings.staged_dir / "demo"):
         path = folder / "prices.parquet"
         if path.exists():
-            frame = pd.read_parquet(path)
+            try:
+                filters = None
+                if tickers:
+                    codes = [str(t).zfill(6) for t in tickers]
+                    filters = [("ticker", "in", codes)]
+                cols = list(columns) if columns else None
+                if cols:
+                    for req in ("ticker", "trade_date"):
+                        if req not in cols:
+                            cols.append(req)
+                frame = pd.read_parquet(path, columns=cols, filters=filters)
+            except Exception:
+                frame = pd.read_parquet(path)
             break
     if frame.empty:
         return frame

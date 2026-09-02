@@ -48,6 +48,24 @@ def _read_price_max(path: Path) -> date | None:
     if not path.exists():
         return None
     try:
+        import pyarrow.parquet as pq
+
+        pf = pq.ParquetFile(path)
+        if "trade_date" in pf.schema.names:
+            idx = pf.schema.names.index("trade_date")
+            max_vals = []
+            for i in range(pf.metadata.num_row_groups):
+                rg_col = pf.metadata.row_group(i).column(idx)
+                if rg_col.statistics and rg_col.statistics.has_min_max:
+                    max_vals.append(rg_col.statistics.max)
+            if max_vals:
+                raw_max = max(max_vals)
+                if hasattr(raw_max, "date"):
+                    return raw_max.date()
+                return date.fromisoformat(str(raw_max)[:10])
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         df = pd.read_parquet(path, columns=["trade_date"])
     except Exception:  # noqa: BLE001
         return None
@@ -69,9 +87,19 @@ def _read_financial_max(path: Path) -> date | None:
     if not path.exists():
         return None
     try:
-        df = pd.read_parquet(path)
+        import pyarrow.parquet as pq
+
+        pf = pq.ParquetFile(path)
+        avail = [c for c in ("available_date", "rcept_dt", "period_end") if c in pf.schema.names]
+        if avail:
+            df = pd.read_parquet(path, columns=avail)
+        else:
+            return None
     except Exception:  # noqa: BLE001
-        return None
+        try:
+            df = pd.read_parquet(path)
+        except Exception:  # noqa: BLE001
+            return None
     for col in ("available_date", "rcept_dt", "period_end"):
         if col in df.columns:
             hit = _max_date(df[col])

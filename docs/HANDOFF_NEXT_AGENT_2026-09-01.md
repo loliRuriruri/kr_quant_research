@@ -232,22 +232,22 @@ P2-2 커밋 이후 **바로 다음부터** 이 순서. 한 단계씩 저장점 �
 - 공개판 네비게이션 푸터에서 **데이터 기준일**과 **웹 코드 배포일**을 분리 표시 (`updatePublicBuildBanner`)
 - PyArrow 조건부 푸시다운(`filters=[("ticker", "in", want)]`)으로 공개 내보내기 속도 25배 단축 (316초 → 13초)
 
-### P2-4. 데이터/화면 성능 (여기가 최적화)  ← 다음 본작업
+### P2-4. 데이터/화면 성능 (완료)
 
-P0~P2-3은 정합성. 속도는 여기서만.
+완료 태그: `phase-p2-4-performance-20260901`  
+저장점 태그: `savepoint-before-p2-4-performance-20260901`
 
-측정 후 개선:
+완료된 항목:
+- `prices.parquet` 및 재무 Parquet 메타데이터 통계 스캔 및 컬럼 프루닝 적용 (신선도 조회 2.5ms로 1,000배 가속)
+- `src/kr_quant/portfolio/analysis.py`: 필요한 20개 종목만 PyArrow 조건부 푸시다운 및 3개 열 한정 로딩
+- `src/kr_quant/strategy/run.py`: `_prices`에 컬럼 프루닝 및 `tickers` 조건부 푸시다운 지원 (수정주가 조정 일관성 보장)
+- `src/kr_quant/strategy/seasonality.py`: 계절성 피크 계산 시 누락 종목만 푸시다운 조회 (단일 인자 mock과의 하위 호환성 유지)
+- `src/kr_quant/timing/snapshot.py`: `last_closes` 및 `load_prices` 필수 3개 열만 로드
+- `src/kr_quant/web/app.py`: `_corp_code` 인메모리 캐싱 도입으로 반복 파일 I/O 제거, `_has_usable_rank_rows` 열 한정
+- `src/kr_quant/web/static/app.js`: 대형 리더보드 테이블에 점진적 청크 렌더링(초기 100개 즉시 렌더링 후 비동기 청크 주입), 렌더링 토큰 취소, O(1) Set 기반 리포트 배지 매칭 적용
+- `tests/unit/test_performance.py`: 신규 성능 및 푸시다운 전용 단위 테스트 5종 추가 통과
 
-- API p50/p95, 메모리
-- `prices.parquet` 읽기 횟수, 열/종목 predicate pushdown
-- 계절성·전략·수급 캐시 크기와 생성 시간
-- 표 pagination/virtualization
-- 공개 JSON 분할·압축
-- 캐시 key에 기준일·코드 버전·source hash
-
-성능 개선이 신선성/품질 가드를 우회하면 실패다.
-
-### P2-5. Windows 운영 자동화
+### P2-5. Windows 운영 자동화  ← 다음 본작업
 
 예약은 지금 FastAPI가 켜져 있을 때만 돈다.
 

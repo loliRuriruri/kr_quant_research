@@ -42,9 +42,6 @@ _last_close_cache: tuple[float, dict[str, float]] | None = None
 def last_closes(settings: Settings) -> dict[str, float]:
     """Latest KRX close by ticker. Overlay helper, not a Quant input."""
     global _last_close_cache
-    frame = load_prices(settings)
-    if frame is None or frame.empty:
-        return {}
     path_mtime = 0.0
     for folder in (settings.staged_dir / "live", settings.staged_dir / "demo"):
         path = folder / "prices.parquet"
@@ -52,6 +49,9 @@ def last_closes(settings: Settings) -> dict[str, float]:
             path_mtime = max(path_mtime, path.stat().st_mtime)
     if _last_close_cache and _last_close_cache[0] == path_mtime:
         return _last_close_cache[1]
+    frame = load_prices(settings, columns=["ticker", "trade_date", "close"])
+    if frame is None or frame.empty:
+        return {}
     work = frame.copy()
     work["ticker"] = work["ticker"].astype(str).str.zfill(6)
     work["trade_date"] = pd.to_datetime(work["trade_date"], errors="coerce")
@@ -76,11 +76,16 @@ def attach_last_close(rows: list[dict[str, Any]], settings: Settings) -> list[di
     return rows
 
 
-def load_prices(settings: Settings) -> pd.DataFrame:
+def load_prices(settings: Settings, columns: list[str] | None = None) -> pd.DataFrame:
     for folder in (settings.staged_dir / "live", settings.staged_dir / "demo"):
         path = folder / "prices.parquet"
         if path.exists():
-            return pd.read_parquet(path)
+            try:
+                if columns:
+                    return pd.read_parquet(path, columns=columns)
+                return pd.read_parquet(path)
+            except Exception:
+                return pd.read_parquet(path)
     return pd.DataFrame()
 
 
