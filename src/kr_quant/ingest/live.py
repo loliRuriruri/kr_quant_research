@@ -940,8 +940,15 @@ def _seed_partition_outcomes(
     partitions: dict[str, list[str]],
     *,
     now: str,
+    fact_tickers: set[str] | None = None,
 ) -> dict[str, Any]:
     merged = dict(outcomes)
+    if fact_tickers is not None:
+        for ticker, rec in list(merged.items()):
+            code = canonical_ticker(ticker) or str(ticker).zfill(6)
+            outcome = rec.get("outcome") if isinstance(rec, dict) else str(rec or "")
+            if outcome == DART_USABLE_FACTS and code not in fact_tickers:
+                del merged[ticker]
     for ticker in partitions.get("no_corp_mapping") or []:
         code = canonical_ticker(ticker)
         if code and (not isinstance(merged.get(code), dict) or not merged[code].get("outcome")):
@@ -963,12 +970,20 @@ def backfill_dart_financials(settings: Settings, as_of: date, *, batch_size: int
     master = build_live_master(settings, as_of)
     facts_path = folder / "financial_facts.parquet"
     facts = pd.read_parquet(facts_path) if facts_path.exists() else pd.DataFrame()
+    fact_tickers: set[str] = set()
+    if not facts.empty and "ticker" in facts.columns:
+        fact_tickers = {canonical_ticker(code) or str(code).zfill(6) for code in facts["ticker"].tolist()}
     state_path = folder / "dart_backfill_state.json"
     prior = _read_json(state_path)
     batch, progress = plan_dart_backfill_targets(master, facts, batch_size=batch_size, state=prior)
     partitions = dart_universe_partitions(master)
     started_at = datetime.now(timezone.utc).isoformat()
-    outcomes = _seed_partition_outcomes(prior.get("ticker_outcomes") or {}, partitions, now=started_at)
+    outcomes = _seed_partition_outcomes(
+        prior.get("ticker_outcomes") or {},
+        partitions,
+        now=started_at,
+        fact_tickers=fact_tickers,
+    )
     started = {
         **progress,
         "status": "running",
@@ -1000,9 +1015,13 @@ def backfill_dart_financials(settings: Settings, as_of: date, *, batch_size: int
     for row in batch.to_dict("records"):
         ticker = canonical_ticker(row.get("ticker")) or str(row.get("ticker") or "").zfill(6)
         previous = outcomes.get(ticker)
+        prev_outcome = (previous.get("outcome") if isinstance(previous, dict) else str(previous or "")) if previous else ""
         if previous and not ticker_outcome_retryable(previous):
-            skip_codes.append(ticker)
-            continue
+            if prev_outcome == DART_USABLE_FACTS and ticker not in fact_tickers:
+                pass
+            else:
+                skip_codes.append(ticker)
+                continue
         fetch_rows.append(row)
     prior_batch_start = prior.get("batch_start")
     planned_batch_start = progress.get("batch_start")

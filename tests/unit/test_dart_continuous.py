@@ -136,3 +136,16 @@ def test_job_dart_backfill_continuous_cancel_requested(monkeypatch, tmp_path):
     assert len(calls) == 1
     assert any("중단" in line or "cancel" in line.lower() or "마감" in line for line in RUNNER.logs)
     RUNNER._cancel.clear()
+
+
+def test_dart_backfill_purges_phantom_usable_facts(monkeypatch, tmp_path):
+    from kr_quant.ingest.live import _seed_partition_outcomes, DART_USABLE_FACTS
+    outcomes = {
+        '005930': {'outcome': DART_USABLE_FACTS, 'updated_at': '2026-08-31T00:00:00Z'},
+        '000660': {'outcome': DART_USABLE_FACTS, 'updated_at': '2026-08-31T00:00:00Z'},
+    }
+    # Only 005930 actually exists in fact_tickers
+    fact_tickers = {'005930'}
+    cleaned = _seed_partition_outcomes(outcomes, {}, now='2026-09-03T00:00:00Z', fact_tickers=fact_tickers)
+    assert '005930' in cleaned
+    assert '000660' not in cleaned  # Phantom outcome was purged!
