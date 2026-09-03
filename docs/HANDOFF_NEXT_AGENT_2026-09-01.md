@@ -269,14 +269,15 @@ P2-2 커밋 이후 **바로 다음부터** 이 순서. 한 단계씩 저장점 �
 - `src/kr_quant/logging_config.py`: `SensitiveDataFilter` 추가로 로그 내 API 키, 비밀값, Bearer 토큰 자동 redaction
 - `src/kr_quant/atomic_io.py`: `write_json_atomic`에서 `dict` 뿐만 아니라 `list` 페이로드도 원자적으로 교체하도록 개선
 - `README.md` 및 `ARCHITECTURE.md`: 최신 기능(작업 스케줄러, AI 근거 패널, 브라우저 E2E, 결정론적 공개 스냅샷, 푸시다운 가속, 운영 안전성) 전면 동기화
-- `tests/unit/test_maintenance.py`: 로그 마스킹 및 원자적 JSON I/O 검증 단위 테스트 2종 추가 통과
+- `src/kr_quant/web/jobs.py` & `app.py` & `app.js` & `index.html`: OpenDART 전 종목 목표 커버리지 자동 연속 백필(`continuous=True`) 구현 (수십 번 반복 클릭 필요 없이 목표 도달 시까지 자동 연속 실행, 중간 팩터 재계산 오버헤드 제거, 중단 요청 및 API 일일 한도 안전 가드)
+- `tests/unit/test_maintenance.py` & `tests/unit/test_dart_continuous.py`: 전용 단위 테스트 추가 통과
 
 ---
 
 ## 4.1. 전체 마일스톤 완료 요약 (P0 ~ P3 100% COMPLETE)
 
 프로젝트 인계 및 로드맵의 모든 페이즈(P0-1 ~ P0-6, P1-1 ~ P1-5, P2-1 ~ P2-5, P3)가 완벽하게 구현되고 검증되었습니다.
-- 총 단위·통합·브라우저 E2E 테스트: **385개 100% 통과 (0 실패, 0 경고)**
+- 총 단위·통합·브라우저 E2E 테스트: **389개 100% 통과 (0 실패, 0 경고)**
 - 모든 마일스톤에 대해 저장점 및 완료 태그(`phase-*`)가 생성되고 GitHub `main`에 안전하게 푸시됨.
 - 다음 담당자(Grok, Codex 등)는 언제든지 특정 단계 태그로 롤백하거나 최신 코드를 즉시 프로덕션 운용할 수 있음.
 

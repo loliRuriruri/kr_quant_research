@@ -156,6 +156,7 @@ class JobIn(BaseModel):
     max_corps: int = 400
     dart_batch_size: int = 50
     skip_ingest: bool = False
+    continuous: bool = False
 
 
 class WatchIn(BaseModel):
@@ -3648,9 +3649,15 @@ def api_job_start(body: JobIn) -> dict[str, Any]:
                 lambda: job_krx_history(body.as_of, body.lookback_days or 750),
             )
         if body.kind == "dart-backfill":
+            is_cont = bool(body.continuous or body.max_corps == 0 or body.dart_batch_size == 0)
+            eff_batch = 50 if is_cont else (body.dart_batch_size or body.max_corps or 50)
             return RUNNER.start(
                 "dart-backfill",
-                lambda: job_dart_backfill(body.as_of, body.max_corps or 50),
+                lambda: job_dart_backfill(
+                    body.as_of,
+                    batch_size=eff_batch,
+                    continuous=is_cont,
+                ),
             )
         if body.kind == "investor-kis":
             from kr_quant.flow.official import collect_official

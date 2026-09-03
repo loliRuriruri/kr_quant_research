@@ -435,8 +435,19 @@ def job_krx_history(as_of: str = "auto", lookback_days: int = HISTORY_DAYS) -> d
     }
 
 
-def job_dart_backfill(as_of: str = "auto", batch_size: int = 50) -> dict[str, Any]:
-    """Advance DART full-universe coverage and re-score against the expanded facts."""
+def job_dart_backfill(
+    as_of: str = "auto",
+    batch_size: int = 50,
+    *,
+    continuous: bool = False,
+    max_cycles: int = 100,
+) -> dict[str, Any]:
+    """Advance DART full-universe coverage and re-score against the expanded facts.
+
+    When continuous=True, loops through successive batches until all universe targets
+    are covered or the user requests cancellation, re-scoring quant factors only once at the end.
+    """
+    import time
     from kr_quant.freshness import freshness_snapshot
     from kr_quant.ingest.live import backfill_dart_financials
     from kr_quant.orchestration.run import run_from_staged
@@ -445,14 +456,83 @@ def job_dart_backfill(as_of: str = "auto", batch_size: int = 50) -> dict[str, An
     if not s.opendart_api_key:
         raise RuntimeError("OPENDART_API_KEY가 없습니다.")
     d = resolve_as_of(as_of)
-    backfill = backfill_dart_financials(s, d, batch_size=max(1, min(int(batch_size or 50), 500)))
+    eff_batch = max(1, min(int(batch_size or 50), 500))
+
+    if not continuous:
+        backfill = backfill_dart_financials(s, d, batch_size=eff_batch)
+        result = run_from_staged(s, d, s.staged_dir / "live", source_mode="live")
+        out = _summarize(result)
+        out["dart_backfill"] = {
+            key: value
+            for key, value in backfill.items()
+            if key not in {"ticker_order", "ticker_outcomes"}
+        }
+        from kr_quant.run_generation import load_manifest
+
+        committed = load_manifest(s) or {}
+        out["freshness"] = freshness_snapshot(s, screen_as_of=committed.get("as_of_date") or out.get("as_of_date"))
+        out["pipeline_status"] = "partial" if out["freshness"].get("required_stale") else "success"
+        return out
+
+    # Continuous mode: loop through batches until target is reached or canceled
+    RUNNER.logs.append("🚀 OpenDART 전 종목 목표 커버리지 자동 연속 수집을 시작합니다.")
+    cycle_count = 0
+    consecutive_zero_runs = 0
+    last_backfill: dict[str, Any] = {}
+
+    while cycle_count < max_cycles:
+        is_cancelled = RUNNER.cancel_requested() if callable(getattr(RUNNER, "cancel_requested", None)) else bool(getattr(RUNNER, "cancel_requested", False))
+        if is_cancelled:
+            RUNNER.logs.append("⏹️ 사용자 중단 요청을 수신했습니다. 현재까지 수집된 데이터를 안전하게 보존하고 마감합니다.")
+            break
+
+        cycle_count += 1
+
+        try:
+            backfill = backfill_dart_financials(s, d, batch_size=eff_batch)
+            last_backfill = backfill
+        except Exception as exc:
+            err_str = str(exc).lower()
+            RUNNER.logs.append(f"⚠️ DART 수집 중 일시적 오류 발생: {exc}")
+            if "020" in err_str or "limit" in err_str or "한도" in err_str:
+                RUNNER.logs.append("🛑 OpenDART 일일 호출 한도에 도달하여 수집을 안전하게 마감합니다.")
+                break
+            time.sleep(1.0)
+            continue
+
+        status = backfill.get("status")
+        processed = int(backfill.get("processed_this_run") or 0)
+        cursor = int(backfill.get("cursor") or 0)
+        total = int(backfill.get("total_targets") or 0)
+        coverage = backfill.get("coverage") or {}
+        usable_pct = float(coverage.get("usable_pct") or 0.0)
+
+        RUNNER.set_progress({"current_step": "dart-backfill", "done": cursor, "targets": total})
+        RUNNER.logs.append(
+            f"[DART 배치 {cycle_count}] 진행: {cursor}/{total} 종목 ({usable_pct:.1f}% 커버리지, 이번 배치 {processed}개 적재)"
+        )
+
+        if processed == 0:
+            consecutive_zero_runs += 1
+        else:
+            consecutive_zero_runs = 0
+
+        # Terminate when cycle completed or no more retryables
+        if status == "complete" or bool(backfill.get("cycle_complete")) or (consecutive_zero_runs >= 2 and not backfill.get("has_retryable")):
+            RUNNER.logs.append("🎉 OpenDART 전 종목 재무 커버리지 백필 목표를 달성했습니다!")
+            break
+
+        time.sleep(0.2)
+
+    RUNNER.logs.append("📊 수집된 전 종목 재무 데이터를 바탕으로 퀀트 순위 및 팩터 점수를 전체 재계산합니다...")
     result = run_from_staged(s, d, s.staged_dir / "live", source_mode="live")
     out = _summarize(result)
     out["dart_backfill"] = {
         key: value
-        for key, value in backfill.items()
+        for key, value in last_backfill.items()
         if key not in {"ticker_order", "ticker_outcomes"}
     }
+    out["dart_backfill"]["continuous_cycles_run"] = cycle_count
     from kr_quant.run_generation import load_manifest
 
     committed = load_manifest(s) or {}

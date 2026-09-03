@@ -1225,23 +1225,24 @@
               <!-- Action Card 4: Resumable full-universe DART coverage -->
               <div class="run-action-box highlight-green">
                 <div class="run-action-box-left">
-                  <div class="run-action-badge ok">📑 5단계 · 여러 번 이어서 실행</div>
+                  <div class="run-action-badge ok">📑 5단계 · 전 종목 재무 커버리지</div>
                   <div class="run-action-name">4. OpenDART 전 종목 재무 커버리지 백필</div>
                   <div class="run-action-desc">
-                    <b>어떤 상황에 누르나요?</b> 빠른 갱신의 시총 상위 400개 밖에 있는 종목까지 재무공시를 순차 적재할 때 누릅니다. 중단돼도 체크포인트 다음 종목부터 이어집니다.<br>
-                    <span class="run-action-detail">📌 최신 분기 자동 선택 · 013/오류 시간차 재시도 · 한 배치 완료 후 퀀트 점수 재계산</span>
+                    <b>어떤 상황에 누르나요?</b> 빠른 갱신의 시총 상위 400개 밖에 있는 종목까지 재무공시를 순차 적재할 때 누릅니다. '목표까지 자동 연속 수집'을 선택하면 버튼을 반복해서 누를 필요 없이 전 종목(2,500여 개)이 끝날 때까지 백그라운드에서 자동으로 이어서 수집합니다.<br>
+                    <span class="run-action-detail">📌 최신 분기 자동 선택 · 013/오류 시간차 재시도 · 언제든 안전 중단 가능 · 목표 완료 후 퀀트 점수 일괄 재계산</span>
                   </div>
                   <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
-                    <span style="font-size:12px; font-weight:700; color:#34d399;">한 번에 수집:</span>
+                    <span style="font-size:12px; font-weight:700; color:#34d399;">수집 모드:</span>
                     <select id="run-dart-batch" style="background:#052e2b; color:#d1fae5; border:1px solid #10b981; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600;">
-                      <option value="25">25종목 · 짧게 실행</option>
-                      <option value="50" selected>50종목 · 권장</option>
-                      <option value="100">100종목 · 오래 실행</option>
+                      <option value="continuous" selected>🚀 목표(전 종목)까지 자동 연속 수집 ⭐ (추천)</option>
+                      <option value="100">100종목 · 1회만 실행</option>
+                      <option value="50">50종목 · 1회만 실행</option>
+                      <option value="25">25종목 · 짧게 1회만 실행</option>
                     </select>
                   </div>
                 </div>
                 <div class="run-action-box-right">
-                  <button class="ghost" data-job="dart-backfill" style="white-space:nowrap; padding:10px 18px; font-weight:700; border-color:#10b981; color:#6ee7b7; background:rgba(16,185,129,0.10);">📑 다음 DART 배치 수집</button>
+                  <button id="btn-dart-backfill" class="ghost" data-job="dart-backfill" style="white-space:nowrap; padding:10px 18px; font-weight:700; border-color:#10b981; color:#6ee7b7; background:rgba(16,185,129,0.18);">🚀 DART 전 종목 끝까지 자동 수집</button>
                 </div>
               </div>
               </div>

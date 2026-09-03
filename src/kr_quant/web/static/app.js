@@ -9592,7 +9592,16 @@ async function startJob(kind) {
   }
   if (kind === "dart-backfill") {
     payload.kind = "dart-backfill";
-    payload.max_corps = Number($("#run-dart-batch")?.value || 50);
+    const batchVal = $("#run-dart-batch")?.value || "continuous";
+    if (batchVal === "continuous" || batchVal === "all" || batchVal === "0") {
+      payload.continuous = true;
+      payload.dart_batch_size = 50;
+      payload.max_corps = 0;
+    } else {
+      payload.continuous = false;
+      payload.max_corps = Number(batchVal) || 50;
+      payload.dart_batch_size = Number(batchVal) || 50;
+    }
   }
 
   const krxBtn = $("#btn-krx-now");
@@ -10476,6 +10485,20 @@ $$("[data-job]").forEach((btn) =>
   btn.addEventListener("click", () => startJob(btn.dataset.job).catch((err) => alert(err.message)))
 );
 $("#job-cancel-btn")?.addEventListener("click", () => cancelJob());
+
+function updateDartBatchButtonText() {
+  const sel = $("#run-dart-batch");
+  const btn = $("#btn-dart-backfill") || $('[data-job="dart-backfill"]');
+  if (!sel || !btn) return;
+  if (sel.value === "continuous" || sel.value === "all" || sel.value === "0") {
+    btn.textContent = "🚀 DART 전 종목 끝까지 자동 수집";
+    btn.style.background = "rgba(16,185,129,0.18)";
+  } else {
+    btn.textContent = "📑 다음 DART 배치 수집";
+    btn.style.background = "rgba(16,185,129,0.10)";
+  }
+}
+$("#run-dart-batch")?.addEventListener("change", updateDartBatchButtonText);
 
 decorateSelect($("#llm-provider"));
 decorateSelect($("#llm-model-select"));

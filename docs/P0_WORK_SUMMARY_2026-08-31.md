@@ -416,6 +416,7 @@ KIS·수급 저장소 일부가 코드에서 숫자만 남겼다. `0220W0` → `
 - **원자적 I/O 확장 (`write_json_atomic`)**: `src/kr_quant/atomic_io.py`에서 `dict | list` 모두 원자적으로 안전하게 교체하도록 개선.
 - **최상위 문서 완전 동기화**: `README.md` 및 `ARCHITECTURE.md`를 현재 프로덕션 시스템의 모든 레이어와 100% 일치하도록 전면 개정.
 - **전용 유지보수 단위 테스트**: `tests/unit/test_maintenance.py` 2종 추가 통과.
+- **OpenDART 목표 커버리지 자동 연속 백필**: 사용자가 25/50/100 단위로 수십 번 반복 클릭할 필요 없이, 목표(전 종목) 완료 시까지 백그라운드 루프로 자동 연속 실행(`continuous=True`). 중간 팩터 재계산 오버헤드 제거, 중단 요청 및 DART 호출 한도 보호 완비 (`tests/unit/test_dart_continuous.py` 통과).
 
 ---
 
