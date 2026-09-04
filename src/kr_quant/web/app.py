@@ -3200,19 +3200,77 @@ DEFAULT_MOMENTUM_PORTFOLIO = [
 ]
 
 
+def enrich_momentum_portfolio_with_live_prices(settings: Settings, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from kr_quant.ingest.live import live_dir
+
+    prices_path = live_dir(settings) / "prices.parquet"
+    if not prices_path.exists() or not items:
+        return items
+    try:
+        prices = pd.read_parquet(prices_path)
+        if prices.empty or "ticker" not in prices.columns or "trade_date" not in prices.columns:
+            return items
+        prices["trade_date"] = pd.to_datetime(prices["trade_date"]).dt.date
+        prices["ticker"] = prices["ticker"].astype(str).str.zfill(6)
+        enriched = []
+        for item in items:
+            stock = dict(item)
+            code = str(stock.get("code") or "").zfill(6)
+            entry_date_str = str(stock.get("entry_date") or "")
+            try:
+                entry_date = pd.to_datetime(entry_date_str).date()
+            except Exception:
+                entry_date = None
+
+            sub = prices[prices["ticker"] == code]
+            if entry_date and not sub.empty:
+                sub_entry = sub[sub["trade_date"] >= entry_date].sort_values("trade_date")
+                if not sub_entry.empty:
+                    base_price = float(stock.get("entry_price") or sub_entry.iloc[0]["close"])
+                    if base_price <= 0:
+                        base_price = float(sub_entry.iloc[0]["close"])
+                    curve = []
+                    dates = []
+                    for _, row in sub_entry.iterrows():
+                        px = float(row["close"])
+                        ret = round(((px - base_price) / base_price) * 100.0, 2)
+                        curve.append(ret)
+                        dates.append(row["trade_date"].isoformat())
+                    stock["actual_curve"] = curve
+                    stock["actual_dates"] = dates
+                    stock["current_price"] = float(sub_entry.iloc[-1]["close"])
+                    stock["current_return"] = curve[-1] if curve else 0.0
+
+                    hist = stock.get("history_curve") or []
+                    if hist and len(curve) >= 2:
+                        h_sub = hist[:len(curve)]
+                        agreements = sum(1 for a, b in zip(curve[1:], h_sub[1:]) if (a >= 0 and b >= 0) or (a < 0 and b < 0))
+                        sync_pct = round((agreements / (len(curve) - 1)) * 100, 1)
+                        stock["trajectory_match"] = max(50.0, min(99.0, sync_pct))
+            enriched.append(stock)
+        return enriched
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to enrich momentum portfolio: %s", exc)
+        return items
+
+
 @app.get("/api/seasonality/momentum-portfolio")
 def api_seasonality_momentum_portfolio_get() -> dict[str, Any]:
     s = load_settings()
     file_path = s.root / "data" / "calendar_momentum_portfolio.json"
+    items = []
     if file_path.exists():
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list) and len(data) > 0:
-                    return {"ok": True, "items": data}
+                    items = data
         except Exception:
             pass
-    return {"ok": True, "items": DEFAULT_MOMENTUM_PORTFOLIO}
+    if not items:
+        items = [dict(x) for x in DEFAULT_MOMENTUM_PORTFOLIO]
+    items = enrich_momentum_portfolio_with_live_prices(s, items)
+    return {"ok": True, "items": items}
 
 
 @app.post("/api/seasonality/momentum-portfolio")

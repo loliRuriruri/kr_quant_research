@@ -13195,8 +13195,8 @@ function renderActiveMomentumChart() {
   const plotH = height - padding.top - padding.bottom;
 
   const historyCurve = stock.history_curve || [0, 2, 5, 8, 12, 16, 20, 25, 28, 25, 21, 17];
-  const actualCurve = stock.actual_curve || [0, 1.8];
-  const nDays = historyCurve.length;
+  const actualCurve = stock.actual_curve || [0];
+  const nDays = Math.max(historyCurve.length, actualCurve.length);
 
   const maxVal = Math.max(...historyCurve, ...actualCurve, 30) * 1.15;
   const minVal = Math.min(0, ...historyCurve, ...actualCurve) - 2;
@@ -13293,6 +13293,13 @@ function renderActiveMomentumChart() {
     ctx.strokeStyle = "#070b13";
     ctx.lineWidth = 2;
     ctx.stroke();
+
+    if (i === actualCurve.length - 1) {
+      ctx.fillStyle = "#38bdf8";
+      ctx.font = "bold 11px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`${val >= 0 ? "+" : ""}${val.toFixed(1)}%`, x, y - 10);
+    }
   });
 
   // Legend at top-right
@@ -13453,6 +13460,15 @@ async function loadCalendarMomentumPortfolio() {
                 <span style="font-size:11px; color:#94a3b8; display:block;">목표 수익률</span>
                 <b style="font-size:12px; color:#34d399;">${returnTarget ? `+${returnTarget}%` : "—"}</b>
               </div>
+            </div>
+
+            <!-- Live Tracking Status -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding:6px 10px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); border-radius:6px; font-size:11.5px;">
+              <span style="color:#94a3b8;">현재가 / 실시간 수익률</span>
+              <b style="color:${(stock.current_return ?? 0) >= 0 ? '#34d399' : '#f87171'}; font-family:monospace;">
+                ${stock.current_price ? Number(stock.current_price).toLocaleString() + '원' : '—'} 
+                (${stock.current_return != null ? ((stock.current_return >= 0 ? '+' : '') + Number(stock.current_return).toFixed(1) + '%') : '—'})
+              </b>
             </div>
 
             <!-- Catalyst box -->
