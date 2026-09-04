@@ -13170,6 +13170,68 @@ function calculateMomentumDDay(peakDateStr) {
   }
 }
 
+async function openSeasonalityModalForStock(ticker, name) {
+  const code = padTicker(ticker);
+  if (!code || code === "000000") return;
+
+  const targetStock = momentumPortfolio.find((s) => padTicker(s.code) === code);
+  const targetMonth = targetStock?.peak_date ? new Date(targetStock.peak_date).getMonth() + 1 : (new Date().getMonth() + 1);
+
+  // 1. Construct instant initial row from targetStock so modal opens immediately
+  const initialRow = {
+    ticker: code,
+    company: name || targetStock?.name || code,
+    market: "KOSPI",
+    window_name: `${targetMonth}월`,
+    target_month: targetMonth,
+    common_event_cluster: targetStock?.catalyst || "계절적 수요 증가 및 캘린더 모멘텀",
+    playbook: {
+      entry_timing: `매수 진입일: ${targetStock?.entry_date || "—"}`,
+      exit_timing: `목표 피크일: ${targetStock?.peak_date || "—"}`,
+      stop_loss: targetStock?.notes || "목표 피크일 도달 시 분할 익절 및 엑시트 권장",
+      recommendation: targetStock?.notes || "과거 계절성 패턴과 목표 피크일 전후 분할 엑시트 권장.",
+    },
+    remaining_peak: {
+      available: true,
+      current_price: targetStock?.current_price || targetStock?.entry_price,
+      peak_price_p50: targetStock?.target_price,
+      remaining_p50: targetStock?.target_price && targetStock?.entry_price
+        ? (targetStock.target_price - targetStock.entry_price) / targetStock.entry_price
+        : 0.15,
+      price_as_of: "최신 시세",
+    },
+    current_status: "WATCH",
+    entry_stage_label: targetStock?.peak_date ? `피크 D-${calculateMomentumDDay(targetStock.peak_date)}` : "캘린더 모멘텀",
+  };
+
+  openDiscoveryDetailModal(initialRow);
+
+  // 2. Fetch full deep discovery pattern from API in background and refine
+  try {
+    const data = await api(`/api/seasonality/discovery/${code}?lookback_years=${currentV11Lookback || 5}`);
+    const patterns = data.patterns || [];
+    if (patterns.length > 0) {
+      const match = patterns.find((p) => {
+        const m = parseInt(String(p.window_name || "").replace("월", ""), 10);
+        return m === targetMonth;
+      }) || patterns[0];
+
+      if (match) {
+        match.company = name || targetStock?.name || match.company || code;
+        if (targetStock?.catalyst) {
+          match.common_event_cluster = `${targetStock.catalyst}`;
+        }
+        const modal = $("#discovery-detail-modal");
+        if (modal && !modal.classList.contains("hidden")) {
+          openDiscoveryDetailModal(match);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Deep discovery pattern query skipped for", code, err);
+  }
+}
+
 function renderActiveMomentumChart() {
   const canvas = $("#momentum-chart-canvas");
   if (!canvas) return;
@@ -13436,12 +13498,13 @@ async function loadCalendarMomentumPortfolio() {
         : null;
 
       return `
-        <div class="card" style="background:linear-gradient(145deg, rgba(17,26,46,0.9), rgba(12,20,36,0.95)); border:1px solid ${isExited ? 'rgba(255,255,255,0.06)' : 'rgba(56,189,248,0.3)'}; border-radius:12px; padding:16px; display:flex; flex-direction:column; justify-content:space-between; gap:10px;">
+        <div class="card card-mom-item" data-code="${escapeHtml(stock.code)}" data-name="${escapeHtml(stock.name)}" style="background:linear-gradient(145deg, rgba(17,26,46,0.9), rgba(12,20,36,0.95)); border:1px solid ${isExited ? 'rgba(255,255,255,0.06)' : 'rgba(56,189,248,0.3)'}; border-radius:12px; padding:16px; display:flex; flex-direction:column; justify-content:space-between; gap:10px;">
           <div>
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div class="card-mom-clickable" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; cursor:pointer;" title="클릭 시 계절성 상세 분석 정보(플레이북/AI역추적/히트맵)를 엽니다.">
               <div style="display:flex; align-items:center; gap:8px;">
-                <b style="font-size:17px; color:#f8fafc;">${escapeHtml(stock.name)}</b>
+                <b style="font-size:17px; color:#f8fafc; text-decoration:underline dotted rgba(56,189,248,0.6);">${escapeHtml(stock.name)}</b>
                 <span style="font-size:12px; color:#94a3b8; font-family:monospace; font-weight:700;">${escapeHtml(stock.code)}</span>
+                <span style="font-size:10px; color:#38bdf8; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.25); padding:1px 6px; border-radius:4px; font-weight:700;">🔍 상세 정보</span>
               </div>
               ${badgeHtml}
             </div>
@@ -13547,6 +13610,18 @@ async function loadCalendarMomentumPortfolio() {
       }
     };
   });
+
+  // Open Seasonality Detail Modal on clicking card header or stock name
+  cardsContainer.querySelectorAll(".card-mom-clickable").forEach((header) => {
+    header.onclick = () => {
+      const card = header.closest(".card-mom-item");
+      if (card) {
+        const code = card.dataset.code;
+        const name = card.dataset.name;
+        openSeasonalityModalForStock(code, name);
+      }
+    };
+  });
 }
 
 // Bind subtab event listener and form submit
@@ -13556,6 +13631,19 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedMomentumStockId = e.target.value;
     renderActiveMomentumChart();
   });
+
+  // Open modal button next to Trajectory Chart stock selector
+  const btnChartStockModal = $("#btn-open-momentum-stock-modal");
+  if (btnChartStockModal) {
+    btnChartStockModal.onclick = () => {
+      const select = $("#momentum-chart-stock-select");
+      const id = select ? select.value : selectedMomentumStockId;
+      const stock = momentumPortfolio.find((s) => s.id === id) || momentumPortfolio[0];
+      if (stock) {
+        openSeasonalityModalForStock(stock.code, stock.name);
+      }
+    };
+  }
 
   // Momentum Add Form Submit
   const addForm = $("#momentum-add-form");
