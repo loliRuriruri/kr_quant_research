@@ -6299,6 +6299,8 @@ body {
   line-height: 1.5;
 }
 #price-overlay-status { max-width: 300px; white-space: normal; }
+.stock-detail-error { padding: 20px; overflow-wrap: anywhere; }
+.stock-detail-error h3 { color: var(--bad); }
 .discovery-modal-head { flex-wrap: wrap; }
 .discovery-modal-head > div:first-child { min-width: min(300px, 100%); }
 .discovery-modal-head > div:last-child { margin-left: auto; }

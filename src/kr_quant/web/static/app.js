@@ -1874,7 +1874,13 @@ function startLiveSync(name) {
   }
 }
 
+let stockDrawerRequest = 0;
 function closeDrawer() {
+  stockDrawerRequest += 1;
+  if (!$("#drawer")?.classList.contains("hidden")) {
+    const progress = $("#global-progress-bar");
+    if (progress) progress.style.display = 'none';
+  }
   $("#drawer")?.classList.add("hidden");
   $("#drawer-back")?.classList.add("hidden");
   document.body.classList.remove("modal-open");
@@ -3254,6 +3260,8 @@ function renderExtLinksTop(links) {
 
 async function openStock(ticker) {
   const code = padTicker(ticker);
+  const request = ++stockDrawerRequest;
+  const isCurrent = () => request === stockDrawerRequest && !$("#drawer")?.classList.contains("hidden");
   openDrawerUi();
   $("#drawer-title").textContent = `⏳ 종목 심층 리서치 로딩 중... (${code})`;
   $("#drawer-body").innerHTML = `
@@ -3275,7 +3283,9 @@ async function openStock(ticker) {
 
   try {
     const data = await api(`/api/results/stock/${code}`);
+    if (!isCurrent()) return;
     const r = data.row || {};
+    if (padTicker(r.ticker || '') !== code) throw new Error('요청 종목과 응답 종목이 다릅니다. 다시 확인해 주세요.');
     const links = data.links || [];
     const gates = data.gates || {};
     const factors = [
@@ -3795,20 +3805,25 @@ async function openStock(ticker) {
         }
       });
     }
-    loadReport(code).catch(() => {
+    loadReport(code, undefined, isCurrent).catch(() => {
+      if (!isCurrent()) return;
       $("#report-box").innerHTML = "<p style='font-size:12px; color:#64748b;'>저장된 AI 분석 리포트 없음</p>";
     });
-    loadTier1StockInsights(code).catch(() => {});
+    loadTier1StockInsights(code, isCurrent).catch(() => {});
   } catch (err) {
-    $("#drawer-body").innerHTML = `<div style="padding:20px; color:#ef4444;"><h3>❌ 데이터 로딩 실패</h3><p>${escapeHtml(err.message)}</p></div>`;
+    if (!isCurrent()) return;
+    $("#drawer-title").textContent = `종목 ${code} · 조회 실패`;
+    $("#drawer-body").innerHTML = `<div class="stock-detail-error" role="alert"><h3>데이터를 불러오지 못했습니다</h3><p>${escapeHtml(err.message)}</p><button type="button" id="stock-detail-retry">이 종목 다시 조회</button><p class="hint">종목 상세 조회를 재시도합니다. 일봉 수집·점수 재계산 버튼이 아닙니다.</p></div>`;
+    $("#stock-detail-retry").addEventListener('click', () => openStock(code));
   } finally {
-    if (bar) bar.style.display = "none";
+    if (bar && request === stockDrawerRequest) bar.style.display = "none";
   }
 }
 
-async function loadTier1StockInsights(code) {
+async function loadTier1StockInsights(code, isCurrent = () => true) {
   try {
     const res = await api(`/api/research/${code}/tier1-insights`);
+    if (!isCurrent()) return;
     if (!res) return;
     const insightBoxes = [$("#tier1-news-container"), $("#tier1-dart-container"), $("#tier1-posture-container")].filter(Boolean);
     if (!res.ok) {
@@ -3873,6 +3888,7 @@ async function loadTier1StockInsights(code) {
     }
     insightBoxes.forEach((box) => appendTier1Meta(box, res));
   } catch (e) {
+    if (!isCurrent()) return;
     console.debug("Tier 1 insights load error:", e);
     const box = $("#tier1-news-container");
     if (box) renderTier1Unavailable(box, null, e);
@@ -4449,10 +4465,10 @@ function renderReport(rec) {
   $("#btn-report-regen")?.addEventListener("click", () => runReport(rec.ticker).catch((err) => alert(err.message)));
 }
 
-async function loadReport(ticker, asOf) {
+async function loadReport(ticker, asOf, isCurrent = () => true) {
   const q = asOf ? `?as_of=${encodeURIComponent(asOf)}` : "";
   const data = await api(`/api/research/${ticker}/report${q}`);
-  renderReport(data.exists ? data.row : null);
+  if (isCurrent()) renderReport(data.exists ? data.row : null);
   return data.exists ? data.row : null;
 }
 
@@ -4568,7 +4584,7 @@ async function openArchivedItem(ticker, asOf, kind) {
       return;
     }
   }
-  const rec = await loadReport(code, asOf);
+  const rec = await loadReport(code, asOf, () => false);
   if (rec) {
     openReportModal(rec);
     return;
@@ -5706,7 +5722,7 @@ function flowTable(title, rows, amountKey, tabId) {
           <tr>
             <th style="width:40px;">#</th>
             <th class="sortable has-tip" data-sort="company" style="min-width:140px;" data-tip-title="종목명 및 6자리 코드" data-tip="클릭 시 해당 종목의 실시간 수급 분해 및 팩터 상세창이 열립니다." tabindex="0">종목명</th>
-            <th class="sortable has-tip" data-sort="last" data-tip-title="토스 실시간 시세" data-tip="토스증권 실시간 기준 현재가 및 당일 등락률입니다." tabindex="0">최근가</th>
+            <th class="sortable has-tip" data-sort="last" data-tip-title="수급 저장본의 가격" data-tip="수급 스캔에 저장된 가격과 등락률입니다. 현재 시세는 상단 가격 확인으로 별도 조회하며 순위는 바뀌지 않습니다." tabindex="0">최근가</th>
             <th class="sortable has-tip" data-sort="foreign_net" data-tip-title="👽 외국인 누적 순매수" data-tip="설정 기간 동안 외국인 투자자의 합산 순매수 주수입니다." tabindex="0">외인(주)</th>
             <th class="sortable has-tip" data-sort="institution_net" data-tip-title="🏛️ 기관 누적 순매수" data-tip="금융투자, 보험, 투신, 사모 등 기관 투자자 전체의 합산 순매수 주수입니다." tabindex="0">기관(주)</th>
             <th class="sortable has-tip" data-sort="pe_net" data-tip-title="💼 사모펀드 누적 순매수" data-tip="가장 빠른 스마트머니인 사모펀드의 합산 순매수 주수입니다." tabindex="0">사모(주)</th>
@@ -7000,7 +7016,7 @@ function renderEmpty(data) {
           <tr>
             <th style="width:40px;">#</th>
             <th class="sortable has-tip" data-sort="company" style="min-width:150px;" data-tip-title="종목명 및 셋업" data-tip="종목명 및 포착된 빈집/복귀/개인받음 수급 셋업 태그입니다." tabindex="0">종목 · 셋업</th>
-            <th class="sortable has-tip" data-sort="last" data-tip-title="최근 종가" data-tip="토스증권 실시간 기준 현재가 및 당일 등락률입니다." tabindex="0">최근가</th>
+            <th class="sortable has-tip" data-sort="last" data-tip-title="수급 저장본의 가격" data-tip="수급 스캔에 저장된 가격과 등락률입니다. 상단 가격 확인의 별도 시세와 구분하세요." tabindex="0">최근가</th>
             <th class="sortable has-tip" data-sort="foreign_holding_rate" data-tip-title="👽 외국인 보유 지분율" data-tip="토스증권 기준 현재 외인 지분율입니다. 낮을수록 수급 공백(빈집)입니다." tabindex="0">외인 지분</th>
             <th class="sortable has-tip" data-sort="foreign_rate_chg" data-tip-title="📊 외인 지분율 증감" data-tip="최근 5거래일 동안 외국인 지분율의 %p 변동치입니다." tabindex="0">지분 변화</th>
             <th class="sortable has-tip" data-sort="foreign_net" data-tip-title="👽 외국인 순매도 주수" data-tip="최근 기간 동안 외국인의 순매도 수량입니다." tabindex="0">외인(주)</th>
