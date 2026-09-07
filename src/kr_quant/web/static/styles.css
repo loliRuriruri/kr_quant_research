@@ -4346,6 +4346,17 @@ body.modal-open { overflow: hidden; }
   color: #d8b4fe;
   box-shadow: 0 4px 12px rgba(168, 85, 247, 0.25);
 }
+.chart-link-mom {
+  background: rgba(2, 132, 199, 0.22);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.45);
+}
+.chart-link-mom:hover {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  border-color: #38bdf8;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(56, 189, 248, 0.35);
+}
 .chart-period-tabs {
   display: flex;
   gap: 4px;
@@ -5963,13 +5974,32 @@ td.num, th.num, td .meta, th {
   color: #d8b4fe;
 }
 
-/* Dashboard Expanded Leaderboard: aligned with right column (~12th rank / 860px) & smooth scroll */
+/* Dashboard Expanded Leaderboard: dynamically matched to right column height with zero void */
+.dash-leaderboard-card {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
 .dash-table-wrap {
-  max-height: 860px !important;
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
   overflow-y: auto !important;
   overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(56, 189, 248, 0.3) rgba(15, 23, 42, 0.6);
+}
+
+@media (max-width: 1100px) {
+  .dash-leaderboard-card {
+    height: auto !important;
+  }
+  .dash-table-wrap {
+    flex: none !important;
+    max-height: 75vh !important;
+  }
 }
 
 .dash-table-wrap::-webkit-scrollbar {
@@ -6230,5 +6260,15 @@ body {
   min-width: 1200px;
 }
 
-
-
+/* 🎯 Calendar Momentum Entry Price Click-to-edit Style */
+.mom-entry-price-click {
+  transition: all 0.18s ease-in-out;
+  border-radius: 6px;
+  padding: 2px 5px;
+  margin: -2px -5px;
+}
+.mom-entry-price-click:hover {
+  background: rgba(56, 189, 248, 0.16);
+  outline: 1px dashed rgba(56, 189, 248, 0.5);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+}

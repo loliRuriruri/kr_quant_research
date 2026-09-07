@@ -1566,7 +1566,10 @@ async function applyPublicShareMode() {
   }
 }
 
-function switchView(name) {
+const viewLoadedAt = {};
+const VIEW_CACHE_TTL_MS = 180000; // 3 minutes
+
+function switchView(name, force = false) {
   if (publicShareMode && name === "settings") name = "dash";
   // Backward compatibility: retired flow/empty routes open their matching
   // tabs inside the unified smart-flow screen.
@@ -1582,7 +1585,8 @@ function switchView(name) {
   closeDrawer();
   closeMobileDrawer();
   $$(".view").forEach((el) => el.classList.add("hidden"));
-  $(`#view-${name}`).classList.remove("hidden");
+  const viewEl = $(`#view-${name}`);
+  if (viewEl) viewEl.classList.remove("hidden");
   $$(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   $$("[data-mobile-view]").forEach((b) => b.classList.toggle("active", b.dataset.mobileView === name));
   if (titles[name]) {
@@ -1614,7 +1618,23 @@ function switchView(name) {
   }
   applyPriceChrome(name);
   startLiveSync(name);
+  if (name === "market") {
+    if (typeof startMacroLivePolling === "function") startMacroLivePolling();
+  } else {
+    if (typeof stopMacroLivePolling === "function") stopMacroLivePolling();
+  }
+
+  // Instant DOM Switch: If view is already rendered and within TTL, show instantly without network roundtrip
+  const now = Date.now();
+  const isFresh = !force && viewLoadedAt[name] && (now - viewLoadedAt[name] < VIEW_CACHE_TTL_MS);
+  if (isFresh) {
+    if (name === "dash") requestAnimationFrame(syncDashLeaderboardHeight);
+    return;
+  }
+  viewLoadedAt[name] = now;
+
   if (name === "dash" || name === "rank") stampFromStatus();
+  if (name === "dash") requestAnimationFrame(syncDashLeaderboardHeight);
   if (name === "rank") loadRankTier1Briefing().catch(() => {});
   if (name === "investor") {
     loadInvestor().catch((err) => alert(err.message));
@@ -1630,9 +1650,6 @@ function switchView(name) {
   if (name === "market") {
     loadMarket().catch((err) => alert(err.message));
     loadMacro().catch(() => {});
-    if (typeof startMacroLivePolling === "function") startMacroLivePolling();
-  } else {
-    if (typeof stopMacroLivePolling === "function") stopMacroLivePolling();
   }
   if (name === "strategy") {
     loadStrategy().catch((err) => alert(err.message));
@@ -1651,6 +1668,7 @@ function switchView(name) {
     else if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
     else if (currentV11Subtab === "explanation") loadAIExplanations().catch(() => {});
     else if (currentV11Subtab === "calendar") loadInstitutionalCalendar().catch(() => {});
+    else if (currentV11Subtab === "momentum") loadCalendarMomentumPortfolio().catch(() => {});
     else loadSeasonality().catch(() => {});
   }
   if (name === "run") stampRunAsOf();
@@ -2110,6 +2128,24 @@ function renderTop20(rows, count = currentDashTopN) {
   if (titleEl) titleEl.textContent = `🏆 Quant TOP ${n} 리더보드`;
   const dnaTitleEl = $("#dash-dna-title");
   if (dnaTitleEl) dnaTitleEl.textContent = `🧬 TOP ${n} 팩터 DNA 분석`;
+  requestAnimationFrame(syncDashLeaderboardHeight);
+}
+
+function syncDashLeaderboardHeight() {
+  const leftCard = $(".dash-leaderboard-card");
+  const rightCol = $("#dash-side-col") || document.querySelector("#view-dash .grid-2 > div:last-child");
+  if (!leftCard || !rightCol) return;
+
+  if (window.innerWidth <= 1100) {
+    leftCard.style.height = "";
+    return;
+  }
+
+  leftCard.style.height = "auto";
+  const rightH = rightCol.offsetHeight;
+  if (rightH > 0) {
+    leftCard.style.height = `${rightH}px`;
+  }
 }
 
 let _rankRenderToken = 0;
@@ -3471,11 +3507,12 @@ async function openStock(ticker) {
           ${publicShareMode ? `
             <p class="hint public-readonly-note">공개 웹은 마지막 업로드 스냅샷을 보는 읽기 전용 화면입니다. AI 생성·백테스트 실행·관심종목 저장은 로컬에서 사용할 수 있습니다.</p>
           ` : `
-            <div class="actions" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; margin:14px 0 6px;">
+            <div class="actions" style="display:grid; grid-template-columns: repeat(5, 1fr); gap:6px; margin:14px 0 6px;">
               <button class="primary" id="btn-report" data-ticker="${ticker}" style="font-weight:700; font-size:11px; padding:7px 2px; display:inline-flex; align-items:center; justify-content:center; gap:2px; white-space:nowrap;" title="AI 심층 분석 리포트 생성">🤖 AI 리포트</button>
               <button id="btn-infographic-drawer" data-ticker="${ticker}" style="background:linear-gradient(135deg, rgba(6,182,212,0.22), rgba(59,130,246,0.22)); color:#38bdf8; border:1px solid rgba(56,189,248,0.5); font-weight:700; font-size:11px; padding:7px 2px; display:inline-flex; align-items:center; justify-content:center; gap:2px; white-space:nowrap;" title="인포그래픽 프레젠테이션 뷰 열기">🎨 인포그래픽</button>
               <button id="btn-backtest-stock" data-ticker="${ticker}" style="background:rgba(56,189,248,0.12); color:#38bdf8; border-color:rgba(56,189,248,0.35); font-weight:600; font-size:11px; padding:7px 2px; display:inline-flex; align-items:center; justify-content:center; gap:2px; white-space:nowrap;" title="4대 전략 백테스트">🧪 백테스팅</button>
               <button id="btn-watch" data-ticker="${ticker}" data-company="${escapeHtml(r.company || "")}" style="font-size:11px; padding:7px 2px; display:inline-flex; align-items:center; justify-content:center; gap:2px; white-space:nowrap;" title="관심종목 추가/해제">⭐ 관심종목</button>
+              <button id="btn-drawer-register-mom" data-ticker="${ticker}" data-company="${escapeHtml(r.company || "")}" style="background:linear-gradient(135deg, rgba(2,132,199,0.25), rgba(3,105,161,0.25)); color:#38bdf8; border:1px solid rgba(56,189,248,0.5); font-weight:700; font-size:11px; padding:7px 2px; display:inline-flex; align-items:center; justify-content:center; gap:2px; white-space:nowrap;" title="캘린더 모멘텀 종목관리에 등록">🎯 캘린더 등록</button>
             </div>
             <p class="hint" style="font-size:11px; color:#94a3b8; margin-top:2px;">💡 AI 심층 리포트는 선택한 LLM으로 14대 지침을 분석하며, <b>인포그래픽 뷰</b>로 시각화 덱을 즉시 확인할 수 있습니다.</p>
           `}
@@ -3540,6 +3577,12 @@ async function openStock(ticker) {
         }
       });
       $("#btn-watch")?.addEventListener("click", () => addWatch(code, r.company || "").catch((err) => alert(err.message)));
+      $("#btn-drawer-register-mom")?.addEventListener("click", () => {
+        const foundRow = (preEntryTop10 || []).find((x) => padTicker(x.ticker) === code)
+          || (discoveryRows || []).find((x) => padTicker(x.ticker) === code)
+          || { ticker: code, company: r.company || code, last_close: r.last_close || r.price };
+        openMomentumRegisterModal(foundRow);
+      });
       $("#btn-collect-flow-single")?.addEventListener("click", async () => {
         const btn = $("#btn-collect-flow-single");
         if (btn) {
@@ -4387,6 +4430,7 @@ async function loadDash() {
   renderDashDna(dashRows, currentDashTopN);
   renderTop20(dashRows, currentDashTopN);
   renderQuality(status.quality, guideCache, status.freshness);
+  requestAnimationFrame(syncDashLeaderboardHeight);
   rankRows = all.rows || [];
   renderRank($("#rank-q").value);
   renderJob(status.job);
@@ -9897,6 +9941,7 @@ document.querySelectorAll(".dash-topn-btn").forEach((btn) => {
     currentDashTopN = parseInt(btn.dataset.n, 10) || 30;
     renderTop20(dashRows, currentDashTopN);
     renderDashDna(dashRows, currentDashTopN);
+    requestAnimationFrame(syncDashLeaderboardHeight);
   });
 });
 
@@ -9982,14 +10027,33 @@ if ($("#btn-krx-now")) {
 if ($("#btn-dash-reload")) {
   $("#btn-dash-reload").addEventListener("click", () => reloadCurrentView().catch((err) => alert(err.message)));
 }
+window.addEventListener("resize", () => {
+  if (typeof currentView !== "undefined" && currentView === "dash") {
+    syncDashLeaderboardHeight();
+  }
+});
+if (typeof window !== "undefined" && window.ResizeObserver) {
+  const dashSideCol = $("#dash-side-col") || document.querySelector("#view-dash .grid-2 > div:last-child");
+  if (dashSideCol) {
+    new ResizeObserver(() => {
+      if (typeof currentView !== "undefined" && currentView === "dash") {
+        syncDashLeaderboardHeight();
+      }
+    }).observe(dashSideCol);
+  }
+}
 if ($("#market-refresh")) {
   $("#market-refresh").addEventListener("click", () => {
+    delete viewLoadedAt["market"];
     loadMarket(true).catch((err) => alert(err.message));
     loadMacro(true).catch(() => {});
   });
 }
 if ($("#investor-refresh")) {
-  $("#investor-refresh").addEventListener("click", () => loadInvestor().catch((err) => alert(err.message)));
+  $("#investor-refresh").addEventListener("click", () => {
+    delete viewLoadedAt["investor"];
+    loadInvestor().catch((err) => alert(err.message));
+  });
 }
 if ($("#investor-collect")) {
   $("#investor-collect").addEventListener("click", () => startJob("investor-kis").catch((err) => alert(err.message)));
@@ -10001,11 +10065,17 @@ if ($("#investor-turn")) {
   $("#investor-turn").addEventListener("change", () => loadInvestorEvents().catch((err) => alert(err.message)));
 }
 if ($("#sunzi-refresh")) {
-  $("#sunzi-refresh").addEventListener("click", () => loadSunzi().catch((err) => alert(err.message)));
+  $("#sunzi-refresh").addEventListener("click", () => {
+    delete viewLoadedAt["sunzi"];
+    loadSunzi().catch((err) => alert(err.message));
+  });
 }
 setupSunziControls();
 if ($("#nps-refresh")) {
-  $("#nps-refresh").addEventListener("click", () => loadNps().catch((err) => alert(err.message)));
+  $("#nps-refresh").addEventListener("click", () => {
+    delete viewLoadedAt["nps"];
+    loadNps().catch((err) => alert(err.message));
+  });
 }
 if ($("#nps-collect")) {
   $("#nps-collect").addEventListener("click", () => startJob("dart-nps").catch((err) => alert(err.message)));
@@ -11050,6 +11120,124 @@ function renderSeasonalOverlayChart(canvas, r, months, mode = "seasonal_overlay"
   }
 }
 
+function openMomentumRegisterModal(r, isEdit = false) {
+  if (!r) return;
+  const modal = $("#momentum-register-modal");
+  if (!modal) return;
+
+  const code = padTicker(r.ticker || r.code || "");
+  const name = r.company || r.name || code;
+
+  // Title & description & button based on isEdit
+  const titleEl = $("#mom-reg-modal-title");
+  const descEl = $("#mom-reg-modal-desc");
+  const submitBtn = $("#mom-reg-submit-btn");
+
+  if (isEdit) {
+    if (titleEl) titleEl.textContent = `✏️ ${name} (${code}) 모멘텀 관리 수정`;
+    if (descEl) descEl.innerHTML = `실제 <b>매수 진입가</b>, 매수 진입일, 목표 피크일, 엑시트 메모를 수정합니다. 저장 시 실시간 수익률과 동조율이 즉시 재계산됩니다.`;
+    if (submitBtn) submitBtn.innerHTML = `💾 수정 내용 저장`;
+  } else {
+    if (titleEl) titleEl.textContent = `종목 관리 (캘린더 모멘텀) 등록`;
+    if (descEl) descEl.innerHTML = `선택한 계절성 종목의 진입일·목표 피크일·촉매를 <b>캘린더 모멘텀 포트폴리오 트래커</b>에 등록하여 실시간 D-Day와 익절 타이밍을 추적합니다.`;
+    if (submitBtn) submitBtn.innerHTML = `🎯 종목관리에 저장`;
+  }
+
+  const nameInput = $("#mom-reg-name");
+  const codeInput = $("#mom-reg-code");
+  if (nameInput) nameInput.value = name;
+  if (codeInput) {
+    codeInput.value = code;
+    codeInput.readOnly = isEdit;
+    codeInput.style.opacity = isEdit ? "0.7" : "1";
+  }
+
+  // Entry date default: today or existing
+  const todayStr = new Date().toISOString().split("T")[0];
+  const curYear = new Date().getFullYear();
+  if ($("#mom-reg-entry-date")) {
+    $("#mom-reg-entry-date").value = r.entry_date || todayStr;
+  }
+
+  // Target peak date: calculate from remaining_peak.peak_date or exit_window_str
+  let peakDate = r.peak_date || "";
+  if (!peakDate) {
+    if (r.remaining_peak && r.remaining_peak.peak_date) {
+      peakDate = r.remaining_peak.peak_date;
+    } else if (r.exit_window_str) {
+      const m = r.exit_window_str.match(/(\d{1,2})\/(\d{1,2})/);
+      if (m) {
+        const mm = m[1].padStart(2, "0");
+        const dd = m[2].padStart(2, "0");
+        peakDate = `${curYear}-${mm}-${dd}`;
+      }
+    }
+    if (!peakDate) {
+      const d = new Date();
+      d.setDate(d.getDate() + 25);
+      peakDate = d.toISOString().split("T")[0];
+    }
+  }
+  if ($("#mom-reg-peak-date")) $("#mom-reg-peak-date").value = peakDate;
+
+  // Prices: if editing, use existing entry_price; otherwise suggest current market price or last_close
+  const curPrice = r.entry_price != null ? r.entry_price : (r.current_price || r.last_close || r.price || "");
+  const targetPrice = r.target_price != null ? r.target_price : ((r.remaining_peak && r.remaining_peak.peak_price_p50) || "");
+  if ($("#mom-reg-entry-price")) {
+    $("#mom-reg-entry-price").value = curPrice ? Math.round(Number(curPrice)) : "";
+  }
+  if ($("#mom-reg-target-price")) {
+    $("#mom-reg-target-price").value = targetPrice ? Math.round(Number(targetPrice)) : "";
+  }
+
+  // Catalyst & Notes
+  const catalyst = r.catalyst || r.common_event_cluster || (r.window_name ? `${r.window_name} 계절성 모멘텀` : "");
+  const notes = r.notes || r.playbook?.recommendation || r.secondary_cluster || "D-3일부터 분할 익절 시작, 피크 목표일 엑시트 완료";
+  if ($("#mom-reg-catalyst")) $("#mom-reg-catalyst").value = catalyst;
+  if ($("#mom-reg-notes")) $("#mom-reg-notes").value = notes;
+
+  modal.classList.remove("hidden");
+  if (isEdit) {
+    setTimeout(() => {
+      const pIn = $("#mom-reg-entry-price");
+      if (pIn) {
+        pIn.focus();
+        pIn.select();
+      }
+    }, 50);
+  }
+}
+
+function updateDiscoveryModalRegisterButton(code) {
+  const isRegistered = (momentumPortfolio || []).some((item) => padTicker(item.code) === padTicker(code) && !item.exited);
+  const regBtn = $("#disc-modal-register-mom-btn");
+  const headRegBtn = $("#disc-modal-head-register-btn");
+  if (regBtn) {
+    if (isRegistered) {
+      regBtn.innerHTML = "<span>✅ 종목관리 등록됨</span>";
+      regBtn.style.background = "rgba(16, 185, 129, 0.25)";
+      regBtn.style.borderColor = "#10b981";
+      regBtn.style.color = "#34d399";
+    } else {
+      regBtn.innerHTML = "<span>🎯 종목관리 등록</span>";
+      regBtn.style.background = "linear-gradient(135deg, #0284c7, #0369a1)";
+      regBtn.style.borderColor = "#38bdf8";
+      regBtn.style.color = "#fff";
+    }
+  }
+  if (headRegBtn) {
+    if (isRegistered) {
+      headRegBtn.textContent = "✅ 관리 등록됨";
+      headRegBtn.style.borderColor = "#10b981";
+      headRegBtn.style.color = "#34d399";
+    } else {
+      headRegBtn.textContent = "🎯 종목관리 등록";
+      headRegBtn.style.borderColor = "#38bdf8";
+      headRegBtn.style.color = "#38bdf8";
+    }
+  }
+}
+
 function bindDiscoveryModalChrome(modal, r) {
   const code = String(r.ticker || "").padStart(6, "0");
 
@@ -11113,6 +11301,18 @@ function bindDiscoveryModalChrome(modal, r) {
       }
     };
   }
+
+  // Momentum Portfolio Registration Actions
+  updateDiscoveryModalRegisterButton(r.ticker);
+  const regBtn = $("#disc-modal-register-mom-btn");
+  if (regBtn) {
+    regBtn.onclick = () => openMomentumRegisterModal(r);
+  }
+  const headRegBtn = $("#disc-modal-head-register-btn");
+  if (headRegBtn) {
+    headRegBtn.onclick = () => openMomentumRegisterModal(r);
+  }
+
   const closeBtn = $("#disc-modal-close-btn");
   if (closeBtn) closeBtn.onclick = () => modal.classList.add("hidden");
   modal.onclick = (e) => {
@@ -11231,6 +11431,18 @@ function bindPreEntryClicks() {
       openStock(stockBtn.dataset.ticker).catch((err) => alert(err.message));
       return;
     }
+    const regMomBtn = e.target.closest(".btn-pre-entry-register-mom");
+    if (regMomBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = parseInt(regMomBtn.dataset.index, 10);
+      const code = padTicker(regMomBtn.dataset.ticker);
+      const row = (Number.isFinite(idx) ? preEntryTop10[idx] : null)
+        || preEntryTop10.find((x) => padTicker(x.ticker) === code)
+        || (Array.isArray(discoveryRows) ? discoveryRows.find((x) => padTicker(x.ticker) === code) : null);
+      if (row) openMomentumRegisterModal(row);
+      return;
+    }
     const card = e.target.closest(".pre-entry-card");
     if (!card) return;
     const idx = parseInt(card.dataset.index, 10);
@@ -11247,7 +11459,9 @@ async function loadPreEntryView() {
   if (!container) return;
   bindPreEntryClicks();
 
-  container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">오늘의 시즌 모멘텀 최우수 종목 및 테마 기여도 분석 중...</div>`;
+  if (!container.children.length) {
+    container.innerHTML = `<div style="text-align:center; padding:40px; color:#94a3b8;">오늘의 시즌 모멘텀 최우수 종목 및 테마 기여도 분석 중...</div>`;
+  }
 
   // TOP 10 is a market-wide canonical list. A stock search belongs to the
   // discovery detail tabs and must not silently narrow this list.
@@ -11421,7 +11635,8 @@ async function loadPreEntryView() {
         </div>
 
         <!-- Action Footer -->
-        <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px;">
+        <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="btn small btn-pre-entry-register-mom" data-ticker="${escapeHtml(r.ticker)}" data-index="${idx}" style="background:linear-gradient(135deg, #0284c7, #0369a1); border:1px solid #38bdf8; color:#fff; font-weight:800; display:inline-flex; align-items:center; gap:4px;">🎯 종목관리 등록</button>
           <button type="button" class="ghost small btn-pre-entry-stock" data-ticker="${escapeHtml(r.ticker)}">📊 시뮬레이터 연동</button>
           <button type="button" class="btn small btn-pre-entry-detail" data-ticker="${escapeHtml(r.ticker)}" style="background:#38bdf8; color:#0f172a; font-weight:800;">상세 플레이북 ➔</button>
         </div>
@@ -11748,7 +11963,10 @@ async function loadDiscoveryRanked() {
           <div class="year-track-bar" style="flex-wrap:wrap; gap:4px;">${yearsTrackHtml}</div>
         </td>
         <td>
-          <button type="button" class="btn small btn-seasonality-detail" data-ticker="${escapeHtml(r.ticker)}" style="font-size:11px; padding:2px 8px; background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.35);">🎯 플레이북</button>
+          <div style="display:flex; gap:4px; flex-wrap:wrap;">
+            <button type="button" class="btn small btn-seasonality-reg-mom" data-ticker="${escapeHtml(r.ticker)}" data-index="${idx}" style="font-size:11px; padding:2px 8px; background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; border:1px solid #38bdf8; font-weight:700;">🎯 등록</button>
+            <button type="button" class="btn small btn-seasonality-detail" data-ticker="${escapeHtml(r.ticker)}" style="font-size:11px; padding:2px 8px; background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.35);">🎯 플레이북</button>
+          </div>
         </td>
       </tr>
     `;
@@ -11773,6 +11991,13 @@ async function loadDiscoveryRanked() {
   tbody.querySelectorAll("tr.clickable-row").forEach((tr) => {
     tr.addEventListener("click", (e) => {
       if (e.target.closest(".btn-seasonality-ai")) return;
+      if (e.target.closest(".btn-seasonality-reg-mom")) {
+        e.stopPropagation();
+        const idx = parseInt(tr.dataset.index, 10);
+        const rowData = discoveryRows[idx];
+        if (rowData) openMomentumRegisterModal(rowData);
+        return;
+      }
       const idx = parseInt(tr.dataset.index, 10);
       const rowData = discoveryRows[idx];
       if (rowData) {
@@ -11866,7 +12091,15 @@ async function loadAIExplanations() {
   `;
 }
 
+let v11SeasonalityUIInitialized = false;
+const v11SubtabLoadedAt = {};
+const V11_SUBTAB_TTL_MS = 300000; // 5 minutes
+window.v11SubtabLoadedAt = v11SubtabLoadedAt;
+
 function setupV11SeasonalityUI() {
+  if (v11SeasonalityUIInitialized) return;
+  v11SeasonalityUIInitialized = true;
+
   const btnMom = $("#btn-open-momentum-manager");
   const tabPre = $("#tab-v11-pre-entry");
   const tabDisc = $("#tab-v11-discovery");
@@ -11881,7 +12114,7 @@ function setupV11SeasonalityUI() {
   const paneCal = $("#pane-v11-calendar");
   const paneHeat = $("#pane-v11-heatmap");
 
-  function switchV11Subtab(subtab) {
+  function switchV11Subtab(subtab, force = false) {
     currentV11Subtab = subtab;
     [tabPre, tabDisc, tabExpl, tabCal, tabHeat].forEach((t) => t?.classList.remove("active"));
     [paneMom, panePre, paneDisc, paneExpl, paneCal, paneHeat].forEach((p) => p?.classList.add("hidden"));
@@ -11900,29 +12133,45 @@ function setupV11SeasonalityUI() {
 
     if (subtab === "momentum") {
       paneMom?.classList.remove("hidden");
-      loadCalendarMomentumPortfolio().catch(() => {});
     } else if (subtab === "pre-entry") {
       tabPre?.classList.add("active");
       panePre?.classList.remove("hidden");
-      loadPreEntryView().catch(() => {});
     } else if (subtab === "discovery") {
       tabDisc?.classList.add("active");
       paneDisc?.classList.remove("hidden");
-      loadDiscoveryRanked().catch(() => {});
     } else if (subtab === "explanation") {
       tabExpl?.classList.add("active");
       paneExpl?.classList.remove("hidden");
-      loadAIExplanations().catch(() => {});
     } else if (subtab === "calendar") {
       tabCal?.classList.add("active");
       paneCal?.classList.remove("hidden");
-      loadInstitutionalCalendar().catch(() => {});
     } else if (subtab === "heatmap") {
       tabHeat?.classList.add("active");
       paneHeat?.classList.remove("hidden");
+    }
+
+    const now = Date.now();
+    const isFresh = !force && v11SubtabLoadedAt[subtab] && (now - v11SubtabLoadedAt[subtab] < V11_SUBTAB_TTL_MS);
+    if (isFresh) return;
+    v11SubtabLoadedAt[subtab] = now;
+
+    if (subtab === "momentum") {
+      loadCalendarMomentumPortfolio().catch(() => {});
+    } else if (subtab === "pre-entry") {
+      loadPreEntryView().catch(() => {});
+    } else if (subtab === "discovery") {
+      loadDiscoveryRanked().catch(() => {});
+    } else if (subtab === "explanation") {
+      loadAIExplanations().catch(() => {});
+    } else if (subtab === "calendar") {
+      loadInstitutionalCalendar().catch(() => {});
+    } else if (subtab === "heatmap") {
       loadSeasonality().catch(() => {});
     }
   }
+
+  window.switchV11Subtab = switchV11Subtab;
+  loadCalendarMomentumPortfolio().catch(() => {});
 
   btnMom?.addEventListener("click", () => {
     if (currentV11Subtab === "momentum") {
@@ -12745,6 +12994,7 @@ applyPublicShareMode()
 
 function reloadCurrentView() {
   const name = currentView || "dash";
+  delete viewLoadedAt[name];
   const p = [loadDash()];
   if (name === "market") {
     macroCache = null;
@@ -12764,11 +13014,15 @@ function reloadCurrentView() {
   else if (name === "screens") p.push(loadScreens());
   else if (name === "strategy") p.push(loadStrategy());
   else if (name === "seasonality") {
-    if (currentV11Subtab === "pre-entry") loadPreEntryView().catch(() => {});
-    else if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
-    else if (currentV11Subtab === "explanation") loadAIExplanations().catch(() => {});
-    else if (currentInstSubtab === "calendar") loadInstitutionalCalendar().catch(() => {});
-    else loadSeasonality().catch(() => {});
+    if (typeof v11SubtabLoadedAt !== "undefined" && currentV11Subtab) {
+      delete v11SubtabLoadedAt[currentV11Subtab];
+    }
+    if (currentV11Subtab === "pre-entry") p.push(loadPreEntryView().catch(() => {}));
+    else if (currentV11Subtab === "discovery") p.push(loadDiscoveryRanked().catch(() => {}));
+    else if (currentV11Subtab === "explanation") p.push(loadAIExplanations().catch(() => {}));
+    else if (currentV11Subtab === "calendar") p.push(loadInstitutionalCalendar().catch(() => {}));
+    else if (currentV11Subtab === "momentum") p.push(loadCalendarMomentumPortfolio().catch(() => {}));
+    else p.push(loadSeasonality().catch(() => {}));
   }
   if (name === "watch") { p.push(loadWatch()); p.push(loadReportArchive()); }
   else if (name === "reports") p.push(loadReportArchive());
@@ -13536,18 +13790,22 @@ async function loadCalendarMomentumPortfolio() {
             </div>
 
             <!-- Price & Target row -->
-            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:10px; background:rgba(15,23,42,0.6); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.04);">
+            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-top:10px; background:rgba(15,23,42,0.6); padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.04);">
               <div>
-                <span style="font-size:11px; color:#94a3b8; display:block;">매수 진입일</span>
-                <b style="font-size:12px; color:#cbd5e1;">${escapeHtml(stock.entry_date)}</b>
+                <span style="font-size:10.5px; color:#94a3b8; display:block;">매수 진입일</span>
+                <b style="font-size:11.5px; color:#cbd5e1;">${escapeHtml(stock.entry_date)}</b>
+              </div>
+              <div class="mom-entry-price-click" data-id="${escapeHtml(stock.id)}" data-code="${escapeHtml(stock.code)}" style="cursor:pointer;" title="클릭하여 매수 진입가를 바로 수정합니다.">
+                <span style="font-size:10.5px; color:#94a3b8; display:block;">매수 진입가 <span style="font-size:9px; color:#38bdf8;">✏️</span></span>
+                <b style="font-size:11.5px; color:#38bdf8; text-decoration:underline dotted rgba(56,189,248,0.6);">${stock.entry_price ? Number(stock.entry_price).toLocaleString() + '원' : '—'}</b>
               </div>
               <div>
-                <span style="font-size:11px; color:#94a3b8; display:block;">목표 피크일</span>
-                <b style="font-size:12px; color:#38bdf8;">${escapeHtml(stock.peak_date)}</b>
+                <span style="font-size:10.5px; color:#94a3b8; display:block;">목표 피크일</span>
+                <b style="font-size:11.5px; color:#cbd5e1;">${escapeHtml(stock.peak_date)}</b>
               </div>
               <div>
-                <span style="font-size:11px; color:#94a3b8; display:block;">목표 수익률</span>
-                <b style="font-size:12px; color:#34d399;">${returnTarget ? `+${returnTarget}%` : "—"}</b>
+                <span style="font-size:10.5px; color:#94a3b8; display:block;">목표 수익률</span>
+                <b style="font-size:11.5px; color:#34d399;">${returnTarget ? `+${returnTarget}%` : "—"}</b>
               </div>
             </div>
 
@@ -13555,8 +13813,8 @@ async function loadCalendarMomentumPortfolio() {
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding:6px 10px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); border-radius:6px; font-size:11.5px;">
               <span style="color:#94a3b8;">현재가 / 실시간 수익률</span>
               <b style="color:${(stock.current_return ?? 0) >= 0 ? '#34d399' : '#f87171'}; font-family:monospace;">
-                ${stock.current_price ? Number(stock.current_price).toLocaleString() + '원' : '—'} 
-                (${stock.current_return != null ? ((stock.current_return >= 0 ? '+' : '') + Number(stock.current_return).toFixed(1) + '%') : '—'})
+                ${stock.current_price ? Number(stock.current_price).toLocaleString() + '원' : (stock.entry_price ? Number(stock.entry_price).toLocaleString() + '원' : '—')} 
+                (${stock.current_return != null ? ((stock.current_return >= 0 ? '+' : '') + Number(stock.current_return).toFixed(2) + '%') : (stock.entry_price ? '0.00%' : '—')})
               </b>
             </div>
 
@@ -13578,15 +13836,18 @@ async function loadCalendarMomentumPortfolio() {
           </div>
 
           <!-- Action Buttons -->
-          <div style="display:flex; gap:8px; margin-top:12px; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px;">
-            <button type="button" class="ghost small btn-mom-view-detail" data-code="${escapeHtml(stock.code)}" data-name="${escapeHtml(stock.name)}" style="flex:1.2; border:1.5px solid #38bdf8; background:rgba(56,189,248,0.14); color:#38bdf8; font-weight:800; cursor:pointer;" title="계절성 플레이북 및 과거 5개년 실측 통계를 엽니다.">
+          <div style="display:flex; gap:6px; margin-top:12px; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px; flex-wrap:wrap;">
+            <button type="button" class="ghost small btn-mom-view-detail" data-code="${escapeHtml(stock.code)}" data-name="${escapeHtml(stock.name)}" style="flex:1.1; border:1.5px solid #38bdf8; background:rgba(56,189,248,0.14); color:#38bdf8; font-weight:800; cursor:pointer;" title="계절성 플레이북 및 과거 5개년 실측 통계를 엽니다.">
               📊 계절성 정보
             </button>
-            <button type="button" class="ghost small btn-mom-toggle-exit" data-id="${escapeHtml(stock.id)}" style="flex:1; border:1px solid rgba(56,189,248,0.3); color:#38bdf8; font-weight:700;">
-              ${isExited ? "🔄 보유 상태로 복원" : "🏁 청산 완료 처리"}
+            <button type="button" class="ghost small btn-mom-edit" data-id="${escapeHtml(stock.id)}" data-code="${escapeHtml(stock.code)}" style="flex:0.9; border:1px solid rgba(56,189,248,0.4); background:rgba(56,189,248,0.08); color:#38bdf8; font-weight:700; cursor:pointer;" title="실제 매수가, 진입일, 목표 피크일, 목표가를 수정합니다.">
+              ✏️ 수정
             </button>
-            <button type="button" class="ghost small btn-mom-delete" data-id="${escapeHtml(stock.id)}" style="color:#f87171; border:1px solid rgba(248,113,113,0.3);">
-              🗑️ 삭제
+            <button type="button" class="ghost small btn-mom-toggle-exit" data-id="${escapeHtml(stock.id)}" style="flex:1; border:1px solid rgba(148,163,184,0.3); color:#94a3b8; font-weight:700; cursor:pointer;">
+              ${isExited ? "🔄 보유로 복원" : "🏁 청산 완료"}
+            </button>
+            <button type="button" class="ghost small btn-mom-delete" data-id="${escapeHtml(stock.id)}" style="color:#f87171; border:1px solid rgba(248,113,113,0.3); padding:0 8px; cursor:pointer;" title="종목 삭제">
+              🗑️
             </button>
           </div>
         </div>
@@ -13615,6 +13876,18 @@ async function loadCalendarMomentumPortfolio() {
     btn.onclick = (e) => {
       e.stopPropagation();
       openSeasonalityModalForStock(btn.dataset.code, btn.dataset.name);
+    };
+  });
+
+  cardsContainer.querySelectorAll(".btn-mom-edit, .mom-entry-price-click").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const code = padTicker(btn.dataset.code || "");
+      const target = (momentumPortfolio || []).find((s) => s.id === id || padTicker(s.code) === code);
+      if (target) {
+        openMomentumRegisterModal(target, true);
+      }
     };
   });
 
@@ -13712,7 +13985,7 @@ document.addEventListener("DOMContentLoaded", () => {
           exited: false,
           trajectory_match: 85,
           history_curve: [0, 1.0, 2.5, 4.2, 6.5, 9.0, 12.0, 15.5, 19.5, 24.0, 27.5, 25.0, 21.0, 17.5],
-          actual_curve: [0, 0.5],
+          actual_curve: [0],
         };
         momentumPortfolio.unshift(newItem);
         await api("/api/seasonality/momentum-portfolio", {
@@ -13723,6 +13996,96 @@ document.addEventListener("DOMContentLoaded", () => {
         const details = $("#momentum-add-details");
         if (details) details.open = false;
         loadCalendarMomentumPortfolio();
+      }
+    };
+  }
+
+  // Momentum Register Modal Setup
+  const momRegModal = $("#momentum-register-modal");
+  const closeMomRegModal = () => momRegModal?.classList.add("hidden");
+  $("#mom-reg-modal-close-btn")?.addEventListener("click", closeMomRegModal);
+  $("#mom-reg-cancel-btn")?.addEventListener("click", closeMomRegModal);
+  momRegModal?.addEventListener("click", (e) => {
+    if (e.target === momRegModal) closeMomRegModal();
+  });
+
+  const momRegForm = $("#mom-reg-modal-form");
+  if (momRegForm) {
+    momRegForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const name = $("#mom-reg-name")?.value.trim();
+      const code = $("#mom-reg-code")?.value.trim().padStart(6, "0");
+      const entryDate = $("#mom-reg-entry-date")?.value;
+      const peakDate = $("#mom-reg-peak-date")?.value;
+      const entryPrice = parseFloat($("#mom-reg-entry-price")?.value) || null;
+      const targetPrice = parseFloat($("#mom-reg-target-price")?.value) || null;
+      const catalyst = $("#mom-reg-catalyst")?.value.trim();
+      const notes = $("#mom-reg-notes")?.value.trim();
+
+      if (!name || !code || !entryDate || !peakDate) {
+        alert("종목명, 종목코드, 진입일자, 목표 피크일은 필수 항목입니다.");
+        return;
+      }
+
+      // CRITICAL: Always pull latest items from backend before modifying to NEVER wipe out existing stocks!
+      try {
+        const res = await api("/api/seasonality/momentum-portfolio");
+        if (res && Array.isArray(res.items)) momentumPortfolio = res.items;
+      } catch (e) {}
+
+      const existingIdx = (momentumPortfolio || []).findIndex((item) => padTicker(item.code) === code);
+      const isUpdate = existingIdx >= 0;
+      const existingItem = isUpdate ? momentumPortfolio[existingIdx] : null;
+
+      const itemData = {
+        ...(existingItem || {}),
+        id: existingItem ? existingItem.id : `stock-${code}-${Date.now()}`,
+        name: name,
+        code: code,
+        entry_date: entryDate,
+        peak_date: peakDate,
+        entry_price: entryPrice,
+        target_price: targetPrice,
+        catalyst: catalyst,
+        notes: notes,
+        exited: existingItem ? !!existingItem.exited : false,
+        trajectory_match: existingItem?.trajectory_match || 88,
+        history_curve: existingItem?.history_curve || [0, 1.0, 2.5, 4.2, 6.5, 9.0, 12.0, 15.5, 19.5, 24.0, 27.5, 25.0, 21.0, 17.5],
+        actual_curve: existingItem?.actual_curve || [0],
+      };
+
+      if (!Array.isArray(momentumPortfolio)) momentumPortfolio = [];
+      if (isUpdate) {
+        momentumPortfolio[existingIdx] = { ...momentumPortfolio[existingIdx], ...itemData };
+      } else {
+        momentumPortfolio.unshift(itemData);
+      }
+
+      try {
+        await api("/api/seasonality/momentum-portfolio", {
+          method: "POST",
+          body: JSON.stringify({ item: itemData, items: momentumPortfolio }),
+        });
+        closeMomRegModal();
+        updateDiscoveryModalRegisterButton(code);
+        await loadCalendarMomentumPortfolio();
+
+        if (isUpdate) {
+          showToast(`✅ [${name}] 진입가 및 모멘텀 설정이 수정되었습니다.`, "success", 3000);
+        } else {
+          const goView = confirm(`✅ [${name} (${code})] 캘린더 모멘텀 종목관리에 성공적으로 등록되었습니다!\n\n지금 '종목 관리 (캘린더 모멘텀)' 화면으로 이동하시겠습니까?`);
+          if (goView) {
+            $("#discovery-detail-modal")?.classList.add("hidden");
+            if (typeof window.switchV11Subtab === "function") {
+              window.switchV11Subtab("momentum");
+            } else {
+              const btnMom = $("#btn-open-momentum-manager");
+              if (btnMom) btnMom.click();
+            }
+          }
+        }
+      } catch (err) {
+        alert(`종목 저장 실패: ${err.message}`);
       }
     };
   }

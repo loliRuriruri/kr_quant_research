@@ -24,9 +24,12 @@ if sys.platform == "win32":
         pass
 
 import json
+import logging
 import math
 import os
 import time
+
+logger = logging.getLogger("kr_quant.web")
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +46,7 @@ from kr_quant.research.tier1_contract import (
     tier1_unavailable,
 )
 from kr_quant.settings import load_settings
+from kr_quant.web.cache import invalidate_cache, ttl_cache
 from kr_quant.web.envfile import apply_env_to_process, mask_secret, upsert_env_file
 from kr_quant.web.jobs import RUNNER, job_dart_backfill, job_demo, job_history_summary, job_krx_history, job_krx_prices, job_live, job_screen, job_smart_sync
 
@@ -2392,6 +2396,7 @@ def _load_stock_row(ticker: str, as_of: str | None = None) -> tuple[dict[str, An
 
 
 @app.get("/api/macro")
+@ttl_cache(seconds=60, bypass_kwarg="refresh")
 def api_macro(refresh: bool = False) -> dict[str, Any]:
     from kr_quant.context.macro_brief import build_macro_dashboard
 
@@ -2399,6 +2404,7 @@ def api_macro(refresh: bool = False) -> dict[str, Any]:
 
 
 @app.get("/api/macro/live-ticker")
+@ttl_cache(seconds=30, bypass_kwarg="refresh")
 def api_macro_live_ticker(refresh: bool = False) -> dict[str, Any]:
     from kr_quant.ingest.yahoo import live_ticker_snapshot
 
@@ -2406,6 +2412,7 @@ def api_macro_live_ticker(refresh: bool = False) -> dict[str, Any]:
 
 
 @app.get("/api/macro/margin-debt")
+@ttl_cache(seconds=60, bypass_kwarg="refresh")
 def api_macro_margin_debt(refresh: bool = False) -> dict[str, Any]:
     from kr_quant.context.margin_debt import get_margin_debt_snapshot
 
@@ -2456,6 +2463,7 @@ def api_telegram_test() -> dict[str, Any]:
 
 
 @app.get("/api/market")
+@ttl_cache(seconds=60, bypass_kwarg="refresh")
 def api_market(refresh: bool = False) -> dict[str, Any]:
     from kr_quant.layers.context import build_market_snapshot
 
@@ -2463,6 +2471,7 @@ def api_market(refresh: bool = False) -> dict[str, Any]:
 
 
 @app.get("/api/investor")
+@ttl_cache(seconds=60)
 def api_investor_status() -> dict[str, Any]:
     from kr_quant.flow.official import status_payload
 
@@ -2470,6 +2479,7 @@ def api_investor_status() -> dict[str, Any]:
 
 
 @app.get("/api/investor/events")
+@ttl_cache(seconds=60)
 def api_investor_events(min_turn: int = 5) -> dict[str, Any]:
     from kr_quant.flow.official import events_payload
 
@@ -2484,6 +2494,7 @@ def api_investor_ticker(ticker: str) -> dict[str, Any]:
 
 
 @app.get("/api/sunzi")
+@ttl_cache(seconds=120)
 def api_sunzi(
     n: int = 40,
     query: str | None = None,
@@ -2751,6 +2762,7 @@ def api_events_ticker(ticker: str) -> dict[str, Any]:
 
 
 @app.get("/api/flow")
+@ttl_cache(seconds=60)
 def api_flow_get(days: int = 5) -> dict[str, Any]:
     from kr_quant.flow.scan import load_flow
 
@@ -2762,6 +2774,7 @@ def api_flow_get(days: int = 5) -> dict[str, Any]:
 def api_flow_post(body: FlowIn) -> dict[str, Any]:
     from kr_quant.flow.scan import scan_flow
 
+    invalidate_cache("api_flow_get")
     s = load_settings()
     return scan_flow(s, days=max(1, min(body.days, 20)), force=True)
 
@@ -2962,6 +2975,7 @@ def api_flow_collect_ticker_post(ticker: str) -> dict[str, Any]:
 
 
 @app.get("/api/seasonality/discovery")
+@ttl_cache(seconds=300)
 def api_seasonality_discovery_get(
     horizon_days: int = 90,
     min_grade: str | None = None,
@@ -3009,6 +3023,7 @@ def api_seasonality_discovery_ticker_get(ticker: str, lookback_years: int = 5) -
 
 
 @app.get("/api/seasonality/ranked")
+@ttl_cache(seconds=300)
 def api_seasonality_ranked_get(
     horizon_days: int = 90,
     min_grade: str | None = None,
@@ -3038,6 +3053,7 @@ def api_seasonality_ranked_get(
 
 
 @app.get("/api/seasonality/events")
+@ttl_cache(seconds=300)
 def api_seasonality_events_get(horizon_days: int = 180) -> dict[str, Any]:
     from kr_quant.strategy.event_calendar import get_upcoming_events
     from kr_quant.strategy.seasonality import seasonality_universe_stats
@@ -3049,6 +3065,7 @@ def api_seasonality_events_get(horizon_days: int = 180) -> dict[str, Any]:
 
 
 @app.get("/api/seasonality/themes")
+@ttl_cache(seconds=300)
 def api_seasonality_themes_get(horizon_days: int = 90, lookback_years: int = 5) -> dict[str, Any]:
     from kr_quant.strategy.seasonality import EVENT_PRESETS, scan_seasonality, seasonality_universe_stats
     from kr_quant.strategy.theme_engine import calculate_theme_seasonality
@@ -3200,58 +3217,145 @@ DEFAULT_MOMENTUM_PORTFOLIO = [
 ]
 
 
+def fetch_naver_live_quotes(codes: list[str]) -> dict[str, dict[str, Any]]:
+    """Fetch real-time quotes from Naver polling API for a list of 6-digit stock codes."""
+    if not codes:
+        return {}
+    clean_codes = [str(c).zfill(6) for c in codes if c]
+    if not clean_codes:
+        return {}
+    import urllib.request
+    from datetime import date
+
+    url = "https://polling.finance.naver.com/api/realtime/domestic/stock/" + ",".join(clean_codes)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=2.5) as r:
+            data = json.loads(r.read().decode("utf-8"))
+            out: dict[str, dict[str, Any]] = {}
+            for item in data.get("datas", []):
+                code = str(item.get("itemCode") or "").zfill(6)
+                raw_px = item.get("closePriceRaw")
+                traded_at = str(item.get("localTradedAt") or "")
+                trade_date = traded_at[:10] if len(traded_at) >= 10 else date.today().isoformat()
+                if raw_px is not None:
+                    out[code] = {
+                        "price": float(raw_px),
+                        "trade_date": trade_date,
+                    }
+            return out
+    except Exception as exc:
+        logger.debug("Failed to fetch Naver live quotes: %s", exc)
+        return {}
+
+
 def enrich_momentum_portfolio_with_live_prices(settings: Settings, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from datetime import date
     from kr_quant.ingest.live import live_dir
 
-    prices_path = live_dir(settings) / "prices.parquet"
-    if not prices_path.exists() or not items:
+    if not items:
         return items
-    try:
-        prices = pd.read_parquet(prices_path)
-        if prices.empty or "ticker" not in prices.columns or "trade_date" not in prices.columns:
-            return items
+
+    codes = [str(item.get("code") or "").zfill(6) for item in items if item.get("code")]
+    live_quotes = fetch_naver_live_quotes(codes)
+
+    prices_path = live_dir(settings) / "prices.parquet"
+    prices = pd.DataFrame()
+    if prices_path.exists():
+        try:
+            prices = pd.read_parquet(
+                prices_path,
+                columns=["ticker", "trade_date", "close"],
+                filters=[("ticker", "in", codes)],
+            )
+        except Exception:
+            try:
+                prices = pd.read_parquet(prices_path, columns=["ticker", "trade_date", "close"])
+            except Exception:
+                prices = pd.DataFrame()
+
+    if not prices.empty and "ticker" in prices.columns and "trade_date" in prices.columns:
         prices["trade_date"] = pd.to_datetime(prices["trade_date"]).dt.date
         prices["ticker"] = prices["ticker"].astype(str).str.zfill(6)
-        enriched = []
-        for item in items:
-            stock = dict(item)
-            code = str(stock.get("code") or "").zfill(6)
-            entry_date_str = str(stock.get("entry_date") or "")
-            try:
-                entry_date = pd.to_datetime(entry_date_str).date()
-            except Exception:
-                entry_date = None
 
-            sub = prices[prices["ticker"] == code]
-            if entry_date and not sub.empty:
-                sub_entry = sub[sub["trade_date"] >= entry_date].sort_values("trade_date")
-                if not sub_entry.empty:
-                    base_price = float(stock.get("entry_price") or sub_entry.iloc[0]["close"])
-                    if base_price <= 0:
-                        base_price = float(sub_entry.iloc[0]["close"])
-                    curve = []
-                    dates = []
-                    for _, row in sub_entry.iterrows():
-                        px = float(row["close"])
-                        ret = round(((px - base_price) / base_price) * 100.0, 2)
-                        curve.append(ret)
-                        dates.append(row["trade_date"].isoformat())
-                    stock["actual_curve"] = curve
-                    stock["actual_dates"] = dates
-                    stock["current_price"] = float(sub_entry.iloc[-1]["close"])
-                    stock["current_return"] = curve[-1] if curve else 0.0
+    enriched = []
+    for item in items:
+        stock = dict(item)
+        code = str(stock.get("code") or "").zfill(6)
+        entry_date_str = str(stock.get("entry_date") or "")
+        try:
+            entry_date = pd.to_datetime(entry_date_str).date()
+        except Exception:
+            entry_date = None
 
-                    hist = stock.get("history_curve") or []
-                    if hist and len(curve) >= 2:
-                        h_sub = hist[:len(curve)]
-                        agreements = sum(1 for a, b in zip(curve[1:], h_sub[1:]) if (a >= 0 and b >= 0) or (a < 0 and b < 0))
-                        sync_pct = round((agreements / (len(curve) - 1)) * 100, 1)
-                        stock["trajectory_match"] = max(50.0, min(99.0, sync_pct))
-            enriched.append(stock)
-        return enriched
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to enrich momentum portfolio: %s", exc)
-        return items
+        sub = pd.DataFrame()
+        if not prices.empty:
+            sub = prices[prices["ticker"] == code].sort_values("trade_date")
+
+        live_info = live_quotes.get(code)
+        live_px = live_info["price"] if live_info else None
+        live_dt = live_info["trade_date"] if live_info else None
+
+        # Determine base entry price
+        base_price = float(stock.get("entry_price") or 0)
+
+        curve = []
+        dates = []
+
+        if entry_date and not sub.empty:
+            sub_entry = sub[sub["trade_date"] >= entry_date]
+            if base_price <= 0 and not sub_entry.empty:
+                base_price = float(sub_entry.iloc[0]["close"])
+            elif base_price <= 0 and not sub.empty:
+                base_price = float(sub.iloc[-1]["close"])
+
+            if not sub_entry.empty and base_price > 0:
+                for _, row in sub_entry.iterrows():
+                    px = float(row["close"])
+                    ret = round(((px - base_price) / base_price) * 100.0, 2)
+                    curve.append(ret)
+                    dates.append(row["trade_date"].isoformat())
+
+        if base_price <= 0:
+            if live_px:
+                base_price = live_px
+            elif not sub.empty:
+                base_price = float(sub.iloc[-1]["close"])
+
+        # Determine latest market price
+        latest_market_px = live_px
+        if latest_market_px is None and not sub.empty:
+            latest_market_px = float(sub.iloc[-1]["close"])
+        elif latest_market_px is None:
+            latest_market_px = base_price
+
+        if live_px and live_dt and base_price > 0:
+            live_ret = round(((live_px - base_price) / base_price) * 100.0, 2)
+            if not dates or dates[-1] < live_dt:
+                curve.append(live_ret)
+                dates.append(live_dt)
+            elif dates[-1] == live_dt:
+                curve[-1] = live_ret
+
+        if not curve and base_price > 0:
+            cur_ret = round(((latest_market_px - base_price) / base_price) * 100.0, 2)
+            curve = [cur_ret]
+            dates = [live_dt or entry_date_str or date.today().isoformat()]
+
+        stock["actual_curve"] = curve
+        stock["actual_dates"] = dates
+        stock["current_price"] = latest_market_px
+        stock["current_return"] = curve[-1] if curve else 0.0
+
+        hist = stock.get("history_curve") or []
+        if hist and len(curve) >= 2:
+            h_sub = hist[:len(curve)]
+            agreements = sum(1 for a, b in zip(curve[1:], h_sub[1:]) if (a >= 0 and b >= 0) or (a < 0 and b < 0))
+            sync_pct = round((agreements / (len(curve) - 1)) * 100, 1)
+            stock["trajectory_match"] = max(50.0, min(99.0, sync_pct))
+
+        enriched.append(stock)
+    return enriched
 
 
 @app.get("/api/seasonality/momentum-portfolio")
@@ -3276,15 +3380,42 @@ def api_seasonality_momentum_portfolio_get() -> dict[str, Any]:
 @app.post("/api/seasonality/momentum-portfolio")
 def api_seasonality_momentum_portfolio_post(body: dict[str, Any]) -> dict[str, Any]:
     s = load_settings()
-    items = body.get("items", [])
     file_path = s.root / "data" / "calendar_momentum_portfolio.json"
     file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing_items = []
+    if file_path.exists():
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    existing_items = data
+        except Exception:
+            existing_items = []
+
+    # If adding/updating a single item directly
+    if "item" in body and isinstance(body["item"], dict):
+        new_item = body["item"]
+        code = str(new_item.get("code") or "").zfill(6)
+        found = False
+        for idx, it in enumerate(existing_items):
+            if str(it.get("code") or "").zfill(6) == code:
+                existing_items[idx] = {**it, **new_item}
+                found = True
+                break
+        if not found:
+            existing_items.insert(0, new_item)
+        items = existing_items
+    else:
+        items = body.get("items", [])
+
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(items, f, ensure_ascii=False, indent=2)
     return {"ok": True, "saved_count": len(items)}
 
 
 @app.get("/api/strategy")
+@ttl_cache(seconds=120)
 def api_strategy_get() -> dict[str, Any]:
     from kr_quant.strategy.run import load_strategy
 
@@ -3292,6 +3423,7 @@ def api_strategy_get() -> dict[str, Any]:
 
 
 @app.get("/api/portfolio")
+@ttl_cache(seconds=120)
 def api_portfolio() -> dict[str, Any]:
     from kr_quant.portfolio.analysis import analyze_top20
 
@@ -3299,6 +3431,7 @@ def api_portfolio() -> dict[str, Any]:
 
 
 @app.get("/api/sectors")
+@ttl_cache(seconds=120)
 def api_sectors() -> dict[str, Any]:
     from kr_quant.sector.ranking import rank_sectors
 
@@ -3310,6 +3443,7 @@ def api_sectors() -> dict[str, Any]:
 
 
 @app.get("/api/screens")
+@ttl_cache(seconds=60)
 def api_screens(id: str = "value_growth", include_quant: bool = True) -> dict[str, Any]:
     from kr_quant.screens import screens_payload
 

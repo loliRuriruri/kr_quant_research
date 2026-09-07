@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=1200, user-scalable=yes" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%236ee7b7'%3EQ%3C/text%3E%3C/svg%3E" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.78.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.78.8" />
 </head>
 <body>
   <aside class="nav">
@@ -80,7 +80,7 @@
       <div id="dash-seasonality-banner" class="dash-seasonality-widget"></div>
 
       <div class="grid-2">
-        <article class="card">
+        <article class="card dash-leaderboard-card">
           <div class="card-h" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <h2 id="dash-leaderboard-title" style="margin:0;">🏆 Quant TOP 30 리더보드</h2>
@@ -115,7 +115,7 @@
           </div>
         </article>
 
-        <div>
+        <div id="dash-side-col" class="dash-side-col">
           <article class="card" style="margin-bottom:14px;">
             <div class="card-h"><h2 id="dash-dna-title">🧬 TOP 30 팩터 DNA 분석</h2></div>
             <div id="dash-dna-box" class="dash-dna-box"></div>
@@ -1654,6 +1654,9 @@
             <button type="button" id="disc-modal-chart-toggle-btn" class="chart-link-btn chart-link-embed" title="창 내 실시간 캔들 차트 열기/닫기">
               📈 캔들차트 보기
             </button>
+            <button type="button" id="disc-modal-head-register-btn" class="chart-link-btn chart-link-mom" title="캘린더 모멘텀 종목관리에 등록">
+              🎯 종목관리 등록
+            </button>
             <button type="button" class="ghost" id="disc-modal-close-btn" style="font-size:20px; padding:6px 12px; line-height:1; border-radius:8px;">✕</button>
           </div>
         </div>
@@ -1741,10 +1744,69 @@
 
         <div id="disc-modal-deep"></div>
 
-        <div style="margin-top:18px; display:flex; justify-content:flex-end; gap:8px;">
+        <div style="margin-top:18px; display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="btn primary" id="disc-modal-register-mom-btn" style="background:linear-gradient(135deg, #0284c7, #0369a1); border:1px solid #38bdf8; color:#fff; font-weight:800; display:inline-flex; align-items:center; gap:6px;">
+            <span>🎯 종목관리 등록</span>
+          </button>
           <button type="button" class="ghost" id="disc-modal-stock-btn">📊 종목 퀀트 팝업 →</button>
           <button type="button" class="btn" id="disc-modal-ai-btn" style="background:#38bdf8; color:#0f172a; font-weight:800;">🤖 AI 심층 리포트 발간</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Calendar Momentum Registration Modal -->
+    <div id="momentum-register-modal" class="discovery-modal-overlay hidden" style="z-index:10000;">
+      <div class="discovery-modal-container" style="max-width:540px; padding:20px 24px; box-shadow:0 12px 48px rgba(0,0,0,0.8); border:1.5px solid rgba(56,189,248,0.4);">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:12px; margin-bottom:16px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:20px;">🎯</span>
+            <h3 id="mom-reg-modal-title" style="margin:0; font-size:18px; font-weight:800; color:#fff;">종목 관리 (캘린더 모멘텀) 등록</h3>
+          </div>
+          <button type="button" class="ghost" id="mom-reg-modal-close-btn" style="font-size:18px; padding:2px 8px; line-height:1; border-radius:6px;">✕</button>
+        </div>
+
+        <p id="mom-reg-modal-desc" class="hint" style="margin-top:0; margin-bottom:14px; line-height:1.45;">
+          선택한 계절성 종목의 진입일·목표 피크일·촉매를 <b>캘린더 모멘텀 포트폴리오 트래커</b>에 등록하여 실시간 D-Day와 익절 타이밍을 추적합니다.
+        </p>
+
+        <form id="mom-reg-modal-form" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">종목명 *</label>
+            <input type="text" id="mom-reg-name" required style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:7px 10px; font-size:12.5px; font-weight:700;" />
+          </div>
+          <div>
+            <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">종목코드 *</label>
+            <input type="text" id="mom-reg-code" required style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:7px 10px; font-size:12.5px; font-family:monospace; font-weight:700;" />
+          </div>
+          <div>
+            <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">진입일자 (매수일) *</label>
+            <input type="date" id="mom-reg-entry-date" required style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+          </div>
+          <div>
+            <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">목표 피크일 (엑시트 예정일) *</label>
+            <input type="date" id="mom-reg-peak-date" required style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+          </div>
+          <div>
+            <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">매수단가 (원)</label>
+            <input type="number" id="mom-reg-entry-price" placeholder="현재가 또는 매수가" style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+          </div>
+          <div>
+            <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">목표가 (원)</label>
+            <input type="number" id="mom-reg-target-price" placeholder="P50 목표가" style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+          </div>
+          <div style="grid-column:1/-1;">
+            <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">핵심 촉매 이벤트 / 계절성 메모</label>
+            <input type="text" id="mom-reg-catalyst" placeholder="계절성 이벤트 메모" style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+          </div>
+          <div style="grid-column:1/-1;">
+            <label style="font-size:11.5px; color:#94a3b8; display:block; margin-bottom:4px;">엑시트 시나리오 / 주의점</label>
+            <input type="text" id="mom-reg-notes" placeholder="분할 익절 계획 등" style="width:100%; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:6px; padding:6px 10px; font-size:12px;" />
+          </div>
+          <div style="grid-column:1/-1; display:flex; justify-content:flex-end; gap:8px; margin-top:6px;">
+            <button type="button" class="ghost" id="mom-reg-cancel-btn" style="height:36px; padding:0 14px; border-radius:6px;">취소</button>
+            <button type="submit" id="mom-reg-submit-btn" class="primary" style="height:36px; padding:0 18px; font-weight:800; border-radius:6px; background:linear-gradient(135deg, #0284c7, #2563eb); border:none; color:#fff; cursor:pointer;">🎯 종목관리에 저장</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -1906,6 +1968,6 @@
     </div>
 
 
-  <script src="/static/app.js?v=2.78.0"></script>
+  <script src="/static/app.js?v=2.78.8"></script>
 </body>
 </html>

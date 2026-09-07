@@ -19,3 +19,6 @@ dist-public/
 node_modules/
 .playwright-cli/
 .wrangler/
+.runtime/
+output/
+scratch/
