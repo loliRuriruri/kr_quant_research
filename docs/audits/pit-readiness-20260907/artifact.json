@@ -1,0 +1,130 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "title": "Seasonal Replay Readiness",
+    "sources": [
+      {
+        "id": "audit",
+        "label": "KR Quant local PIT audit",
+        "path": "output/audit/pit-readiness-20260907.json"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# Seasonal Replay Readiness"
+      },
+      {
+        "id": "summary",
+        "type": "markdown",
+        "body": "## 기술 요약\n실제 선취매 전체 전략의 과거 검증은 **아직 준비되지 않았습니다**. 610만 행의 가격 이력과 당시 이용 가능했던 입력은 서로 다릅니다. 이번 단계는 읽기 전용 진단 및 입력 계약 검사이며 현재 순위·수익률을 변경하지 않았습니다.",
+        "sourceId": "audit"
+      },
+      {
+        "id": "scope",
+        "type": "markdown",
+        "body": "## 무엇을 세었나\n2026년 9월 7일 저장된 운영 원천 7종을 전수 프로파일했습니다. 기준일 수는 파일에 들어 있는 서로 다른 날짜 개수입니다. 연속 거래일 확보율이나 검증 완료율이 아닙니다. 가격·재무·상장일은 의미가 달라 아래 기준일 비교에서 제외했습니다.",
+        "sourceId": "audit"
+      },
+      {
+        "id": "findings",
+        "type": "markdown",
+        "body": "## 장기 가격과 과거 선정 입력 사이에 공백이 있습니다\n가격은 2016년 6월 17일~2026년 9월 4일, 2,507개 관측일·3,246종목입니다. 반면 점수 이력은 13개 기준일, 거래상태 기록은 5개 기준일, 최신 유니버스 파일은 1개 기준일입니다. 아래 차트는 세 파일의 날짜 개수만 비교합니다. 저장된 점수가 있다는 것만으로 그 당시 산출·공개됐음을 입증하지 못합니다.",
+        "sourceId": "audit"
+      },
+      {
+        "id": "chart",
+        "type": "chart",
+        "chartId": "dates"
+      },
+      {
+        "id": "financial",
+        "type": "markdown",
+        "body": "## 재무 접수번호는 있지만 정정 이력은 인증하지 못합니다\n재무 676,764행·2,541종목에서 접수번호 결측과 available_date=period_end는 각각 0행입니다. 따라서 코드의 기간말 fallback이 이 저장본에 발생했다고 단정하지 않습니다. 다만 revision_id=1, is_correction=false가 전 행에 같아 원문·정정 공시를 대조해야 합니다. 가격 adj_close는 null형이고, 상장 이력의 DELIST는 3건입니다. 이것을 전체 상폐 기록으로 취급할 수 없습니다.",
+        "sourceId": "audit"
+      },
+      {
+        "id": "method",
+        "type": "markdown",
+        "body": "## 검사 방법과 구현 경계\n파일별 행·열·날짜 범위·후보 키 중복·결측 및 읽기 전후 SHA-256을 검사했습니다. 7종 모두 읽기 전후 해시가 같고 지정 후보 키 중복은 0행입니다. 새 입력 계약은 시간대 없는 시각, 미래 이용 가능 시각, 미래 관측일, 중복 파티션, 해시 형식·출처 누락을 차단합니다. 계약 통과는 구조 통과일 뿐 원천 진실성이나 성과 인증이 아닙니다.\n이는 파일별 검사이며 여러 파일이 동일 실행 세대라는 인증은 아닙니다.",
+        "sourceId": "audit"
+      },
+      {
+        "id": "limits",
+        "type": "markdown",
+        "body": "## 한계와 반례\n원천을 수정하거나 수집 API를 호출하지 않았습니다. 날짜 범위의 시작과 끝이 넓어도 중간 구간이 완비됐다는 뜻은 아닙니다. 일 단위 공시 날짜에는 장중 공개 시각 정보가 없습니다. 현재 연도·최신 점수·현재 거래상태를 참조하는 생산 선정기를 과거 시점으로 분리하는 작업도 남아 있습니다. 이번 검사는 운영 UI에 새 인증 뱃지를 붙이지 않습니다."
+      },
+      {
+        "id": "next",
+        "type": "markdown",
+        "body": "## 남은 작업 순서\n1. 과거 입력 어댑터와 명시적 시점 주입을 분리하고 미래 자료를 바꿔도 과거 선정이 변하지 않는지 검사합니다.\n2. 확보된 입력 범위에서 생산 규칙을 재현하고 거래비용·기업행위·생존편향 한계를 함께 기록합니다.\n3. 나머지 무거운 메뉴 및 실시간 갱신 경로를 정리합니다.\n4. 메뉴 연동·장애 복구·배포 통합 검사를 수행합니다.\n\n큰 묶음으로는 신뢰성 검증, 성능·운영, 최종 통합의 세 가지가 남았습니다. 데이터 확보 전에는 완성도 퍼센트를 확정하지 않습니다."
+      },
+      {
+        "id": "questions",
+        "type": "markdown",
+        "body": "## 추가로 확인할 것\n과거 거래정지·상폐 원천을 어느 기간까지 확보할 수 있는가? 정정 전 공시와 이벤트 지식의 당시 버전을 복원할 수 있는가? 자료가 없는 기간은 미검증으로 남기되 지금부터 실제 선정 장부를 축적할 수 있는가?"
+      }
+    ],
+    "charts": [
+      {
+        "id": "dates",
+        "type": "bar",
+        "title": "저장 파일별 고유 기준일 수",
+        "dataset": "dates",
+        "sourceId": "audit",
+        "encodings": {
+          "x": {
+            "field": "source"
+          },
+          "y": {
+            "field": "days"
+          }
+        },
+        "source": {
+          "label": "Local PIT audit date-count projection",
+          "path": "output/audit/pit-readiness-20260907.json",
+          "query": {
+            "engine": "SQLite",
+            "language": "sql",
+            "sql": "SELECT source, days, first_date, last_date\nFROM audited_date_counts\nORDER BY days DESC",
+            "tables_used": [
+              "audited_date_counts"
+            ],
+            "description": "In-memory projection of the immutable audit: scores, status and universe as_of_date counts. Profile code is recorded in the companion notebook."
+          }
+        },
+        "description": "파일별 저장 범위 전체의 날짜 개수; 연속성·당시 이용 가능성 미인증",
+        "showDescription": true
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "status": "ready",
+    "datasets": {
+      "dates": [
+        {
+          "source": "점수 이력",
+          "days": 13,
+          "first_date": "2024-12-30",
+          "last_date": "2026-09-04"
+        },
+        {
+          "source": "거래상태",
+          "days": 5,
+          "first_date": "2026-08-28",
+          "last_date": "2026-09-04"
+        },
+        {
+          "source": "최신 유니버스",
+          "days": 1,
+          "first_date": "2026-09-04",
+          "last_date": "2026-09-04"
+        }
+      ]
+    }
+  },
+  "sources": []
+}
