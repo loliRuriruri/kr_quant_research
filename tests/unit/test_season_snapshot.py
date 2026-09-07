@@ -135,8 +135,11 @@ def test_background_requests_are_single_flight(prepared, monkeypatch):
 
 def test_data_job_schedules_preparation_but_cancel_does_not(prepared, monkeypatch):
     from kr_quant.web import jobs
+    from kr_quant.research import selection_tracking
     s, _, _ = prepared
     queued = []
+    tracked = []
+    monkeypatch.setattr(selection_tracking, 'request_tracking_refresh', lambda *a: tracked.append(1))
     monkeypatch.setattr(jobs, 'load_settings', lambda: s)
     monkeypatch.setattr(jobs, 'record_job_history', lambda *a: None)
     monkeypatch.setattr(jobs, '_maybe_publish', lambda *a: None)
@@ -146,5 +149,7 @@ def test_data_job_schedules_preparation_but_cancel_does_not(prepared, monkeypatc
     runner._run('smart-sync', lambda: {'pipeline_status': 'success'})
     assert queued == [1]
     assert runner.state['status'] == 'success'
+    assert tracked == [1]
     runner._run('smart-sync', lambda: {'pipeline_status': 'interrupted', 'cancelled': True})
     assert queued == [1]
+    assert tracked == [1]

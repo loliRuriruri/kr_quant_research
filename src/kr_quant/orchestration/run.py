@@ -352,6 +352,14 @@ def run_from_staged(
                 "committed_at": generation.get("committed_at"),
                 "generation_dir": generation.get("generation_dir"),
             }
+            # Ledger failure must not relabel a successfully committed Quant generation.
+            try:
+                from kr_quant.research.selection_ledger import capture_quant_selection
+                observed = capture_quant_selection(settings)
+                manifest["selection_batch_id"] = observed["payload"]["batch_id"]
+            except Exception as exc:
+                logger.warning("selection observation not recorded: %s", exc)
+                manifest["selection_record_status"] = "unavailable"
         except Exception as exc:  # noqa: BLE001
             logger.warning("generation commit failed; dated outputs remain: %s", exc)
             ctx.warnings.append("GENERATION_COMMIT_FAILED")

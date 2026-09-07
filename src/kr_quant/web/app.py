@@ -975,6 +975,15 @@ def api_top(n: int = 20, as_of: str | None = None) -> dict[str, Any]:
     }
 
 
+@app.get("/api/research/selection-tracking")
+def api_selection_tracking() -> dict[str, Any]:
+    from kr_quant.research.selection_tracking import tracking_response
+    try:
+        return tracking_response(load_settings())
+    except (OSError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=503, detail="선정 관측 기록을 읽을 수 없습니다. 로그와 저장본 무결성을 확인해 주세요.") from exc
+
+
 @app.get("/api/results/all")
 def api_all(limit: int = 300, eligible_only: bool = True, as_of: str | None = None) -> dict[str, Any]:
     s = load_settings()
@@ -3969,6 +3978,8 @@ def serve(host: str = "127.0.0.1", port: int = 8790, open_browser: bool = True) 
 
     from kr_quant.web.season_snapshot import refresh_after_data_job
     refresh_after_data_job(load_settings())
+    from kr_quant.research.selection_tracking import request_tracking_refresh
+    request_tracking_refresh(load_settings())
 
     try:
         from kr_quant.web.scheduler import start_price_scheduler

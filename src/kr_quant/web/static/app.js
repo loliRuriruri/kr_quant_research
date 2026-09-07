@@ -10262,6 +10262,57 @@ if ($("#screens-include-quant")) {
 if ($("#rank-refresh")) {
   $("#rank-refresh").addEventListener("click", () => ensureViewLoaded("rank", true));
 }
+let quantObservationLoading = false;
+async function loadQuantObservations() {
+  const body = $("#quant-observation-body");
+  if (!body || quantObservationLoading) return;
+  if (publicShareMode) {
+    body.textContent = "선정 관측 기록은 현재 로컬에서만 제공합니다. 공개판 반영은 별도 검증 후 진행합니다.";
+    return;
+  }
+  quantObservationLoading = true;
+  body.textContent = "저장된 선정·관측 기록을 읽는 중…";
+  try {
+    const data = await api("/api/research/selection-tracking");
+    if (!data.ok) { body.textContent = data.detail; return; }
+    const selection = data.selection;
+    const report = data.outcomes;
+    const labels = {
+      PENDING_ENTRY: "다음 거래일 대기", PENDING_HORIZON: "관측 기간 미도달",
+      ENTRY_DATA_MISSING: "진입일 가격 누락", ENTRY_UNAVAILABLE: "진입 불가",
+      PRICE_PATH_MISSING: "중간 가격 누락", EXIT_UNAVAILABLE: "종료일 거래 불가",
+      INVALID_PRICE: "가격 오류", PRICE_BASIS_UNVERIFIED: "수정주가·기업행위 미검증",
+      PRICE_DISCONTINUITY: "가격 불연속", OBSERVED: "가격 관측 완료",
+    };
+    const dateText = new Date(selection.observed_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+    const rows = [1, 5, 20].map((h) => {
+      const s = report?.summary?.[String(h)];
+      const counts = s ? Object.entries(s.status_counts).map(([k, n]) => `${labels[k] || k} ${n}개`).join(" · ") : "관측 자료 준비 중";
+      return `<tr><td>D+${h}</td><td>${s ? `${s.observed} / ${s.total_signals}` : "—"}</td>
+        <td>${fmtPct(s?.mean_return)}</td><td>${fmtPct(s?.win_rate)}</td><td>${escapeHtml(counts)}</td></tr>`;
+    }).join("");
+    body.innerHTML = `<p class="hint">선정 원천 기준일 <b>${escapeHtml(selection.source_as_of)}</b> · 실제 기록 <b>${escapeHtml(dateText)} KST</b><br>
+      전체 ${selection.universe_count}개 중 Top100 적격 ${selection.eligible_count}개 · 상위 ${selection.selected_count}개 기록.
+      기록 시점 다음 관측 거래일의 시가부터 1·5·20번째 거래일 종가까지 추적합니다.</p>
+      ${!data.current_generation ? '<p class="hint">이 기록은 현재 랭킹 세대와 다릅니다. 이전 관측 기록으로 확인하세요.</p>' : ""}
+      ${data.state === "OUTCOMES_STALE" ? '<p class="hint">가격 원천이 변경되어 관측 결과 갱신이 필요합니다. 아래는 이전 저장 결과입니다.</p>' : ""}
+      <div class="table-wrap"><table><thead><tr><th>기간</th><th>관측 / 전체 표본</th><th>관측 표본 평균 가격 변화</th>
+      <th>관측 표본 내 상승 비율</th><th>표본 상태</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="hint">${report ? `관측 계산 한도 ${escapeHtml(report.observed_through)} · ` : ""}‘—’는 아직 수치를 산출할 수 없다는 뜻이며 0%가 아닙니다.
+      실제 체결·비용·상장폐지 정산을 검증한 백테스트가 아니며, 상승 비율은 미래 승률이 아닙니다.
+      수정주가 또는 기업행위 근거가 확인되지 않은 구간은 통계에서 별도 구분합니다.
+      거래일은 수집 일봉에 존재하는 날짜 기준입니다. 가격 기준일로 선정 시점을 소급하지 않습니다.</p>`;
+  } catch (err) {
+    body.textContent = `선정 기록을 읽지 못했습니다. 패널을 다시 펼쳐 재시도하세요. ${err.message}`;
+  } finally {
+    quantObservationLoading = false;
+  }
+}
+if ($("#quant-observation-panel")) {
+  $("#quant-observation-panel").addEventListener("toggle", (event) => {
+    if (event.currentTarget.open) loadQuantObservations();
+  });
+}
 if ($("#toss-refresh")) {
   $("#toss-refresh").addEventListener("click", () => loadTossRankings().catch((err) => alert(err.message)));
 }

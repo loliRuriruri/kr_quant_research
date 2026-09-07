@@ -261,6 +261,8 @@ class JobRunner:
                 }:
                     from kr_quant.web.season_snapshot import refresh_after_data_job
                     refresh_after_data_job(load_settings())
+                    from kr_quant.research.selection_tracking import request_tracking_refresh
+                    request_tracking_refresh(load_settings())
                     self.logs.append("시즌 메뉴 공통 자료를 백그라운드에서 준비합니다. 완료 후 같은 세대로 전환합니다.")
                 _maybe_publish(kind)
                 _notify_job(kind, result=result)
