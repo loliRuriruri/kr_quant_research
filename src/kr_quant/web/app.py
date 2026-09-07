@@ -984,6 +984,18 @@ def api_selection_tracking() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="선정 관측 기록을 읽을 수 없습니다. 로그와 저장본 무결성을 확인해 주세요.") from exc
 
 
+@app.get("/api/research/season-holdout/{ticker}")
+def api_season_holdout(ticker: str, lookback_years: int = 5) -> dict[str, Any]:
+    import re
+    from kr_quant.research.season_holdout_store import get_or_queue
+    if not re.fullmatch(r'[0-9A-Z]{6}', ticker) or lookback_years not in (0, 2, 3, 5):
+        raise HTTPException(status_code=422, detail="6자리 종목 코드와 0/2/3/5년 기간을 확인해 주세요.")
+    try:
+        return get_or_queue(load_settings(), ticker, lookback_years)
+    except (OSError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=503, detail="연도 분리 자료를 확인할 수 없습니다. 원천·저장본을 점검해 주세요.") from exc
+
+
 @app.get("/api/results/all")
 def api_all(limit: int = 300, eligible_only: bool = True, as_of: str | None = None) -> dict[str, Any]:
     s = load_settings()

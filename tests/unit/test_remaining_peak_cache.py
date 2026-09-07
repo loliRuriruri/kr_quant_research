@@ -34,3 +34,11 @@ def test_disk_peak_cache_survives_restart_and_invalidates_sources(tmp_path, monk
     module._REMAINING_PEAK_CACHE.update(signature=None, values={})
     module._enrich_remaining_peak_rows(s, rows, lookback_years=5)
     assert len(calls) == 4
+    import json
+    stored = json.loads(cache.read_text(encoding='utf-8'))
+    assert stored['signature'][0] == 2
+    stored['signature'][0] = 1  # Legacy cache had 0 -> one-year semantics.
+    cache.write_text(json.dumps(stored), encoding='utf-8')
+    module._REMAINING_PEAK_CACHE.update(signature=None, values={})
+    module._enrich_remaining_peak_rows(s, rows, lookback_years=5)
+    assert len(calls) == 5

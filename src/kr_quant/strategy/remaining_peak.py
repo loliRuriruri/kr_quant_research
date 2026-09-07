@@ -77,6 +77,8 @@ def calculate_remaining_peak_upside(
     """
     code = str(ticker or "").zfill(6)
     month = int(target_month)
+    if isinstance(lookback_years, bool) or int(lookback_years) != lookback_years or lookback_years < 0:
+        raise ValueError("기간은 0(전체) 이상의 정수여야 합니다.")
     if prices is None or prices.empty or month < 1 or month > 12:
         return _empty_result("NO_PRICE_DATA", ticker=code, target_month=month)
 
@@ -151,7 +153,9 @@ def calculate_remaining_peak_upside(
         result.update({"price_as_of": str(price_as_of), "current_price": round(current_close, 2)})
         return result
 
-    historical_months = sorted(historical_months, key=lambda item: item[0])[-max(1, int(lookback_years)):]
+    historical_months = sorted(historical_months, key=lambda item: item[0])
+    if lookback_years:
+        historical_months = historical_months[-int(lookback_years):]
 
     peak_days = [int(group.loc[group["basis_close"].idxmax(), "date"].day) for _, group in historical_months]
     median_peak_day = int(round(float(np.median(peak_days))))
@@ -170,7 +174,7 @@ def calculate_remaining_peak_upside(
     offset_days = (price_as_of - target_peak_date).days
 
     paths: list[dict[str, Any]] = []
-    for year, _ in sorted(historical_months, key=lambda item: item[0])[-max(1, int(lookback_years)):]:
+    for year, _ in historical_months:
         hist_peak_anchor = _safe_date(year, month, median_peak_day)
         hist_reference = hist_peak_anchor + timedelta(days=offset_days)
         hist_end = hist_peak_anchor + timedelta(days=4)

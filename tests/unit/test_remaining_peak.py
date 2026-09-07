@@ -85,6 +85,23 @@ def test_remaining_peak_fails_closed_when_sample_is_too_small():
     assert any("최소 3개년" in warning for warning in result["warnings"])
 
 
+def test_zero_lookback_means_all_years_not_one():
+    prices = _seasonal_prices(range(2016, 2026))
+    current = _seasonal_prices(range(2026, 2027))
+    prices = pd.concat([prices, current], ignore_index=True)
+    all_years = calculate_remaining_peak_upside(prices, '005930', 9, as_of_date='2026-08-26', lookback_years=0)
+    recent = calculate_remaining_peak_upside(prices, '005930', 9, as_of_date='2026-08-26', lookback_years=5)
+    assert all_years['sample_count'] == 10
+    assert recent['sample_count'] == 5
+    assert [p['year'] for p in all_years['paths']] == list(range(2016, 2026))
+
+
+def test_negative_lookback_is_rejected():
+    import pytest
+    with pytest.raises(ValueError):
+        calculate_remaining_peak_upside(_seasonal_prices(range(2020, 2026)), '005930', 9, lookback_years=-1)
+
+
 def test_remaining_peak_excludes_zero_volume_current_quote():
     prices = _seasonal_prices(range(2021, 2026))
     prices = pd.concat([

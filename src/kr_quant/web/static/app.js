@@ -11067,6 +11067,53 @@ function renderDiscDeepPlaybook(r, months) {
   `;
 }
 
+function appendSeasonHoldoutPanel(box, r) {
+  if (!box) return;
+  const details = document.createElement("details");
+  details.className = "card";
+  details.innerHTML = '<summary>연도 분리 진단 · 과거 자료로만 월·종료일 선택</summary><div class="season-holdout-body" aria-live="polite"></div>';
+  const body = details.querySelector(".season-holdout-body");
+  box.prepend(details);
+  let loading = false;
+  details.addEventListener("toggle", async () => {
+    if (!details.open || loading) return;
+    if (publicShareMode) { body.textContent = "현재 로컬 전용 검증입니다. 공개판 반영은 별도 검토 후 진행합니다."; return; }
+    loading = true;
+    body.textContent = "연도 분리 진단을 준비합니다. 메뉴 표시는 유지됩니다…";
+    try {
+      const years = currentV11Lookback ?? 5;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        if (!details.isConnected || !details.open) return;
+        const data = await api(`/api/research/season-holdout/${encodeURIComponent(r.ticker)}?lookback_years=${years}`);
+        if (!details.isConnected || !details.open) return;
+        if (data.state === "ERROR") { body.textContent = data.detail; return; }
+        if (data.state !== "READY") { await new Promise(resolve => setTimeout(resolve, 1000)); continue; }
+        const report = data.report, s = report.summary;
+        const labels = {INSUFFICIENT_TRAIN:"학습 표본 부족", NO_POSITIVE_TRAIN_MONTH:"양수 학습 월 없음", RAW_PRICE_DIAGNOSTIC:"원시 가격 진단",
+          MARKET_CALENDAR_INCOMPLETE:"거래일 자료 부족", PRICE_PATH_MISSING:"가격 누락", INVALID_PRICE:"가격 오류", NO_TRADING_VOLUME:"무거래 포함",
+          PRICE_DISCONTINUITY:"가격 불연속", EXIT_DATE_MISSING:"종료일 누락"};
+        const rows = report.folds.map(f => `<div class="season-holdout-fold" style="padding:12px 0;border-top:1px solid #334155;">
+          <div style="display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;"><b>${f.test_year}년</b><span>${escapeHtml(labels[f.status] || f.status)}</span></div>
+          <p class="hint">선택 월의 학습 연도: ${escapeHtml(f.selection?.train_years.join(", ") || "—")}<br>
+          사전 선택: ${f.selection ? `${f.selection.month}월 / ${f.selection.exit_day}일 이후 첫 거래일 종료` : "—"}<br>
+          관측 구간: ${escapeHtml(f.entry_date || "—")} → ${escapeHtml(f.exit_date || "—")}</p>
+          <div style="display:flex;gap:18px;flex-wrap:wrap;"><span>원시 가격 변화 <b>${fmtPct(f.diagnostic_return)}</b></span>
+          <span>50bps 차감 가정 <b>${fmtPct(f.cost_scenarios?.["50"])}</b></span></div></div>`).join("");
+        body.innerHTML = `<p class="hint"><b>기존 선취매 전체 모델의 검증 결과가 아닙니다.</b> 각 연도 시작 전에 과거 ${years === 0 ? "전체" : `${years}년`} 자료로 월과 종료일을 선택한 기준모형입니다.
+          진입은 선택 월 첫 거래일 시가, 종료는 과거 피크일 중앙값(최대 28일) 이후 첫 거래일 종가입니다. 해당 연도 최고가로 청산하지 않습니다.</p>
+          <p class="hint">가격 기준 ${escapeHtml(report.price_as_of || "미확인")} · 미완료 현재 연도 제외 · 최소 학습 3개년<br>
+          전체 ${s.folds_total}개 연도 중 원시 가격 진단 ${s.diagnostic_count}개 / 기업행위·체결 검증 ${s.verified_count}개.
+          진단 평균 ${fmtPct(s.mean)} · 중앙값 ${fmtPct(s.median)} · 진단 표본 내 상승 비율 ${fmtPct(s.positive_fraction)}</p>
+          <div class="season-holdout-folds">${rows}</div>
+          <p class="hint">${report.methodology.limitations.map(escapeHtml).join("<br>")}</p>`;
+        return;
+      }
+      body.textContent = "백그라운드 준비 중입니다. 잠시 후 패널을 다시 펼쳐 주세요.";
+    } catch (error) { body.textContent = `자료를 읽지 못했습니다: ${error.message}`; }
+    finally { loading = false; }
+  });
+}
+
 function renderSeasonalOverlayChart(canvas, r, months, mode = "seasonal_overlay") {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -11520,7 +11567,7 @@ async function openDiscoveryDetailModal(r) {
   const pb = r.playbook || {};
   setModalText("disc-modal-recommendation", `💡 연구 대응: ${pb.recommendation || "월별 반복 수익률은 탐색 근거이며 주문 신호가 아닙니다."}`);
   setModalText("disc-modal-window", r.window_name || "—");
-  setModalText("disc-modal-sample-sub", `${r.sample_count || r.years_count || 0}개년 Window 검증`);
+  setModalText("disc-modal-sample-sub", `${r.sample_count || r.years_count || 0}개년 과거 표본`);
   setModalText("disc-modal-winrate", `${((r.win_rate || 0) * 100).toFixed(1)}%`);
   setModalText("disc-modal-r3-sub", `최근 3년 ${((r.recent_3y_win_rate || 0) * 100).toFixed(0)}%`);
   const remDownside = r.remaining_peak && r.remaining_peak.downside_before_peak_p50;
@@ -11537,6 +11584,7 @@ async function openDiscoveryDetailModal(r) {
 
   bindDiscoveryModalChrome(modal, r);
   renderDiscDeepPlaybook(r, r.all_months || []);
+  appendSeasonHoldoutPanel($("#disc-modal-deep"), r);
   modal.classList.remove("hidden");
   const pane = modal.querySelector(".discovery-modal-container");
   if (pane) pane.scrollTop = 0;
@@ -13000,7 +13048,7 @@ async function openHeatmapPlaybook(row) {
   const code = padTicker(row.ticker);
   const month = Number(row.target_month);
   if (!code || code === "000000") return;
-  api(`/api/seasonality/discovery/${code}?lookback_years=${currentV11Lookback || 5}`).then((data) => {
+  api(`/api/seasonality/discovery/${code}?lookback_years=${currentV11Lookback ?? 5}`).then((data) => {
     const patterns = data.patterns || [];
     const match = patterns.find((p) => parseInt(String(p.window_name || "").replace("월", ""), 10) === month) || patterns[0];
     if (!match) return;

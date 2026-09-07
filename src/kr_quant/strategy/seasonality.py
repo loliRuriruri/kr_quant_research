@@ -20,7 +20,7 @@ from kr_quant.universe.tradability import evaluate_candidate_tradability, evalua
 
 logger = logging.getLogger("kr_quant.strategy.seasonality")
 SEASONALITY_CACHE_VERSION = 3
-DISCOVERY_CACHE_VERSION = 6
+DISCOVERY_CACHE_VERSION = 7
 
 EVENT_PRESETS: dict[str, dict[str, Any]] = {
     "winter_heater": {
@@ -1057,7 +1057,7 @@ def _enrich_remaining_peak_rows(
 
     # Persist only exact source-generation matches. Adjustment/manifest changes
     # invalidate these metrics too, even when nominal prices stay unchanged.
-    signature = [1, str(settings.root.resolve()), date.today().isoformat(), _seasonality_source_signature(settings)]
+    signature = [2, str(settings.root.resolve()), date.today().isoformat(), _seasonality_source_signature(settings)]
     cache_path = settings.root / "data" / "cache" / "remaining_peak_metrics_v1.json"
     requested: list[tuple[dict[str, Any], str, int, tuple[str, int, int]]] = []
     for source in rows:
