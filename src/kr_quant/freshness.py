@@ -153,7 +153,35 @@ def _financial_coverage(facts_path: Path, master_path: Path, backfill_path: Path
         except (OSError, json.JSONDecodeError):
             outcomes = {}
     report = dart_coverage_report(master, facts, outcomes)
+    report['meaning'] = 'stored_ticker_presence_not_latest_filing_completeness'
+    report['latest_filing_verified'] = False
     return report
+
+
+def _official_flow_freshness(settings: Settings, expected: date) -> dict[str, Any]:
+    """Observe existing storage only; no DB creation, token issue or collector calls."""
+    base = {'label': 'KIS 공식 수급', 'expected_date': expected.isoformat(),
+            'observed_date': None, 'state': 'missing', 'used_in_quant': False,
+            'scope': 'stored_tickers_not_all_listed_stocks'}
+    if not settings.db_path.exists():
+        return base
+    try:
+        import duckdb
+        with duckdb.connect(str(settings.db_path), read_only=True) as con:
+            rows = con.execute("SELECT ticker, max(trade_date) FROM investor_flows_daily WHERE source = 'KIS' GROUP BY ticker").fetchall()
+    except Exception:  # DB busy/unreadable must not be reported as fresh.
+        return {**base, 'state': 'unavailable'}
+    if not rows:
+        return base
+    dates = [day for _, day in rows if day is not None]
+    observed = max(dates) if dates else None
+    current = sum(day == expected for _, day in rows)
+    future = sum(day is not None and day > expected for _, day in rows)
+    return {**base, 'observed_date': observed.isoformat() if observed else None,
+            'state': 'future' if future else ('fresh' if current == len(rows) else ('partial' if current else 'stale')),
+            'lag_trading_days': trading_session_lag(observed, expected),
+            'coverage': {'stored_tickers': len(rows), 'current_tickers': current,
+                         'not_current_tickers': len(rows) - current}}
 
 
 def _strategy_cache_date(path: Path) -> date | None:
@@ -233,7 +261,7 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
     lag = None if price_max is None else (expected - price_max).days
     session_lag = trading_session_lag(price_max, expected)
     stale_price = price_max is None or price_max < expected
-    stale_screen = bool(screen_day and price_max and screen_day < price_max)
+    stale_screen = screen_day is None or price_max is None or screen_day != price_max
     if stale_price:
         status = "stale"
         label = "시세 지연" if price_max else "시세 없음"
@@ -269,6 +297,7 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
             "lag_trading_days": None,
             "state": "missing" if financial_max is None else ("partial" if (financial_coverage.get("coverage_pct") or 0) < 90 else "available"),
             "cadence": "공시 발생 기준",
+            "freshness_verified": False,
             "coverage": financial_coverage,
             "backfill": backfill_progress,
             "last_updated_at": _mtime_iso(facts_path),
@@ -278,7 +307,8 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
             "expected_date": None if price_max is None else price_max.isoformat(),
             "observed_date": None if screen_day is None else screen_day.isoformat(),
             "lag_trading_days": screen_lag,
-            "state": "missing" if screen_day is None else ("stale" if stale_screen else "fresh"),
+            "state": "missing" if screen_day is None else ("stale" if stale_screen or stale_price else "fresh"),
+            "aligned_with_stored_prices": not stale_screen,
             "last_updated_at": _mtime_iso(quality_path),
         },
         "strategy_cache": {
@@ -290,6 +320,7 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
             "last_updated_at": _mtime_iso(strategy_path),
             "used_in_quant": False,
         },
+        "official_flow": _official_flow_freshness(settings, expected),
     }
     required_stale = [name for name in ("krx_prices", "quant_ranking") if sources[name]["state"] != "fresh"]
     derived_stale = [name for name in ("strategy_cache",) if sources[name]["state"] != "fresh"]

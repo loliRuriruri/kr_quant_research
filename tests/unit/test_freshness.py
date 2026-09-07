@@ -78,6 +78,34 @@ def test_runtime_spec_does_not_enable_orders_or_overlay_scores():
     assert spec["quant_weights"]["value"] == 30
 
 
+def test_old_prices_do_not_make_matching_old_ranking_fresh(tmp_path):
+    settings = replace(load_settings(), root=tmp_path)
+    live = settings.staged_dir / 'live'
+    live.mkdir(parents=True)
+    pd.DataFrame([{'ticker': '000001', 'trade_date': '2026-09-04'}]).to_parquet(live / 'prices.parquet')
+    snap = freshness_snapshot(settings, now=datetime(2026, 9, 8, 8, tzinfo=KST), screen_as_of='2026-09-04')
+    assert snap['sources']['quant_ranking']['state'] == 'stale'
+    assert snap['sources']['quant_ranking']['aligned_with_stored_prices'] is True
+    assert snap['sources']['financial_facts']['freshness_verified'] is False
+    assert snap['sources']['official_flow']['state'] == 'missing'
+    assert not settings.db_path.exists()
+
+
+def test_latest_flow_date_does_not_hide_stale_tickers(tmp_path):
+    from kr_quant.flow.store import open_settings, upsert_flows
+    from kr_quant.freshness import _official_flow_freshness
+    settings = replace(load_settings(), root=tmp_path)
+    con = open_settings(settings)
+    upsert_flows(con, [
+        {'ticker': '000001', 'trade_date': date(2026, 9, 7), 'investor_type': 'FOREIGN'},
+        {'ticker': '000002', 'trade_date': date(2026, 9, 4), 'investor_type': 'FOREIGN'},
+    ])
+    con.close()
+    result = _official_flow_freshness(settings, date(2026, 9, 7))
+    assert result['state'] == 'partial'
+    assert result['coverage'] == {'stored_tickers': 2, 'current_tickers': 1, 'not_current_tickers': 1}
+
+
 def test_calendar_guard_allows_three_year_history():
     assert calendar_guard(750) >= 2250
     assert calendar_guard(10) >= 90

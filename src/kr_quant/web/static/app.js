@@ -2078,8 +2078,8 @@ function renderRunDiagnostics(status) {
     const usableCount = dartCoverage.usable_tickers != null ? dartCoverage.usable_tickers : (dartCoverage.tickers || 0);
     const universe = dartCoverage.universe_tickers || 0;
     const usableLabel = usable != null
-      ? "사용가능 " + usableCount + "/" + universe + " (" + usable + "% / 목표 " + (dartCoverage.target_pct || 90) + "%)"
-      : "사용가능 " + usableCount + "/" + universe;
+      ? "재무 행 보유 " + usableCount + "/" + universe + " (" + usable + "% / 목표 " + (dartCoverage.target_pct || 90) + "%)"
+      : "재무 행 보유 " + usableCount + "/" + universe;
     const attempted = dartCoverage.attempted_pct;
     const response = dartCoverage.response_pct;
     const backfill = dart.backfill || {};
@@ -2091,7 +2091,7 @@ function renderRunDiagnostics(status) {
       attempted != null ? "시도 " + attempted + "%" : "",
       response != null ? "정상응답 " + response + "%" : "",
     ].filter(Boolean).join(" · ");
-    dartMetaEl.textContent = split + progress + remaining + eta + " · 공시 발생 기준";
+    dartMetaEl.textContent = split + progress + remaining + eta + " · 최신 공시 완비율 아님";
   }
   if (dartBadge) {
     const partial = ["missing", "partial"].includes(dart.state);
