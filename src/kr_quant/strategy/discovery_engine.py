@@ -62,13 +62,40 @@ def pattern_from_month_stat(
     if not hist_recs and not history:
         return None
 
-    cur_year = pd.Timestamp.now().year
+    # Explicit historical callers must not depend on the machine's current year.
+    # The default legacy path is preserved for existing production callers.
+    cutoff = None
+    if as_of_date is not None:
+        cutoff = pd.Timestamp(as_of_date)
+        if pd.isna(cutoff):
+            raise ValueError("Invalid as_of_date")
+        if cutoff.tzinfo is not None:
+            cutoff = cutoff.tz_convert("Asia/Seoul").tz_localize(None)
+        cutoff = cutoff.normalize()
+        if not 1 <= month <= 12:
+            raise ValueError("Invalid month")
+        if not hist_recs:
+            raise ValueError("Historical replay requires explicit history_records years")
+    cur_year = cutoff.year if cutoff is not None else pd.Timestamp.now().year
     years_track = []
     if hist_recs:
         sorted_recs = sorted(
             [hr for hr in hist_recs if int(hr.get("year", 0)) <= cur_year],
             key=lambda x: int(x.get("year", 0))
         )
+        if cutoff is not None:
+            # Conservative whole-calendar-month rule, including month-end day:
+            # same-day release timing is unknown, so only earlier months qualify.
+            sorted_recs = [hr for hr in sorted_recs
+                           if pd.Timestamp(year=int(hr["year"]), month=month, day=1)
+                           + pd.offsets.MonthEnd(0) < cutoff]
+            years = [int(hr["year"]) for hr in sorted_recs]
+            if len(years) != len(set(years)):
+                raise ValueError("Duplicate historical year")
+            for hr in sorted_recs:
+                value = hr.get("return")
+                if isinstance(value, bool) or value is None or not np.isfinite(float(value)):
+                    raise ValueError("Historical return must be finite")
         if lookback_years and lookback_years > 0:
             valid_recs = sorted_recs[-lookback_years:]
         else:
@@ -138,7 +165,6 @@ def pattern_from_month_stat(
     else:
         conf = "LOW"
 
-    cur_year = pd.Timestamp.now().year
     best_y = max(years_track, key=lambda x: x["return"]) if years_track else {"year": cur_year, "return": 0.0}
     worst_y = min(years_track, key=lambda x: x["return"]) if years_track else {"year": cur_year, "return": 0.0}
 

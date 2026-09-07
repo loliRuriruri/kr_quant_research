@@ -15,6 +15,7 @@ import pandas as pd
 from kr_quant.settings import Settings
 from kr_quant.atomic_io import write_json_atomic
 from kr_quant.strategy.remaining_peak import calculate_remaining_peak_upside
+from kr_quant.strategy.pre_entry_ranking import PRE_ENTRY_STAGE_WEIGHT, rank_pre_entry_from_inputs
 from kr_quant.strategy.run import _prices
 from kr_quant.universe.tradability import evaluate_candidate_tradability, evaluate_event_universe_tradability
 
@@ -160,16 +161,6 @@ _EVENT_TICKERS_CACHE: dict[str, Any] = {
     "ready": False,
     "errors": (),
 }
-PRE_ENTRY_STAGE_WEIGHT: dict[str, int] = {
-    "TODAY_ENTRY": 100,
-    "PRE_ENTRY_15": 80,
-    "PRE_ENTRY_30": 60,
-    "ACCUMULATE_60": 40,
-    "RALLY_ACTIVE": 30,
-    "EXIT_PEAK": 10,
-}
-
-
 def _load_scored_map(settings: Settings) -> dict[str, dict[str, Any]]:
     """Load the latest scored universe across current and legacy output names."""
     candidates: list[Path] = [settings.output_dir / "latest_all_stocks.parquet"]
@@ -1298,51 +1289,11 @@ def _latest_quotes(settings: Settings, tickers: list[str]) -> dict[str, dict[str
 
 
 def rank_pre_entry_candidates(settings: Settings, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return the canonical pre-entry order used by dashboard and calendar.
-
-    Entry urgency is the primary key, then the historical seasonality score and
-    current-price-to-peak median.  Tradability and a valid remaining-peak model
-    are required, so a card cannot appear on one screen but disappear on the
-    other because of duplicated client-side rules.
-    """
-    allowed = {key for key, weight in PRE_ENTRY_STAGE_WEIGHT.items() if weight >= 40}
+    """Production I/O adapter; historical callers use the explicit-input core."""
     clean_set = _clean_active_tickers(settings)
-    candidates = [dict(row) for row in rows if row.get("entry_stage") in allowed]
-    quotes = _latest_quotes(settings, [row.get("ticker") for row in candidates])
-    valid_rows: list[dict[str, Any]] = []
-    for row in candidates:
-        ticker = str(row.get("ticker") or "").zfill(6)
-        if ticker not in clean_set:
-            continue
-        remaining = row.get("remaining_peak") or {}
-        if not bool(remaining.get("available")):
-            continue
-        quote = quotes.get(ticker, {})
-        close = quote.get("last_close")
-        if close is None or not np.isfinite(close) or close < 1000.0:
-            continue
-        if remaining.get("price_as_of") and str(remaining["price_as_of"]) != str(quote.get("as_of")):
-            continue
-        row["last_close"] = close
-        row["chg_pct"] = quote.get("chg_pct")
-        row["price_as_of"] = quote.get("as_of")
-        valid_rows.append(row)
-
-    def sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
-        remaining = row.get("remaining_peak") or {}
-        remaining_p50 = remaining.get("remaining_p50")
-        return (
-            -PRE_ENTRY_STAGE_WEIGHT.get(str(row.get("entry_stage") or ""), 0),
-            -float(row.get("seasonality_score") or 0),
-            -float(remaining_p50 if remaining_p50 is not None else -99),
-            str(row.get("ticker") or ""),
-            str(row.get("pattern_id") or ""),
-        )
-
-    valid_rows.sort(key=sort_key)
-    for index, row in enumerate(valid_rows, start=1):
-        row["pre_entry_rank"] = index
-    return valid_rows
+    allowed = {key for key, weight in PRE_ENTRY_STAGE_WEIGHT.items() if weight >= 40}
+    quotes = _latest_quotes(settings, [row.get("ticker") for row in rows if row.get("entry_stage") in allowed])
+    return rank_pre_entry_from_inputs(rows, clean_set=clean_set, quotes=quotes)
 
 
 def get_pre_entry_glance(settings: Settings, n: int = 3, lookback_years: int = 5, *, rows=None) -> list[dict[str, Any]]:
