@@ -1,23 +1,33 @@
-# 🚀 KR Quant Research - 프로젝트 인수인계 & 그록(Grok) 연계 가이드 (`v2.69.3-stable`)
+# 🚀 KR Quant Research - 프로젝트 인수인계 & 연계 가이드 (`v2.78.0`)
 
 ## 1. 📌 현재 프로젝트 상태 요약
 * **저장소 (GitHub)**: `https://github.com/loliRuriruri/kr_quant_research.git`
-* **최신 릴리스 태그**: **`v2.69.3-stable`**
+* **최신 앱 버전**: **`v2.78.0`** (Phase P0~P3 하드닝 완료)
 * **공개 웹**: `https://korea-quant-research.pages.dev/` (Cloudflare Pages 읽기 전용 스냅샷. PC 꺼져 있어도 접속)
-* **로컬 대시보드(일상 시작)**: `Start-KR-Quant.bat` → 기존 포트 8790 프로세스를 정리한 뒤 `http://127.0.0.1:8790`에서 재시작
+* **로컬 대시보드(일상 시작)**: `Start-KR-Quant.bat` → 기존 포트 8790 프로세스를 정리한 뒤 `http://127.0.0.1:8790`에서 무소음(Hidden CMD) 백그라운드 재시작
+* **로컬 대시보드 중단**: `Stop-KR-Quant.bat`
 * **공개 웹 갱신**: `Start-KR-Quant-Public.bat` (로컬 계산본만 업로드, 키 미포함)
-* **서버 중단**: `Stop-KR-Quant.bat`
-* **기존 바로가기 호환**: `Restart-KR-Quant.bat`은 `Start-KR-Quant.bat`의 별칭
+* **상세 백과 위키**: `docs/NAMUWIKI.md` (프로젝트 역사·팩터 공식·은하퀀트 페르소나 총망라)
 * **실행 환경**: Python 3.12 (Virtualenv: `.venv`), FastAPI Backend, Vanilla JS, Cloudflare Pages static snapshot
 
 ---
 
 ## 2. 🌟 최근 완성 및 배포된 핵심 퀀트 기능들
 
+### 0. ⚡ 최근 업데이트 (v2.70~v2.78 및 P0~P3 하드닝, 2026-09)
+* **📅 계절성 모멘텀 트래커 실시간 연동 (v2.78.0)**:
+  - 캘린더 이상현상 포트폴리오의 실시간 수익률 곡선(`actual_curve`)을 실제 시세로 동적 계산하고, 카드 클릭 시 심층 분석 팝업 모달 연동.
+* **🔄 OpenDART 연속 자동 백필 모드 (Continuous Backfill)**:
+  - 50종목 단위 백필을 유니버스 완성 시까지 무중단 연속 수집하는 모드 탑재 및 phantom usable_facts 정합성 보정.
+* **🛡️ P0~P2 신뢰성 공학 완비**:
+  - 영숫자 종목코드 보존 (`0220W0` 등), 스마트 실행 원장(`logs/smart_run_ledger.json`), 백테스트 OOS(마지막 20%) 완전 격리.
+* **🖥️ 런처 최적화 & 무소음 백그라운드 실행**:
+  - WMI `Win32_ProcessStartup`의 `ShowWindow = 0 (SW_HIDE)` 옵션을 적용하여 상주하던 CMD 창을 완전 숨김 처리.
+  - 중복/호환용 파일(`Restart-KR-Quant.bat`, `Publish-KR-Quant-Public.bat`, `Start-KR-Quant-Tunnel.bat`, `KR-Quant-Research.cmd`, `KR-Quant-Research.vbs`) 정리.
+* **📖 나무위키 스타일 프로젝트 백과 (`docs/NAMUWIKI.md`) 집대성**:
+  - 5대 팩터 공식, 5중 리스크 가드레일, 은하영웅전설 4대 지휘관 페르소나 락, 비화 및 여담을 한눈에 볼 수 있는 가이드 작성.
+
 ### 1. 🎯 UI/UX 및 퀀트 필터링 전면 개선 (v2.23‑v2.69)
-* **🖥️ 모바일 기기에서도 완성도 높은 PC 풀스크린 레이아웃 100% 동일 표시 (`v2.69.3`)**:
-  - **① 모바일 카드 찌그러짐 완전 해제**: 복잡한 표와 차트가 세로로 찌그러지던 모바일 전용 미디어쿼리를 걷어내고, PC 전용 좌측 사이드바와 풍부한 2열 그리드 레이아웃을 스마트폰에서도 완벽하게 동일하게 유지.
-  - **② 핀치 투 줌(Pinch-to-zoom) 자유 배율 지원**: 스마트폰에서 브라우저 확대/축소(`user-scalable=yes, width=1200`)로 고해상도 PC 대시보드를 언제 어디서든 자유롭게 탐색 가능.
 * **🚨 거래정지·동전주·관리종목 원천 배제 5중 리스크 가드레일 엔진 탑재 (v2.69.2)**:
   - **① 거래 활성화 검증 (Layer 1 - Active Trading)**: 최근 10영업일 이내 정상 거래 체결 이력이 없는 장기 거래정지·상장폐지·피흡수 종목(예: 알파AI 043100 등) 100% 원천 배제.
   - **② 초저가 동전주 차단 (Layer 2 - Penny Stock Guard)**: 현재가 1,000원 미만 동전주 원천 배제(상폐 실질심사 및 호가 왜곡 방지).

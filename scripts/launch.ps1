@@ -63,15 +63,19 @@ if (-not (Test-QuantServer)) {
             '@echo off'
             'chcp 65001 >nul'
             "cd /d `"$ProjectRoot`""
+            "set `"PYTHONPATH=$ProjectRoot\src;%PYTHONPATH%`""
             "`"$PythonExe`" -m kr_quant.web.app >> `"$stdout`" 2>> `"$stderr`""
         )
         Set-Content -LiteralPath $launcher -Value $lines -Encoding ASCII
 
         # Win32_Process.Create starts outside this shell's Job Object, so the
         # server keeps running after Start-KR-Quant.bat (and agent commands) exit.
+        # ShowWindow = 0 (SW_HIDE) ensures the background server cmd window is completely hidden.
+        $startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }
         $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
             CommandLine = "cmd.exe /c `"$launcher`""
             CurrentDirectory = $ProjectRoot
+            ProcessStartupInformation = $startup
         }
         if ([int]$created.ReturnValue -ne 0) {
             throw "서버 프로세스 생성 실패 (Win32 code $($created.ReturnValue))."

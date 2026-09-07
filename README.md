@@ -62,7 +62,7 @@ copy .env.example .env
 
 브라우저 주소는 **http://127.0.0.1:8790** 입니다. 시작할 때마다 재시작하므로 이전 프로세스가 남아 있어도 오래된 화면·코드가 재사용되지 않습니다.
 
-`Restart-KR-Quant.bat`은 기존 바로가기 호환용 별칭이며 `Start-KR-Quant.bat`을 호출합니다. 공개 배포·임시 터널 파일은 외부 공개가 필요할 때만 사용합니다.
+공개 배포 파일은 외부 공개 웹(Pages) 갱신이 필요할 때만 사용합니다.
 
 서버가 뜨지 않으면 `logs/web.stderr.log`를 확인하세요. 포트 8790을 다른 프로그램이 사용 중이면 시작 스크립트가 오류를 표시하고 종료합니다.
 
@@ -140,28 +140,17 @@ npx wrangler pages deploy dist-public --project-name korea-quant-research --bran
 
 로컬 대시보드를 켜 두면 평일 19:10 스마트 관리가 시세 지연·DART 커버리지·퀀트 기준일을 판단해 필요한 작업을 실행하고, 품질검사 통과 후 공개 웹도 갱신합니다. 예약 시각을 지나 서버를 켠 경우에는 그날 작업을 한 번 보충 실행합니다.
 
-### 임시 터널 (비권장)
-
-`Start-KR-Quant-Tunnel.bat`은 이 PC를 `trycloudflare.com`으로 잠깐 엽니다.  
-외부 호스트·Cloudflare 전달 요청은 자동으로 읽기 전용 모드가 되어 API 설정·실행 화면과 모든 변경 API가 차단됩니다. PC가 켜져 있어야 하므로 장기 공유에는 **Pages 공개 웹**을 쓰세요.
-
----
-
 ## 배치 파일 및 운영 스크립트 요약
 
 | 파일 | 하는 일 |
 |---|---|
 | `Start-KR-Quant.bat` | **일상용**: 기존 로컬 서버 정리 후 대시보드 재시작 |
 | `Stop-KR-Quant.bat` | **일상용**: 로컬 서버 종료 (무관한 타 프로그램 보호) |
-| `Restart-KR-Quant.bat` | `Start-KR-Quant.bat` 호환용 별칭 |
 | `Start-KR-Quant-Public.bat` | **보조**: 로컬 스냅샷 → Cloudflare Pages 업로드 |
-| `Publish-KR-Quant-Public.bat` | 공개 배포 별칭 (`Start-KR-Quant-Public.bat`과 동일) |
-| `Start-KR-Quant-Tunnel.bat` | **보조**: PC가 켜져 있는 동안만 임시 외부 URL |
 | `scripts\install-task-scheduler.ps1` | **운영용**: Windows 로그인 시 백그라운드 자동 기동 등록 |
 | `scripts\uninstall-task-scheduler.ps1` | **운영용**: Windows 작업 스케줄러 자동 기동 해제 |
-| `KR-Quant-Research.cmd` / `KR-Quant-Research.vbs` | 기존 자동 실행·바로가기 호환용 숨김 재시작기 |
 
-정리하면 로컬 연구만 할 때는 `Start-KR-Quant.bat`과 `Stop-KR-Quant.bat` 두 개면 충분합니다.  
+정리하면 로컬 연구만 할 때는 `Start-KR-Quant.bat`과 `Stop-KR-Quant.bat` 두 개면 충분합니다. 공개 배포는 필요할 때만 `Start-KR-Quant-Public.bat`을 실행합니다.  
 PC를 켤 때마다 자동으로 서버를 띄우고 싶다면 PowerShell에서 `.\scripts\install-task-scheduler.ps1`을 1회 실행하세요. 평일 19:10 예약 시간에 PC가 꺼져 있었더라도, 다음 부팅/로그인 시 누락된 작업을 자동으로 보충 수집합니다.
 
 ---

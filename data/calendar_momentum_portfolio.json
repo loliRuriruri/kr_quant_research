@@ -9,8 +9,8 @@
     "target_price": 31500,
     "catalyst": "9월 글로벌 SEMICON / IMID 학회 및 글래스 기판 레이저 장비 수주 모멘텀",
     "notes": "Updated test notes",
-    "exited": false,
-    "trajectory_match": 80.0,
+    "exited": true,
+    "trajectory_match": 80,
     "history_curve": [
       0,
       1.2,
@@ -21,11 +21,11 @@
       11.5,
       14.8,
       18.2,
-      22.0,
+      22,
       24.5,
-      23.0,
+      23,
       20.5,
-      17.0
+      17
     ],
     "actual_curve": [
       10.24,
@@ -43,7 +43,7 @@
       "2026-09-02",
       "2026-09-03"
     ],
-    "current_price": 25100.0,
+    "current_price": 25100,
     "current_return": -1.18,
     "total_return_pct": -1.18
   },
@@ -58,7 +58,7 @@
     "catalyst": "9월 글로벌 스마트폰 신작(아이폰) 공개 전 커버글라스 / 기판 부품 공급 랠리",
     "notes": "신제품 공개 키노트 당일 '재료 소멸' 하락 주의. D-2 전량 엑시트 권장.",
     "exited": false,
-    "trajectory_match": 99.0,
+    "trajectory_match": 99,
     "history_curve": [
       0,
       0.9,
@@ -69,7 +69,7 @@
       10.5,
       13.6,
       17.2,
-      21.0,
+      21,
       25.1,
       23.5,
       19.8,
@@ -91,7 +91,7 @@
       "2026-09-02",
       "2026-09-03"
     ],
-    "current_price": 18400.0,
+    "current_price": 18400,
     "current_return": 1.1,
     "total_return_pct": 1.1
   },
@@ -106,7 +106,7 @@
     "catalyst": "하반기 글로벌 ESS 대형 수주 및 3Q 실적 턴어라운드 기관 선반영 랠리",
     "notes": "수주 공시 및 기관 매수세 유입 확인 시 분기말 목표일까지 추세 홀딩.",
     "exited": false,
-    "trajectory_match": 99.0,
+    "trajectory_match": 99,
     "history_curve": [
       0,
       0.6,
@@ -118,11 +118,11 @@
       9.5,
       12.2,
       15.5,
-      19.0,
+      19,
       23.2,
       26.5,
-      25.0,
-      22.0
+      25,
+      22
     ],
     "actual_curve": [
       45.09,
@@ -140,7 +140,7 @@
       "2026-09-02",
       "2026-09-03"
     ],
-    "current_price": 33200.0,
+    "current_price": 33200,
     "current_return": 16.49,
     "total_return_pct": 16.49
   },
@@ -155,20 +155,20 @@
     "catalyst": "9~10월 유럽당뇨학회(EASD) / 비만학회(ObesityWeek) 파이프라인 임상 모멘텀",
     "notes": "학회 초록(Abstract) 공개 시점 단기 급등 시 1차 50% 분할 익절.",
     "exited": false,
-    "trajectory_match": 99.0,
+    "trajectory_match": 99,
     "history_curve": [
       0,
       1.8,
       3.9,
       6.2,
       8.8,
-      12.0,
+      12,
       15.8,
       20.2,
       25.5,
-      31.0,
+      31,
       35.8,
-      38.0,
+      38,
       34.2,
       29.5
     ],
@@ -188,7 +188,7 @@
       "2026-09-02",
       "2026-09-03"
     ],
-    "current_price": 48500.0,
+    "current_price": 48500,
     "current_return": 12.27,
     "total_return_pct": 12.27
   }
