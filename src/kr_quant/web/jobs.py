@@ -253,7 +253,8 @@ class JobRunner:
             if pipeline == "interrupted" or result.get("cancelled"):
                 self.logs.append(f"작업 중단: {kind} · 완료된 단계는 유지됩니다.")
             else:
-                self.logs.append(f"작업 {'일부 완료' if finished_status == 'partial' else '완료'}: {kind}")
+                label = {'partial': '일부 완료', 'error': '실패'}.get(finished_status, '완료')
+                self.logs.append(f"작업 {label}: {kind}")
             record_job_history(history_row)
             if pipeline != "interrupted" and not result.get("cancelled"):
                 if finished_status in {"success", "partial"} and kind in {
@@ -264,7 +265,10 @@ class JobRunner:
                     from kr_quant.research.selection_tracking import request_tracking_refresh
                     request_tracking_refresh(load_settings())
                     self.logs.append("시즌 메뉴 공통 자료를 백그라운드에서 준비합니다. 완료 후 같은 세대로 전환합니다.")
-                _maybe_publish(kind)
+                if finished_status != "error":
+                    _maybe_publish(kind)
+                else:
+                    self.logs.append("실패한 작업이므로 공개판 자동 배포를 건너뜁니다.")
                 _notify_job(kind, result=result)
             else:
                 self.logs.append("중단되어 공개판 업로드와 알림을 건너뜁니다.")
@@ -664,28 +668,36 @@ def job_smart_sync(
         RUNNER.logs.append(f"[1/5] KRX {expected.isoformat()} 세션 준비 여부를 확인합니다.")
         probe = probe_expected_krx(s, expected)
         if not probe.get("ready"):
-            retry_at = ledger_mod.schedule_krx_retry(ledger, s)
+            retryable = probe.get("retryable", True)
+            probe_status = "source_not_ready" if retryable else "failed"
+            retry_at = ledger_mod.schedule_krx_retry(ledger, s) if retryable else None
             detail = probe.get("error") or f"미준비 시장: {', '.join(probe.get('missing_markets') or []) or '전체'}"
             ledger_mod.mark_step(
                 ledger,
                 "krx",
-                "source_not_ready",
+                probe_status,
                 s,
                 retry_at=retry_at,
                 detail=detail,
                 missing_markets=probe.get("missing_markets") or [],
+                failure_kind=probe.get("failure_kind"),
+                market_rows=probe.get("market_rows") or {},
             )
-            msg = f"KRX {expected.isoformat()} 자료 미준비"
+            is_unpublished = probe.get("failure_kind") in (None, "not_published")
+            msg = f"KRX {expected.isoformat()} " + ("자료 미준비" if is_unpublished else "인증·응답 오류")
             if retry_at:
                 msg += f" · {retry_at[11:16]} KST에 시세 단계만 재시도"
-            else:
+            elif retryable:
                 msg += " · 당일 자동 재시도 한도에 도달"
+            else:
+                msg += " · 자동 반복 중단, API 설정·응답 형식 확인 후 스마트 실행으로 재시도"
             warnings.append(msg)
             RUNNER.logs.append(f"[1/5] {msg}")
             _step_out(
                 "krx",
                 "KRX 시세",
-                status="source_not_ready",
+                status=probe_status,
+                failure_kind=probe.get("failure_kind"),
                 as_of=expected.isoformat(),
                 retry_at=retry_at,
                 attempt=(ledger.get("steps") or {}).get("krx", {}).get("attempt"),
@@ -904,7 +916,9 @@ def job_smart_sync(
 
     final_facts = (((final.get("sources") or {}).get("financial_facts") or {}).get("coverage") or {})
     krx_step = (ledger.get("steps") or {}).get("krx") or {}
-    if krx_step.get("status") == "source_not_ready" and krx_step.get("retry_at"):
+    if krx_step.get("status") == "failed":
+        next_action = "KRX 인증·응답 또는 수집 오류를 확인한 뒤 스마트 실행으로 재시도하세요. 이전 정상 자료는 유지됩니다."
+    elif krx_step.get("status") == "source_not_ready" and krx_step.get("retry_at"):
         next_action = f"KRX 자료가 준비되면 {str(krx_step.get('retry_at'))[11:16]} KST에 시세 단계만 다시 받습니다."
     elif (final_facts.get("coverage_pct") or 0) < 90:
         next_action = "다음 예약 실행에서 DART 백필을 이어갑니다."

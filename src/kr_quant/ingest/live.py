@@ -453,22 +453,38 @@ def krx_session_available(settings: Settings, as_of: date) -> dict[str, Any]:
     walk back to an older session; the caller should retry the same date.
     """
     if not settings.krx_api_key:
-        return {"ready": False, "as_of": as_of.isoformat(), "error": "KRX_API_KEY가 없습니다."}
+        return {"ready": False, "as_of": as_of.isoformat(), "error": "KRX_API_KEY가 없습니다.",
+                "failure_kind": "configuration", "retryable": False}
     try:
         adapter = KrxOpenApiAdapter(settings.krx_api_key, settings.config["ingest"]["krx_base_url"])
         missing: list[str] = []
+        counts: dict[str, int] = {}
         for market in list(settings.config["universe"]["markets"]):
             rows = adapter.fetch_daily_maybe(as_of, market)
+            counts[str(market)] = len(rows)
             if not rows:
                 missing.append(str(market))
         return {
             "ready": not missing,
             "as_of": as_of.isoformat(),
             "missing_markets": missing,
+            "market_rows": counts,
+            "failure_kind": "not_published" if missing else None,
+            "retryable": bool(missing),
         }
     except Exception as exc:  # noqa: BLE001
-        logger.warning("KRX session probe failed for %s: %s", as_of, exc)
-        return {"ready": False, "as_of": as_of.isoformat(), "error": str(exc)[:200]}
+        import requests
+        from kr_quant.ingest.krx import KrxResponseError
+        status = getattr(getattr(exc, 'response', None), 'status_code', None)
+        retryable = (isinstance(exc, (requests.Timeout, requests.ConnectionError))
+                     or status == 429 or (isinstance(status, int) and status >= 500))
+        kind = 'response_invalid' if isinstance(exc, KrxResponseError) else 'request_error'
+        if status in (401, 403):
+            kind = 'authorization'
+        detail = f"KRX {kind} ({type(exc).__name__}{' HTTP ' + str(status) if status else ''})"
+        logger.warning("KRX session probe failed for %s: %s", as_of, detail)
+        return {"ready": False, "as_of": as_of.isoformat(), "error": detail,
+                "failure_kind": kind, "retryable": retryable}
 
 
 def fetch_krx_prices_range(

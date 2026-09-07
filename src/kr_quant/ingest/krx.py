@@ -25,6 +25,29 @@ INDEX_ENDPOINT = {
 }
 
 
+class KrxResponseError(SourceNotReady):
+    """A malformed/mismatched response, not an unpublished daily partition."""
+
+
+def daily_rows(payload: Any, as_of: date, market: str) -> list[dict[str, Any]]:
+    """Validate every row before callers may normalize it to the requested day."""
+    if not isinstance(payload, dict):
+        raise KrxResponseError(f"KRX {market} response is not an object")
+    key = next((key for key in ('OutBlock_1', 'output', 'data') if key in payload), None)
+    if key is None or not isinstance(payload[key], list):
+        # Do not echo upstream bodies: error messages can contain request secrets.
+        raise KrxResponseError(f"KRX {market} daily rows missing or invalid; check API authorization/schema")
+    rows = payload[key]
+    expected = as_of.strftime('%Y%m%d')
+    for row in rows:
+        if not isinstance(row, dict):
+            raise KrxResponseError(f"KRX {market} invalid daily row")
+        actual = str(row.get('BAS_DD') or row.get('basDd') or '')
+        if actual != expected:
+            raise KrxResponseError(f"KRX {market} daily date missing/mismatched; expected {expected}")
+    return rows
+
+
 class KrxOpenApiAdapter(MarketDataAdapter):
     """Official KRX Open API adapter.
 
@@ -59,20 +82,16 @@ class KrxOpenApiAdapter(MarketDataAdapter):
         endpoint = MARKET_ENDPOINT[market]
         bas = as_of.strftime("%Y%m%d")
         payload = self._get(endpoint, {"basDd": bas})
-        rows = payload.get("OutBlock_1") or payload.get("output") or payload.get("data") or []
+        rows = daily_rows(payload, as_of, market)
         if not rows:
             raise SourceNotReady(f"KRX {market} empty for {bas}")
-        first = rows[0]
-        bas_dd = str(first.get("BAS_DD") or first.get("basDd") or "")
-        if bas_dd and bas_dd != bas:
-            raise SourceNotReady(f"KRX {market} returned BAS_DD={bas_dd}, expected {bas}")
         return list(rows)
 
     def fetch_daily_maybe(self, as_of: date, market: str) -> list[dict[str, Any]]:
         endpoint = MARKET_ENDPOINT[market]
         bas = as_of.strftime("%Y%m%d")
         payload = self._get(endpoint, {"basDd": bas})
-        rows = payload.get("OutBlock_1") or payload.get("output") or payload.get("data") or []
+        rows = daily_rows(payload, as_of, market)
         return list(rows or [])
 
     def fetch_master(self, as_of: date, market: str) -> list[dict[str, Any]]:

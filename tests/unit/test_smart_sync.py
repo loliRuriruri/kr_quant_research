@@ -12,6 +12,21 @@ from kr_quant.web.scheduler import _STATE, _catch_up_due, _fire
 KST = ZoneInfo("Asia/Seoul")
 
 
+def test_invalid_krx_response_stops_automatic_retry_and_quant(monkeypatch, tmp_path):
+    settings, state, seen = _patch_common(monkeypatch, tmp_path)
+    monkeypatch.setattr(jobs, 'probe_expected_krx', lambda *args: {
+        'ready': False, 'retryable': False, 'failure_kind': 'response_invalid',
+        'error': 'KRX response_invalid'})
+    result = jobs.job_smart_sync()
+    saved = smart_ledger.load_ledger(settings)
+    assert saved['steps']['krx']['status'] == 'failed'
+    assert saved['steps']['krx']['retry_at'] is None
+    assert saved['steps']['krx']['failure_kind'] == 'response_invalid'
+    assert 'krx' not in seen and 'quant' not in seen
+    assert result['pipeline_status'] == 'failed'
+    assert any('자동 반복 중단' in warning for warning in result['warnings'])
+
+
 def _snapshot(*, stale: bool, quant_state: str, coverage: float) -> dict:
     return {
         "stale_price": stale,
@@ -176,11 +191,29 @@ def test_job_runner_exposes_partial_pipeline_status(monkeypatch):
     runner = jobs.JobRunner()
     monkeypatch.setattr(jobs, "_maybe_publish", lambda kind: None)
     monkeypatch.setattr(jobs, "_notify_job", lambda *args, **kwargs: None)
+    monkeypatch.setattr(jobs, "record_job_history", lambda *args: None)
+    import kr_quant.web.season_snapshot as snapshots
+    import kr_quant.research.selection_tracking as tracking
+    monkeypatch.setattr(snapshots, 'refresh_after_data_job', lambda *args: None)
+    monkeypatch.setattr(tracking, 'request_tracking_refresh', lambda *args: None)
 
     runner._run("smart-sync", lambda: {"pipeline_status": "partial"})
 
     assert runner.snapshot()["status"] == "partial"
-    assert "일부 완료" in runner.logs[-1]
+    assert any("일부 완료" in line for line in runner.logs)
+
+
+def test_failed_pipeline_is_not_logged_complete_or_published(monkeypatch):
+    runner = jobs.JobRunner()
+    published = []
+    monkeypatch.setattr(jobs, '_maybe_publish', lambda kind: published.append(kind))
+    monkeypatch.setattr(jobs, '_notify_job', lambda *args, **kwargs: None)
+    monkeypatch.setattr(jobs, 'record_job_history', lambda *args: None)
+    runner._run('smart-sync', lambda: {'pipeline_status': 'failed'})
+    assert runner.snapshot()['status'] == 'error'
+    assert any('작업 실패' in line for line in runner.logs)
+    assert not any('작업 완료' in line for line in runner.logs)
+    assert published == []
 
 
 def test_running_ledger_recovers_to_interrupted(tmp_path):
