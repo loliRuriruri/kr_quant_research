@@ -8,11 +8,12 @@ Overlay only — never mutates fundamental quant_score.
 from __future__ import annotations
 
 from typing import Any
+import math
 
 
 def _score_to_grade(score: float | None, max_score: float) -> tuple[str, float]:
     """Converts a factor score out of max_score to a letter grade and percentage (0~100)."""
-    if score is None or max_score <= 0:
+    if score is None or max_score <= 0 or not math.isfinite(float(score)):
         return "N/A", 0.0
     pct = max(0.0, min(100.0, (float(score) / float(max_score)) * 100.0))
     if pct >= 92.0:
@@ -45,24 +46,33 @@ def build_factor_scorecard(stock_row: dict[str, Any]) -> dict[str, Any]:
     if not stock_row:
         return {"configured": False, "used_in_quant": False, "factors": []}
 
-    q_score = float(stock_row.get("quant_score") or 0)
+    try:
+        q_score = float(stock_row.get("quant_score"))
+    except (TypeError, ValueError):
+        q_score = None
+    if q_score is not None and (not math.isfinite(q_score) or not 0 <= q_score <= 100):
+        q_score = None
 
-    # Quant Decision label (Seeking Alpha style)
-    if q_score >= 80.0:
-        decision = "STRONG_BUY"
-        decision_ko = "적극 매수 우위 (Strong Buy)"
+    # A score band is neither a trade recommendation nor an OOS validation.
+    if stock_row.get("universe_eligible") is False:
+        decision, decision_ko = "INELIGIBLE", "선정 제외 · 제외 사유 확인"
+    elif q_score is None:
+        decision, decision_ko = "UNAVAILABLE", "점수 자료 없음"
+    elif q_score >= 80.0:
+        decision = "HIGH_SCORE"
+        decision_ko = "높은 점수 구간 (80점 이상)"
     elif q_score >= 68.0:
-        decision = "BUY"
-        decision_ko = "매수 우위 (Buy)"
+        decision = "UPPER_SCORE"
+        decision_ko = "중상위 점수 구간 (68~80점 미만)"
     elif q_score >= 50.0:
-        decision = "HOLD"
-        decision_ko = "보유 관망 (Hold)"
+        decision = "MID_SCORE"
+        decision_ko = "중간 점수 구간 (50~68점 미만)"
     elif q_score >= 35.0:
-        decision = "SELL"
-        decision_ko = "매도 주의 (Sell)"
+        decision = "LOW_SCORE"
+        decision_ko = "낮은 점수 구간 (35~50점 미만)"
     else:
-        decision = "STRONG_SELL"
-        decision_ko = "적극 매도/비중 축소 (Strong Sell)"
+        decision = "VERY_LOW_SCORE"
+        decision_ko = "낮은 점수 구간 (35점 미만)"
 
     # Factor specifications: [Key, Label, Max, Submetrics]
     specs = [
@@ -124,7 +134,12 @@ def build_factor_scorecard(stock_row: dict[str, Any]) -> dict[str, Any]:
     factor_cards = []
     for f_id, label, key, max_val, submetrics in specs:
         raw_val = stock_row.get(key)
-        val = float(raw_val) if raw_val is not None else 0.0
+        try:
+            val = float(raw_val) if raw_val is not None else None
+        except (TypeError, ValueError):
+            val = None
+        if val is not None and not math.isfinite(val):
+            val = None
         grade, pct = _score_to_grade(val, max_val)
 
         sub_list = []
@@ -142,7 +157,7 @@ def build_factor_scorecard(stock_row: dict[str, Any]) -> dict[str, Any]:
         factor_cards.append({
             "id": f_id,
             "label": label,
-            "score": round(val, 1),
+            "score": round(val, 1) if val is not None else None,
             "max": max_val,
             "percentile": pct,
             "grade": grade,
@@ -153,9 +168,9 @@ def build_factor_scorecard(stock_row: dict[str, Any]) -> dict[str, Any]:
         "used_in_quant": False,
         "ticker": stock_row.get("ticker"),
         "company": stock_row.get("company"),
-        "quant_score": round(q_score, 1),
+        "quant_score": round(q_score, 1) if q_score is not None else None,
         "decision": decision,
         "decision_ko": decision_ko,
         "factors": factor_cards,
-        "disclaimer": "Seeking Alpha 스타일 팩터 성적표는 Quant 점수 요약 시각화이며, 자의적 수정 없이 기존 점수를 100% 반영합니다.",
+        "disclaimer": "KR Quant 자체 점수의 배점 대비 비율과 등급입니다. 업종 내 순위 백분위나 매매 권고, 미래 성과 확률이 아닙니다. 적격성·자료 시점·검증 결과는 별도로 확인하세요.",
     }

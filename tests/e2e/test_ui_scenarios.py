@@ -39,6 +39,60 @@ def _open_view(page, name: str) -> None:
     page.locator(f'button.nav-btn[data-view="{name}"]').click()
 
 
+def test_dashboard_table_does_not_wait_for_status_or_hidden_menus(browser_page, base_url):
+    page = browser_page.context.browser.new_page()
+    requests = []
+    held = []
+    page.on('request', lambda req: requests.append(req.url))
+    page.route('**/api/status', lambda route: held.append(route))
+    try:
+        page.goto(base_url, wait_until='domcontentloaded')
+        page.locator('#top20-body tr.clickable').first.wait_for(timeout=8000)
+        assert held, 'Status deliberately remains pending while rows are already visible'
+        assert not any(path in url for url in requests for path in ['/api/results/all', '/api/settings', '/api/watchlist', '/api/portfolio', '/api/llm/connections', '/api/seasonality/momentum-portfolio'])
+    finally:
+        page.close()
+
+
+def test_failed_view_can_retry_and_refresh_does_not_reload_dashboard(browser_page, base_url):
+    page = browser_page.context.browser.new_page()
+    calls = []
+    page.on('request', lambda req: calls.append(req.url))
+    try:
+        page.goto(base_url, wait_until='domcontentloaded')
+        page.locator('#top20-body tr.clickable').first.wait_for()
+        page.route('**/api/results/all?*', lambda route: route.fulfill(status=503, json={'detail': 'test temporary failure'}))
+        _open_view(page, 'rank')
+        retry = page.locator('#view-rank > .view-load-state button')
+        retry.wait_for()
+        page.unroute('**/api/results/all?*')
+        before = sum('/api/results/top?' in url for url in calls)
+        retry.click()
+        page.wait_for_function("document.querySelector('#view-rank').getAttribute('aria-busy') === 'false' && document.querySelector('#view-rank > .view-load-state').hidden")
+        assert sum('/api/results/top?' in url for url in calls) == before
+        all_count = sum('/api/results/all?' in url for url in calls)
+        _open_view(page, 'dash')
+        _open_view(page, 'rank')
+        assert sum('/api/results/all?' in url for url in calls) == all_count
+    finally:
+        page.close()
+
+
+def test_strategy_navigation_never_starts_a_backtest(browser_page, base_url):
+    page = browser_page.context.browser.new_page()
+    mutations = []
+    page.on('request', lambda req: mutations.append(req.url) if req.method == 'POST' else None)
+    page.route('**/api/strategy', lambda route: route.fulfill(json={'need_run': True, 'rows': []}))
+    try:
+        page.goto(base_url, wait_until='domcontentloaded')
+        page.locator('#top20-body tr.clickable').first.wait_for()
+        _open_view(page, 'strategy')
+        page.wait_for_function("document.querySelector('#strategy-box').textContent.includes('자동 백테스트하지 않습니다')")
+        assert not any('/api/strategy' in url for url in mutations)
+    finally:
+        page.close()
+
+
 def test_momentum_unknown_data_has_no_fabricated_confidence(browser_page):
     page = browser_page
     route_pattern = "**/api/seasonality/momentum-portfolio"

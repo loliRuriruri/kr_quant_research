@@ -32,6 +32,9 @@ def calculate_event_forward_returns(
     events: Sequence[dict[str, Any]],
     prices: pd.DataFrame,
     horizons: Sequence[int] = DEFAULT_HORIZONS,
+    *,
+    benchmark_prices: pd.DataFrame | None = None,
+    benchmark_name: str | None = None,
 ) -> list[dict[str, Any]]:
     """Calculates forward returns for a list of classified events against a price history dataframe."""
     if not events or prices is None or prices.empty:
@@ -44,13 +47,25 @@ def calculate_event_forward_returns(
     px["close_num"] = pd.to_numeric(px["close"], errors="coerce")
 
     # Pivot prices table for fast lookup: index = date_str, columns = ticker_str
-    table = px.pivot_table(index="date_str", columns="ticker_str", values="close_num")
+    if px.duplicated(["date_str", "ticker_str"]).any():
+        raise ValueError("Duplicate ticker/date prices require source reconciliation")
+    px.loc[~np.isfinite(px["close_num"]) | (px["close_num"] <= 0), "close_num"] = np.nan
+    table = px.pivot(index="date_str", columns="ticker_str", values="close_num")
     table = table.sort_index()
     all_dates = list(table.index)
     date_to_idx = {d: i for i, d in enumerate(all_dates)}
 
-    # Market average returns for benchmark comparison
-    market_mean_series = table.mean(axis=1)
+    # A mean of nominal stock prices is NOT a market return. Only use a
+    # caller-supplied, explicitly named benchmark, on the exact same dates.
+    benchmark = pd.Series(dtype=float)
+    if benchmark_name and benchmark_prices is not None and not benchmark_prices.empty:
+        bp = benchmark_prices.copy()
+        bdate = "date" if "date" in bp.columns else "trade_date"
+        bp["date_str"] = bp[bdate].apply(_format_date)
+        if bp["date_str"].duplicated().any():
+            raise ValueError("Duplicate benchmark dates require source reconciliation")
+        benchmark = pd.Series(pd.to_numeric(bp["close"], errors="coerce").values, index=bp["date_str"])
+        benchmark = benchmark.where(np.isfinite(benchmark) & (benchmark > 0))
 
     annotated_events: list[dict[str, Any]] = []
 
@@ -65,6 +80,13 @@ def calculate_event_forward_returns(
         row["event_type"] = event_type
         row["event_ko"] = EVENT_KO.get(event_type, event_type)
         row["used_in_quant"] = False
+        row["return_basis"] = "EVENT_SESSION_CLOSE_TO_CLOSE"
+        row["is_executable_backtest"] = False
+        row["costs_included"] = False
+        row["benchmark_name"] = benchmark_name if not benchmark.empty else None
+        for h in horizons:
+            row[f"ret_{h}d"] = None
+            row[f"excess_{h}d"] = None
 
         if ticker not in table.columns or not rep_date:
             annotated_events.append(row)
@@ -88,7 +110,8 @@ def calculate_event_forward_returns(
             annotated_events.append(row)
             continue
 
-        start_mkt = market_mean_series.iloc[cur_idx]
+        row["observation_start_date"] = all_dates[cur_idx]
+        start_mkt = benchmark.get(all_dates[cur_idx])
 
         for h in horizons:
             fwd_key = f"ret_{h}d"
@@ -100,8 +123,8 @@ def calculate_event_forward_returns(
                     fwd_ret = (end_px / start_px) - 1.0
                     row[fwd_key] = round(fwd_ret, 4)
 
-                    end_mkt = market_mean_series.iloc[target_idx]
-                    if start_mkt and end_mkt and start_mkt > 0 and end_mkt > 0:
+                    end_mkt = benchmark.get(all_dates[target_idx])
+                    if start_mkt is not None and end_mkt is not None and np.isfinite(start_mkt) and np.isfinite(end_mkt) and start_mkt > 0 and end_mkt > 0:
                         mkt_ret = (end_mkt / start_mkt) - 1.0
                         row[excess_key] = round(fwd_ret - mkt_ret, 4)
                     else:
@@ -175,16 +198,17 @@ def summarize_event_backtest(
                 max_ret = float(np.max(fwd_vals))
                 min_ret = float(np.min(fwd_vals))
 
-                excess_mean = float(np.mean(excess_vals)) if excess_vals else 0.0
+                excess_mean = float(np.mean(excess_vals)) if excess_vals else None
                 excess_win_count = sum(1 for v in excess_vals if v > 0) if excess_vals else 0
-                excess_win_rate = round(excess_win_count / len(excess_vals) * 100.0, 1) if excess_vals else 0.0
+                excess_win_rate = round(excess_win_count / len(excess_vals) * 100.0, 1) if excess_vals else None
 
                 h_stat = {
                     "valid_samples": n,
                     "mean_return": round(mean_ret * 100.0, 2),
                     "median_return": round(median_ret * 100.0, 2),
                     "win_rate": win_rate,
-                    "mean_excess_return": round(excess_mean * 100.0, 2),
+                    "mean_excess_return": round(excess_mean * 100.0, 2) if excess_mean is not None else None,
+                    "benchmark_samples": len(excess_vals),
                     "excess_win_rate": excess_win_rate,
                     "max_return": round(max_ret * 100.0, 2),
                     "min_return": round(min_ret * 100.0, 2),
@@ -193,7 +217,7 @@ def summarize_event_backtest(
 
                 row_summary[f"win_rate_{h}d"] = win_rate
                 row_summary[f"mean_ret_{h}d"] = round(mean_ret * 100.0, 2)
-                row_summary[f"excess_{h}d"] = round(excess_mean * 100.0, 2)
+                row_summary[f"excess_{h}d"] = round(excess_mean * 100.0, 2) if excess_mean is not None else None
             else:
                 type_stats["horizons"][f"{h}d"] = None
                 row_summary[f"win_rate_{h}d"] = None
@@ -217,9 +241,24 @@ def backtest_events(
     events: Sequence[dict[str, Any]],
     prices: pd.DataFrame,
     horizons: Sequence[int] = DEFAULT_HORIZONS,
+    *,
+    benchmark_prices: pd.DataFrame | None = None,
+    benchmark_name: str | None = None,
 ) -> dict[str, Any]:
     """End-to-end event backtest pipeline: calculates forward returns and summarizes statistics."""
-    annotated = calculate_event_forward_returns(events, prices, horizons=horizons)
+    annotated = calculate_event_forward_returns(events, prices, horizons=horizons, benchmark_prices=benchmark_prices, benchmark_name=benchmark_name)
     summary = summarize_event_backtest(annotated, horizons=horizons)
     summary["events"] = annotated
+    summary["methodology"] = {
+        "return_basis": "EVENT_SESSION_CLOSE_TO_CLOSE",
+        "is_executable_backtest": False,
+        "costs_included": False,
+        "benchmark_name": benchmark_name,
+        "limitations": [
+            "공시일(휴장일이면 다음 관측 거래일) 종가 이후의 가격 반응 통계입니다.",
+            "장후 공시를 종가에 매매할 수 있었다는 뜻이 아니며 체결·거래비용은 검증하지 않습니다.",
+            "별도 벤치마크가 없거나 해당 날짜가 누락되면 초과수익률을 산출하지 않습니다.",
+            "수정주가·기업행위·과거 유니버스 품질은 입력 자료에서 별도 검증해야 합니다.",
+        ],
+    }
     return summary

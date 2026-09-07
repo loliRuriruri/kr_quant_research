@@ -6272,3 +6272,20 @@ body {
   outline: 1px dashed rgba(56, 189, 248, 0.5);
   box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
 }
+:root .view-load-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid #334155;
+  border-left: 3px solid #38bdf8;
+  border-radius: 8px;
+  color: #cbd5e1;
+  background: #111c30;
+  font-size: 13px;
+}
+:root .view-load-state[hidden] { display: none; }
+:root .view-load-state[data-state="error"] { border-left-color: #f59e0b; }

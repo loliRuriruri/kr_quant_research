@@ -25,7 +25,14 @@ def test_build_factor_scorecard():
     }
     card = build_factor_scorecard(mock_stock)
     assert card["used_in_quant"] is False
-    assert card["decision"] == "STRONG_BUY"
+    assert card["decision"] == "HIGH_SCORE"
     assert len(card["factors"]) == 5
     v_factor = next(f for f in card["factors"] if f["id"] == "value")
     assert v_factor["grade"] in {"A+", "A"}
+
+
+def test_missing_or_ineligible_score_never_becomes_a_recommendation():
+    assert build_factor_scorecard({'ticker': '005930'})['decision'] == 'UNAVAILABLE'
+    assert build_factor_scorecard({'ticker': '005930', 'quant_score': float('nan')})['decision'] == 'UNAVAILABLE'
+    assert build_factor_scorecard({'ticker': '005930', 'quant_score': 99, 'universe_eligible': False})['decision'] == 'INELIGIBLE'
+    assert _score_to_grade(float('inf'), 30)[0] == 'N/A'

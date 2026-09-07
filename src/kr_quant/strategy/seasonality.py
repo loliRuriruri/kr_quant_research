@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from kr_quant.settings import Settings
+from kr_quant.atomic_io import write_json_atomic
 from kr_quant.strategy.remaining_peak import calculate_remaining_peak_upside
 from kr_quant.strategy.run import _prices
 from kr_quant.universe.tradability import evaluate_candidate_tradability, evaluate_event_universe_tradability
@@ -1050,16 +1051,10 @@ def _enrich_remaining_peak_rows(
     if not rows:
         return []
 
-    price_path = next(
-        (path for path in (settings.staged_dir / "live" / "prices.parquet", settings.staged_dir / "demo" / "prices.parquet") if path.exists()),
-        None,
-    )
-    signature = (
-        str(price_path),
-        price_path.stat().st_mtime_ns,
-        price_path.stat().st_size,
-        date.today().isoformat(),
-    ) if price_path is not None else None
+    # Persist only exact source-generation matches. Adjustment/manifest changes
+    # invalidate these metrics too, even when nominal prices stay unchanged.
+    signature = [1, str(settings.root.resolve()), date.today().isoformat(), _seasonality_source_signature(settings)]
+    cache_path = settings.root / "data" / "cache" / "remaining_peak_metrics_v1.json"
     requested: list[tuple[dict[str, Any], str, int, tuple[str, int, int]]] = []
     for source in rows:
         row = dict(source)
@@ -1079,6 +1074,18 @@ def _enrich_remaining_peak_rows(
         if _REMAINING_PEAK_CACHE.get("signature") != signature:
             _REMAINING_PEAK_CACHE["signature"] = signature
             _REMAINING_PEAK_CACHE["values"] = {}
+            try:
+                stored = json.loads(cache_path.read_text(encoding="utf-8"))
+                if stored.get("signature") == signature:
+                    restored = {}
+                    for record in stored.get("metrics", []):
+                        ticker, month, years = record["key"]
+                        value = record["value"]
+                        if isinstance(ticker, str) and ticker.isdigit() and len(ticker) == 6 and isinstance(value, dict) and isinstance(value.get("available"), bool):
+                            restored[(ticker, int(month), int(years))] = value
+                    _REMAINING_PEAK_CACHE["values"] = restored
+            except (OSError, ValueError, TypeError, KeyError, AttributeError):
+                pass  # Corrupt/incompatible cache is a miss.
         metric_cache: dict[tuple[str, int, int], dict[str, Any]] = _REMAINING_PEAK_CACHE["values"]
 
         missing_tickers = {ticker for _, ticker, _, key in requested if key not in metric_cache}
@@ -1102,6 +1109,13 @@ def _enrich_remaining_peak_rows(
                     target_month,
                     lookback_years=lookback_years,
                 )
+        if missing_tickers:
+            try:
+                write_json_atomic(cache_path, {"signature": signature, "metrics": [
+                    {"key": list(key), "value": value} for key, value in metric_cache.items()
+                ]})
+            except OSError:
+                pass  # Read-only storage does not prevent an in-memory result.
 
     enriched: list[dict[str, Any]] = []
     for row, ticker, target_month, cache_key in requested:

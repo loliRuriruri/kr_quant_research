@@ -1551,13 +1551,10 @@ async function updatePublicBuildBanner() {
   }
 }
 
-async function applyPublicShareMode() {
-  try {
-    const st = await api("/api/status");
-    publicShareMode = publicShareMode || Boolean(st.public_mode);
-  } catch {
-    // Keep the hostname-derived safe default when the status API is unavailable.
-  }
+async function applyPublicShareMode(status = null) {
+  // Host/static-build policy is immediate. Server status can only tighten it;
+  // the backend guard remains authoritative for every sensitive operation.
+  publicShareMode = publicShareMode || Boolean(status?.public_mode);
   document.body.classList.toggle("public-mode", publicShareMode);
   lockPublicAdminUi();
   updatePublicBuildBanner();
@@ -1568,6 +1565,100 @@ async function applyPublicShareMode() {
 
 const viewLoadedAt = {};
 const VIEW_CACHE_TTL_MS = 180000; // 3 minutes
+const viewPending = new Map();
+
+function showViewLoadState(name, state, detail = "") {
+  const view = $(`#view-${name}`);
+  if (!view) return;
+  let banner = view.querySelector(":scope > .view-load-state");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.className = "view-load-state";
+    banner.setAttribute("role", "status");
+    banner.setAttribute("aria-live", "polite");
+    view.prepend(banner);
+  }
+  view.setAttribute("aria-busy", String(state === "loading"));
+  banner.dataset.state = state;
+  banner.replaceChildren();
+  const text = document.createElement("span");
+  text.textContent = state === "loading"
+    ? "데이터를 확인하고 있습니다. 기존 화면을 유지하며 불러옵니다…"
+    : state === "error" ? `불러오지 못했습니다. ${detail}` : "";
+  banner.append(text);
+  banner.hidden = state === "ready";
+  if (state === "error") {
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.textContent = "다시 시도";
+    retry.addEventListener("click", () => ensureViewLoaded(name, true));
+    banner.append(retry);
+  }
+}
+
+function ensureViewLoaded(name, force = false) {
+  if (viewPending.has(name)) return viewPending.get(name);
+  if (!force && viewLoadedAt[name] && Date.now() - viewLoadedAt[name] < VIEW_CACHE_TTL_MS) return Promise.resolve();
+  showViewLoadState(name, "loading");
+  const start = performance.now();
+  // Mark freshness only after success. A failed first load must be retryable.
+  const pending = Promise.resolve().then(() => loadViewData(name, force)).then(() => {
+    viewLoadedAt[name] = Date.now();
+    showViewLoadState(name, "ready");
+    $(`#view-${name}`)?.setAttribute("data-load-ms", String(Math.round(performance.now() - start)));
+  }).catch((err) => {
+    delete viewLoadedAt[name];
+    showViewLoadState(name, "error", err.message || "요청 실패");
+  }).finally(() => viewPending.delete(name));
+  viewPending.set(name, pending);
+  return pending;
+}
+
+async function loadViewData(name, force) {
+  if (name === "dash") return loadDash();
+  if (name === "rank") {
+    await loadRankRows();
+    loadRankTier1Briefing().catch(() => {});
+    return;
+  }
+  if (name === "investor") {
+    loadInvestorEvents().catch(() => {});
+    return loadInvestor();
+  }
+  if (name === "sunzi") return loadSunzi();
+  if (name === "nps") return loadNps();
+  if (name === "trade") return loadTrade();
+  if (name === "us13f") return loadUs13f();
+  if (name === "toss") return loadTossRankings();
+  if (name === "sector") return loadSectors();
+  if (name === "screens") return loadScreens();
+  if (name === "market") {
+    loadMacro().catch(() => {});
+    return loadMarket();
+  }
+  if (name === "strategy") {
+    loadPortfolio().catch(() => {});
+    return loadStrategy();
+  }
+  if (name === "watch") return loadWatch();
+  if (name === "reports") return loadReportArchive();
+  if (name === "settings") return loadSettings();
+  if (name === "run") {
+    await loadStatusPanel();
+    stampRunAsOf();
+    return;
+  }
+  if (name === "seasonality") {
+    if (force) delete v11SubtabLoadedAt[currentV11Subtab];
+    loadSeasonalityTier1Briefing().catch(() => {});
+    if (currentV11Subtab === "pre-entry") return loadPreEntryView();
+    if (currentV11Subtab === "discovery") return loadDiscoveryRanked();
+    if (currentV11Subtab === "explanation") return loadAIExplanations();
+    if (currentV11Subtab === "calendar") return loadInstitutionalCalendar();
+    if (currentV11Subtab === "momentum") return loadCalendarMomentumPortfolio();
+    return loadSeasonality();
+  }
+}
 
 function switchView(name, force = false) {
   if (publicShareMode && name === "settings") name = "dash";
@@ -1631,48 +1722,10 @@ function switchView(name, force = false) {
     if (name === "dash") requestAnimationFrame(syncDashLeaderboardHeight);
     return;
   }
-  viewLoadedAt[name] = now;
-
   if (name === "dash" || name === "rank") stampFromStatus();
-  if (name === "dash") requestAnimationFrame(syncDashLeaderboardHeight);
-  if (name === "rank") loadRankTier1Briefing().catch(() => {});
-  if (name === "investor") {
-    loadInvestor().catch((err) => alert(err.message));
-    loadInvestorEvents().catch(() => {});
-  }
-  if (name === "sunzi") loadSunzi().catch((err) => alert(err.message));
-  if (name === "nps") loadNps().catch((err) => alert(err.message));
-  if (name === "trade") loadTrade().catch((err) => alert(err.message));
-  if (name === "us13f") loadUs13f().catch((err) => alert(err.message));
-  if (name === "toss") loadTossRankings().catch((err) => alert(err.message));
-  if (name === "sector") loadSectors().catch((err) => alert(err.message));
-  if (name === "screens") loadScreens().catch((err) => alert(err.message));
-  if (name === "market") {
-    loadMarket().catch((err) => alert(err.message));
-    loadMacro().catch(() => {});
-  }
-  if (name === "strategy") {
-    loadStrategy().catch((err) => alert(err.message));
-    loadPortfolio().catch(() => {});
-  }
-  if (name === "watch") loadWatch().catch((err) => alert(err.message));
-  if (name === "reports") {
-    loadReportArchive().catch(() => {});
-    const btnReports = $("#subtab-watch-reports");
-    if (btnReports) btnReports.click();
-  }
-  if (name === "seasonality") {
-    setPageAsOf("계절성 데이터 시점 확인 중…", "KRX 일봉 기준일과 계절성 계산 시각을 불러오는 중입니다.");
-    loadSeasonalityTier1Briefing().catch(() => {});
-    if (currentV11Subtab === "pre-entry") loadPreEntryView().catch(() => {});
-    else if (currentV11Subtab === "discovery") loadDiscoveryRanked().catch(() => {});
-    else if (currentV11Subtab === "explanation") loadAIExplanations().catch(() => {});
-    else if (currentV11Subtab === "calendar") loadInstitutionalCalendar().catch(() => {});
-    else if (currentV11Subtab === "momentum") loadCalendarMomentumPortfolio().catch(() => {});
-    else loadSeasonality().catch(() => {});
-  }
-  if (name === "run") stampRunAsOf();
+  if (name === "seasonality") setPageAsOf("계절성 데이터 시점 확인 중…", "KRX 일봉 기준일과 계절성 계산 시각을 불러오는 중입니다.");
   if (name === "settings") setPageAsOf("이 PC의 .env · 시장 데이터 시점이 아닙니다.", "키 저장 화면입니다. 시세·수급 시점과 무관합니다.");
+  return ensureViewLoaded(name, force);
 }
 
 let liveTimer = null;
@@ -1692,7 +1745,7 @@ function stopLiveSync() {
 }
 function startLiveSync(name) {
   stopLiveSync();
-  if (publicShareMode) return;
+  if (publicShareMode || document.hidden) return;
   if (name === "market") {
     liveTimer = setInterval(() => {
       loadMarket(true).catch(() => {});
@@ -2979,7 +3032,7 @@ function renderKpis(status, top, eligibleTotal = null) {
         <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(56,189,248,0.15); color:#38bdf8;">우량주</span>
       </div>
       <div class="kpi-main">
-        <span class="kpi-num">${topRows.length || 20}</span>
+        <span class="kpi-num">${topRows.length}</span>
         <span class="kpi-unit">종목</span>
       </div>
       <div class="kpi-sub-text">평균 퀀트 점수 <b style="color:#38bdf8; font-weight:700;">${avgScore}점</b></div>
@@ -2988,10 +3041,10 @@ function renderKpis(status, top, eligibleTotal = null) {
     <div class="kpi card-emerald">
       <div class="kpi-head">
         <span class="kpi-title has-tip" data-tip="시총·거래대금·보통주 및 재무제표 스크리닝 요건을 통과한 유효 유니버스 기업 수입니다.">🏢 조건 통과 유니버스</span>
-        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(52,211,153,0.15); color:#34d399;">12% 통과</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(52,211,153,0.15); color:#34d399;">적격 기준 적용</span>
       </div>
       <div class="kpi-main">
-        <span class="kpi-num">${eligibleTotal ?? c.universe_eligible ?? 275}</span>
+        <span class="kpi-num">${eligibleTotal ?? c.universe_eligible ?? "—"}</span>
         <span class="kpi-unit">개사</span>
       </div>
       <div class="kpi-sub-text">전체 2,700+ 상장사 중 엄선</div>
@@ -4390,16 +4443,23 @@ async function openArchivedItem(ticker, asOf, kind) {
   await openStock(code);
 }
 
-async function loadDash() {
-  const [status, top, all, guide, archive] = await Promise.all([
-    api("/api/status"),
-    api("/api/results/top?n=100"),
-    api("/api/results/all?limit=300"),
-    guideCache ? Promise.resolve(guideCache) : api("/api/guide"),
-    api("/api/research/reports").catch(() => ({ rows: [] })),
-  ]);
-  guideCache = guide;
-  reportRows = archive.rows || [];
+let rankingAsOf = {};
+let statusPanelPending = null;
+function stampRankingSource() {
+  if (currentView !== "dash" && currentView !== "rank") return;
+  const day = rankingAsOf[currentView];
+  if (day) setPageAsOf(`퀀트 랭킹 ${day}`, "표에 표시된 저장 랭킹의 기준일입니다. 장중 시세와 별도입니다.");
+}
+
+function loadStatusPanel() {
+  if (statusPanelPending) return statusPanelPending;
+  statusPanelPending = renderStatusPanel().finally(() => { statusPanelPending = null; });
+  return statusPanelPending;
+}
+
+async function renderStatusPanel() {
+  const status = await api("/api/status");
+  await applyPublicShareMode(status);
   lastStatus = status;
   lastStatusExplain = status.status_explain || null;
   renderPageEvidence(currentView);
@@ -4407,7 +4467,7 @@ async function loadDash() {
   if (currentView === "dash" || currentView === "rank") {
     stampFromStatus();
     const attemptedAsOf = status?.quality?.as_of_date || "";
-    const rankAsOf = top?.source_as_of || all?.source_as_of || "";
+    const rankAsOf = rankingAsOf[currentView] || "";
     if (rankAsOf && attemptedAsOf && rankAsOf !== attemptedAsOf) {
       const priceAsOf = status?.freshness?.price_max_date || "";
       setPageAsOf(
@@ -4423,21 +4483,39 @@ async function loadDash() {
   const llmModel = status.llm_model ? status.llm_model.split("/").pop() : "";
   const llmDisplay = llmModel ? `🤖 AI: ${llmName} (${llmModel}) ▾` : `🤖 AI: ${llmName} ▾`;
   setChip($("#chip-llm"), llmDisplay, `AI 분석 리포트 생성 모델: ${status.llm_model || llmName}. 클릭하여 모델을 즉시 변경할 수 있습니다.`);
+  renderKpis(status, dashRows);
+  renderJob(status.job);
+  guideCache = guideCache || await api("/api/guide");
+  renderQuality(status.quality, guideCache, status.freshness);
+}
+
+async function loadRankRows() {
+  const all = await api("/api/results/all?limit=300");
+  rankRows = all.rows || [];
+  rankingAsOf.rank = all.source_as_of || "";
+  renderRank($("#rank-q").value);
+  stampRankingSource();
+}
+
+async function loadDash() {
+  // Primary table must not wait for status, AI, reports or hidden-menu APIs.
+  loadStatusPanel().catch((err) => {
+    $("#quality-box").textContent = `상태 확인 실패: ${err.message}. 랭킹 표는 별도 조회합니다.`;
+  });
+  const top = await api("/api/results/top?n=100");
   dashRows = top.rows || [];
-  renderKpis(status, dashRows, all.total);
+  rankingAsOf.dash = top.source_as_of || "";
+  stampRankingSource();
+  renderKpis(lastStatus || {}, dashRows);
   renderChampions(dashRows);
   loadGlanceTop3().catch(() => {});
   renderDashDna(dashRows, currentDashTopN);
   renderTop20(dashRows, currentDashTopN);
-  renderQuality(status.quality, guideCache, status.freshness);
   requestAnimationFrame(syncDashLeaderboardHeight);
-  rankRows = all.rows || [];
-  renderRank($("#rank-q").value);
-  renderJob(status.job);
-  renderReportList("#dash-reports-body", reportRows, 6);
-  renderReportList("#reports-body", filterReportRows($("#report-q") ? $("#report-q").value : ""));
-  loadWatch().catch(() => {});
-  loadPortfolio().catch(() => {});
+  api("/api/research/reports").then((archive) => {
+    reportRows = archive.rows || [];
+    renderReportList("#dash-reports-body", reportRows, 6);
+  }).catch(() => {});
   loadDashTier1Briefing().catch(() => {});
 }
 
@@ -7777,7 +7855,12 @@ async function loadStrategy(force) {
   }
   box.innerHTML = "<p>전략 결과를 불러오는 중…</p>";
   let data = await api("/api/strategy");
-  if (force || data.need_run) {
+  if (!force && data.need_run) {
+    box.textContent = "저장된 전략 결과가 없습니다. 전략 다시 계산 버튼으로 실행하세요. 메뉴를 열 때 자동 백테스트하지 않습니다.";
+    strategyCache = data;
+    return;
+  }
+  if (force) {
     box.innerHTML = "<p>TOP20 일봉 백테스트 중… </p>";
     data = await api("/api/strategy", { method: "POST", body: JSON.stringify({ force: true }) });
   }
@@ -8671,16 +8754,17 @@ const SA_FACTOR_GUIDE = {
 
 function renderSeekingAlphaScorecard(card) {
   if (!card || !card.factors || !card.factors.length) return "";
-  const dec = card.decision || "HOLD";
-  const decKo = card.decision_ko || "보유 관망";
+  const legacyDecision = new Set(["STRONG_BUY", "BUY", "HOLD", "SELL", "STRONG_SELL"]).has(card.decision);
+  const dec = legacyDecision ? "UNAVAILABLE" : card.decision || "UNAVAILABLE";
+  const decKo = legacyDecision ? "이전 형식 점수 · 재계산 필요" : card.decision_ko || "점수 자료 없음";
   const rows = (card.factors || []).map((f) => {
     const gradeClean = String(f.grade || "").replace("+", "_PLUS").replace("-", "_MINUS");
     const sub = (f.submetrics || []).map((s) => `${escapeHtml(s.name)} ${escapeHtml(s.display)}`).join(" · ");
     const key = Object.keys(SA_FACTOR_GUIDE).find(k => (f.label || "").includes(k)) || "가치";
-    const g = SA_FACTOR_GUIDE[key] || { name: f.label, tip: "팩터 상대평가 백분위입니다.", hint: "동종 업계 내 상대 순위" };
+    const g = { name: f.label, tip: "기존 팩터 점수를 해당 팩터 배점으로 나눈 비율입니다. 아래 원지표와 함께 확인하세요.", hint: "등급은 자체 점수 구간이며 업종 내 순위나 미래 수익 확률이 아닙니다." };
 
     return `<div class="sa-factor-row has-tip"
-                 data-tip-title="${escapeHtml(g.name)}: ${escapeHtml(f.grade)} (백분위 ${f.percentile.toFixed(0)}%)"
+                 data-tip-title="${escapeHtml(g.name)}: ${escapeHtml(f.grade)} (배점 대비 ${f.percentile.toFixed(0)}%)"
                  data-tip="${escapeHtml(g.tip)}"
                  data-tip-hint="${escapeHtml(g.hint)}"
                  tabindex="0">
@@ -8695,13 +8779,13 @@ function renderSeekingAlphaScorecard(card) {
     <article class="sa-scorecard">
       <div class="sa-header">
         <div>
-          <h3 style="margin:0 0 4px">Seeking Alpha 스타일 팩터 성적표 (Factor Scorecard)</h3>
-          <span class="hint">미국 기관형 A+ ~ F 5대 팩터 상대평가 · Quant 점수 요약</span>
+          <h3 style="margin:0 0 4px">KR Quant 팩터 성적표</h3>
+          <span class="hint">자체 A+ ~ F 점수 구간 · 원지표와 함께 확인</span>
         </div>
         <div class="sa-decision ${dec} has-tip"
              data-tip-title="🎯 팩터 종합 의견: ${escapeHtml(decKo)} (${escapeHtml(dec)})"
-             data-tip="5대 팩터(가치·품질·성장·모멘텀·안정)의 상대평가 등급을 가중 집계하여 산출한 최종 투자 판단입니다."
-             data-tip-hint="STRONG BUY/BUY: 팩터 종합 최상위 5% 우량주, HOLD: 건전하나 모멘텀 관망, SELL: 밸류에이션 부담"
+             data-tip="종합 점수 구간입니다. 매매 권고나 검증 완료 판정이 아닙니다."
+             data-tip-hint="거래 적격성, 재무자료 커버리지, 시점과 OOS 성과를 별도로 확인하세요."
              tabindex="0">
           ${escapeHtml(decKo)}
         </div>
@@ -9164,7 +9248,7 @@ function updateMacroLiveCard(it) {
 
 async function pollMacroLiveTicker() {
   if (isMacroLiveFetching) return;
-  if (currentView !== "market" || document.hidden) return;
+  if (publicShareMode || currentView !== "market" || document.hidden) return;
 
   isMacroLiveFetching = true;
   try {
@@ -9185,8 +9269,9 @@ async function pollMacroLiveTicker() {
 
 function startMacroLivePolling() {
   stopMacroLivePolling();
-  if (currentView === "market" && !document.hidden) {
-    macroLiveTimer = setInterval(pollMacroLiveTicker, 4500);
+  if (!publicShareMode && currentView === "market" && !document.hidden) {
+    // The server snapshot TTL is 30s; 4.5s polling only re-read that same value.
+    macroLiveTimer = setInterval(pollMacroLiveTicker, 30000);
   }
 }
 
@@ -9199,10 +9284,14 @@ function stopMacroLivePolling() {
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
+    stopLiveSync();
     stopMacroLivePolling();
-  } else if (currentView === "market") {
-    startMacroLivePolling();
-    pollMacroLiveTicker().catch(() => {});
+  } else {
+    startLiveSync(currentView);
+    if (currentView === "market") {
+      startMacroLivePolling();
+      pollMacroLiveTicker().catch(() => {});
+    }
   }
 });
 
@@ -9542,8 +9631,12 @@ function renderJob(job) {
 }
 
 async function reloadActiveView() {
+  Object.keys(viewLoadedAt).forEach((key) => delete viewLoadedAt[key]);
+  Object.keys(v11SubtabLoadedAt).forEach((key) => delete v11SubtabLoadedAt[key]);
+  strategyCache = null;
   try {
-    if (currentView === "dash" || currentView === "rank") await loadDash();
+    if (currentView === "dash") await loadDash();
+    else if (currentView === "rank") await loadRankRows();
     else if (currentView === "screens") await loadScreens();
     else if (currentView === "market") await loadMacro();
     else if (currentView === "sector") await loadSectors();
@@ -9554,6 +9647,7 @@ async function reloadActiveView() {
     else if (currentView === "trade") await loadTrade();
     else if (currentView === "strategy") await loadStrategy();
     else if (currentView === "watch") await loadWatch();
+    else if (currentView === "seasonality") await ensureViewLoaded("seasonality", true);
   } catch (err) {
     console.error("reloadActiveView error:", err);
   }
@@ -10144,7 +10238,7 @@ if ($("#screens-include-quant")) {
   $("#screens-include-quant").addEventListener("change", () => loadScreens().catch((err) => alert(err.message)));
 }
 if ($("#rank-refresh")) {
-  $("#rank-refresh").addEventListener("click", () => loadDash().catch((err) => alert(err.message)));
+  $("#rank-refresh").addEventListener("click", () => ensureViewLoaded("rank", true));
 }
 if ($("#toss-refresh")) {
   $("#toss-refresh").addEventListener("click", () => loadTossRankings().catch((err) => alert(err.message)));
@@ -12174,7 +12268,6 @@ function setupV11SeasonalityUI() {
   }
 
   window.switchV11Subtab = switchV11Subtab;
-  loadCalendarMomentumPortfolio().catch(() => {});
 
   btnMom?.addEventListener("click", () => {
     if (currentV11Subtab === "momentum") {
@@ -12983,53 +13076,16 @@ setupKeyShowHideToggles();
 bindStockSearchers();
 applyPublicShareMode()
   .then(() => {
-    loadDash().catch((err) => {
-      $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
-    });
-    if (!publicShareMode) loadSettings().catch(() => {});
+    ensureViewLoaded("dash");
   })
   .catch(() => {
-    loadDash().catch((err) => {
-      $("#quality-box").innerHTML = `<p class="bad">${err.message}</p>`;
-    });
-    loadSettings().catch(() => {});
+    ensureViewLoaded("dash");
   });
 
 function reloadCurrentView() {
   const name = currentView || "dash";
   delete viewLoadedAt[name];
-  const p = [loadDash()];
-  if (name === "market") {
-    macroCache = null;
-    p.push(loadMarket(true));
-    p.push(loadMacro(true));
-  } else if (name === "investor") {
-    p.push(loadInvestor());
-    p.push(loadInvestorEvents());
-  } else if (name === "sunzi") p.push(loadSunzi());
-  else if (name === "nps") p.push(loadNps());
-  else if (name === "flow") p.push(loadFlow());
-  else if (name === "empty") p.push(loadEmpty());
-  else if (name === "trade") p.push(loadTrade());
-  else if (name === "toss") p.push(loadTossRankings());
-  else if (name === "us13f") p.push(loadUs13f());
-  else if (name === "sector") p.push(loadSectors());
-  else if (name === "screens") p.push(loadScreens());
-  else if (name === "strategy") p.push(loadStrategy());
-  else if (name === "seasonality") {
-    if (typeof v11SubtabLoadedAt !== "undefined" && currentV11Subtab) {
-      delete v11SubtabLoadedAt[currentV11Subtab];
-    }
-    if (currentV11Subtab === "pre-entry") p.push(loadPreEntryView().catch(() => {}));
-    else if (currentV11Subtab === "discovery") p.push(loadDiscoveryRanked().catch(() => {}));
-    else if (currentV11Subtab === "explanation") p.push(loadAIExplanations().catch(() => {}));
-    else if (currentV11Subtab === "calendar") p.push(loadInstitutionalCalendar().catch(() => {}));
-    else if (currentV11Subtab === "momentum") p.push(loadCalendarMomentumPortfolio().catch(() => {}));
-    else p.push(loadSeasonality().catch(() => {}));
-  }
-  if (name === "watch") { p.push(loadWatch()); p.push(loadReportArchive()); }
-  else if (name === "reports") p.push(loadReportArchive());
-  return Promise.all(p);
+  return ensureViewLoaded(name, true);
 }
 
 

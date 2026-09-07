@@ -97,17 +97,23 @@ def _grok_auth_public() -> dict[str, Any]:
 
 
 app = FastAPI(title="KR Quant Research", version="3.0.0")
+from kr_quant.web.transport import ResearchCompression
+app.add_middleware(ResearchCompression)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.middleware("http")
 async def public_share_guard(request: Request, call_next):
+    started = time.perf_counter()
     if public_share_mode(request):
         path = request.url.path.rstrip("/") or "/"
         is_mutation = request.url.path.startswith("/api/") and request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
         if is_mutation or path in PUBLIC_SENSITIVE_GETS:
             return JSONResponse({"detail": "공개 공유 모드에서는 이 기능을 사용할 수 없습니다."}, status_code=403)
-    return await call_next(request)
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Server-Timing"] = f"app;dur={(time.perf_counter() - started) * 1000:.1f}"
+    return response
 
 
 class SettingsIn(BaseModel):
@@ -3099,6 +3105,7 @@ def api_seasonality_themes_get(horizon_days: int = 90, lookback_years: int = 5) 
 
 
 @app.get("/api/seasonality/highlights")
+@ttl_cache(seconds=60, key_extra=_web_cache_generation)
 def api_seasonality_highlights_get() -> dict[str, Any]:
     from kr_quant.strategy.seasonality import get_seasonality_highlights
 
