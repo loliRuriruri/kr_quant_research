@@ -2989,8 +2989,25 @@ def api_flow_collect_ticker_post(ticker: str) -> dict[str, Any]:
 
 
 
+def _season_bundle(lookback_years=5):
+    from kr_quant.web.season_snapshot import read_bundle, request_build
+    s = load_settings()
+    try:
+        bundle = read_bundle(s, lookback_years)
+        if bundle is None:
+            from kr_quant.web.season_snapshot import preparation_failed
+            if preparation_failed(s, lookback_years):
+                raise HTTPException(status_code=503, detail="시즌 자료 준비에 실패했습니다. 이전 후보를 대신 표시하지 않습니다. 로그를 확인하고 잠시 후 다시 시도해 주세요.")
+            if not RUNNER.is_running():
+                request_build(s, lookback_years)
+            raise HTTPException(status_code=503, detail="시즌 자료를 백그라운드에서 준비 중입니다. 이전 후보를 오늘의 후보로 표시하지 않습니다. 잠시 후 다시 확인해 주세요.",
+                                headers={"Retry-After": "3", "X-Research-Snapshot": "pending"})
+        return bundle
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.get("/api/seasonality/discovery")
-@ttl_cache(seconds=300, key_extra=_web_cache_generation)
 def api_seasonality_discovery_get(
     horizon_days: int = 90,
     min_grade: str | None = None,
@@ -3000,19 +3017,15 @@ def api_seasonality_discovery_get(
     exclude_expired: bool = False,
 ) -> dict[str, Any]:
     from kr_quant.strategy.event_explainer import repeated_generic_catalysts
-    from kr_quant.strategy.seasonality import scan_seasonality_discovery, seasonality_universe_stats
+    from kr_quant.web.season_snapshot import public_meta, select_rows
 
-    s = load_settings()
-    rows = scan_seasonality_discovery(
-        s,
-        horizon_days=horizon_days,
-        min_grade=min_grade,
-        status_filter=status,
-        query=query,
-        lookback_years=lookback_years,
-        exclude_expired=exclude_expired,
-    )
-    stats = seasonality_universe_stats(s)
+    bundle = _season_bundle(lookback_years)
+    try:
+        rows = select_rows(bundle, horizon_days=horizon_days, min_grade=min_grade,
+                           status=status, query=query, exclude_expired=exclude_expired)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    stats = bundle["payload"]["stats"]
     return {
         "ok": True,
         "horizon_days": horizon_days,
@@ -3021,20 +3034,32 @@ def api_seasonality_discovery_get(
         "rows": rows,
         "explanation_quality": repeated_generic_catalysts(rows),
         "data_context": stats["data_context"],
+        "snapshot": public_meta(bundle),
     }
 
 
 @app.get("/api/seasonality/discovery/{ticker}")
-def api_seasonality_discovery_ticker_get(ticker: str, lookback_years: int = 5) -> dict[str, Any]:
-    from kr_quant.strategy.seasonality import scan_seasonality_discovery
+def api_seasonality_discovery_ticker_get(ticker: str, lookback_years: int = 5, generation_id: str | None = None) -> dict[str, Any]:
+    from kr_quant.web.season_snapshot import public_meta
 
-    s = load_settings()
+    bundle = _season_bundle(lookback_years)
     code = str(ticker).zfill(6)
-    rows = scan_seasonality_discovery(s, horizon_days=365, query=code, lookback_years=lookback_years)
+    if generation_id and generation_id != bundle["generation_id"]:
+        raise HTTPException(status_code=409, detail="시즌 자료가 갱신됐습니다. 목록을 새로고침한 뒤 같은 선정 근거를 확인해 주세요.")
+    rows = bundle["payload"]["rows"]
     match = [r for r in rows if r["ticker"] == code]
     if not match:
         raise HTTPException(status_code=404, detail=f"No seasonality discovery pattern for {code}")
-    return {"ok": True, "ticker": code, "lookback_years": lookback_years, "patterns": match}
+    return {"ok": True, "ticker": code, "lookback_years": lookback_years, "patterns": match, "snapshot": public_meta(bundle)}
+
+
+@app.get("/api/seasonality/pre-entry")
+def api_seasonality_pre_entry_get(lookback_years: int = 5) -> dict[str, Any]:
+    from kr_quant.web.season_snapshot import public_meta, select_rows
+    bundle = _season_bundle(lookback_years)
+    rows = [row for row in select_rows(bundle) if row.get("pre_entry_rank") is not None]
+    return {"ok": True, "rows": rows, "count": len(rows), "themes": bundle["payload"]["themes"],
+            "data_context": bundle["payload"]["stats"]["data_context"], "snapshot": public_meta(bundle)}
 
 
 @app.get("/api/seasonality/ranked")
@@ -3080,18 +3105,12 @@ def api_seasonality_events_get(horizon_days: int = 180) -> dict[str, Any]:
 
 
 @app.get("/api/seasonality/themes")
-@ttl_cache(seconds=300, key_extra=_web_cache_generation)
 def api_seasonality_themes_get(horizon_days: int = 90, lookback_years: int = 5) -> dict[str, Any]:
-    from kr_quant.strategy.seasonality import EVENT_PRESETS, scan_seasonality, seasonality_universe_stats
-    from kr_quant.strategy.theme_engine import calculate_theme_seasonality
+    from kr_quant.web.season_snapshot import public_meta
 
-    s = load_settings()
-    event_rows_by_preset = {
-        preset_key: scan_seasonality(s, preset=preset_key)
-        for preset_key in EVENT_PRESETS
-    }
-    themes = calculate_theme_seasonality([], event_rows_by_preset=event_rows_by_preset)
-    stats = seasonality_universe_stats(s)
+    bundle = _season_bundle(lookback_years)
+    themes = bundle["payload"]["themes"]
+    stats = bundle["payload"]["stats"]
     return {
         "ok": True,
         "horizon_days": horizon_days,
@@ -3101,17 +3120,15 @@ def api_seasonality_themes_get(horizon_days: int = 90, lookback_years: int = 5) 
         "pre_entry_overlap_source": "seasonality_discovery_client",
         "themes": themes,
         "data_context": stats["data_context"],
+        "snapshot": public_meta(bundle),
     }
 
 
 @app.get("/api/seasonality/highlights")
-@ttl_cache(seconds=60, key_extra=_web_cache_generation)
 def api_seasonality_highlights_get() -> dict[str, Any]:
-    from kr_quant.strategy.seasonality import get_seasonality_highlights
-
-    s = load_settings()
-    data = get_seasonality_highlights(s)
-    return {"ok": True, "data": data}
+    from kr_quant.web.season_snapshot import public_meta
+    bundle = _season_bundle(5)
+    return {"ok": True, "data": bundle["payload"]["highlights"], "snapshot": public_meta(bundle)}
 
 
 @app.get("/api/seasonality/scan")
@@ -3949,6 +3966,9 @@ def serve(host: str = "127.0.0.1", port: int = 8790, open_browser: bool = True) 
         raise SystemExit(1) from exc
 
     print("  [2/3] 포트 점검 및 로컬 웹 서버 준비 완료")
+
+    from kr_quant.web.season_snapshot import refresh_after_data_job
+    refresh_after_data_job(load_settings())
 
     try:
         from kr_quant.web.scheduler import start_price_scheduler

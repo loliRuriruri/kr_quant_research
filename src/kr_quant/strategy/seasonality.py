@@ -460,6 +460,10 @@ def _seasonality_source_signature(settings: Settings) -> list:
     paths = [settings.staged_dir / mode / "prices.parquet" for mode in ("live", "demo")]
     paths += [settings.output_dir / "current_manifest.json", settings.staged_dir / "live" / "master.parquet"]
     paths += [settings.staged_dir / mode / "corporate_actions.parquet" for mode in ("live", "demo")]
+    paths += [settings.output_dir / "latest_all_stocks.parquet", settings.staged_dir / "live" / "krx_master.parquet",
+              settings.root / "data" / "cache" / "investor_flow.json"]
+    paths += sorted(settings.output_dir.glob("as_of_date=*/all_stocks.parquet"))
+    paths += sorted(settings.output_dir.glob("as_of_date=*/scored_all.parquet"))
     return [[str(p), p.stat().st_mtime_ns, p.stat().st_size] for p in paths if p.exists()]
 
 
@@ -745,7 +749,7 @@ def scan_seasonality(
 
 
 
-def get_seasonality_highlights(settings: Settings) -> dict[str, Any]:
+def get_seasonality_highlights(settings: Settings, *, discovery_rows=None) -> dict[str, Any]:
     """Extracts current month and next month top 3 champions + active events for dashboard widget."""
     now_m = pd.Timestamp.now().month
     next_m = 1 if now_m == 12 else now_m + 1
@@ -788,7 +792,7 @@ def get_seasonality_highlights(settings: Settings) -> dict[str, Any]:
         "current_champions": _trim(cur_rows, 3),
         "upcoming_champions": _trim(next_rows, 3),
         "active_presets": active_presets,
-        "glance_top3": get_pre_entry_glance(settings, n=3, lookback_years=5),
+        "glance_top3": get_pre_entry_glance(settings, n=3, lookback_years=5, rows=discovery_rows),
         "universe_scanned": stats["universe_scanned"],
         "universe_listed": stats["universe_listed"],
         "markets": stats["markets"],
@@ -1160,7 +1164,7 @@ def scan_seasonality_discovery(
     # served after deployment.
     cache_file = cache_dir / f"discovery_cache_lb_{lookback_years}_v{DISCOVERY_CACHE_VERSION}.json"
     cached_list: list[dict[str, Any]] = []
-    signature = _seasonality_source_signature(settings)
+    signature = [date.today().isoformat(), _seasonality_source_signature(settings)]
 
     if cache_file.exists():
         try:
@@ -1341,14 +1345,12 @@ def rank_pre_entry_candidates(settings: Settings, rows: list[dict[str, Any]]) ->
     return valid_rows
 
 
-def get_pre_entry_glance(settings: Settings, n: int = 3, lookback_years: int = 5) -> list[dict[str, Any]]:
+def get_pre_entry_glance(settings: Settings, n: int = 3, lookback_years: int = 5, *, rows=None) -> list[dict[str, Any]]:
     """Android Glance Top 3 equivalent: stage-weighted pre-entry picks with last price."""
-    rows = scan_seasonality_discovery(
-        settings,
-        horizon_days=90,
-        lookback_years=lookback_years,
-        exclude_expired=True,
-    )
+    if rows is None:
+        rows = scan_seasonality_discovery(
+            settings, horizon_days=90, lookback_years=lookback_years, exclude_expired=True,
+        )
     valid_rows = [row for row in rows if row.get("pre_entry_rank") is not None]
     valid_rows.sort(key=lambda row: int(row.get("pre_entry_rank") or 10**9))
     top = valid_rows[: max(0, n)]
@@ -1356,6 +1358,8 @@ def get_pre_entry_glance(settings: Settings, n: int = 3, lookback_years: int = 5
     for idx, r in enumerate(top, start=1):
         glance.append({
             "rank": idx,
+            "signal_id": r.get("signal_id"),
+            "generation_id": r.get("generation_id"),
             "pattern_id": r.get("pattern_id"),
             "ticker": r.get("ticker"),
             "company": r.get("company"),

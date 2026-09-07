@@ -1397,6 +1397,14 @@ async function publicApi(path, opts = {}) {
   }
 
   const manifest = await publicApiManifest();
+  if (route === "/api/seasonality/pre-entry" && !manifest.routes[route]) {
+    // Compatibility with existing public exports; no local server is required.
+    const [discovery, themes] = await Promise.all([
+      publicApi(`/api/seasonality/discovery${url.search}`),
+      publicApi(`/api/seasonality/themes${url.search}`),
+    ]);
+    return { ...discovery, themes: themes.themes || [] };
+  }
   if (route === "/api/stocks/search") {
     const data = await publicRouteFile(manifest.routes["/api/stocks/all"]);
     const q = (url.searchParams.get("q") || "").trim().toLowerCase();
@@ -1478,13 +1486,18 @@ async function publicApi(path, opts = {}) {
   return data;
 }
 
-async function api(path, opts = {}) {
+async function api(path, opts = {}, snapshotAttempt = 0) {
   if (publicShareMode) return publicApi(path, opts);
   const res = await fetch(path, {
     headers: { "Content-Type": "application/json" },
     ...opts,
   });
   if (!res.ok) {
+    if (res.status === 503 && res.headers.get("X-Research-Snapshot") === "pending" && snapshotAttempt < 15) {
+      await res.text();
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      return api(path, opts, snapshotAttempt + 1);
+    }
     const t = await res.text();
     let msg = t || res.statusText;
     try {
@@ -1886,6 +1899,7 @@ function setSeasonalityAsOf(payload) {
   if (context.price_as_of) parts.push(`KRX 일봉 ${context.price_as_of}`);
   const calculated = fmtWhen(context.calculated_at);
   if (calculated) parts.push(`계절성 계산 ${calculated}`);
+  if (payload?.snapshot?.generation_id) parts.push(`공통 자료 ${payload.snapshot.generation_id.slice(0, 8)}`);
   setPageAsOf(
     parts.join(" · ") || "계절성 데이터 시점 확인 불가",
     `${context.source || "KRX 일봉 기반 월간 계절성"}입니다. 다른 메뉴의 공시·수급 시점과 공유하지 않습니다.`
@@ -2827,6 +2841,7 @@ async function loadGlanceTop3() {
   try {
     const res = await api("/api/seasonality/highlights");
     const data = res.data || {};
+    box.dataset.generationId = res.snapshot?.generation_id || "";
     const picks = data.glance_top3 || [];
     const scanned = data.universe_scanned || 0;
     const listed = data.universe_listed || 0;
@@ -2856,7 +2871,7 @@ async function loadGlanceTop3() {
       const chgCls = chg > 0 ? "up" : chg < 0 ? "down" : "";
       const chgTxt = `${chg > 0 ? "+" : ""}${(chg * 100).toFixed(2)}%`;
       return `
-        <div class="glance-pick-card rank-${rank}" data-ticker="${escapeHtml(p.ticker || "")}" data-pattern-id="${escapeHtml(p.pattern_id || "")}">
+        <div class="glance-pick-card rank-${rank}" data-signal-id="${escapeHtml(p.signal_id || "")}" data-ticker="${escapeHtml(p.ticker || "")}" data-pattern-id="${escapeHtml(p.pattern_id || "")}">
           <div class="glance-pick-head">
             <span class="chip" style="background:#eab308; color:#0f172a; font-weight:900; font-size:11px;">${glanceRankBadge(rank)}</span>
             <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11px;">${escapeHtml(p.entry_stage_label || p.window_name || "")}</span>
@@ -2888,18 +2903,21 @@ async function loadGlanceTop3() {
     `;
     $("#btn-open-seasonality-from-glance")?.addEventListener("click", () => switchView("seasonality"));
     box.querySelectorAll(".glance-pick-card").forEach((card) => {
-      card.addEventListener("click", () => openGlancePlaybook(card.dataset.ticker, card.dataset.patternId));
+      card.addEventListener("click", () => openGlancePlaybook(card.dataset.ticker, card.dataset.patternId, box.dataset.generationId));
     });
   } catch (err) {
-    box.innerHTML = `<p class="hint" style="margin:0;">시즌 모멘텀 Top 3를 불러오지 못했습니다. ${escapeHtml(err.message || "")}</p>`;
+    box.innerHTML = `<p class="hint" style="margin:0;">${escapeHtml(err.message || "시즌 모멘텀 자료를 불러오지 못했습니다.")}</p><button type="button" class="ghost small" id="retry-season-glance">다시 확인</button>`;
+    $("#retry-season-glance")?.addEventListener("click", () => loadGlanceTop3());
   }
 }
 
-async function openGlancePlaybook(ticker, patternId = "") {
+async function openGlancePlaybook(ticker, patternId = "", generationId = "") {
   const code = String(ticker || "").padStart(6, "0");
   if (!code || code === "000000") return;
   try {
-    const data = await api(`/api/seasonality/discovery/${code}?lookback_years=${currentV11Lookback || 5}`);
+    const params = new URLSearchParams({ lookback_years: "5" });
+    if (generationId) params.set("generation_id", generationId);
+    const data = await api(`/api/seasonality/discovery/${code}?${params}`);
     const patterns = data.patterns || [];
     const match = patterns.find((p) => patternId && p.pattern_id === patternId)
       || patterns.find((p) => ["TODAY_ENTRY", "PRE_ENTRY_15", "PRE_ENTRY_30", "ACCUMULATE_60"].includes(p.entry_stage))
@@ -2908,8 +2926,12 @@ async function openGlancePlaybook(ticker, patternId = "") {
       openDiscoveryDetailModal(match);
       return;
     }
-  } catch (_) {
-    /* fall through to stock drawer */
+  } catch (err) {
+    if (generationId) {
+      alert(err.message);
+      loadGlanceTop3();
+      return;
+    }
   }
   openStock(code).catch((err) => alert(err.message));
 }
@@ -11561,10 +11583,16 @@ async function loadPreEntryView() {
 
   // TOP 10 is a market-wide canonical list. A stock search belongs to the
   // discovery detail tabs and must not silently narrow this list.
-  const [discRes, themeRes] = await Promise.all([
-    api(`/api/seasonality/discovery?lookback_years=${currentV11Lookback}&horizon_days=90`),
-    api(`/api/seasonality/themes?lookback_years=${currentV11Lookback}&horizon_days=90`),
-  ]);
+  let discRes;
+  try {
+    discRes = await api(`/api/seasonality/pre-entry?lookback_years=${currentV11Lookback}&horizon_days=90`);
+  } catch (err) {
+    container.innerHTML = `<p class="hint">${escapeHtml(err.message)}</p><button type="button" class="ghost" id="retry-pre-entry">자료 다시 확인</button>`;
+    $("#retry-pre-entry")?.addEventListener("click", () => loadPreEntryView().catch(() => {}));
+    throw err;
+  }
+  const themeRes = discRes;
+  container.dataset.generationId = discRes.snapshot?.generation_id || "";
   setSeasonalityAsOf(discRes);
 
   const allRows = discRes.rows || [];
@@ -11670,7 +11698,7 @@ async function loadPreEntryView() {
         : "통계 관측 + 업종 가설";
 
     return `
-      <div class="pre-entry-card ${rankCls}" data-ticker="${escapeHtml(r.ticker)}" data-index="${idx}" role="button" tabindex="0">
+      <div class="pre-entry-card ${rankCls}" data-signal-id="${escapeHtml(r.signal_id || "")}" data-ticker="${escapeHtml(r.ticker)}" data-index="${idx}" role="button" tabindex="0">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
           <div>
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -13492,7 +13520,7 @@ async function openSeasonalityModalForStock(ticker, name) {
   const targetMonth = targetStock?.peak_date ? new Date(targetStock.peak_date).getMonth() + 1 : (new Date().getMonth() + 1);
   showToast("실측 계절성 근거를 조회합니다.", "info", 1800);
   try {
-    const data = await api(`/api/seasonality/discovery/${code}?lookback_years=${currentV11Lookback || 5}`);
+    const data = await api(`/api/seasonality/discovery/${code}?lookback_years=${currentV11Lookback ?? 5}`);
     if (request !== momentumDetailRequest) return;
     const match = (data.patterns || []).find((p) => targetMonthOf(p) === targetMonth);
     if (!match) {

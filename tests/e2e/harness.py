@@ -321,6 +321,10 @@ def create_app() -> FastAPI:
     def discovery():
         return _discovery()
 
+    @app.get("/api/seasonality/pre-entry")
+    def pre_entry():
+        return {**_discovery(), "themes": []}
+
     @app.get("/api/seasonality/themes")
     def themes():
         return {"rows": [], "themes": []}

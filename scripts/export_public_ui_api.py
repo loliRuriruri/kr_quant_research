@@ -50,6 +50,7 @@ ROUTES: dict[str, str] = {
     "/api/toss/rankings": "/api/toss/rankings",
     "/api/stocks/all": "/api/stocks/all",
     "/api/seasonality/highlights": "/api/seasonality/highlights",
+    "/api/seasonality/pre-entry": "/api/seasonality/pre-entry?lookback_years=5",
     "/api/seasonality/discovery": "/api/seasonality/discovery?lookback_years=5&horizon_days=90",
     "/api/seasonality/themes": "/api/seasonality/themes?lookback_years=5&horizon_days=90",
     "/api/seasonality/ranked": "/api/seasonality/ranked?lookback_years=5&horizon_days=90",
@@ -275,6 +276,11 @@ def export_research_details(
 
 
 def export(out_dir: Path) -> dict[str, Any]:
+    # Export is an explicit background build, not a menu read. Prepare the
+    # canonical season bundle before querying the read-only HTTP routes.
+    from kr_quant.settings import load_settings
+    from kr_quant.web.season_snapshot import build_bundle
+    build_bundle(load_settings(), 5)
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),

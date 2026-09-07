@@ -100,7 +100,7 @@ def test_remaining_peak_cache_fill_is_shared_between_concurrent_requests(tmp_pat
     price_path = tmp_path / "staged" / "live" / "prices.parquet"
     price_path.parent.mkdir(parents=True)
     price_path.write_bytes(b"cache-signature")
-    settings = SimpleNamespace(staged_dir=tmp_path / "staged")
+    settings = SimpleNamespace(root=tmp_path, staged_dir=tmp_path / "staged", output_dir=tmp_path / "output")
     prices = pd.DataFrame(
         {
             "ticker": ["000001"],
@@ -220,6 +220,8 @@ def test_ten_tickers_sharing_month_hypothesis_are_flagged():
 
 
 def test_api_seasonality_discovery_playbook():
+    from kr_quant.web.season_snapshot import build_bundle
+    build_bundle(load_settings())
     res = client.get("/api/seasonality/discovery?horizon_days=90&lookback_years=5")
     assert res.status_code == 200
     data = res.json()

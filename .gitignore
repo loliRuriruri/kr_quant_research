@@ -8,6 +8,7 @@ data/staged/
 data/processed/
 data/output/
 data/cache/
+data/research_snapshots/
 data/cache/kis_token.dpapi
 data/watchlist.json
 db/

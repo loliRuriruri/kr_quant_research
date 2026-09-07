@@ -76,6 +76,9 @@ def test_calculate_theme_seasonality():
 
 
 def test_api_seasonality_themes():
+    from kr_quant.settings import load_settings
+    from kr_quant.web.season_snapshot import build_bundle
+    build_bundle(load_settings())
     res = client.get("/api/seasonality/themes?horizon_days=90&lookback_years=5")
     assert res.status_code == 200
     data = res.json()

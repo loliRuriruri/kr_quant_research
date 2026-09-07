@@ -30,6 +30,8 @@ def test_get_seasonality_highlights():
 
 
 def test_api_seasonality_highlights():
+    from kr_quant.web.season_snapshot import build_bundle
+    build_bundle(load_settings())
     res = client.get("/api/seasonality/highlights")
     assert res.status_code == 200
     json_data = res.json()

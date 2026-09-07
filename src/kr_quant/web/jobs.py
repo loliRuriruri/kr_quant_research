@@ -256,6 +256,12 @@ class JobRunner:
                 self.logs.append(f"작업 {'일부 완료' if finished_status == 'partial' else '완료'}: {kind}")
             record_job_history(history_row)
             if pipeline != "interrupted" and not result.get("cancelled"):
+                if finished_status in {"success", "partial"} and kind in {
+                    "live", "screen", "krx-prices", "krx-history", "dart-backfill", "smart-sync"
+                }:
+                    from kr_quant.web.season_snapshot import refresh_after_data_job
+                    refresh_after_data_job(load_settings())
+                    self.logs.append("시즌 메뉴 공통 자료를 백그라운드에서 준비합니다. 완료 후 같은 세대로 전환합니다.")
                 _maybe_publish(kind)
                 _notify_job(kind, result=result)
             else:
