@@ -20,7 +20,7 @@ from kr_quant.universe.tradability import evaluate_candidate_tradability, evalua
 
 logger = logging.getLogger("kr_quant.strategy.seasonality")
 SEASONALITY_CACHE_VERSION = 3
-DISCOVERY_CACHE_VERSION = 7
+DISCOVERY_CACHE_VERSION = 8
 
 EVENT_PRESETS: dict[str, dict[str, Any]] = {
     "winter_heater": {

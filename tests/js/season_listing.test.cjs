@@ -11,6 +11,14 @@ function extract(start, end) {
 }
 
 (async () => {
+  const narrative = vm.createContext({});
+  vm.runInContext(extract('function seasonFailureObservations(', '\nfunction renderDiscDeepPlaybook('), narrative);
+  const notes = narrative.seasonFailureObservations({years_track: [
+    {year: 2020, return: -.2}, {year: 2021, return: 0}, {year: 2022, return: null},
+    {year: 2023, return: .1}], failed_analysis: ['UNSUPPORTED_CAUSE']});
+  assert.equal(notes.length, 2);
+  assert(notes[0].text.includes('원인 미확인') && notes[1].text.includes('보합'));
+  assert(!JSON.stringify(notes).includes('UNSUPPORTED_CAUSE'));
   const requests = [];
   const ctx = vm.createContext({URLSearchParams, encodeURIComponent, api: async path => {
     requests.push(path);

@@ -10864,6 +10864,13 @@ function renderPbMonthHeat(months, targetM) {
   return cells.join("");
 }
 
+function seasonFailureObservations(r) {
+  // Do not trust legacy free-text causes, including older public snapshots.
+  const track = r.years_track?.length ? r.years_track : (r.failed_years || []);
+  return track.filter(y => y && y.year != null && y.return != null && typeof y.return !== "boolean" && Number.isFinite(Number(y.return)) && Number(y.return) <= 0)
+    .map(y => ({year: y.year, text: `${y.year}년: 해당 월 가격 수익률 ${(Number(y.return) * 100).toFixed(1)}% (${Number(y.return) < 0 ? "하락" : "보합"}). 원인 미확인: 해당 연도 공시·실적·수급 근거를 대조하지 않았습니다.`}));
+}
+
 function renderDiscDeepPlaybook(r, months) {
   const box = $("#disc-modal-deep");
   if (!box) return;
@@ -10883,28 +10890,29 @@ function renderDiscDeepPlaybook(r, months) {
 
   const winDateStr = r.entry_window_str || r.window_name || "계절성 윈도우";
   const years = track.map((y) => {
-    const ret = Number(y.return || 0);
-    const loss = !y.is_win;
-    const pct = (ret * 100).toFixed(1);
+    const ret = y.return == null ? NaN : Number(y.return);
+    const known = Number.isFinite(ret);
+    const loss = known && ret < 0;
+    const pct = known ? `${(ret * 100).toFixed(1)}%` : "—";
     const sign = ret > 0 ? "+" : "";
-    const fail = (r.failed_analysis || []).find((f) => String(f).includes(String(y.year)));
-    const barWidth = Math.min(Math.max(Math.abs(ret) * 120, 10), 100);
+    const fail = seasonFailureObservations(r).find((f) => String(f.year) === String(y.year))?.text;
+    const barWidth = known ? Math.min(Math.max(Math.abs(ret) * 120, 10), 100) : 0;
     return `<div class="pb-year-card ${loss ? "loss-card" : "win-card"}">
       <div class="pb-year-card-top">
         <div class="pb-year-info">
           <span class="pb-year-badge">📅 ${y.year}년</span>
           <span class="pb-period-badge">🗓️ ${escapeHtml(winDateStr)}</span>
-          <span class="pb-status-badge ${loss ? "loss" : "win"}">${loss ? "하락 마감" : "상승 달성"}</span>
+          <span class="pb-status-badge ${loss ? "loss" : "win"}">${!known ? "자료 없음" : loss ? "하락 마감" : ret === 0 ? "보합" : "상승 마감"}</span>
         </div>
         <div class="pb-return-pill ${loss ? "loss" : "win"}">
-          <span class="pb-return-val">${sign}${pct}%</span>
+          <span class="pb-return-val">${sign}${pct}</span>
         </div>
       </div>
       <div class="pb-year-progress-wrap">
         <div class="pb-year-progress-bar ${loss ? "loss" : "win"}" style="width:${barWidth}%;"></div>
       </div>
       ${fail ? `<div class="pb-fail-box">
-        <div class="pb-fail-title">⚠️ ${y.year}년 실패 원인 정밀 분석</div>
+        <div class="pb-fail-title">⚠️ ${y.year}년 관측 결과 · 원인 미확인</div>
         <div class="pb-fail-desc">${escapeHtml(fail)}</div>
       </div>` : ""}
     </div>`;
@@ -10974,14 +10982,14 @@ function renderDiscDeepPlaybook(r, months) {
         <div>예상 수익 ${pbPct(exp3)} · 스트레스 σ ${(stats.stdev * 2 * 100).toFixed(1)}% · <span style="color:#f87171">최악 ${pbPct(w3)}</span> · 생존 ${(stats.survive100 * 100).toFixed(1)}%</div>
         <div style="color:#f87171;margin-top:4px;">방어: 무효화 조건 발동 시 전량 청산 및 해지</div>
       </div>`;
-    const failTxt = (r.failed_analysis || [])[0] || "실패 연도는 원자재·환율 충격 등 외부 변수와 겹친 경우가 많음";
+    const failTxt = seasonFailureObservations(r)[0]?.text || "표시된 표본에서 비양수 수익률 연도가 확인되지 않습니다. 상승·하락의 원인은 별도 근거 검증이 필요합니다.";
     ai = `<p style="margin:0;font-size:13px;line-height:1.6;color:#cbd5e1;">
       ${escapeHtml(r.company || r.ticker)}(${escapeHtml(r.ticker)})은 ${escapeHtml(r.window_name || "해당")} 윈도우에서
       평균 ${pbPct(stats.mean)}, 표준편차 ${(stats.stdev * 100).toFixed(1)}%입니다.
       상방 변동성이 하방 대비 ${stats.skew.toFixed(2)}배로
       ${stats.skew >= 2 ? "상방 편향이 큰 계절성 분포" : "대칭에 가까운 분포"}입니다.
       ${escapeHtml(failTxt)}.
-      권장 비중은 과하지 않게 두고, 아래 무효화 조건이 뜨면 미련 없이 접는 편이 낫습니다.
+      가격 분포만으로 원인이나 매매 비중을 정할 수 없습니다. 아래 위험 항목은 확인할 가설이며 발생이 확인된 사실이 아닙니다.
     </p>`;
   }
 
@@ -11044,7 +11052,7 @@ function renderDiscDeepPlaybook(r, months) {
 
     ${years ? `<div style="margin-top:14px;background:rgba(15,23,42,0.85);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <b style="font-size:14.5px;color:#f8fafc;">📊 연도별 계절성 수익률 & 실패 연도 분석</b>
+        <b style="font-size:14.5px;color:#f8fafc;">📊 연도별 가격 수익률 & 비양수 구간 관측</b>
         <span class="chip" style="background:rgba(56,189,248,0.15);color:#38bdf8;font-size:11px;">실측 통계 (${track.length}개년)</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">${years}</div>
@@ -11053,9 +11061,9 @@ function renderDiscDeepPlaybook(r, months) {
     <div class="pb-invalidation-card">
       <div class="pb-invalidation-head">
         <span style="font-size:16px;">🛑</span>
-        <b class="pb-invalidation-title">전략 무효화 조건 (Invalidating Conditions)</b>
+        <b class="pb-invalidation-title">추가 확인할 위험 가설 (발생 미확인)</b>
       </div>
-      <p style="font-size:12px;color:#cbd5e1;margin:0 0 10px 0;">아래 악재 또는 기술적 이탈 신호가 발생할 경우, 계절성 패턴을 무효화하고 즉시 리스크를 방어합니다.</p>
+      <p style="font-size:12px;color:#cbd5e1;margin:0 0 10px 0;">아래 항목은 업종별 점검 가설입니다. 해당 연도의 발생 여부·하락 원인·전략 무효화 효과를 검증한 결과가 아니며 별도 공시·수급 근거가 필요합니다.</p>
       ${invHtml}
     </div>
 
@@ -12354,7 +12362,7 @@ async function loadAIExplanations(offset = 0, generationId = "") {
   }
 
   const cards = rows.slice(0, 30).map((r) => {
-    const failedListHtml = (r.failed_analysis || []).map((f) => `<li style="color:#fca5a5; font-size:12px;">${escapeHtml(f)}</li>`).join("");
+    const failedListHtml = seasonFailureObservations(r).map((f) => `<li style="color:#fca5a5; font-size:12px;">${escapeHtml(f.text)}</li>`).join("");
     const explanationMode = r.event_explanation_mode || "RULE_BASED";
     const explanationLabel = explanationMode === "CURATED_TICKER"
       ? "검토된 이벤트"
@@ -12387,13 +12395,13 @@ async function loadAIExplanations(offset = 0, generationId = "") {
 
         ${failedListHtml ? `
           <div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.06);">
-            <b style="font-size:12px; color:#f87171;">⚠️ 실패 연도 원인 분석:</b>
+            <b style="font-size:12px; color:#f87171;">⚠️ 비양수 수익률 관측 · 원인 미확인:</b>
             <ul style="margin:4px 0 0 16px; padding:0;">${failedListHtml}</ul>
           </div>
         ` : ''}
 
         <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; font-size:11.5px; color:#94a3b8;">
-          <div>🛑 <b>무효화 조건:</b> <span style="color:#cbd5e1;">${escapeHtml(r.invalidating_conditions)}</span></div>
+          <div>🛑 <b>추가 확인할 위험 가설 (발생 미확인):</b> <span style="color:#cbd5e1;">${escapeHtml(r.invalidating_conditions)}</span></div>
           <button type="button" class="ghost small" onclick="openStock('${escapeHtml(r.ticker)}')">종목 심층 분석 →</button>
         </div>
       </div>
@@ -12403,7 +12411,7 @@ async function loadAIExplanations(offset = 0, generationId = "") {
   container.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
       <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">${lookbackLabel} · 진입 ${horizon}일 · 전체 ${res.count ?? rows.length}건 · ${offset + 1}–${offset + rows.length}번째</span>
-      <span class="meta">실패 연도·무효화 조건은 종목별 반복 상승 구간의 공통 이벤트를 역추적한 결과입니다.</span>
+      <span class="meta">연도별 수익률은 가격 관측입니다. 업종 위험 가설은 해당 연도의 실제 하락 원인으로 검증되지 않았습니다.</span>
     </div>
     ${cards}
   `;

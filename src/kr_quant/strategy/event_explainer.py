@@ -5,6 +5,7 @@ import re
 from statistics import median
 from typing import Any
 from kr_quant.strategy.discovery_engine import SeasonalityPattern
+from kr_quant.research.failure_observations import failure_observations
 
 # Known domain event clusters database for automated matching
 EVENT_KNOWLEDGE_BASE: dict[str, dict[str, Any]] = {
@@ -377,10 +378,6 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         sec_event = statistical_evidence
         event_hypothesis = kb["common_event"]
         event_conf = kb["confidence"]
-        failed_analysis = [
-            f"{yr}년: {kb['failed_causes'].get(str(yr), '대외 매크로 변동 및 단기 차익 실현')}"
-            for yr in [f["year"] for f in pattern.failed_years]
-        ]
         invalidation = kb["invalidating_rules"]
         explanation_mode = "CURATED_TICKER"
         explanation_source = "종목별 검토 이벤트 지식베이스"
@@ -391,7 +388,6 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         sec_event = f"계절성 표본이 {sample_count}개년이라 종목별 촉매를 만들지 않습니다. 승률·가격·확률을 추정하지 않습니다."
         event_hypothesis = None
         event_conf = "UNKNOWN"
-        failed_analysis = []
         invalidation = "표본이 늘어나기 전에는 촉매 문장을 사용하지 않습니다."
         explanation_mode = "INSUFFICIENT_EVIDENCE"
         explanation_source = "표본 부족"
@@ -406,15 +402,15 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         )
         event_hypothesis = context["event"]
         event_conf = "MEDIUM" if pattern.pattern_confidence == "HIGH" else "UNKNOWN"
-        failed_analysis = [
-            f"{f['year']}년: {context['risk']}로 계절성 가설 무효화 (수익률 {f['return']*100:+.1f}%)"
-            for f in pattern.failed_years
-        ]
         invalidation = f"{context['risk']}, 거래대금 급감, RS60 < -10% 이탈"
         explanation_mode = "RULE_BASED"
         explanation_source = context["source"]
         interpretation = f"업종·월 매핑 가설이지 실시간 뉴스가 아닙니다. {context['event']}"
         observations.append(_statistical_headline(pattern))
+
+    # Industry risks and curated, unsourced notes do not establish a year's cause.
+    failure_records = failure_observations(pattern.years_track)
+    failed_analysis = [item['text'] for item in failure_records]
 
     def number(key: str) -> float | None:
         value = s_row.get(key)
@@ -554,6 +550,7 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         "years_track": pattern.years_track,
         "failed_years": pattern.failed_years,
         "failed_analysis": failed_analysis,
+        "failure_observations": failure_records,
         "common_event_cluster": common_event,
         "secondary_cluster": sec_event,
         "event_hypothesis": event_hypothesis,

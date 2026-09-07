@@ -3023,6 +3023,13 @@ def _season_bundle(lookback_years=5):
                 request_build(s, lookback_years)
             raise HTTPException(status_code=503, detail="시즌 자료를 백그라운드에서 준비 중입니다. 이전 후보를 오늘의 후보로 표시하지 않습니다. 잠시 후 다시 확인해 주세요.",
                                 headers={"Retry-After": "3", "X-Research-Snapshot": "pending"})
+        # Read-time repair also covers older persisted discovery payloads. Never
+        # rewrite their observation file or invent a new historical cause.
+        from kr_quant.research.failure_observations import failure_observations
+        for row in bundle['payload']['rows']:
+            records = failure_observations(row.get('years_track') or row.get('failed_years'))
+            row['failure_observations'] = records
+            row['failed_analysis'] = [item['text'] for item in records]
         return bundle
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
