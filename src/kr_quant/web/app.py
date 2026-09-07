@@ -3036,14 +3036,22 @@ def api_seasonality_discovery_get(
     query: str | None = None,
     lookback_years: int = 5,
     exclude_expired: bool = False,
+    view: str = 'full',
+    offset: int = 0,
+    limit: int | None = None,
+    generation_id: str | None = None,
 ) -> dict[str, Any]:
     from kr_quant.strategy.event_explainer import repeated_generic_catalysts
     from kr_quant.web.season_snapshot import public_meta, select_rows
+    from kr_quant.web.season_listing import project_page
 
     bundle = _season_bundle(lookback_years)
+    if generation_id and generation_id != bundle['generation_id']:
+        raise HTTPException(status_code=409, detail='시즌 자료가 갱신됐습니다. 첫 페이지부터 다시 확인해 주세요.')
     try:
         rows = select_rows(bundle, horizon_days=horizon_days, min_grade=min_grade,
                            status=status, query=query, exclude_expired=exclude_expired)
+        page = project_page(rows, view=view, offset=offset, limit=limit, lookback=lookback_years)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     stats = bundle["payload"]["stats"]
@@ -3051,8 +3059,7 @@ def api_seasonality_discovery_get(
         "ok": True,
         "horizon_days": horizon_days,
         "lookback_years": lookback_years,
-        "count": len(rows),
-        "rows": rows,
+        **page,
         "explanation_quality": repeated_generic_catalysts(rows),
         "data_context": stats["data_context"],
         "snapshot": public_meta(bundle),

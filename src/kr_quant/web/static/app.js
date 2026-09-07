@@ -1483,6 +1483,15 @@ async function publicApi(path, opts = {}) {
   }
   if (route === "/api/sunzi") data = filterPublicSunzi(data, url);
   if (["/api/seasonality/discovery", "/api/seasonality/ranked", "/api/seasonality/scan"].includes(route)) data = filterPublicRows(data, url);
+  // Legacy public files remain full snapshots; paginate the display without
+  // falsely claiming their network download has become a paginated API.
+  if (route === "/api/seasonality/discovery" && url.searchParams.has("limit")) {
+    const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
+    const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit"))));
+    const rows = data.rows || [];
+    data = { ...data, count: rows.length, rows: rows.slice(offset, offset + limit), offset, limit,
+      next_offset: offset + limit < rows.length ? offset + limit : null };
+  }
   return data;
 }
 
@@ -11081,7 +11090,7 @@ function appendSeasonHoldoutPanel(box, r) {
     loading = true;
     body.textContent = "연도 분리 진단을 준비합니다. 메뉴 표시는 유지됩니다…";
     try {
-      const years = currentV11Lookback ?? 5;
+      const years = r.lookback_years ?? currentV11Lookback ?? 5;
       for (let attempt = 0; attempt < 20; attempt++) {
         if (!details.isConnected || !details.open) return;
         const data = await api(`/api/research/season-holdout/${encodeURIComponent(r.ticker)}?lookback_years=${years}`);
@@ -11536,7 +11545,39 @@ function bindDiscoveryModalChrome(modal, r) {
   };
 }
 
+let seasonDetailRequest = 0;
+async function resolveSeasonListDetail(row) {
+  if (!row?.detail_required) return row;
+  const params = new URLSearchParams({ lookback_years: row.lookback_years ?? 5 });
+  if (!row.generation_id || !row.signal_id) throw new Error("선정 식별자가 없습니다. 목록을 다시 조회해 주세요.");
+  params.set("generation_id", row.generation_id);
+  const data = await api(`/api/seasonality/discovery/${encodeURIComponent(row.ticker)}?${params}`);
+  const detail = (data.patterns || []).find((p) => p.signal_id === row.signal_id);
+  if (!detail) throw new Error("같은 선정 근거를 찾지 못했습니다. 목록을 다시 조회해 주세요.");
+  return { ...detail, lookback_years: row.lookback_years };
+}
+
+async function openSeasonListRegistration(row) {
+  const request = ++seasonDetailRequest;
+  try {
+    const detail = await resolveSeasonListDetail(row);
+    if (request === seasonDetailRequest) openMomentumRegisterModal(detail);
+  } catch (err) {
+    if (request === seasonDetailRequest) showToast(err.message, "warning", 5000);
+  }
+}
+
 async function openDiscoveryDetailModal(r) {
+  const request = ++seasonDetailRequest;
+  if (r?.detail_required) {
+    showToast("선택한 종목의 상세 근거를 불러옵니다.", "info", 1200);
+    try { r = await resolveSeasonListDetail(r); }
+    catch (err) {
+      if (request === seasonDetailRequest) showToast(err.message, "warning", 5000);
+      return;
+    }
+    if (request !== seasonDetailRequest) return;
+  }
   const modal = $("#discovery-detail-modal");
   if (!modal || !r) return;
 
@@ -12062,6 +12103,27 @@ let currentV11Horizon = 90;
 let currentV11Lookback = 5;
 let currentV11ExcludeExpired = true;
 let discoveryRows = [];
+let discoveryListRequest = 0;
+let explanationListRequest = 0;
+
+function renderSeasonPager(id, anchor, response, onPage) {
+  let pager = document.getElementById(id);
+  if (!pager) {
+    pager = document.createElement("div");
+    pager.id = id;
+    pager.className = "season-list-pager";
+    pager.style.cssText = "display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;padding:12px";
+    anchor.after(pager);
+  }
+  const offset = response.offset || 0;
+  const count = response.count ?? response.rows.length;
+  const end = Math.min(count, offset + response.rows.length);
+  pager.innerHTML = `<button type="button" class="ghost small" data-page="prev" ${offset === 0 ? 'disabled' : ''}>이전</button>
+    <span role="status">${count ? offset + 1 : 0}–${end} / ${count.toLocaleString()}개</span>
+    <button type="button" class="ghost small" data-page="next" ${response.next_offset == null ? 'disabled' : ''}>다음</button>`;
+  pager.querySelector('[data-page="prev"]').onclick = () => onPage(Math.max(0, offset - response.limit));
+  pager.querySelector('[data-page="next"]').onclick = () => onPage(response.next_offset);
+}
 let currentSeasonalityQuery = "";
 
 function seasonalitySearchQuery() {
@@ -12087,9 +12149,13 @@ async function selectSeasonalityStock(raw, selected = null) {
   else await loadDiscoveryRanked();
 }
 
-async function loadDiscoveryRanked() {
+async function loadDiscoveryRanked(offset = 0, generationId = "") {
   const tbody = $("#discovery-ranked-body");
   if (!tbody) return;
+  const request = ++discoveryListRequest;
+  discoveryRows = [];
+  tbody.innerHTML = `<tr><td colspan="12" class="hint">목록을 불러오는 중…</td></tr>`;
+  document.getElementById("discovery-list-pager")?.remove();
 
   const minGrade = $("#discovery-grade-filter") ? $("#discovery-grade-filter").value : "";
   const statusFilter = $("#discovery-status-filter") ? $("#discovery-status-filter").value : "all";
@@ -12099,17 +12165,29 @@ async function loadDiscoveryRanked() {
     horizon_days: currentV11Horizon,
     lookback_years: currentV11Lookback,
     exclude_expired: currentV11ExcludeExpired,
+    view: "summary", offset, limit: 50,
   });
+  if (generationId) params.set("generation_id", generationId);
   if (minGrade) params.set("min_grade", minGrade);
   if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
   if (q) params.set("query", q);
 
-  const res = await api(`/api/seasonality/discovery?${params.toString()}`);
+  let res;
+  try { res = await api(`/api/seasonality/discovery?${params.toString()}`); }
+  catch (err) {
+    if (request !== discoveryListRequest) return;
+    tbody.innerHTML = `<tr><td colspan="12" class="hint">${escapeHtml(err.message)} <button type="button" class="ghost small" id="retry-discovery-list">첫 페이지 다시 확인</button></td></tr>`;
+    $("#retry-discovery-list").onclick = () => loadDiscoveryRanked().catch(() => {});
+    throw err;
+  }
+  if (request !== discoveryListRequest) return;
   setSeasonalityAsOf(res);
   discoveryRows = res.rows || [];
 
   const countBadge = $("#discovery-count-val");
-  if (countBadge) countBadge.textContent = `${discoveryRows.length.toLocaleString()}개`;
+  if (countBadge) countBadge.textContent = `${(res.count ?? discoveryRows.length).toLocaleString()}개`;
+  renderSeasonPager("discovery-list-pager", tbody.closest("table").parentElement, res,
+    (next) => loadDiscoveryRanked(next, res.snapshot?.generation_id || "").catch(() => {}));
 
   if (!discoveryRows.length) {
     tbody.innerHTML = `<tr><td colspan="12" class="text-center text-slate-400 py-8">조건에 부합하는 디스커버리 후보가 없습니다.</td></tr>`;
@@ -12156,7 +12234,7 @@ async function loadDiscoveryRanked() {
 
     return `
       <tr data-index="${idx}" class="clickable-row">
-        <td>${idx + 1}</td>
+        <td>${offset + idx + 1}</td>
         <td><span class="stage-pill ${stageCls}">${escapeHtml(r.entry_stage_label || '⚡ 진입')}</span></td>
         <td><span class="status-pill ${statusCls}" data-status="${escapeHtml(r.current_status || 'ACTIVE')}">${statusKo}</span></td>
         <td><span class="grade-badge ${gradeCls}">${escapeHtml(r.grade)}</span></td>
@@ -12219,7 +12297,7 @@ async function loadDiscoveryRanked() {
         e.stopPropagation();
         const idx = parseInt(tr.dataset.index, 10);
         const rowData = discoveryRows[idx];
-        if (rowData) openMomentumRegisterModal(rowData);
+        if (rowData) openSeasonListRegistration(rowData);
         return;
       }
       const idx = parseInt(tr.dataset.index, 10);
@@ -12243,17 +12321,33 @@ async function loadDiscoveryRanked() {
   });
 }
 
-async function loadAIExplanations() {
+async function loadAIExplanations(offset = 0, generationId = "") {
   const container = $("#explanation-cards-list");
   if (!container) return;
+  const request = ++explanationListRequest;
+  const lookback = currentV11Lookback;
+  const horizon = currentV11Horizon;
+  container.innerHTML = `<p class="hint">이벤트 설명을 불러오는 중…</p>`;
+  document.getElementById("explanation-list-pager")?.remove();
 
   const q = seasonalitySearchQuery();
   const queryParam = q ? `&query=${encodeURIComponent(q)}` : "";
-  const res = await api(`/api/seasonality/discovery?horizon_days=${currentV11Horizon}&lookback_years=${currentV11Lookback}&exclude_expired=${currentV11ExcludeExpired}${queryParam}`);
+  let res;
+  try {
+    res = await api(`/api/seasonality/discovery?horizon_days=${horizon}&lookback_years=${lookback}&exclude_expired=${currentV11ExcludeExpired}${queryParam}&view=explanation&limit=30&offset=${offset}${generationId ? `&generation_id=${encodeURIComponent(generationId)}` : ""}`);
+  } catch (err) {
+    if (request !== explanationListRequest) return;
+    container.innerHTML = `<p class="hint">${escapeHtml(err.message)}</p><button type="button" class="ghost small" id="retry-explanation-list">첫 페이지 다시 확인</button>`;
+    $("#retry-explanation-list").onclick = () => loadAIExplanations().catch(() => {});
+    throw err;
+  }
+  if (request !== explanationListRequest) return;
   setSeasonalityAsOf(res);
   const rows = res.rows || [];
 
-  const lookbackLabel = currentV11Lookback > 0 ? `최근 ${currentV11Lookback}개년` : "전체 기간";
+  const lookbackLabel = lookback > 0 ? `최근 ${lookback}개년` : "전체 기간";
+  renderSeasonPager("explanation-list-pager", container, res,
+    (next) => loadAIExplanations(next, res.snapshot?.generation_id || "").catch(() => {}));
   if (!rows.length) {
     container.innerHTML = `<div class="text-center text-slate-400 py-8">분석된 AI 이벤트 설명 데이터가 없습니다. (${lookbackLabel} · 진입 ${currentV11Horizon}일)</div>`;
     return;
@@ -12308,7 +12402,7 @@ async function loadAIExplanations() {
 
   container.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
-      <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">${lookbackLabel} · 진입 ${currentV11Horizon}일 · ${rows.length}건 중 상위 30</span>
+      <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">${lookbackLabel} · 진입 ${horizon}일 · 전체 ${res.count ?? rows.length}건 · ${offset + 1}–${offset + rows.length}번째</span>
       <span class="meta">실패 연도·무효화 조건은 종목별 반복 상승 구간의 공통 이벤트를 역추적한 결과입니다.</span>
     </div>
     ${cards}
