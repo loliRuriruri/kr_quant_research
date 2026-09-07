@@ -9956,7 +9956,32 @@ function closeMobileDrawer() {
   }
 }
 
-$$(".nav-btn").forEach((btn) => btn.addEventListener("click", () => switchView(btn.dataset.view)));
+function setCompactMenu(open) {
+  document.body.classList.toggle("compact-menu-open", open);
+  $("#compact-menu-toggle")?.setAttribute("aria-expanded", String(open));
+}
+function applyLayoutMode(mode) {
+  const desktop = mode === "desktop";
+  document.documentElement.dataset.layout = desktop ? "desktop" : "auto";
+  document.querySelector('meta[name="viewport"]').content = desktop
+    ? "width=1200, user-scalable=yes"
+    : "width=device-width, initial-scale=1, user-scalable=yes";
+  if ($("#layout-mode")) $("#layout-mode").value = desktop ? "desktop" : "auto";
+  setCompactMenu(false);
+}
+let savedLayoutMode = "auto";
+try { savedLayoutMode = localStorage.getItem("kr-quant-layout") || "auto"; } catch (_) {}
+applyLayoutMode(savedLayoutMode);
+$("#layout-mode")?.addEventListener("change", (event) => {
+  applyLayoutMode(event.target.value);
+  try { localStorage.setItem("kr-quant-layout", event.target.value); } catch (_) {}
+});
+$("#compact-menu-toggle")?.addEventListener("click", () => setCompactMenu(!document.body.classList.contains("compact-menu-open")));
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") setCompactMenu(false); });
+$$(".nav-btn").forEach((btn) => btn.addEventListener("click", () => {
+  setCompactMenu(false);
+  switchView(btn.dataset.view);
+}));
 
 // Delegated Touch & Click handler for 100% instant response on all mobile devices
 document.addEventListener("click", (e) => {

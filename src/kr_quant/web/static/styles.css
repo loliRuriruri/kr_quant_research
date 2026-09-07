@@ -6304,3 +6304,31 @@ body {
 .discovery-modal-head { flex-wrap: wrap; }
 .discovery-modal-head > div:first-child { min-width: min(300px, 100%); }
 .discovery-modal-head > div:last-child { margin-left: auto; }
+
+/* Optional narrow layout; desktop density remains available in the view selector. */
+.layout-controls { display: flex; justify-content: flex-end; gap: 12px; margin-bottom: 12px; }
+.layout-controls label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+#compact-menu-toggle { display: none; }
+html:not([data-layout="desktop"]) body { min-width: 0; grid-template-columns: 220px minmax(0, 1fr); }
+html:not([data-layout="desktop"]) .screen-layout { min-width: 0; }
+@media (max-width: 760px) {
+  html:not([data-layout="desktop"]) body { display: block; }
+  html:not([data-layout="desktop"]) main { padding: 12px 12px 32px; width: 100%; }
+  html:not([data-layout="desktop"]) .nav { display: none; }
+  html:not([data-layout="desktop"]) .compact-menu-open .nav { display: block; max-height: 65vh; overflow-y: auto; }
+  html:not([data-layout="desktop"]) #compact-menu-toggle { display: inline-block; }
+  html:not([data-layout="desktop"]) .layout-controls { justify-content: space-between; }
+  html:not([data-layout="desktop"]) :is(.top, .top-title-row, .top-actions, .chips, .run-action-box) { flex-wrap: wrap; }
+  html:not([data-layout="desktop"]) .top { flex-direction: column; align-items: stretch; }
+  html:not([data-layout="desktop"]) :is(.top-right, .view, .card, .grid-2 > *, .screen-layout > *) { min-width: 0; max-width: 100%; }
+  html:not([data-layout="desktop"]) :is(.grid-2, .screen-layout, .dash-champions-grid) { grid-template-columns: minmax(0, 1fr); }
+  html:not([data-layout="desktop"]) .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html:not([data-layout="desktop"]) .table-wrap { max-width: 100%; overflow-x: auto; }
+  html:not([data-layout="desktop"]) .table-wrap table { min-width: 680px; }
+  html:not([data-layout="desktop"]) :is(button, select, input) { min-height: 40px; max-width: 100%; }
+  html:not([data-layout="desktop"]) #drawer { width: 100%; max-width: 100vw; }
+  html:not([data-layout="desktop"]) :is(h1, h2, .chip) { overflow-wrap: anywhere; white-space: normal; }
+}
+@media (max-width: 420px) {
+  html:not([data-layout="desktop"]) .kpis { grid-template-columns: minmax(0, 1fr); }
+}
