@@ -146,7 +146,14 @@ def test_pre_entry_glance_excludes_season_end():
         assert pick["ticker"]
 
 
-def test_momentum_portfolio_api():
+def test_momentum_portfolio_api(tmp_path, monkeypatch):
+    import importlib
+    from types import SimpleNamespace
+    module = importlib.import_module("kr_quant.web.app")
+    monkeypatch.setattr(module, "load_settings", lambda: SimpleNamespace(root=tmp_path, staged_dir=tmp_path / "staged"))
+    monkeypatch.setattr(module, "fetch_naver_live_quotes", lambda _: {})
+    for code in ("161580", "204270", "178320", "347850"):
+        assert client.post("/api/seasonality/momentum-portfolio", json={"item": {"code": code}}).status_code == 200
     # GET test
     res = client.get("/api/seasonality/momentum-portfolio")
     assert res.status_code == 200
@@ -165,7 +172,7 @@ def test_momentum_portfolio_api():
     # POST test
     test_items = list(data["items"])
     test_items[0]["notes"] = "Updated test notes"
-    post_res = client.post("/api/seasonality/momentum-portfolio", json={"items": test_items})
+    post_res = client.post("/api/seasonality/momentum-portfolio", json={"item": test_items[0]})
     assert post_res.status_code == 200
     assert post_res.json()["ok"] is True
     assert post_res.json()["saved_count"] == len(test_items)

@@ -71,6 +71,12 @@ def assign_peer_scores(
     candidates: list[tuple[int, MetricResult]] = []
     for i, nm in enumerate(names):
         m = nm.metrics.get(metric_name)
+        if m and m.participates_in_percentile and (m.raw is None or not np.isfinite(m.raw)):
+            m.score = 50.0
+            m.state = "DATA_MISSING"
+            m.participates_in_percentile = False
+            m.counts_as_observed = False
+            m.flags = [*m.flags, "NONFINITE_METRIC"]
         if m and m.participates_in_percentile and m.raw is not None:
             candidates.append((i, m))
 
@@ -83,20 +89,20 @@ def assign_peer_scores(
         min_n = int(spec["min_valid_n"])
         buckets: dict[str, list[tuple[int, MetricResult]]] = defaultdict(list)
         for i, m in candidates:
-            if i in assigned:
-                continue
             key = _group_key(names[i], level)
             if key:
                 buckets[key].append((i, m))
         for key, items in buckets.items():
             if len(items) < min_n:
                 continue
-            _score_bucket(items, names, metric_name, direction, peer_cfg, level, key)
+            if all(i in assigned for i, _ in items):
+                continue
+            _score_bucket(items, names, metric_name, direction, peer_cfg, level, key, skip=assigned)
             assigned.update(i for i, _ in items)
 
     leftover = [(i, m) for i, m in candidates if i not in assigned]
-    if len(leftover) >= last_resort:
-        _score_bucket(leftover, names, metric_name, direction, peer_cfg, "market", "MARKET")
+    if leftover and len(candidates) >= last_resort:
+        _score_bucket(candidates, names, metric_name, direction, peer_cfg, "market", "MARKET", skip=assigned)
         assigned.update(i for i, _ in leftover)
 
     for i, m in candidates:
@@ -118,6 +124,8 @@ def _score_bucket(
     peer_cfg: dict[str, Any],
     level: str,
     code: str,
+    *,
+    skip: set[int] | None = None,
 ) -> None:
     raws = [m.raw for _, m in items if m.raw is not None]
     n = len(raws)
@@ -126,6 +134,8 @@ def _score_bucket(
     ranks = average_ranks(clipped)
     highs = percentile_high(ranks)
     for (i, m), cval, ph in zip(items, clipped, highs):
+        if skip and i in skip:
+            continue
         score = ph if direction == "higher" else 100.0 - ph
         m.clipped = cval
         m.score = float(np.clip(score, 0.0, 100.0))

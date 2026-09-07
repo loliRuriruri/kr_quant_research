@@ -38,11 +38,12 @@ def test_write_json_atomic_dict_and_list(tmp_path):
     assert json.loads(list_file.read_text(encoding="utf-8")) == [{"id": 1}, {"id": 2}]
 
 
-def test_enrich_momentum_portfolio_with_live_prices(tmp_path):
+def test_enrich_momentum_portfolio_with_live_prices(tmp_path, monkeypatch):
     import pandas as pd
     from datetime import date
     from types import SimpleNamespace
     from kr_quant.web.app import enrich_momentum_portfolio_with_live_prices
+    monkeypatch.setattr("kr_quant.web.app.fetch_naver_live_quotes", lambda _: {})
 
     # Create dummy prices.parquet
     staged = tmp_path / "staged" / "live"
@@ -63,6 +64,7 @@ def test_enrich_momentum_portfolio_with_live_prices(tmp_path):
         "peak_date": "2026-09-10",
         "entry_price": 70000,
         "history_curve": [0, 2.0, 5.0, 8.0],
+        "history_curve_source": "OBSERVED",
         "actual_curve": [0],
     }]
 

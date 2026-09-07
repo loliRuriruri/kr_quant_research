@@ -82,6 +82,8 @@ def freshness_component(period_end: date | None, as_of: date, cfg: dict[str, Any
     if period_end is None:
         return 0.0
     days = (as_of - period_end).days
+    if days < 0:
+        return 0.0
     bands = cfg["data_confidence"]["freshness_days"]
     if days <= int(bands["full"]):
         return 1.0

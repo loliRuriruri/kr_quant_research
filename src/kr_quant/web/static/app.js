@@ -10830,7 +10830,9 @@ function renderDiscDeepPlaybook(r, months) {
           <div class="expected-kpi-item"><span>P50 피크 환산가</span><b style="color:#fbbf24;">${pbWon(rem.peak_price_p50)}</b></div>
           <div class="expected-kpi-item"><span>피크까지 중앙 거래일</span><b>${rem.median_trading_days_to_peak == null ? "—" : `${rem.median_trading_days_to_peak}일`}</b></div>
           <div class="expected-kpi-item"><span>피크 전 하방(P50)</span><b style="color:#f87171;">${pbPct(rem.downside_before_peak_p50)}</b></div>
-          <div class="expected-kpi-item"><span>역사적 플러스 확률</span><b style="color:#34d399;">${rem.positive_peak_rate == null ? "—" : `${(Number(rem.positive_peak_rate) * 100).toFixed(1)}%`}</b></div>
+          <div class="expected-kpi-item"><span>과거 피크 상승 비율 (사후 관측)</span><b style="color:#34d399;">${rem.positive_peak_rate == null ? "—" : `${(Number(rem.positive_peak_rate) * 100).toFixed(1)}%`}</b></div>
+          <div class="expected-kpi-item"><span>감시구간 말일 수익률 중앙값 · 비용 전</span><b>${pbPct(rem.window_end_p50)}</b></div>
+          <div class="expected-kpi-item"><span>감시구간 말일 상승 비율</span><b>${pbPct(rem.window_end_positive_rate)}</b></div>
           <div class="expected-kpi-item"><span>표본 · 신뢰도</span><b>${Number(rem.sample_count || 0)}개년 · ${escapeHtml(rem.confidence || "—")}</b></div>
         </div>
         <div class="meta" style="margin-top:8px;line-height:1.5;">과거 월간 전체구간 P50 ${pbPct(monthlyP50)}와 구분해 계산합니다. ${escapeHtml(rem.methodology || "실제 일봉 경로가 부족하면 값을 표시하지 않습니다.")}</div>
@@ -10841,11 +10843,11 @@ function renderDiscDeepPlaybook(r, months) {
     <div style="margin-top:14px; background:rgba(30,41,59,0.5); border:1px solid rgba(139,92,246,0.3); border-radius:12px; padding:14px 16px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <b style="color:#c084fc; font-size:13.5px;">🤖 AI 공통 이벤트 역추적 (Event Explanation)</b>
-        <span class="chip" style="background:rgba(139,92,246,0.2); color:#c084fc; font-size:11px;">신뢰도: ${escapeHtml(r.event_confidence || "HIGH")}</span>
+        <span class="chip" style="background:rgba(139,92,246,0.2); color:#c084fc; font-size:11px;">신뢰도: ${escapeHtml(r.event_confidence || "미확인")}</span>
       </div>
       <div style="margin-top:8px; font-size:14px; font-weight:800; color:#fff;">${escapeHtml(r.common_event_cluster || "계절성 수요 증가 및 제품 사이클")}</div>
-      <p style="margin:4px 0 0; font-size:12px; color:#cbd5e1; line-height:1.5;">빅데이터 역추적 결과 매년 ${escapeHtml(r.window_name || "해당 구간")} 전후로 실적 개선 및 수급 유입이 반복되는 패턴입니다.</p>
-      <div style="margin-top:8px; font-size:11.5px; color:#94a3b8;">📌 부 원인: ${escapeHtml(r.secondary_cluster || "분기 실적 호조 및 기관 수급 유입")}</div>
+      <p style="margin:4px 0 0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(r.window_name || "해당 구간")}의 가격 반복성과 업종 가설입니다. 가격 통계만으로 실적 개선·수급 유입의 원인을 입증하지는 못합니다.</p>
+      <div style="margin-top:8px; font-size:11.5px; color:#94a3b8;">📌 추가 확인: ${escapeHtml(r.secondary_cluster || "공시·실적·수급 근거 확인 필요")}</div>
     </div>
 
     <div style="margin-top:14px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.25);border-radius:12px;padding:14px 16px;">
@@ -11581,7 +11583,7 @@ async function loadPreEntryView() {
               <span class="chip" style="background:#eab308; color:#0f172a; font-weight:900; font-size:12px;">${rankBadge}</span>
               <b style="font-size:18px; color:#fff;">${escapeHtml(r.company || r.ticker)}</b>
               <span class="chip" style="background:#1e293b; color:#94a3b8; font-family:monospace;">${escapeHtml(r.market || 'KOSPI')} ${escapeHtml(r.ticker)}</span>
-              <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11.5px;">${escapeHtml(r.window_name)} (${r.sample_count}개년 검증)</span>
+              <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11.5px;">${escapeHtml(r.window_name)} (${r.sample_count}개년 관측)</span>
             </div>
             <div style="margin-top:6px; display:flex; align-items:center; gap:8px;">
               <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">${escapeHtml(r.common_event_cluster)}</span>
@@ -11600,7 +11602,7 @@ async function loadPreEntryView() {
             <b class="text-emerald-400">${avgRet}</b>
           </div>
           <div class="pre-entry-kpi-item" style="border-color:rgba(234,179,8,0.4); background:rgba(234,179,8,0.1);">
-            <span style="color:#fde047;">피크 플러스 확률</span>
+            <span style="color:#fde047;">과거 피크 상승 비율</span>
             <b style="color:#facc15;">${remHit}</b>
           </div>
           <div class="pre-entry-kpi-item">
@@ -11617,6 +11619,7 @@ async function loadPreEntryView() {
           </div>
         </div>
 
+        <div class="meta" style="margin:6px 0;">사후 피크 기준 과거 기술통계 · 미래 수익 확률 아님 · 독립 OOS/비용 검증 전. 감시구간 말일 중앙수익 ${pbPct(rem.window_end_p50)} (비용 전)</div>
         <!-- Timing Window Strip -->
         <div class="pre-entry-timing-strip">
           <span style="color:#38bdf8; font-weight:700;">📈 과거 관찰 구간: ${escapeHtml(r.entry_window_str || '실측 피크 산출 대기')}</span>
@@ -11624,7 +11627,7 @@ async function loadPreEntryView() {
         </div>
 
         <!-- Year-by-Year Track Record Bar -->
-        <div style="font-size:11.5px; color:#94a3b8; margin-bottom:6px;">최근 5~8개년 연도별 실측 백테스팅 수익률:</div>
+        <div style="font-size:11.5px; color:#94a3b8; margin-bottom:6px;">연도별 월간 관측 수익률 (전략 OOS 성과 아님):</div>
         <div class="year-track-bar" style="flex-wrap:wrap; gap:6px;">${yearsTrackHtml}</div>
 
         <!-- AI Catalyst Box -->
@@ -13424,91 +13427,25 @@ function calculateMomentumDDay(peakDateStr) {
   }
 }
 
+let momentumDetailRequest = 0;
 async function openSeasonalityModalForStock(ticker, name) {
   const code = padTicker(ticker);
   if (!code || code === "000000") return;
-
+  const request = ++momentumDetailRequest;
   const targetStock = momentumPortfolio.find((s) => padTicker(s.code) === code);
   const targetMonth = targetStock?.peak_date ? new Date(targetStock.peak_date).getMonth() + 1 : (new Date().getMonth() + 1);
-
-  const returnTarget = targetStock?.entry_price && targetStock?.target_price
-    ? (targetStock.target_price - targetStock.entry_price) / targetStock.entry_price
-    : 0.20;
-
-  const currentYear = new Date().getFullYear();
-  const sampleTrack = [
-    { year: currentYear - 5, return: returnTarget * 0.9, is_win: true },
-    { year: currentYear - 4, return: returnTarget * 1.1, is_win: true },
-    { year: currentYear - 3, return: returnTarget * 0.85, is_win: true },
-    { year: currentYear - 2, return: -0.045, is_win: false },
-    { year: currentYear - 1, return: returnTarget * 1.25, is_win: true },
-  ];
-
-  // 1. Construct instant initial row from targetStock so modal opens immediately
-  const initialRow = {
-    ticker: code,
-    company: name || targetStock?.name || code,
-    market: "KOSPI",
-    window_name: `${targetMonth}월`,
-    target_month: targetMonth,
-    win_rate: 0.80,
-    recent_3y_win_rate: 0.67,
-    median_return: returnTarget,
-    sample_count: 5,
-    years_count: 5,
-    years_track: sampleTrack,
-    common_event_cluster: targetStock?.catalyst || "계절적 수요 증가 및 캘린더 모멘텀",
-    invalidating_conditions: "목표 피크일 경과 후 모멘텀 둔화 / 20일 이동평균선 이탈 / 대량 거래량 동반 음봉",
-    playbook: {
-      entry_timing: `매수 진입일: ${targetStock?.entry_date || "—"} (캘린더 진입 구간)`,
-      exit_timing: `목표 피크일: ${targetStock?.peak_date || "—"} (역사적 피크 감시)`,
-      stop_loss: targetStock?.notes || "목표 피크일 도달 시 분할 익절 및 엑시트 권장",
-      recommendation: targetStock?.notes || "과거 계절성 패턴과 목표 피크일 전후 분할 엑시트 권장.",
-    },
-    remaining_peak: {
-      available: true,
-      current_price: targetStock?.current_price || targetStock?.entry_price,
-      peak_price_p50: targetStock?.target_price,
-      remaining_p50: targetStock?.target_price && (targetStock?.current_price || targetStock?.entry_price)
-        ? (targetStock.target_price - (targetStock.current_price || targetStock.entry_price)) / (targetStock.current_price || targetStock.entry_price)
-        : returnTarget,
-      remaining_p25: returnTarget * 0.6,
-      remaining_p75: returnTarget * 1.4,
-      downside_before_peak_p50: -0.05,
-      price_as_of: "최신 시세",
-      confidence: "HIGH",
-      positive_peak_rate: 0.80,
-      median_trading_days_to_peak: targetStock?.peak_date ? calculateMomentumDDay(targetStock.peak_date) : 15,
-    },
-    current_status: "ACTIVE",
-    entry_stage_label: targetStock?.peak_date ? `피크 D-${calculateMomentumDDay(targetStock.peak_date)}` : "캘린더 모멘텀",
-  };
-
-  openDiscoveryDetailModal(initialRow);
-
-  // 2. Fetch full deep discovery pattern from API in background and refine
+  showToast("실측 계절성 근거를 조회합니다.", "info", 1800);
   try {
     const data = await api(`/api/seasonality/discovery/${code}?lookback_years=${currentV11Lookback || 5}`);
-    const patterns = data.patterns || [];
-    if (patterns.length > 0) {
-      const match = patterns.find((p) => {
-        const m = parseInt(String(p.window_name || "").replace("월", ""), 10);
-        return m === targetMonth;
-      }) || patterns[0];
-
-      if (match) {
-        match.company = name || targetStock?.name || match.company || code;
-        if (targetStock?.catalyst) {
-          match.common_event_cluster = `${targetStock.catalyst}`;
-        }
-        const modal = $("#discovery-detail-modal");
-        if (modal && !modal.classList.contains("hidden")) {
-          openDiscoveryDetailModal(match);
-        }
-      }
+    if (request !== momentumDetailRequest) return;
+    const match = (data.patterns || []).find((p) => targetMonthOf(p) === targetMonth);
+    if (!match) {
+      showToast("선택한 종목·목표월의 검증 가능한 계절성 표본이 없습니다.", "warning", 4000);
+      return;
     }
+    openDiscoveryDetailModal({ ...match, company: name || match.company || code });
   } catch (err) {
-    console.debug("Deep discovery pattern query skipped for", code, err);
+    if (request === momentumDetailRequest) showToast("계절성 근거 조회에 실패했습니다. 임의 수익률·승률은 표시하지 않습니다.", "warning", 4000);
   }
 }
 
@@ -13519,7 +13456,10 @@ function renderActiveMomentumChart() {
   if (!ctx) return;
 
   const stock = momentumPortfolio.find((s) => s.id === selectedMomentumStockId) || momentumPortfolio[0];
-  if (!stock) return;
+  if (!stock) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
 
   const rect = canvas.getBoundingClientRect();
   const width = rect.width || 750;
@@ -13536,8 +13476,13 @@ function renderActiveMomentumChart() {
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
 
-  const historyCurve = stock.history_curve || [0, 2, 5, 8, 12, 16, 20, 25, 28, 25, 21, 17];
-  const actualCurve = stock.actual_curve || [0];
+  const historyCurve = stock.history_curve_source === "OBSERVED" ? (stock.history_curve || []) : [];
+  const actualCurve = stock.actual_curve || [];
+  if (!historyCurve.length && !actualCurve.length) {
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText("검증 가능한 가격 경로가 없습니다.", 30, 55);
+    return;
+  }
   const nDays = Math.max(historyCurve.length, actualCurve.length);
 
   const maxVal = Math.max(...historyCurve, ...actualCurve, 30) * 1.15;
@@ -13545,7 +13490,7 @@ function renderActiveMomentumChart() {
   const valRange = Math.max(10, maxVal - minVal);
 
   const getY = (val) => padding.top + plotH - ((val - minVal) / valRange) * plotH;
-  const getX = (idx) => padding.left + (idx / (nDays - 1)) * plotW;
+  const getX = (idx) => padding.left + (idx / Math.max(1, nDays - 1)) * plotW;
 
   // Grid Lines
   ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
@@ -13565,6 +13510,7 @@ function renderActiveMomentumChart() {
   }
 
   // Peak Vertical Line
+  if (historyCurve.length) {
   const peakIdx = historyCurve.indexOf(Math.max(...historyCurve));
   const peakX = getX(peakIdx);
 
@@ -13581,6 +13527,7 @@ function renderActiveMomentumChart() {
   ctx.font = "bold 11px sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(`🎯 목표 피크일 (${stock.peak_date})`, peakX, padding.top - 12);
+  }
 
   // 1. Draw Past 5-Year Average Trajectory (Dashed Gray/Cyan Line)
   ctx.strokeStyle = "#94a3b8";
@@ -13655,7 +13602,7 @@ function renderActiveMomentumChart() {
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle = "#94a3b8";
-  ctx.fillText("과거 5개년 평균 궤적", width - 210, 22);
+  ctx.fillText("출처 확인 과거 곡선", width - 210, 22);
 
   ctx.strokeStyle = "#38bdf8";
   ctx.lineWidth = 3;
@@ -13664,7 +13611,7 @@ function renderActiveMomentumChart() {
   ctx.lineTo(width - 90, 18);
   ctx.stroke();
   ctx.fillStyle = "#38bdf8";
-  ctx.fillText("2026년 실제 주가", width - 85, 22);
+  ctx.fillText("진입 후 관측 수익률", width - 110, 22);
 }
 
 async function loadCalendarMomentumPortfolio() {
@@ -13677,12 +13624,15 @@ async function loadCalendarMomentumPortfolio() {
     const res = await api("/api/seasonality/momentum-portfolio");
     momentumPortfolio = (res && res.items) || [];
   } catch (e) {
-    momentumPortfolio = [];
+    cardsContainer.innerHTML = `<div class="notice warn">포트폴리오를 읽지 못했습니다. 저장 데이터는 유지됩니다. 새로고침하거나 원본 파일을 확인하세요.</div>`;
+    return;
   }
 
   const activeItems = momentumPortfolio.filter((item) => !item.exited);
   const totalCount = momentumPortfolio.length;
   const activeCount = activeItems.length;
+  const matches = activeItems.filter((item) => Number.isFinite(item.trajectory_match));
+  const averageMatch = matches.length ? (matches.reduce((sum, item) => sum + item.trajectory_match, 0) / matches.length).toFixed(1) + "%" : "—";
 
   let urgentStock = null;
   let minDays = 999;
@@ -13743,13 +13693,13 @@ async function loadCalendarMomentumPortfolio() {
     <div class="kpi card-emerald">
       <div class="kpi-head">
         <span class="kpi-title">📡 모멘텀 신호등</span>
-        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(52,211,153,0.15); color:#34d399;">정상</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px;">계산 가능 ${matches.length}/${activeCount}</span>
       </div>
       <div class="kpi-main">
-        <span class="kpi-num">87.8%</span>
+        <span class="kpi-num">${averageMatch}</span>
         <span class="kpi-unit">동조율</span>
       </div>
-      <div class="kpi-sub-text">과거 5개년 궤적과 일치 (정상 궤도)</div>
+      <div class="kpi-sub-text">출처 확인 곡선의 관측 방향 일치도 · 수익 확률 아님</div>
     </div>
   `;
 
@@ -13764,13 +13714,13 @@ async function loadCalendarMomentumPortfolio() {
       if (isExited) {
         badgeHtml = `<span class="chip" style="background:rgba(148,163,184,0.15); color:#94a3b8; font-weight:800;">🏁 엑시트 완료</span>`;
       } else if (dday > 7) {
-        badgeHtml = `<span class="chip" style="background:rgba(52,211,153,0.18); color:#34d399; font-weight:800; border:1px solid rgba(52,211,153,0.4);">🟢 D-${dday} (보유 유지)</span>`;
+        badgeHtml = `<span class="chip" style="background:rgba(52,211,153,0.18); color:#34d399; font-weight:800; border:1px solid rgba(52,211,153,0.4);">🟢 D-${dday} (일정 관찰)</span>`;
       } else if (dday >= 1) {
-        badgeHtml = `<span class="chip" style="background:rgba(251,191,36,0.18); color:#fbbf24; font-weight:800; border:1px solid rgba(251,191,36,0.4);">🟡 D-${dday} (분할 익절 대기)</span>`;
+        badgeHtml = `<span class="chip" style="background:rgba(251,191,36,0.18); color:#fbbf24; font-weight:800; border:1px solid rgba(251,191,36,0.4);">🟡 D-${dday} (목표일 접근)</span>`;
       } else if (dday === 0) {
         badgeHtml = `<span class="chip" style="background:rgba(239,68,68,0.25); color:#f87171; font-weight:900; border:1px solid #ef4444; animation:pulse 1.5s infinite;">🔴 D-Day (전량 엑시트)</span>`;
       } else {
-        badgeHtml = `<span class="chip" style="background:rgba(244,63,94,0.2); color:#fb7185; font-weight:800;">⚠️ D+${Math.abs(dday)} (재료소멸)</span>`;
+        badgeHtml = `<span class="chip" style="background:rgba(244,63,94,0.2); color:#fb7185; font-weight:800;">⚠️ D+${Math.abs(dday)} (설정 목표일 경과)</span>`;
       }
 
       const returnTarget = stock.entry_price && stock.target_price
@@ -13805,16 +13755,16 @@ async function loadCalendarMomentumPortfolio() {
               </div>
               <div>
                 <span style="font-size:10.5px; color:#94a3b8; display:block;">목표 수익률</span>
-                <b style="font-size:11.5px; color:#34d399;">${returnTarget ? `+${returnTarget}%` : "—"}</b>
+                <b style="font-size:11.5px; color:#34d399;">${returnTarget != null ? `${Number(returnTarget) >= 0 ? '+' : ''}${returnTarget}%` : "—"}</b>
               </div>
             </div>
 
             <!-- Live Tracking Status -->
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding:6px 10px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); border-radius:6px; font-size:11.5px;">
-              <span style="color:#94a3b8;">현재가 / 실시간 수익률</span>
+              <span style="color:#94a3b8;">관측가 / 진입 후 수익률<br><small>${escapeHtml(stock.price_as_of || "기준일 없음")} · ${escapeHtml(stock.price_source || "출처 미확인")}</small></span>
               <b style="color:${(stock.current_return ?? 0) >= 0 ? '#34d399' : '#f87171'}; font-family:monospace;">
-                ${stock.current_price ? Number(stock.current_price).toLocaleString() + '원' : (stock.entry_price ? Number(stock.entry_price).toLocaleString() + '원' : '—')} 
-                (${stock.current_return != null ? ((stock.current_return >= 0 ? '+' : '') + Number(stock.current_return).toFixed(2) + '%') : (stock.entry_price ? '0.00%' : '—')})
+                ${stock.current_price ? Number(stock.current_price).toLocaleString() + '원' : '자료 없음'}
+                (${stock.current_return != null ? ((stock.current_return >= 0 ? '+' : '') + Number(stock.current_return).toFixed(2) + '%') : '계산 불가'})
               </b>
             </div>
 
@@ -13830,8 +13780,8 @@ async function loadCalendarMomentumPortfolio() {
 
             <!-- Trajectory Sync Badge -->
             <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; font-size:11.5px;">
-              <span style="color:#94a3b8;">과거 5개년 궤적 동조율</span>
-              <b style="color:#34d399;">${stock.trajectory_match || 85}% (🟢 정상 궤도)</b>
+              <span style="color:#94a3b8;">관측 방향 일치도 (수익 확률 아님)</span>
+              <b>${Number.isFinite(stock.trajectory_match) ? `${stock.trajectory_match}% · ${stock.trajectory_samples}구간` : '출처 확인 표본 없음'}</b>
             </div>
           </div>
 
@@ -13900,7 +13850,7 @@ async function loadCalendarMomentumPortfolio() {
         target.exited = !target.exited;
         await api("/api/seasonality/momentum-portfolio", {
           method: "POST",
-          body: JSON.stringify({ items: momentumPortfolio }),
+          body: JSON.stringify({ item: { code: target.code, exited: target.exited } }),
         });
         loadCalendarMomentumPortfolio();
       }
@@ -13912,10 +13862,11 @@ async function loadCalendarMomentumPortfolio() {
       e.stopPropagation();
       const id = btn.dataset.id;
       if (confirm("이 종목을 포트폴리오에서 삭제하시겠습니까?")) {
+        const target = momentumPortfolio.find((s) => s.id === id);
         momentumPortfolio = momentumPortfolio.filter((s) => s.id !== id);
         await api("/api/seasonality/momentum-portfolio", {
           method: "POST",
-          body: JSON.stringify({ items: momentumPortfolio }),
+          body: JSON.stringify({ delete_code: target.code }),
         });
         loadCalendarMomentumPortfolio();
       }
@@ -13983,14 +13934,11 @@ document.addEventListener("DOMContentLoaded", () => {
           catalyst: catalyst,
           notes: notes,
           exited: false,
-          trajectory_match: 85,
-          history_curve: [0, 1.0, 2.5, 4.2, 6.5, 9.0, 12.0, 15.5, 19.5, 24.0, 27.5, 25.0, 21.0, 17.5],
-          actual_curve: [0],
         };
         momentumPortfolio.unshift(newItem);
         await api("/api/seasonality/momentum-portfolio", {
           method: "POST",
-          body: JSON.stringify({ items: momentumPortfolio }),
+          body: JSON.stringify({ item: newItem }),
         });
         addForm.reset();
         const details = $("#momentum-add-details");
@@ -14049,9 +13997,6 @@ document.addEventListener("DOMContentLoaded", () => {
         catalyst: catalyst,
         notes: notes,
         exited: existingItem ? !!existingItem.exited : false,
-        trajectory_match: existingItem?.trajectory_match || 88,
-        history_curve: existingItem?.history_curve || [0, 1.0, 2.5, 4.2, 6.5, 9.0, 12.0, 15.5, 19.5, 24.0, 27.5, 25.0, 21.0, 17.5],
-        actual_curve: existingItem?.actual_curve || [0],
       };
 
       if (!Array.isArray(momentumPortfolio)) momentumPortfolio = [];
@@ -14064,7 +14009,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         await api("/api/seasonality/momentum-portfolio", {
           method: "POST",
-          body: JSON.stringify({ item: itemData, items: momentumPortfolio }),
+          body: JSON.stringify({ item: itemData }),
         });
         closeMomRegModal();
         updateDiscoveryModalRegisterButton(code);

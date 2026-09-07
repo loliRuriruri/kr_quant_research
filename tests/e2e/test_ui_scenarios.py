@@ -39,6 +39,29 @@ def _open_view(page, name: str) -> None:
     page.locator(f'button.nav-btn[data-view="{name}"]').click()
 
 
+def test_momentum_unknown_data_has_no_fabricated_confidence(browser_page):
+    page = browser_page
+    route_pattern = "**/api/seasonality/momentum-portfolio"
+    page.route(route_pattern, lambda route: route.fulfill(json={"ok": True, "items": [{
+        "id": "audit-stock", "code": "005380", "name": "현대차", "entry_date": "2026-08-27", "peak_date": "2026-09-15",
+        "entry_price": 100, "target_price": 95, "current_price": None, "current_return": None,
+        "trajectory_match": None, "trajectory_samples": 0, "history_curve": [], "actual_curve": [], "price_source": "UNAVAILABLE",
+    }]}))
+    try:
+        _open_view(page, "seasonality")
+        page.locator("#btn-open-momentum-manager").click()
+        page.locator("#momentum-cards-grid .card-mom-item").wait_for()
+        text = page.locator("#momentum-cards-grid").inner_text()
+        assert "자료 없음" in text and "계산 불가" in text
+        assert "출처 확인 표본 없음" in text
+        assert "-5.0%" in text and "+-5.0%" not in text
+        assert "87.8%" not in page.locator("#momentum-kpis").inner_text()
+        assert "정상 궤도" not in text
+    finally:
+        page.unroute(route_pattern)
+        _open_view(page, "dash")
+
+
 def test_dashboard_top30_has_real_rows(browser_page):
     rows = browser_page.locator("#top20-body tr.clickable")
     assert rows.count() == 30

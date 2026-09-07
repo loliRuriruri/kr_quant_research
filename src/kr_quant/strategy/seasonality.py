@@ -18,8 +18,8 @@ from kr_quant.strategy.run import _prices
 from kr_quant.universe.tradability import evaluate_candidate_tradability, evaluate_event_universe_tradability
 
 logger = logging.getLogger("kr_quant.strategy.seasonality")
-SEASONALITY_CACHE_VERSION = 2
-DISCOVERY_CACHE_VERSION = 5
+SEASONALITY_CACHE_VERSION = 3
+DISCOVERY_CACHE_VERSION = 6
 
 EVENT_PRESETS: dict[str, dict[str, Any]] = {
     "winter_heater": {
@@ -416,6 +416,52 @@ def seasonality_universe_stats(settings: Settings) -> dict[str, Any]:
     }
 
 
+def _completed_month_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """No partial latest month, duplicate days, invalid prices or broken windows.
+
+    Use the first/last observed close convention (not total return). The latest
+    data month is conservatively held out even if it happens to be month-end.
+    """
+    df = frame.copy()
+    df["date"] = pd.to_datetime(df.get("date", df.get("trade_date")), errors="coerce")
+    df["close"] = pd.to_numeric(df["close"], errors="coerce")
+    df = df.dropna(subset=["date", "close"])
+    df = df[(df["close"] > 0) & np.isfinite(df["close"]) & (df["date"].dt.date <= date.today())]
+    if df.empty:
+        return pd.DataFrame(columns=["ticker", "year", "month", "ret"])
+    if "ticker" not in df:
+        df["ticker"] = "single"
+    cutoff = df["date"].max().to_period("M").start_time
+    df = df[df["date"] < cutoff].sort_values(["ticker", "date"]).drop_duplicates(["ticker", "date"], keep="last")
+    df["basis"] = df["close"]
+    if "adj_close" in df:
+        adj = pd.to_numeric(df["adj_close"], errors="coerce")
+        # Never mix adjusted and raw prices within a stock's history.
+        valid = adj.notna() & np.isfinite(adj) & (adj > 0)
+        complete = valid.groupby(df["ticker"]).transform("all")
+        df.loc[complete, "basis"] = adj[complete]
+    df["jump"] = df.groupby("ticker")["basis"].pct_change().abs()
+    df["year"] = df["date"].dt.year
+    df["month"] = df["date"].dt.month
+    monthly = df.groupby(["ticker", "year", "month"]).agg(
+        start_close=("basis", "first"), end_close=("basis", "last"),
+        first_date=("date", "min"), last_date=("date", "max"),
+        observations=("basis", "size"), max_jump=("jump", "max"),
+    ).reset_index()
+    # Broad edge coverage is a quality check, not proof of a complete exchange calendar.
+    monthly = monthly[(monthly["observations"] >= 8) & (monthly["first_date"].dt.day <= 10)
+                      & (monthly["last_date"].dt.day >= 22) & ~(monthly["max_jump"] > .35)]
+    monthly["ret"] = monthly["end_close"] / monthly["start_close"] - 1
+    return monthly
+
+
+def _seasonality_source_signature(settings: Settings) -> list:
+    paths = [settings.staged_dir / mode / "prices.parquet" for mode in ("live", "demo")]
+    paths += [settings.output_dir / "current_manifest.json", settings.staged_dir / "live" / "master.parquet"]
+    paths += [settings.staged_dir / mode / "corporate_actions.parquet" for mode in ("live", "demo")]
+    return [[str(p), p.stat().st_mtime_ns, p.stat().st_size] for p in paths if p.exists()]
+
+
 def calculate_stock_seasonality(hist: pd.DataFrame) -> list[dict[str, Any]]:
     """Calculates 12 months win rate, avg return, median return, and years count for a single stock dataframe."""
     if hist.empty or len(hist) < 20:
@@ -433,12 +479,7 @@ def calculate_stock_seasonality(hist: pd.DataFrame) -> list[dict[str, Any]]:
     df["year"] = df["date"].dt.year
     df["month"] = df["date"].dt.month
 
-    monthly = df.groupby(["year", "month"]).agg(
-        start_close=("close", "first"),
-        end_close=("close", "last")
-    ).reset_index()
-
-    monthly["ret"] = (monthly["end_close"] - monthly["start_close"]) / monthly["start_close"]
+    monthly = _completed_month_rows(df)
 
     month_stats: list[dict[str, Any]] = []
     for m in range(1, 13):
@@ -475,11 +516,13 @@ def calculate_stock_seasonality(hist: pd.DataFrame) -> list[dict[str, Any]]:
 def build_seasonality_database(settings: Settings) -> dict[str, Any]:
     """Scans all stocks using fast vectorized pandas groupby and caches to JSON."""
     c_path = cache_path(settings)
+    signature = _seasonality_source_signature(settings)
     if c_path.exists():
         try:
             cached = json.loads(c_path.read_text(encoding="utf-8"))
             if (
                 cached.get("version") == SEASONALITY_CACHE_VERSION
+                and cached.get("source_signature") == signature
                 and time.time() - cached.get("updated_at", 0) < 86400 * 3
                 and len(cached.get("stocks", {})) > 100
             ):
@@ -517,12 +560,7 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
                 "market": str(row.get("market") or "KOSPI") if "market" in cols else "KOSPI",
             }
 
-    monthly = df.groupby(["ticker", "year", "month"]).agg(
-        start_close=("close", "first"),
-        end_close=("close", "last")
-    ).reset_index()
-
-    monthly["ret"] = (monthly["end_close"] - monthly["start_close"]) / monthly["start_close"]
+    monthly = _completed_month_rows(df)
 
     grouped = monthly.groupby(["ticker", "month"])
 
@@ -594,12 +632,15 @@ def build_seasonality_database(settings: Settings) -> dict[str, Any]:
 
     payload = {
         "version": SEASONALITY_CACHE_VERSION,
+        "source_signature": signature,
+        "methodology": "완료월 첫 관측 종가→마지막 관측 종가; 최신 자료 월 제외; 배당·비용 미반영; 과거 기술통계이며 OOS 검증 아님",
         "updated_at": int(time.time()),
         "stocks": stocks_db,
     }
 
     c_path.parent.mkdir(parents=True, exist_ok=True)
-    c_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    from kr_quant.atomic_io import write_json_atomic
+    write_json_atomic(c_path, payload)
     return payload
 
 
@@ -607,7 +648,8 @@ def get_seasonality_database(settings: Settings) -> dict[str, Any]:
     """In-process cache so ticker heatmap lookups do not re-parse the 40MB JSON."""
     now = time.time()
     cached = _SEASONALITY_DB_MEM.get("db")
-    if cached and now - float(_SEASONALITY_DB_MEM.get("ts") or 0) < 3600:
+    signature = _seasonality_source_signature(settings)
+    if cached and cached.get("source_signature") == signature and now - float(_SEASONALITY_DB_MEM.get("ts") or 0) < 3600:
         return cached
     db = build_seasonality_database(settings)
     _SEASONALITY_DB_MEM["db"] = db
@@ -1104,13 +1146,14 @@ def scan_seasonality_discovery(
     # served after deployment.
     cache_file = cache_dir / f"discovery_cache_lb_{lookback_years}_v{DISCOVERY_CACHE_VERSION}.json"
     cached_list: list[dict[str, Any]] = []
+    signature = _seasonality_source_signature(settings)
 
     if cache_file.exists():
         try:
             with open(cache_file, "r", encoding="utf-8") as f:
                 c_data = json.load(f)
-                if isinstance(c_data, list) and len(c_data) > 0:
-                    cached_list = c_data
+                if isinstance(c_data, dict) and c_data.get("source_signature") == signature:
+                    cached_list = c_data.get("rows") or []
         except Exception:
             cached_list = []
 
@@ -1139,8 +1182,8 @@ def scan_seasonality_discovery(
         cached_list = all_patterns
 
         try:
-            with open(cache_file, "w", encoding="utf-8") as f:
-                json.dump(cached_list, f, ensure_ascii=False, indent=2)
+            from kr_quant.atomic_io import write_json_atomic
+            write_json_atomic(cache_file, {"source_signature": signature, "rows": cached_list})
         except Exception:
             pass
 
@@ -1258,7 +1301,9 @@ def rank_pre_entry_candidates(settings: Settings, rows: list[dict[str, Any]]) ->
             continue
         quote = quotes.get(ticker, {})
         close = quote.get("last_close")
-        if close is None or close < 1000.0:
+        if close is None or not np.isfinite(close) or close < 1000.0:
+            continue
+        if remaining.get("price_as_of") and str(remaining["price_as_of"]) != str(quote.get("as_of")):
             continue
         row["last_close"] = close
         row["chg_pct"] = quote.get("chg_pct")

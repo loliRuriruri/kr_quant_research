@@ -1,76 +1,70 @@
-"""In-memory thread-safe TTL cache for high-latency web API endpoints."""
-
+"""Bounded, copy-isolated TTL cache with per-key single-flight execution."""
 from __future__ import annotations
 
+import copy
 import functools
-import logging
+import hashlib
+import inspect
+import pickle
 import threading
 import time
+from collections import OrderedDict
 from typing import Any, Callable
 
-logger = logging.getLogger(__name__)
+_CACHE_LOCK = threading.RLock()
+_CACHE_STORE: OrderedDict[str, tuple[float, Any]] = OrderedDict()
+_CACHE_EPOCH = 0
+_MAX_ENTRIES = 256
+_FLIGHTS = [threading.RLock() for _ in range(64)]
 
-_CACHE_LOCK = threading.Lock()
-_CACHE_STORE: dict[str, tuple[float, Any]] = {}
 
-
-def ttl_cache(seconds: int = 60, bypass_kwarg: str | None = "refresh") -> Callable:
-    """Decorator to cache function return value in memory for `seconds` seconds.
-
-    If bypass_kwarg is provided and present in kwargs as True, cache is bypassed and refreshed.
-    """
-
+def ttl_cache(seconds: int = 60, bypass_kwarg: str | None = "refresh", key_extra: Callable | None = None) -> Callable:
     def decorator(fn: Callable) -> Callable:
-        fn_name = fn.__name__
+        signature = inspect.signature(fn)
+        namespace = f"{fn.__name__}:{fn.__module__}.{fn.__qualname__}:{id(fn)}"
 
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # Check bypass
-            if bypass_kwarg and kwargs.get(bypass_kwarg):
-                res = fn(*args, **kwargs)
-                # Update cache
-                key = _make_key(fn_name, args, kwargs)
+            bound = signature.bind(*args, **kwargs)
+            bound.apply_defaults()
+            refresh = bool(bound.arguments.pop(bypass_kwarg, False)) if bypass_kwarg else False
+            try:
+                key = _make_key(namespace, (key_extra() if key_extra else None,), dict(bound.arguments))
+            except (TypeError, AttributeError, pickle.PicklingError):
+                return fn(*args, **kwargs)
+            with _FLIGHTS[hash(key) % len(_FLIGHTS)]:
                 with _CACHE_LOCK:
-                    _CACHE_STORE[key] = (time.time() + seconds, res)
-                return res
-
-            key = _make_key(fn_name, args, kwargs)
-            now = time.time()
-
-            with _CACHE_LOCK:
-                if key in _CACHE_STORE:
-                    expires_at, val = _CACHE_STORE[key]
-                    if now < expires_at:
-                        return val
-                    # Expired
-                    del _CACHE_STORE[key]
-
-            # Execute function
-            res = fn(*args, **kwargs)
-
-            with _CACHE_LOCK:
-                _CACHE_STORE[key] = (time.time() + seconds, res)
-
-            return res
-
+                    epoch = _CACHE_EPOCH
+                    cached = _CACHE_STORE.get(key)
+                    if not refresh and cached and time.monotonic() < cached[0]:
+                        _CACHE_STORE.move_to_end(key)
+                        return copy.deepcopy(cached[1])
+                result = fn(*args, **kwargs)
+                if not (isinstance(result, dict) and result.get("ok") is False):
+                    isolated = copy.deepcopy(result)
+                    with _CACHE_LOCK:
+                        if epoch == _CACHE_EPOCH:
+                            now = time.monotonic()
+                            for expired in [k for k, (until, _) in _CACHE_STORE.items() if until <= now]:
+                                del _CACHE_STORE[expired]
+                            _CACHE_STORE[key] = (now + seconds, isolated)
+                            _CACHE_STORE.move_to_end(key)
+                            while len(_CACHE_STORE) > _MAX_ENTRIES:
+                                _CACHE_STORE.popitem(last=False)
+                return result
         return wrapper
-
     return decorator
 
 
 def _make_key(fn_name: str, args: tuple, kwargs: dict) -> str:
-    # Filter out non-hashable or volatile objects like Settings if present
-    clean_args = [a for a in args if not hasattr(a, "__dict__") and not isinstance(a, (dict, list, set))]
-    clean_kwargs = {k: v for k, v in kwargs.items() if not hasattr(v, "__dict__") and not isinstance(v, (dict, list, set))}
-    return f"{fn_name}:{tuple(clean_args)}:{sorted(clean_kwargs.items())}"
+    digest = hashlib.sha256(pickle.dumps((args, sorted(kwargs.items())))).hexdigest()
+    return f"{fn_name}:{digest}"
 
 
 def invalidate_cache(fn_prefix: str | None = None) -> None:
-    """Clear cached entries matching prefix, or all entries if None."""
+    global _CACHE_EPOCH
     with _CACHE_LOCK:
-        if not fn_prefix:
-            _CACHE_STORE.clear()
-            return
-        keys_to_del = [k for k in _CACHE_STORE if k.startswith(fn_prefix)]
-        for k in keys_to_del:
-            del _CACHE_STORE[k]
+        _CACHE_EPOCH += 1
+        for key in list(_CACHE_STORE):
+            if not fn_prefix or key.startswith(fn_prefix):
+                del _CACHE_STORE[key]

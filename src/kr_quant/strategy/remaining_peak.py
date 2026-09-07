@@ -96,7 +96,7 @@ def calculate_remaining_peak_upside(
         if col in frame.columns:
             frame[col] = pd.to_numeric(frame[col], errors="coerce")
     frame = frame.dropna(subset=["date", "close"])
-    frame = frame[frame["close"] > 0].sort_values("date").drop_duplicates("date", keep="last")
+    frame = frame[(frame["close"] > 0) & np.isfinite(frame["close"])].sort_values("date").drop_duplicates("date", keep="last")
     if frame.empty:
         return _empty_result("NO_VALID_PRICE_ROWS", ticker=code, target_month=month)
 
@@ -110,9 +110,9 @@ def calculate_remaining_peak_upside(
 
     adj_coverage = 0.0
     if "adj_close" in frame.columns:
-        valid_adj = frame["adj_close"].notna() & (frame["adj_close"] > 0)
+        valid_adj = frame["adj_close"].notna() & np.isfinite(frame["adj_close"]) & (frame["adj_close"] > 0)
         adj_coverage = float(valid_adj.mean())
-    use_adjusted = adj_coverage >= 0.95
+    use_adjusted = adj_coverage == 1.0
     if use_adjusted:
         frame["basis_close"] = frame["adj_close"]
         ratio = frame["adj_close"] / frame["close"]
@@ -150,6 +150,8 @@ def calculate_remaining_peak_upside(
         result = _empty_result("NO_COMPLETED_SEASONAL_MONTHS", ticker=code, target_month=month)
         result.update({"price_as_of": str(price_as_of), "current_price": round(current_close, 2)})
         return result
+
+    historical_months = sorted(historical_months, key=lambda item: item[0])[-max(1, int(lookback_years)):]
 
     peak_days = [int(group.loc[group["basis_close"].idxmax(), "date"].day) for _, group in historical_months]
     median_peak_day = int(round(float(np.median(peak_days))))
@@ -198,17 +200,21 @@ def calculate_remaining_peak_upside(
             "reference_date": str(baseline_row["date"].date()),
             "peak_date": str(close_peak_row["date"].date()),
             "remaining_return": round(close_peak / baseline - 1.0, 4),
+            "window_end_return": round(float(path.iloc[-1]["basis_close"]) / baseline - 1.0, 4),
             "intraday_peak_return": round(intraday_peak / baseline - 1.0, 4),
             "downside_before_peak": round(downside, 4),
             "trading_days_to_peak": trading_days,
         })
 
     returns = [float(row["remaining_return"]) for row in paths]
+    end_returns = [float(row["window_end_return"]) for row in paths]
     intraday_returns = [float(row["intraday_peak_return"]) for row in paths]
     downsides = [float(row["downside_before_peak"]) for row in paths]
     days_to_peak = [int(row["trading_days_to_peak"]) for row in paths]
     sample_count = len(paths)
     warnings: list[str] = []
+    warnings.append("피크 수익률은 사후 최고 종가 기준으로 음수가 되지 않을 수 있습니다. 실현 수익률·미래 성공 확률이 아닙니다.")
+    warnings.append("같은 과거 표본에서 피크일을 찾고 평가한 기술통계입니다. 독립 OOS·거래비용 검증은 미완료입니다.")
     if not use_adjusted:
         warnings.append("수정주가가 없어 35% 초과 단절 구간을 제외한 원시 종가 기준입니다.")
     freshness_clock = requested_as_of or date.today()
@@ -242,7 +248,7 @@ def calculate_remaining_peak_upside(
         if entry_price > 0:
             realized_since_entry = round(current_basis / entry_price - 1.0, 4)
 
-    confidence = "HIGH" if sample_count >= 5 and use_adjusted else "MEDIUM" if sample_count >= 5 else "LOW"
+    confidence = "MEDIUM" if sample_count >= 5 else "LOW"
     return {
         "available": available,
         "status": status,
@@ -253,6 +259,10 @@ def calculate_remaining_peak_upside(
         "price_basis": "ADJUSTED_CLOSE" if use_adjusted else "RAW_CLOSE_FILTERED",
         "sample_count": sample_count,
         "confidence": confidence,
+        "validation_status": "IN_SAMPLE_DESCRIPTIVE_NOT_OOS",
+        "window_end_p50": _pctile(end_returns, 50),
+        "window_end_positive_rate": round(float(np.mean(np.asarray(end_returns) > 0)), 3) if end_returns else None,
+        "costs_included": False,
         "historical_peak_day": median_peak_day,
         "target_peak_date": str(target_peak_date),
         "entry_window_str": f"{entry_start:%m/%d} ~ {entry_end:%m/%d}",
