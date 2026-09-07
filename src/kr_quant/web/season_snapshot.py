@@ -59,7 +59,24 @@ def _key(settings, lookback):
     return (str(settings.root.resolve()), lookback)
 
 
-def read_bundle(settings, lookback: int = 5) -> dict | None:
+def _copy_bundle(bundle, listing_view=None):
+    if listing_view is None:
+        return copy.deepcopy(bundle)
+    from kr_quant.web.season_listing import LIST_FIELDS, EXPLANATION_FIELDS
+    if listing_view not in ('summary', 'explanation'):
+        raise ValueError('지원 목록 형식: summary, explanation')
+    fields = (LIST_FIELDS if listing_view == 'summary' else EXPLANATION_FIELDS) | {
+        'event_explanation_mode', 'event_hypothesis', 'common_event_cluster', 'failed_years'}
+    # Cache entries never escape by reference. Do not copy peak samples, themes,
+    # highlights or playbooks that are not consumed by the listing endpoint.
+    return {'generation_id': bundle['generation_id'], 'generated_at': bundle['generated_at'],
+            'identity': copy.deepcopy(bundle['identity']),
+            'payload': {'stats': copy.deepcopy(bundle['payload']['stats']),
+                        'rows': [{key: copy.deepcopy(value) for key, value in row.items() if key in fields}
+                                 for row in bundle['payload']['rows']]}}
+
+
+def read_bundle(settings, lookback: int = 5, *, listing_view=None) -> dict | None:
     from kr_quant.run_generation import is_updating
     if is_updating(settings):
         return None
@@ -69,7 +86,7 @@ def read_bundle(settings, lookback: int = 5) -> dict | None:
     with _LOCK:
         cached = _MEM.get(key)
         if cached and cached[0] == generation:
-            return copy.deepcopy(cached[1])
+            return _copy_bundle(cached[1], listing_view)
     path = _folder(settings) / f"{generation}.json"
     try:
         bundle = json.loads(path.read_text(encoding="utf-8"))
@@ -83,7 +100,7 @@ def read_bundle(settings, lookback: int = 5) -> dict | None:
         return None
     with _LOCK:
         _MEM[key] = (generation, bundle)
-    return copy.deepcopy(bundle)
+    return _copy_bundle(bundle, listing_view)
 
 
 def select_rows(bundle, *, horizon_days=90, min_grade=None, status=None, query=None, exclude_expired=False):

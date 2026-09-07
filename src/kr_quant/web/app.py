@@ -3010,11 +3010,12 @@ def api_flow_collect_ticker_post(ticker: str) -> dict[str, Any]:
 
 
 
-def _season_bundle(lookback_years=5):
+def _season_bundle(lookback_years=5, *, listing_view=None):
     from kr_quant.web.season_snapshot import read_bundle, request_build
     s = load_settings()
     try:
-        bundle = read_bundle(s, lookback_years)
+        bundle = (read_bundle(s, lookback_years) if listing_view is None
+                  else read_bundle(s, lookback_years, listing_view=listing_view))
         if bundle is None:
             from kr_quant.web.season_snapshot import preparation_failed
             if preparation_failed(s, lookback_years):
@@ -3026,7 +3027,7 @@ def _season_bundle(lookback_years=5):
         # Read-time repair also covers older persisted discovery payloads. Never
         # rewrite their observation file or invent a new historical cause.
         from kr_quant.research.failure_observations import failure_observations
-        for row in bundle['payload']['rows']:
+        for row in (bundle['payload']['rows'] if listing_view is None else []):
             records = failure_observations(row.get('years_track') or row.get('failed_years'))
             row['failure_observations'] = records
             row['failed_analysis'] = [item['text'] for item in records]
@@ -3052,13 +3053,19 @@ def api_seasonality_discovery_get(
     from kr_quant.web.season_snapshot import public_meta, select_rows
     from kr_quant.web.season_listing import project_page
 
-    bundle = _season_bundle(lookback_years)
+    bundle = (_season_bundle(lookback_years, listing_view=view)
+              if view in ('summary', 'explanation') else _season_bundle(lookback_years))
     if generation_id and generation_id != bundle['generation_id']:
         raise HTTPException(status_code=409, detail='시즌 자료가 갱신됐습니다. 첫 페이지부터 다시 확인해 주세요.')
     try:
         rows = select_rows(bundle, horizon_days=horizon_days, min_grade=min_grade,
                            status=status, query=query, exclude_expired=exclude_expired)
         page = project_page(rows, view=view, offset=offset, limit=limit, lookback=lookback_years)
+        if view == 'explanation':
+            from kr_quant.research.failure_observations import failure_observations
+            for row, source in zip(page['rows'], rows[offset:]):
+                records = failure_observations(source.get('years_track') or source.get('failed_years'))
+                row['failed_analysis'] = [item['text'] for item in records]
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     stats = bundle["payload"]["stats"]

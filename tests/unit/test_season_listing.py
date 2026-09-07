@@ -22,7 +22,7 @@ def listing(monkeypatch):
     bundle = {'generation_id': 'same', 'generated_at': '2026-09-07T00:00:00Z',
               'identity': {'day': date.today().isoformat(), 'lookback': 0},
               'payload': {'rows': rows, 'stats': {'data_context': {}}, 'themes': []}}
-    monkeypatch.setattr(web, '_season_bundle', lambda lookback: copy.deepcopy(bundle))
+    monkeypatch.setattr(web, '_season_bundle', lambda lookback, **kwargs: copy.deepcopy(bundle))
     return TestClient(web.app), rows
 
 
