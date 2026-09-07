@@ -355,12 +355,22 @@ def repeated_generic_catalysts(rows: list[dict[str, Any]], *, min_tickers: int =
     }
 
 
-def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, Any] | None = None) -> dict[str, Any]:
+def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, Any] | None = None,
+                              *, event_context: dict[str, Any] | None = None) -> dict[str, Any]:
     """Assigns AI explanation, computes 100-pt v1.1 discovery score, and determines current status."""
     ticker = str(pattern.ticker).zfill(6)
     s_row = stock_row or {}
 
-    kb = EVENT_KNOWLEDGE_BASE.get(ticker)
+    # Explicit historical context must never fall through to today's knowledge.
+    if event_context is not None:
+        required = ("common_event", "secondary_event", "invalidating_rules", "source")
+        if any(not isinstance(event_context.get(k), str) or not event_context[k].strip() for k in required):
+            raise ValueError("Historical event context is incomplete")
+        if event_context.get("confidence") not in {"HIGH", "MEDIUM", "LOW", "UNKNOWN"}:
+            raise ValueError("Historical event confidence is invalid")
+        kb = dict(event_context)
+    else:
+        kb = EVENT_KNOWLEDGE_BASE.get(ticker)
     sample_count = max(int(pattern.sample_count or 0), 0)
     observations: list[str] = []
     calculations: list[str] = [
@@ -383,6 +393,10 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         explanation_source = "종목별 검토 이벤트 지식베이스"
         interpretation = f"검토된 이벤트 가설입니다. {kb['common_event']}"
         observations.append(f"{pattern.company} {int(getattr(pattern, 'target_start_month', 0) or 0)}월 창")
+        if event_context is not None:
+            explanation_mode = "HISTORICAL_INPUT_UNVERIFIED"
+            explanation_source = kb["source"]
+            interpretation = f"당시 입력으로 제공된 미인증 가설입니다. {kb['common_event']}"
     elif sample_count < MIN_SAMPLE_FOR_CATALYST:
         common_event = "근거 부족"
         sec_event = f"계절성 표본이 {sample_count}개년이라 종목별 촉매를 만들지 않습니다. 승률·가격·확률을 추정하지 않습니다."
