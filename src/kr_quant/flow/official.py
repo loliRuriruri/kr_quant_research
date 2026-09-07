@@ -41,7 +41,9 @@ def status_payload(settings: Settings) -> dict[str, Any]:
         next_steps.append("관심종목을 넣거나, 아래 수집 버튼으로 관심종목·거래대금 상위 종목을 받으세요.")
     if not blockers:
         next_steps.append("연속·동반·방향전환 탭을 보세요. 공식 행이 없으면 토스 캐시(기관+외인)로 채웁니다.")
+    from kr_quant.freshness import _official_flow_freshness, expected_price_date
     return {
+        'freshness': _official_flow_freshness(settings, expected_price_date()),
         "used_in_quant": False,
         "configured": adapter.configured(),
         "coverage": cov,
@@ -71,6 +73,10 @@ def collect_official(settings: Settings, *, limit: int | None = None) -> dict[st
     run_id = datetime.now(timezone.utc).strftime("kis-%Y%m%dT%H%M%S")
     saved = 0
     errors: list[str] = []
+    from kr_quant.freshness import expected_price_date
+    expected = expected_price_date()
+    current_tickers = []
+    stale_tickers = []
     adapter.token(reason="official_collect")
     con = open_settings(settings)
     try:
@@ -84,8 +90,14 @@ def collect_official(settings: Settings, *, limit: int | None = None) -> dict[st
                         errors.append(f"{item['ticker']}: KIS 종목코드 미지원 (숫자 6자리가 아님)")
                     continue
                 rows = adapter.collect_stock(item["ticker"])
+                dates = [str(row.get('trade_date') or '')[:10] for row in rows]
+                if expected.isoformat() not in dates:
+                    stale_tickers.append(item['ticker'])
+                else:
+                    current_tickers.append(item['ticker'])
                 for row in rows:
                     row["run_id"] = run_id
+                    row['is_final'] = bool(row.get('is_final', True)) and str(row.get('trade_date') or '')[:10] <= expected.isoformat()
                 saved += upsert_flows(con, rows)
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{item['ticker']}: {str(exc)[:120]}")
@@ -94,14 +106,34 @@ def collect_official(settings: Settings, *, limit: int | None = None) -> dict[st
     finally:
         con.close()
     return {
+        'pipeline_status': 'partial' if errors or stale_tickers or not saved else 'success',
+        'current_tickers': current_tickers,
+        'stale_tickers': stale_tickers,
+        'expected_date': expected.isoformat(),
         "used_in_quant": False,
         "run_id": run_id,
         "attempted": len(names),
         "saved": saved,
         "errors": errors[:8],
         "coverage": cov,
-        "note": "관심종목·거래대금 상위 종목의 공식 수급 수집을 완료했습니다.",
+        "note": "수급 수집 결과입니다. 저장 행 수와 대상별 기준일을 함께 확인하세요.",
     }
+
+
+def collection_is_current(settings: Settings) -> bool:
+    """A same-day run does not cover a changed watchlist/liquidity universe."""
+    from kr_quant.freshness import expected_price_date
+    import duckdb
+    names = collect_universe(settings)
+    if not names or not settings.db_path.exists():
+        return False
+    try:
+        with duckdb.connect(str(settings.db_path), read_only=True) as con:
+            dates = dict(con.execute("SELECT ticker, max(trade_date) FROM investor_flows_daily WHERE source='KIS' AND is_final AND trade_date <= ? GROUP BY ticker", [expected_price_date()]).fetchall())
+    except Exception:
+        return False
+    expected = expected_price_date()
+    return all(dates.get(row['ticker']) == expected for row in names)
 
 
 def events_payload(settings: Settings, min_turn: int = 5) -> dict[str, Any]:

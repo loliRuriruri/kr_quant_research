@@ -5955,7 +5955,10 @@ async function loadInvestor() {
       </button>`;
     })
     .join(" ");
-  const asof = cov.last_date ? `공식 수급 최신일 ${cov.last_date} · ${cov.tickers || 0}종목 · ${cov.rows || 0}행` : "공식 수급 데이터 없음 (토스 캐시 대체 가동 중)";
+  const flowFresh = data.freshness || {};
+  const flowCoverage = flowFresh.coverage || {};
+  const coverageNote = flowCoverage.current_tickers != null ? ` · ${flowFresh.expected_date} 기준 ${flowCoverage.current_tickers}/${flowCoverage.stored_tickers}종목 최신` : " · 종목별 최신성 미확인";
+  const asof = cov.last_date ? `공식 수급 저장 최신일 ${cov.last_date} · 누적 ${cov.tickers || 0}종목${coverageNote}` : "공식 수급 데이터 없음 (토스 캐시 대체 가동 중)";
   if (currentView === "investor") setPageAsOf(asof, "KIS 관심종목·고유동성 수급 추적. API 미설정 시 토스 데이터로 자동 대체됩니다.");
 
   loadFlowTier1Briefing("investor-tier1-briefing").catch(() => {});

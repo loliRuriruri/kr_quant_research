@@ -209,6 +209,9 @@ def test_same_day_same_batch_is_not_fetched_again(tmp_path, monkeypatch):
     monkeypatch.setattr(live, "fetch_dart_companies", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not refetch")))
     monkeypatch.setattr(live, "fetch_dart_financials", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not refetch")))
 
+    # Success ledger without its facts must be repaired; this is the retained-facts case.
+    pd.DataFrame([{'ticker': '000002'}]).to_parquet(live_dir / 'financial_facts.parquet', index=False)
+
     result = backfill_dart_financials(settings, date(2026, 8, 31), batch_size=1)
 
     assert result["processed_this_run"] == 0

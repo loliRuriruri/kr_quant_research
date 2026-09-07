@@ -41,6 +41,17 @@ def run(probe_source=False):
     picks = high['data']['glance_top3']
     generation = pre['snapshot']['generation_id']
     checks = out['checks']
+    import pandas as pd
+    statuses = pd.read_csv(settings.status_csv, dtype={'ticker': str})
+    statuses = statuses[statuses['as_of_date'].astype(str) == fresh['expected_price_date']]
+    active = set(statuses.loc[
+        (statuses['status'] == 'ACTIVE')
+        & (pd.to_numeric(statuses['close'], errors='coerce') > 0)
+        & (pd.to_numeric(statuses['volume'], errors='coerce') > 0), 'ticker'])
+    invalid = sorted({str(row['ticker']) for row in rows} - active)
+    checks['preentry_current_active_positive_price_volume'] = bool(rows) and not invalid
+    out['candidate_status_audit'] = {'checked': len(rows), 'invalid_tickers': invalid,
+                                     'as_of': fresh['expected_price_date']}
     checks['same_generation_highlights_preentry_themes'] = all(
         value['snapshot']['generation_id'] == generation for value in (high, themes))
     checks['dashboard_top3_equals_calendar_top3'] = (

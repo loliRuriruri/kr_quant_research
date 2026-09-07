@@ -102,6 +102,8 @@ def cumulative_table(events: list[dict[str, Any]], window: int = 20) -> list[dic
 def daily_chart(rows: list[dict[str, Any]], *, max_days: int = 90) -> list[dict[str, Any]]:
     by_date: dict[str, dict[str, Any]] = {}
     for row in rows:
+        if row.get("is_final") is not True:
+            continue
         day = _as_date(row.get("trade_date") or row.get("date"))
         if not day:
             continue
@@ -119,6 +121,7 @@ def daily_chart(rows: list[dict[str, Any]], *, max_days: int = 90) -> list[dict[
 
 def sample_rebalance(rows: list[dict[str, Any]], names: dict[str, str] | None = None) -> dict[str, Any]:
     """Coverage sample only. Not all-market pension rebalancing."""
+    rows = [row for row in rows if row.get("is_final") is True]
     names = names or {}
     last = None
     for row in rows:
@@ -258,6 +261,8 @@ def from_official_rows(
     by_ticker: dict[str, dict[str, list[dict[str, Any]]]] = {}
     types: set[str] = set()
     for row in rows:
+        if row.get("is_final") is not True:
+            continue
         code = "".join(ch for ch in str(row.get("ticker") or "") if ch.isdigit()).zfill(6)
         kind = str(row.get("investor_type") or "")
         if not code or not kind:

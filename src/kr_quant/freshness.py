@@ -168,7 +168,7 @@ def _official_flow_freshness(settings: Settings, expected: date) -> dict[str, An
     try:
         import duckdb
         with duckdb.connect(str(settings.db_path), read_only=True) as con:
-            rows = con.execute("SELECT ticker, max(trade_date) FROM investor_flows_daily WHERE source = 'KIS' GROUP BY ticker").fetchall()
+            rows = con.execute("SELECT ticker, max(CASE WHEN is_final AND trade_date <= ? THEN trade_date END) FROM investor_flows_daily WHERE source = 'KIS' GROUP BY ticker", [expected]).fetchall()
     except Exception:  # DB busy/unreadable must not be reported as fresh.
         return {**base, 'state': 'unavailable'}
     if not rows:

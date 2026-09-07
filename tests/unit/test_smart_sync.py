@@ -60,6 +60,7 @@ def _settings(tmp_path, **extra):
 
 
 def _patch_common(monkeypatch, tmp_path, *, stale=True, quant_state="stale", coverage=16.3, probe_ready=True):
+    monkeypatch.setattr(official, 'collection_is_current', lambda s: True)
     settings = _settings(tmp_path)
     state = {"stale": stale, "quant": quant_state, "coverage": coverage}
     seen: list[str] = []

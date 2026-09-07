@@ -164,6 +164,7 @@ def test_official_events_label_fund_not_nps():
         rows.append({"trade_date": day, "ticker": "005930", "investor_type": "FUND", "net_value": 100 + i})
         rows.append({"trade_date": day, "ticker": "005930", "investor_type": "FOREIGN", "net_value": 50 + i})
         rows.append({"trade_date": day, "ticker": "005930", "investor_type": "INSTITUTION_TOTAL", "net_value": 20})
+    rows = [{**row, "is_final": True} for row in rows]
     out = from_official_rows(rows, names={"005930": "삼성전자"}, min_turn=3)
     assert out["used_in_quant"] is False
     assert out["pair"] == "기금+외인"
@@ -205,6 +206,7 @@ def test_window_sums_and_sample_rebalance():
         {"trade_date": "2026-08-20", "ticker": "000660", "investor_type": "INSTITUTION_TOTAL", "net_value": -40},
         {"trade_date": "2026-08-19", "ticker": "005930", "investor_type": "INSTITUTION_TOTAL", "net_value": 10},
     ]
+    rows = [{**row, "is_final": True} for row in rows]
     reb = sample_rebalance(rows, names={"005930": "삼성전자", "000660": "SK하이닉스"})
     assert reb["sample"] is True
     assert reb["used_in_quant"] is False

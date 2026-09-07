@@ -105,6 +105,11 @@ class JobRunner:
             self._reap_locked()
             self._pulse_locked()
             state = {**self.state, "logs": list(self.logs)}
+            if state['status'] != 'running' and self._thread is not None and self._thread.is_alive():
+                state['computation_status'] = state['status']
+                state['status'] = 'running'
+                state['postprocessing'] = True
+                state['progress'] = {**(state.get('progress') or {}), 'current_step': '후처리·공개판 확인'}
         state["history"] = job_history_summary()
         return state
 
@@ -121,7 +126,7 @@ class JobRunner:
     def start(self, kind: str, fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         with self._lock:
             self._reap_locked()
-            if self.state["status"] == "running":
+            if self.state["status"] == "running" or (self._thread is not None and self._thread.is_alive()):
                 kind_now = self.state.get("kind") or "작업"
                 step = (self.state.get("progress") or {}).get("current_step")
                 started = str(self.state.get("started_at") or "")[:19].replace("T", " ")
@@ -149,7 +154,7 @@ class JobRunner:
         return self.snapshot()
 
     def is_running(self) -> bool:
-        return self.snapshot().get("status") == "running"
+        return self.snapshot().get("status") == "running" or bool(self._thread and self._thread.is_alive())
 
     def request_cancel(self) -> dict[str, Any]:
         with self._lock:
@@ -258,14 +263,16 @@ class JobRunner:
             record_job_history(history_row)
             if pipeline != "interrupted" and not result.get("cancelled"):
                 if finished_status in {"success", "partial"} and kind in {
-                    "live", "screen", "krx-prices", "krx-history", "dart-backfill", "smart-sync"
+                    "live", "screen", "refresh-local", "krx-prices", "krx-history", "dart-backfill", "smart-sync"
                 }:
                     from kr_quant.web.season_snapshot import refresh_after_data_job
                     refresh_after_data_job(load_settings())
                     from kr_quant.research.selection_tracking import request_tracking_refresh
                     request_tracking_refresh(load_settings())
                     self.logs.append("시즌 메뉴 공통 자료를 백그라운드에서 준비합니다. 완료 후 같은 세대로 전환합니다.")
-                if finished_status != "error":
+                if kind == "refresh-local":
+                    self.logs.append("로컬 재계산 전용 작업: 공개 배포를 실행하지 않습니다.")
+                elif finished_status != "error":
                     _maybe_publish(kind)
                 else:
                     self.logs.append("실패한 작업이므로 공개판 자동 배포를 건너뜁니다.")
@@ -343,6 +350,12 @@ def job_live(as_of: str, lookback_days: int, max_corps: int, skip_ingest: bool) 
     s = load_settings()
     d = resolve_as_of(as_of)
     info: dict[str, Any] = {"as_of": d.isoformat()}
+    recent = None
+    if s.opendart_api_key and (s.staged_dir / 'live' / 'financial_facts.parquet').exists():
+        from kr_quant.ingest.recent_filings import refresh_recent
+        recent = refresh_recent(s)
+        if recent['status'] != 'success':
+            raise RuntimeError('최근 DART 정정 재무 갱신 미완료: 재계산을 보류합니다.')
     if not skip_ingest:
         if not s.krx_api_key or not s.opendart_api_key:
             raise RuntimeError("실데이터 수집에는 KRX와 OpenDART 키가 필요합니다.")
@@ -351,6 +364,7 @@ def job_live(as_of: str, lookback_days: int, max_corps: int, skip_ingest: bool) 
     result = run_from_staged(s, d, folder, source_mode="live")
     out = _summarize(result)
     out["ingest"] = info.get("ingest")
+    out['recent_filings'] = recent
     derived: dict[str, Any] = {}
     try:
         strategy = scan_strategies(s)
@@ -375,6 +389,9 @@ def job_live(as_of: str, lookback_days: int, max_corps: int, skip_ingest: bool) 
         if fresh.get("contract_status") != "ready" or any(item.get("status") == "error" for item in derived.values())
         else "success"
     )
+    if recent is not None and out["pipeline_status"] == "success":
+        from kr_quant.ingest.recent_filings import acknowledge_recalculation
+        acknowledge_recalculation(s)
     return out
 
 
@@ -745,11 +762,23 @@ def job_smart_sync(
         return stopped
     current = freshness_snapshot(s)
     quant = ((current.get("sources") or {}).get("quant_ranking") or {})
+    recent_changed = False
+    if krx_ok and getattr(s, 'opendart_api_key', None) and (s.staged_dir / 'live' / 'financial_facts.parquet').exists():
+        from kr_quant.ingest.recent_filings import refresh_recent
+        try:
+            recent_check = refresh_recent(s)
+            recent_changed = bool(recent_check['refreshed_tickers']) or bool(recent_check.get('needs_recalculation'))
+            if recent_check['status'] != 'success':
+                raise RuntimeError('최근 정정 공시 재무 대조 미완료')
+        except Exception as exc:
+            # Never let an old same-date score bypass a failed filing check.
+            ledger_mod.mark_step(ledger, 'quant', 'failed', s, detail=type(exc).__name__)
+            raise RuntimeError('DART 최근 공시 대조 실패: 재계산·공개 갱신 보류') from None
     if not krx_ok:
         ledger_mod.mark_step(ledger, "quant", "blocked_dependency", s, detail="KRX 시세가 기대일에 도달할 때까지 점수를 다시 계산하지 않습니다.")
         RUNNER.logs.append("[2/5] 퀀트는 KRX 선행 단계가 막혀 건너뜁니다.")
         _step_out("quant", "퀀트 재계산", status="blocked_dependency")
-    elif quant.get("state") == "fresh":
+    elif quant.get("state") == "fresh" and not recent_changed:
         ledger_mod.mark_step(ledger, "quant", "skipped_fresh", s)
         RUNNER.logs.append("[2/5] 퀀트 기준일이 시세와 같아 재계산을 건너뜁니다.")
         _step_out("quant", "퀀트 재계산", status="skipped_fresh", as_of=current.get("screen_as_of"))
@@ -838,7 +867,9 @@ def job_smart_sync(
     if stopped:
         return stopped
     kis_state = (ledger.get("steps") or {}).get("kis") or {}
-    if ledger_mod.step_done(kis_state) and kis_state.get("status") != "pending":
+    from kr_quant.flow.official import collection_is_current
+    kis_current = not (s.kis_app_key and s.kis_app_secret) or collection_is_current(s)
+    if ledger_mod.step_done(kis_state) and kis_state.get("status") != "pending" and kis_current:
         ledger_mod.mark_step(
             ledger,
             "kis",
@@ -856,7 +887,7 @@ def job_smart_sync(
 
             RUNNER.logs.append("[4/5] KIS 관심·고유동성 종목 수급을 갱신합니다.")
             flow = collect_official(s)
-            status = "success" if not flow.get("errors") else "partial"
+            status = flow.get('pipeline_status') or ("success" if not flow.get("errors") and flow.get('saved') else "partial")
             ledger_mod.mark_step(
                 ledger,
                 "kis",

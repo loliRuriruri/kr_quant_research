@@ -706,6 +706,7 @@ def fetch_dart_financials(
     reports: list[tuple[int, str]] | None = None,
     *,
     as_of: date | None = None,
+    force_refresh: bool = False,
 ) -> pd.DataFrame:
     adapter = OpenDartAdapter(
         settings.opendart_api_key or "",
@@ -736,7 +737,7 @@ def fetch_dart_financials(
             for fs_div in ("CFS", "OFS"):
                 key = (corp, year, code, fs_div)
                 previous = done_jobs.get(key)
-                if not should_retry_dart_job(previous):
+                if not force_refresh and not should_retry_dart_job(previous):
                     if str((previous or {}).get("status")) == "000":
                         if int((previous or {}).get("n_mapped") or 0) > 0:
                             break

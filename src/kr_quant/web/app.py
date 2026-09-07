@@ -159,7 +159,7 @@ class ReportDeleteIn(BaseModel):
 
 
 class JobIn(BaseModel):
-    kind: str = Field(pattern="^(smart-sync|demo|screen|live|krx-prices|krx-history|dart-backfill|investor-kis|dart-nps|strategy)$")
+    kind: str = Field(pattern="^(smart-sync|demo|screen|live|refresh-local|krx-prices|krx-history|dart-backfill|investor-kis|dart-nps|strategy)$")
     as_of: str = "auto"
     source: str = "live"
     lookback_days: int = 80
@@ -3834,6 +3834,8 @@ def api_job_status() -> dict[str, Any]:
 @app.post("/api/jobs")
 def api_job_start(body: JobIn) -> dict[str, Any]:
     try:
+        if body.kind == "refresh-local":
+            return RUNNER.start("refresh-local", lambda: job_live(body.as_of, 3, 0, True))
         if body.kind == "smart-sync":
             return RUNNER.start(
                 "smart-sync",
