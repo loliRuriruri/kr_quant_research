@@ -62,6 +62,20 @@ def _key(settings, lookback):
 def _copy_bundle(bundle, listing_view=None):
     if listing_view is None:
         return copy.deepcopy(bundle)
+    if listing_view in ('themes', 'highlights', 'pre-entry', 'pre-entry-summary'):
+        payload = bundle['payload']
+        selected = {'stats': payload['stats']}
+        if listing_view in ('pre-entry', 'pre-entry-summary'):
+            selected.update(rows=[r for r in payload['rows'] if r.get('pre_entry_rank') is not None],
+                            themes=payload['themes'])
+            if listing_view == 'pre-entry-summary':
+                from kr_quant.web.season_listing import pre_entry_card
+                selected['rows'] = [pre_entry_card(r, bundle['identity']['lookback']) for r in selected['rows']]
+        else:
+            selected[listing_view] = payload[listing_view]
+        return copy.deepcopy({'generation_id': bundle['generation_id'],
+                              'generated_at': bundle['generated_at'],
+                              'identity': bundle['identity'], 'payload': selected})
     from kr_quant.web.season_listing import LIST_FIELDS, EXPLANATION_FIELDS
     if listing_view not in ('summary', 'explanation'):
         raise ValueError('지원 목록 형식: summary, explanation')

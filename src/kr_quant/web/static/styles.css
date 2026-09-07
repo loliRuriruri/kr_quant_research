@@ -6289,3 +6289,16 @@ body {
 }
 :root .view-load-state[hidden] { display: none; }
 :root .view-load-state[data-state="error"] { border-left-color: #f59e0b; }
+.price-overlay:not(:empty) {
+  display: block;
+  white-space: normal;
+  max-width: 230px;
+  margin-top: 5px;
+  color: #7dd3fc;
+  font-size: 11px;
+  line-height: 1.5;
+}
+#price-overlay-status { max-width: 300px; white-space: normal; }
+.discovery-modal-head { flex-wrap: wrap; }
+.discovery-modal-head > div:first-child { min-width: min(300px, 100%); }
+.discovery-modal-head > div:last-child { margin-left: auto; }

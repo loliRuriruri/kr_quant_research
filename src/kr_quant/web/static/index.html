@@ -61,6 +61,8 @@
           <button type="button" class="chip btn-chip-interactive has-tip" id="chip-llm" tabindex="0" style="cursor:pointer; background:linear-gradient(135deg, rgba(56,189,248,0.18), rgba(168,85,247,0.18)); border:1px solid rgba(56,189,248,0.45); color:#38bdf8; font-weight:700; display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; transition:all 0.2s;" title="클릭하여 AI 분석 LLM 모델을 즉시 교체/선택합니다.">🤖 AI: 확인 중 <span style="font-size:9px; opacity:0.8;">▾</span></button>
         </div>
         <div class="top-actions">
+          <button class="ghost" id="btn-price-overlay" title="현재 화면의 최대 50종목 가격만 조회합니다. 점수·수급·시즌 분석은 재계산하지 않습니다.">화면 종목 가격 확인</button>
+          <span id="price-overlay-status" class="hint" role="status" aria-live="polite"></span>
           <button class="ghost" id="btn-krx-now" data-tip="최근 KRX 일봉 종가 시세를 갱신합니다. 장 마감 후 최신 시세를 반영합니다.">시세 받기</button>
           <button class="ghost" id="btn-dash-reload" data-tip="화면 데이터만 다시 불러옵니다. 서버 수집을 다시 하지 않습니다.">화면 새로고침</button>
         </div>

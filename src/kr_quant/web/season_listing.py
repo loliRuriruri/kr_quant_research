@@ -11,6 +11,15 @@ event_confidence common_event_cluster secondary_cluster event_explanation_source
 invalidating_conditions'''.split())
 
 
+def pre_entry_card(row, lookback):
+    fields = EXPLANATION_FIELDS | {'event_hypothesis', 'last_close', 'latest_price'}
+    peak_fields = {'available', 'remaining_p50', 'positive_peak_rate', 'downside_before_peak_p50',
+                   'peak_price_p50', 'sample_count', 'confidence', 'window_end_p50', 'price_as_of'}
+    return {**{k: deepcopy(v) for k, v in row.items() if k in fields},
+            'remaining_peak': {k: deepcopy(v) for k, v in (row.get('remaining_peak') or {}).items() if k in peak_fields},
+            'detail_required': True, 'lookback_years': lookback}
+
+
 def project_page(rows, *, view='full', offset=0, limit=None, lookback=5):
     if view not in ('full', 'summary', 'explanation'):
         raise ValueError('지원 목록 형식: full, summary, explanation')

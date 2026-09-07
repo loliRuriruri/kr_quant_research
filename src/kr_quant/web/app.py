@@ -2500,9 +2500,11 @@ def api_telegram_test() -> dict[str, Any]:
 
 @app.get("/api/market")
 @ttl_cache(seconds=60, bypass_kwarg="refresh", key_extra=_web_cache_generation)
-def api_market(refresh: bool = False) -> dict[str, Any]:
+def api_market(refresh: bool = False, local_only: bool = False) -> dict[str, Any]:
     from kr_quant.layers.context import build_market_snapshot
 
+    if local_only:
+        return build_market_snapshot(load_settings(), refresh=refresh, local_only=True)
     return build_market_snapshot(load_settings(), refresh=refresh)
 
 
@@ -2797,13 +2799,26 @@ def api_events_ticker(ticker: str) -> dict[str, Any]:
     return load_ticker_events(s, ticker, _corp_code(str(ticker).zfill(6), profile))
 
 
+@app.get("/api/prices/quotes")
+def api_price_quotes(codes: str) -> dict[str, Any]:
+    from kr_quant.web.quotes import quote_payload
+    try:
+        return quote_payload(codes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.get("/api/flow")
 @ttl_cache(seconds=60, key_extra=_web_cache_generation)
-def api_flow_get(days: int = 5) -> dict[str, Any]:
+def api_flow_get(days: int = 5, compact: bool = False) -> dict[str, Any]:
     from kr_quant.flow.scan import load_flow
 
     s = load_settings()
-    return load_flow(s, days=max(1, min(days, 20)))
+    data = load_flow(s, days=max(1, min(days, 20)))
+    if compact:
+        from kr_quant.web.transport import pack_rows
+        return pack_rows(data)
+    return data
 
 
 @app.post("/api/flow")
@@ -3027,7 +3042,7 @@ def _season_bundle(lookback_years=5, *, listing_view=None):
         # Read-time repair also covers older persisted discovery payloads. Never
         # rewrite their observation file or invent a new historical cause.
         from kr_quant.research.failure_observations import failure_observations
-        for row in (bundle['payload']['rows'] if listing_view is None else []):
+        for row in (bundle['payload']['rows'] if listing_view in (None, 'pre-entry') else []):
             records = failure_observations(row.get('years_track') or row.get('failed_years'))
             row['failure_observations'] = records
             row['failed_analysis'] = [item['text'] for item in records]
@@ -3096,9 +3111,9 @@ def api_seasonality_discovery_ticker_get(ticker: str, lookback_years: int = 5, g
 
 
 @app.get("/api/seasonality/pre-entry")
-def api_seasonality_pre_entry_get(lookback_years: int = 5) -> dict[str, Any]:
+def api_seasonality_pre_entry_get(lookback_years: int = 5, compact: bool = False) -> dict[str, Any]:
     from kr_quant.web.season_snapshot import public_meta, select_rows
-    bundle = _season_bundle(lookback_years)
+    bundle = _season_bundle(lookback_years, listing_view='pre-entry-summary' if compact else 'pre-entry')
     rows = [row for row in select_rows(bundle) if row.get("pre_entry_rank") is not None]
     return {"ok": True, "rows": rows, "count": len(rows), "themes": bundle["payload"]["themes"],
             "data_context": bundle["payload"]["stats"]["data_context"], "snapshot": public_meta(bundle)}
@@ -3150,7 +3165,7 @@ def api_seasonality_events_get(horizon_days: int = 180) -> dict[str, Any]:
 def api_seasonality_themes_get(horizon_days: int = 90, lookback_years: int = 5) -> dict[str, Any]:
     from kr_quant.web.season_snapshot import public_meta
 
-    bundle = _season_bundle(lookback_years)
+    bundle = _season_bundle(lookback_years, listing_view='themes')
     themes = bundle["payload"]["themes"]
     stats = bundle["payload"]["stats"]
     return {
@@ -3169,7 +3184,7 @@ def api_seasonality_themes_get(horizon_days: int = 90, lookback_years: int = 5) 
 @app.get("/api/seasonality/highlights")
 def api_seasonality_highlights_get() -> dict[str, Any]:
     from kr_quant.web.season_snapshot import public_meta
-    bundle = _season_bundle(5)
+    bundle = _season_bundle(5, listing_view='highlights')
     return {"ok": True, "data": bundle["payload"]["highlights"], "snapshot": public_meta(bundle)}
 
 

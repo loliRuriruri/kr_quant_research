@@ -137,7 +137,7 @@ def _pct(signals: list[float]) -> float | None:
 
 
 def _close_upto(group: pd.DataFrame, *, drop_last: int = 0) -> pd.Series:
-    close = pd.to_numeric(group["close"], errors="coerce").dropna()
+    close = group if isinstance(group, pd.Series) else pd.to_numeric(group["close"], errors="coerce").dropna()
     if drop_last:
         if len(close) <= drop_last:
             return pd.Series(dtype=float)
@@ -254,7 +254,9 @@ def derive_market_components(prices: pd.DataFrame) -> dict[str, Any]:
     ordered[date_col] = pd.to_datetime(ordered[date_col])
     ordered = ordered.sort_values(["ticker", date_col])
     as_of = _iso(ordered[date_col].max())
-    groups = {ticker: group for ticker, group in ordered.groupby("ticker")}
+    # Clean each series once for the nine participation calculations.
+    groups = {ticker: pd.to_numeric(group['close'], errors='coerce').dropna()
+              for ticker, group in ordered.groupby('ticker')}
     n_tickers = len(groups)
 
     trend, trend_n = _participation(groups, lookback=60, mode="ma")

@@ -11,12 +11,17 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const dist = join(root, "dist-public");
+const outputArg = process.argv.find((arg) => arg.startsWith('--out='));
+const dist = outputArg ? resolve(root, outputArg.slice(6)) : join(root, "dist-public");
+const outputRelative = relative(root, dist).replaceAll('\\', '/');
+if (outputRelative !== 'dist-public' && !/^output\/[A-Za-z0-9_-]+$/.test(outputRelative)) {
+  throw new Error('build output must be dist-public or one named directory under output/');
+}
 const publicDir = join(root, "public");
 const staticDir = join(root, "src", "kr_quant", "web", "static");
 const py = join(root, ".venv", "Scripts", "python.exe");
 const reuseExistingData = process.argv.includes("--reuse-data");
-const preservedData = join(root, ".runtime", "public-data-reuse");
+const preservedData = join(root, ".runtime", `public-data-reuse-${outputRelative.replaceAll('/', '-')}`);
 
 const FRONTEND_FILES = ["index.html", "styles.css", "app.js"];
 const PUBLIC_META_FILES = ["_headers", "_redirects", "robots.txt"];
@@ -250,6 +255,12 @@ if (reuseExistingData) {
 } else {
   exportSnapshot();
 }
+// Offline transport splitting only; publication/data-quality checks remain intact.
+const optimized = spawnSync(existsSync(py) ? py : 'python',
+  [join(root, 'scripts', 'optimize_public_data.py'), '--folder', join(dist, 'data', 'api')],
+  { cwd: root, encoding: 'utf-8' });
+if (optimized.status !== 0) throw new Error(`public transport preparation failed: ${optimized.stderr}`);
+process.stdout.write(optimized.stdout || '');
 writeBuildInfo();
 scanSecrets();
 console.log(`dist-public ready (${walk(dist).length} files)`);

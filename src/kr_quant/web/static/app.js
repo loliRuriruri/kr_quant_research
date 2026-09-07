@@ -1200,7 +1200,53 @@ function paintSortHeaders(scope) {
 function lastCell(r) {
   const v = r.last_close ?? r.last ?? r.close;
   if (v == null || Number.isNaN(Number(v))) return "—";
-  return Number(v).toLocaleString("ko-KR");
+  return priceOverlayCell(r.ticker || r.code, Number(v).toLocaleString("ko-KR"));
+}
+
+function priceOverlayCell(ticker, saved) {
+  const code = String(ticker || "");
+  if (!/^[0-9A-Z]{6}$/.test(code)) return saved;
+  return `<span class="saved-price" data-price-code="${code}">${saved}<small class="price-overlay"></small></span>`;
+}
+
+let priceOverlayFlight = null;
+async function refreshVisiblePrices() {
+  if (priceOverlayFlight || document.hidden) return priceOverlayFlight;
+  const status = $("#price-overlay-status"), button = $("#btn-price-overlay");
+  if (publicShareMode) {
+    status.textContent = "공개판은 배포 시점 저장본입니다. 실시간 가격은 종목의 네이버·토스 링크에서 확인하세요.";
+    return;
+  }
+  const view = currentView;
+  const cells = [...document.querySelectorAll(`[data-price-code]`)].filter((el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+  const codes = [...new Set(cells.map((el) => el.dataset.priceCode))].slice(0, 50);
+  if (!codes.length) { status.textContent = "가격이 표시된 종목 표를 먼저 열어 주세요."; return; }
+  button.disabled = true;
+  status.textContent = `${codes.length}종목 가격 조회 중…`;
+  priceOverlayFlight = (async () => {
+    try {
+      const data = await api(`/api/prices/quotes?codes=${codes.join(',')}`);
+      if (currentView !== view) return;
+      const rows = new Map((data.rows || []).map((r) => [r.ticker, r]));
+      cells.forEach((el) => {
+        const row = rows.get(el.dataset.priceCode);
+        const target = el.querySelector('.price-overlay');
+        if (!target) return;
+        target.textContent = row
+          ? `${Number(row.price).toLocaleString('ko-KR')}원 · ${row.label} · ${row.traded_at.slice(0, 16).replace('T', ' ')}`
+          : '가격 확인 불가 · 저장값 유지';
+        target.title = data.notice;
+      });
+      status.textContent = `${rows.size}/${codes.length}종목 확인 · 원래 값은 분석 기준 종가, 아래는 조회 가격입니다.`;
+    } catch (err) {
+      status.textContent = "가격 조회 실패 · 분석 기준 종가는 그대로 유지합니다.";
+      cells.forEach((el) => { const target = el.querySelector('.price-overlay'); if (target) target.textContent = '가격 재확인 실패'; });
+    } finally { button.disabled = false; priceOverlayFlight = null; }
+  })();
+  return priceOverlayFlight;
 }
 
 function padTicker(t) {
@@ -1222,7 +1268,7 @@ async function publicApiManifest() {
     publicApiManifestPromise = fetch("/data/api/manifest.json", { cache: "no-store" }).then((res) => {
       if (!res.ok) throw new Error("공개 데이터 목록을 불러오지 못했습니다.");
       return res.json();
-    });
+    }).catch((err) => { publicApiManifestPromise = null; throw err; });
   }
   return publicApiManifestPromise;
 }
@@ -1234,7 +1280,7 @@ async function publicRouteFile(filename) {
     publicApiCache.set(filename, fetch(`/data/api/${safePath}`, { cache: "no-store" }).then((res) => {
       if (!res.ok) throw new Error("공개 스냅샷 파일을 불러오지 못했습니다.");
       return res.json();
-    }));
+    }).then(unpackRows).catch((err) => { publicApiCache.delete(filename); throw err; }));
   }
   return publicApiCache.get(filename);
 }
@@ -1397,6 +1443,10 @@ async function publicApi(path, opts = {}) {
   }
 
   const manifest = await publicApiManifest();
+  if (manifest.season_details && ['/api/seasonality/pre-entry', '/api/seasonality/themes'].includes(route)) {
+    const period = Number(url.searchParams.get('lookback_years') ?? 5);
+    if (period !== manifest.season_details.lookback_years) throw new Error('공개 저장본에 없는 검증 기간입니다. 로컬에서 해당 기간을 확인하세요.');
+  }
   if (route === "/api/seasonality/pre-entry" && !manifest.routes[route]) {
     // Compatibility with existing public exports; no local server is required.
     const [discovery, themes] = await Promise.all([
@@ -1454,8 +1504,16 @@ async function publicApi(path, opts = {}) {
   }
   const discoveryTicker = route.match(/^\/api\/seasonality\/discovery\/(\d{1,6})$/);
   if (discoveryTicker) {
-    const data = await publicRouteFile(manifest.routes["/api/seasonality/discovery"]);
     const code = padTicker(discoveryTicker[1]);
+    if (manifest.season_details?.base) {
+      const period = Number(url.searchParams.get('lookback_years') ?? 5);
+      if (period !== manifest.season_details.lookback_years) throw new Error('공개 저장본에 없는 검증 기간입니다. 로컬에서 해당 기간을 확인하세요.');
+      const detail = await publicRouteFile(`${manifest.season_details.base}/${code}.json`);
+      const generation = url.searchParams.get('generation_id');
+      if (generation && generation !== detail.snapshot?.generation_id) throw new Error('공개 자료 세대가 변경됐습니다. 화면을 새로고침해 주세요.');
+      return detail;
+    }
+    const data = await publicRouteFile(manifest.routes["/api/seasonality/discovery"]);
     return { ok: true, ticker: code, lookback_years: Number(url.searchParams.get("lookback_years") || 5), patterns: (data.rows || []).filter((r) => padTicker(r.ticker) === code) };
   }
   if (/^\/api\/seasonality\/ticker\//.test(route)) return { ok: false, stock: null };
@@ -1473,6 +1531,24 @@ async function publicApi(path, opts = {}) {
   }
 
   let data = await publicRouteFile(manifest.routes[route]);
+  if (route === '/api/seasonality/discovery' && manifest.season_details) {
+    const period = Number(url.searchParams.get('lookback_years') ?? 5);
+    if (period !== manifest.season_details.lookback_years) throw new Error('공개 저장본은 5년 자료입니다. 다른 기간은 로컬에서 확인하세요.');
+    const generation = url.searchParams.get('generation_id');
+    if (generation && generation !== data.snapshot?.generation_id) throw new Error('공개 자료가 갱신됐습니다. 첫 페이지부터 다시 확인하세요.');
+    const day = data.snapshot?.selection_date;
+    if (day) {
+      const months = new Set();
+      const horizon = Math.max(0, Math.min(365, Number(url.searchParams.get('horizon_days') ?? 90)));
+      if (horizon > manifest.season_details.horizon_days) throw new Error('공개 저장본의 탐색 범위를 초과했습니다. 로컬에서 확인하거나 새 데이터 배포가 필요합니다.');
+      for (let d = 0; d <= horizon; d += 15) {
+        const date = new Date(`${day}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + d);
+        months.add(date.getUTCMonth() + 1);
+      }
+      data = { ...data, rows: data.rows.filter((r) => months.has(Number(String(r.window_name).replace('월', '')))) };
+    }
+    if (url.searchParams.get('exclude_expired') === 'true') data = { ...data, rows: data.rows.filter((r) => r.entry_stage !== 'SEASON_END') };
+  }
   if (route === "/api/results/all") {
     const limit = Math.max(1, Number(url.searchParams.get("limit") || 300));
     data = { ...data, rows: (data.rows || []).slice(0, limit) };
@@ -1491,6 +1567,11 @@ async function publicApi(path, opts = {}) {
     const rows = data.rows || [];
     data = { ...data, count: rows.length, rows: rows.slice(offset, offset + limit), offset, limit,
       next_offset: offset + limit < rows.length ? offset + limit : null };
+  }
+  if (route === '/api/seasonality/discovery' && manifest.season_listing) {
+    const chunks = new Map(await Promise.all([...new Set(data.rows.map((r) => r._chunk))].map(async (i) =>
+      [i, await publicRouteFile(manifest.season_listing.chunks[i])])));
+    data = { ...data, rows: data.rows.map((r) => chunks.get(r._chunk).rows[r._index]) };
   }
   return data;
 }
@@ -1517,7 +1598,18 @@ async function api(path, opts = {}, snapshotAttempt = 0) {
     }
     throw new Error(msg);
   }
-  return res.json();
+  return unpackRows(await res.json());
+}
+
+function unpackRows(data) {
+  const transport = data?._row_transport;
+  if (!transport || transport.version !== 1) return data;
+  const out = { ...data };
+  delete out._row_transport;
+  for (const [key, refs] of Object.entries(transport.groups)) {
+    out[key] = refs.map((i) => structuredClone(transport.pool[i]));
+  }
+  return out;
 }
 
 function fmt(n, d = 2) {
@@ -1695,6 +1787,8 @@ function switchView(name, force = false) {
     name = "trade";
   }
   currentView = name;
+  const priceStatus = $("#price-overlay-status");
+  if (priceStatus) priceStatus.textContent = "";
   closeDrawer();
   closeMobileDrawer();
   $$(".view").forEach((el) => el.classList.add("hidden"));
@@ -1730,6 +1824,8 @@ function switchView(name, force = false) {
     }
   }
   applyPriceChrome(name);
+  const rememberedAsOf = pageAsOfByView[name];
+  setPageAsOf(rememberedAsOf?.text || '이 메뉴의 데이터 시점 확인 중…', rememberedAsOf?.tip || '', name);
   startLiveSync(name);
   if (name === "market") {
     if (typeof startMacroLivePolling === "function") startMacroLivePolling();
@@ -1860,7 +1956,10 @@ function fmtWhen(raw) {
   }
 }
 
-function setPageAsOf(text, tip) {
+const pageAsOfByView = {};
+function setPageAsOf(text, tip, owner = currentView) {
+  pageAsOfByView[owner] = { text, tip };
+  if (owner !== currentView) return;
   const el = $("#page-asof");
   if (!el) return;
   el.textContent = text || "데이터 시점 없음";
@@ -2123,7 +2222,7 @@ function stampRunAsOf() {
     : started
       ? `작업 ${statusKo(job.status)} · 시작 ${started}`
       : "아직 실행한 작업이 없습니다.";
-  setPageAsOf(line, "실행 탭 작업의 시작·종료 시각입니다. 시세 받기와 재계산은 서로 다른 시점입니다.");
+  setPageAsOf(line, "실행 탭 작업의 시작·종료 시각입니다. 시세 받기와 재계산은 서로 다른 시점입니다.", 'run');
   renderRunDiagnostics(lastStatus);
 }
 
@@ -2654,10 +2753,13 @@ function renderFreshChip(fresh) {
   let label = "";
   let tip = "";
 
-  if (session.isMarketOpen) {
+  if (stale) {
+    label = `⚠️ 저장 종가 ${px} · 갱신 필요`;
+    tip = `기대 기준일 ${expected}, 실제 저장 종가 ${px}. 가격 조회 버튼의 별도 시세와 분석 원천 갱신은 다릅니다. 실행 파이프라인에서 수집 결과를 확인하세요.`;
+  } else if (session.isMarketOpen) {
     if (!stale) {
-      label = `📅 전일 종가 ${px} · 🟢 장중 실시간`;
-      tip = `최근 공식 일봉 종가: ${px}. 현재는 당일(${session.todayStr}) 정규장 진행 중이며, 오늘 종가는 15:30 장 마감 후 최종 확정됩니다. 개별 종목 현재가 및 매크로 지표는 실시간 틱으로 작동 중입니다.`;
+      label = `📅 저장 종가 ${px} · 장중 가격 별도 조회`;
+      tip = `분석에 사용한 공식 일봉 종가: ${px}. 화면 종목 가격 확인은 별도 조회이며, 실시간 틱 수신을 보장하지 않습니다.`;
     } else {
       label = `📅 종가 ${px} (시세 동기화 필요)`;
       tip = `최근 수집된 종가: ${px}. 직전 영업일(${expected}) 시세를 받으려면 상단의 [시세 받기]를 누르세요. (클릭 시 자동 수집)`;
@@ -2665,10 +2767,10 @@ function renderFreshChip(fresh) {
   } else if (session.isPostMarket) {
     if (px === session.todayStr) {
       label = `📅 시세 ${px} (당일 마감 최신)`;
-      tip = `오늘(${px}) KRX 정규장 마감 종가까지 100% 최신 반영되었습니다.`;
+      tip = `최근 KRX 일봉 기준일은 ${px}입니다. 종목별 누락·거래상태는 실행 파이프라인의 품질 결과를 함께 확인하세요.`;
     } else {
       label = `📅 최근 종가 ${px} (당일 마감분 수집 대기)`;
-      tip = `오늘(${session.todayStr}) 장이 마감되었습니다. 상단의 [시세 받기]를 누르시면 오늘 마감 종가가 즉시 반영됩니다.`;
+      tip = `오늘(${session.todayStr}) 장이 마감되었습니다. 공식 자료 공개 후 수집이 가능합니다. 버튼 실행 결과를 확인하세요.`;
     }
   } else if (session.isWeekend) {
     label = `📅 최근 종가 ${px} (주말 휴장)`;
@@ -5085,7 +5187,7 @@ async function loadTossRankings() {
   stampLive("#toss-live");
   const when = fmtWhen(data.fetched_at);
   const line = when ? `토스 시세 랭킹 ${when} · 약 2분 캐시` : "토스 시세 랭킹 시점 없음";
-  setPageAsOf(line, "토스 Open API 시세입니다. KRX 종가 칩과 다른 시각입니다. 지금 새로고침으로 다시 받을 수 있습니다.");
+  setPageAsOf(line, "토스 Open API 시세입니다. KRX 종가 칩과 다른 시각입니다. 지금 새로고침으로 다시 받을 수 있습니다.", 'toss');
   const wrap = $("#toss-rankings");
   if (wrap && when) wrap.insertAdjacentHTML("afterbegin", asofBanner(line));
 }
@@ -5253,10 +5355,13 @@ function renderKrSentiment(sent) {
   `;
 }
 
-async function loadMarket(refresh) {
+let marketViewRequest = 0;
+async function loadMarket(refresh, background = false, requestId = null) {
+  const request = requestId ?? ++marketViewRequest;
   const box = $("#market-box");
   if (!box) return;
-  const data = await api(`/api/market${refresh ? "?refresh=true" : ""}`);
+  const data = await api(`/api/market?refresh=${Boolean(refresh)}&local_only=${!background && !publicShareMode}`);
+  if (request !== marketViewRequest) return;
   const fgHtml = renderFearGreed(data.fear_greed);
   const krSentHtml = renderKrSentiment(data.kr_sentiment);
   if (!data.configured) {
@@ -5386,7 +5491,19 @@ async function loadMarket(refresh) {
     </div>
   `;
   stampLive("#market-live");
-  loadMarketTier1Briefing().catch(() => {});
+  const marketAsOf = data.freshness?.price_max_date || data.components?.find((c) => c.as_of)?.as_of || '기준일 미확인';
+  setPageAsOf(`시장국면 · KRX ${marketAsOf} · ${data.partial ? 'KRX 부분 계산' : '거시지표 연결 결과'}`,
+    data.scope_notice || '각 구성요소의 원천·기준일은 아래 카드에 따로 표시합니다.', 'market');
+  if (data.partial) {
+    const notice = document.createElement('p');
+    notice.className = 'hint';
+    notice.setAttribute('role', 'status');
+    notice.textContent = data.scope_notice;
+    box.prepend(notice);
+    loadMarket(refresh, true, request).catch(() => {
+      if (request === marketViewRequest) notice.textContent = '거시지표 연결 실패 · KRX 부분 계산만 유지합니다. 화면 새로고침으로 재시도할 수 있습니다.';
+    });
+  } else loadMarketTier1Briefing().catch(() => {});
 }
 
 function krw(n) {
@@ -5511,7 +5628,7 @@ function bucketTable(title, rows, amountKey) {
 
 function quoteCell(r) {
   if (r.last == null) return "—";
-  return `${Number(r.last).toLocaleString("ko-KR")}<div class="meta">${pctCell(r.change_rate)}</div>`;
+  return priceOverlayCell(r.ticker, `${Number(r.last).toLocaleString("ko-KR")}<div class="meta">${pctCell(r.change_rate)}${r.quote_basis === 'saved' ? ' · 저장가격' : ''}</div>`);
 }
 
 function plainSignedInt(value) {
@@ -5793,8 +5910,8 @@ async function ensureFlow(force) {
   if (!force && flowCache && flowCache.days === days && flowReady(flowCache)) {
     return flowCache;
   }
-  let data = await api(`/api/flow?days=${days}`);
-  if (force || !flowReady(data)) {
+  let data = await api(`/api/flow?days=${days}&compact=true`);
+  if (force) {
     data = await api("/api/flow", { method: "POST", body: JSON.stringify({ days }) });
   }
   flowCache = data;
@@ -8248,7 +8365,7 @@ async function loadUs13f(force) {
   const asof = [`13F 보고 ${(data.periods || []).join(" · ") || "—"}`, data.fetched_at ? `받은 시각 ${fmtWhen(data.fetched_at)}` : ""]
     .filter(Boolean)
     .join(" · ");
-  setPageAsOf(asof || "13F 시점 없음", "SEC EDGAR 분기 말 보유입니다. 최대 45일 시차가 있습니다. 최신본 업데이트로 다시 받으세요.");
+  setPageAsOf(asof || "13F 시점 없음", "SEC EDGAR 분기 말 보유입니다. 최대 45일 시차가 있습니다. 최신본 업데이트로 다시 받으세요.", 'us13f');
 }
 
 
@@ -8278,7 +8395,7 @@ async function loadWatch() {
   }
 
   if (currentView === "watch") {
-    setPageAsOf(`포트폴리오 ${rows.length}개 종목 · 평균 퀀트 ${summary.avg_quant_score || "—"}점`, "실시간 팩터 및 가격 분석이 적용되었습니다.");
+    setPageAsOf(`포트폴리오 ${rows.length}개 종목 · 평균 퀀트 ${summary.avg_quant_score || "—"}점`, "저장된 점수와 종가 기준입니다. 실시간 재계산 값이 아닙니다.");
   }
 
   // Calculate Sector Stack Segments
@@ -8350,7 +8467,7 @@ async function loadWatch() {
     const code = padTicker(r.ticker);
     const score = r.quant_score != null ? fmt(r.quant_score, 1) : "—";
     const rankTxt = r.quant_rank ? `퀀트 ${r.quant_rank}위` : "유니버스";
-    const priceTxt = r.close_price ? `${fmt(r.close_price, 0)}원` : "—";
+    const priceTxt = r.close_price ? priceOverlayCell(code, `${fmt(r.close_price, 0)}원 <small>${escapeHtml(r.price_as_of || '기준일 미확인')}</small>`) : "—";
 
     const vBar = Math.max(4, Math.min(100, ((r.value_score || 0) / 30) * 100));
     const qBar = Math.max(4, Math.min(100, ((r.quality_score || 0) / 25) * 100));
@@ -10148,6 +10265,7 @@ document.addEventListener("click", (e) => {
 });
 if ($("#btn-krx-now")) {
   $("#btn-krx-now").addEventListener("click", () => startJob("krx-prices").catch((err) => alert(err.message)));
+  $("#btn-price-overlay").addEventListener("click", refreshVisiblePrices);
 }
 if ($("#btn-dash-reload")) {
   $("#btn-dash-reload").addEventListener("click", () => reloadCurrentView().catch((err) => alert(err.message)));
@@ -11706,7 +11824,7 @@ function bindPreEntryClicks() {
       const row = (Number.isFinite(idx) ? preEntryTop10[idx] : null)
         || preEntryTop10.find((x) => padTicker(x.ticker) === code)
         || (Array.isArray(discoveryRows) ? discoveryRows.find((x) => padTicker(x.ticker) === code) : null);
-      if (row) openMomentumRegisterModal(row);
+      if (row) openSeasonListRegistration(row);
       return;
     }
     const card = e.target.closest(".pre-entry-card");
@@ -11733,7 +11851,7 @@ async function loadPreEntryView() {
   // discovery detail tabs and must not silently narrow this list.
   let discRes;
   try {
-    discRes = await api(`/api/seasonality/pre-entry?lookback_years=${currentV11Lookback}&horizon_days=90`);
+    discRes = await api(`/api/seasonality/pre-entry?lookback_years=${currentV11Lookback}&horizon_days=90&compact=true`);
   } catch (err) {
     container.innerHTML = `<p class="hint">${escapeHtml(err.message)}</p><button type="button" class="ghost" id="retry-pre-entry">자료 다시 확인</button>`;
     $("#retry-pre-entry")?.addEventListener("click", () => loadPreEntryView().catch(() => {}));

@@ -76,13 +76,14 @@ def attach_last_close(rows: list[dict[str, Any]], settings: Settings) -> list[di
     return rows
 
 
-def load_prices(settings: Settings, columns: list[str] | None = None) -> pd.DataFrame:
+def load_prices(settings: Settings, columns: list[str] | None = None, tickers: list[str] | None = None) -> pd.DataFrame:
     for folder in (settings.staged_dir / "live", settings.staged_dir / "demo"):
         path = folder / "prices.parquet"
         if path.exists():
             try:
-                if columns:
-                    return pd.read_parquet(path, columns=columns)
+                if columns or tickers:
+                    return pd.read_parquet(path, columns=columns,
+                                           filters=[('ticker', 'in', tickers)] if tickers else None)
                 return pd.read_parquet(path)
             except Exception:
                 return pd.read_parquet(path)
@@ -97,7 +98,9 @@ def attach_technicals(
     rows = payload.get("rows")
     if not isinstance(rows, list) or not rows:
         return payload
-    frame = prices if prices is not None else load_prices(settings)
+    codes = {str(r.get('ticker') or '').zfill(6) for r in rows if isinstance(r, dict)}
+    frame = prices if prices is not None else load_prices(settings,
+        columns=['ticker', 'trade_date', 'high', 'low', 'close'], tickers=sorted(codes))
     if frame is None or frame.empty:
         for row in rows:
             if isinstance(row, dict):

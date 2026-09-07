@@ -51,7 +51,7 @@ ROUTES: dict[str, str] = {
     "/api/stocks/all": "/api/stocks/all",
     "/api/seasonality/highlights": "/api/seasonality/highlights",
     "/api/seasonality/pre-entry": "/api/seasonality/pre-entry?lookback_years=5",
-    "/api/seasonality/discovery": "/api/seasonality/discovery?lookback_years=5&horizon_days=90",
+    "/api/seasonality/discovery": "/api/seasonality/discovery?lookback_years=5&horizon_days=365",
     "/api/seasonality/themes": "/api/seasonality/themes?lookback_years=5&horizon_days=90",
     "/api/seasonality/ranked": "/api/seasonality/ranked?lookback_years=5&horizon_days=90",
     "/api/seasonality/events": "/api/seasonality/events?horizon_days=90",

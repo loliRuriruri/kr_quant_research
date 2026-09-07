@@ -294,13 +294,23 @@ def _with_comments(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_flow(settings: Settings, days: int = 5) -> dict[str, Any]:
+    def stored(payload):
+        # GET displays the saved analysis. External prices have their own small
+        # user-triggered endpoint; never wait for all Toss batches on menu entry.
+        payload['quotes_live'] = False
+        payload['quote_note'] = '저장 수급 자료의 가격입니다. 화면 종목 가격 확인 버튼으로 별도 조회할 수 있습니다.'
+        for rows in _flow_lists(payload):
+            for row in rows:
+                row['quote_live'] = False
+                row['quote_basis'] = 'saved'
+        return payload
     cached = _load_cache(settings.root)
     if _flow_ready(cached, days):
         named = attach_company_names(cached, settings)
-        return _with_comments(attach_live_quotes(attach_technicals(named, settings), settings))
+        return _with_comments(stored(attach_technicals(named, settings)))
     if cached and cached.get("days") == days:
         patched = attach_company_names({**cached, "need_scan": True, "used_in_quant": False}, settings)
-        return _with_comments(attach_live_quotes(patched, settings))
+        return _with_comments(stored(patched))
     return {
         "configured": bool(settings.toss_client_id and settings.toss_client_secret),
         "used_in_quant": False,

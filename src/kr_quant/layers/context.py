@@ -13,6 +13,7 @@ from kr_quant.context.explain import interpret_row
 from kr_quant.context.market import COMPONENT_KO, attach_macro, derive_market_components, market_regime
 from kr_quant.context.watchlist import add_ticker, load_watchlist, remove_ticker
 from kr_quant.settings import Settings
+from kr_quant.web.cache import ttl_cache
 
 
 def _market_config(settings: Settings) -> dict[str, Any]:
@@ -30,23 +31,68 @@ def load_price_frame(settings: Settings) -> pd.DataFrame:
     return pd.DataFrame()
 
 
-def build_market_snapshot(settings: Settings, *, refresh: bool = False) -> dict[str, Any]:
+@ttl_cache(seconds=3600)
+def _market_price_components(path: str, modified_ns: int, size: int):
+    # Same full-history calculations, keyed by the actual source file version.
+    # Keep missing-history/universe semantics unchanged; do not shorten lookbacks.
+    import pyarrow.parquet as pq
+    from kr_quant.context.market_sentiment import compute_kr_market_sentiment
+    names = pq.read_schema(path).names
+    columns = [name for name in ('ticker', 'date', 'trade_date', 'close', 'trading_value', 'amount') if name in names]
+    prices = pd.read_parquet(path, columns=columns)
+    if prices.empty:
+        return None
+    return {'components': derive_market_components(prices), 'sentiment': compute_kr_market_sentiment(prices)}
+
+
+def market_price_components(settings):
+    import hashlib
+    import copy
+    from kr_quant.atomic_io import write_json_atomic
+    model_files = [Path(__file__), Path(__file__).parents[1] / 'context/market.py',
+                   Path(__file__).parents[1] / 'context/market_sentiment.py']
+    model = hashlib.sha256(b''.join(p.read_bytes() for p in model_files)).hexdigest()
+    for folder in (settings.staged_dir / 'live', settings.staged_dir / 'demo'):
+        path = folder / 'prices.parquet'
+        if path.exists():
+            stat = path.stat()
+            key = hashlib.sha256(f'{path.resolve()}|{stat.st_mtime_ns}|{stat.st_size}|{model}'.encode()).hexdigest()
+            destination = settings.root / 'data/cache/market-components' / f'{key}.json'
+            def digest(value):
+                return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+            try:
+                saved = json.loads(destination.read_text(encoding='utf-8'))
+                value = saved['payload']
+                if (saved['key'] == key and saved['hash'] == digest(value)
+                        and isinstance(value.get('components'), dict) and isinstance(value.get('sentiment'), dict)):
+                    return copy.deepcopy(value)
+            except (OSError, ValueError, TypeError, KeyError, AttributeError):
+                pass
+            value = _market_price_components(str(path), stat.st_mtime_ns, stat.st_size)
+            after = path.stat()
+            if value is not None and (after.st_mtime_ns, after.st_size) == (stat.st_mtime_ns, stat.st_size):
+                write_json_atomic(destination, {'key': key, 'hash': digest(value), 'payload': value}, compact=True)
+            return value
+    return None
+
+
+def build_market_snapshot(settings: Settings, *, refresh: bool = False, local_only: bool = False) -> dict[str, Any]:
     cfg = _market_config(settings)
-    prices = load_price_frame(settings)
+    price_components = market_price_components(settings)
     ecos: dict[str, Any] = {"configured": False, "used_in_quant": False, "series": []}
     try:
         from kr_quant.ingest.ecos import ecos_snapshot
 
-        ecos = ecos_snapshot(settings.bok_ecos_api_key)
+        ecos = ecos_snapshot(settings.bok_ecos_api_key) if not local_only else ecos
     except Exception as exc:  # noqa: BLE001
         ecos = {"configured": False, "used_in_quant": False, "error": str(exc)[:180], "series": []}
     try:
         from kr_quant.ingest.fear_greed import fear_greed_snapshot
 
-        fear = fear_greed_snapshot(refresh=refresh)
+        fear = fear_greed_snapshot(refresh=refresh) if not local_only else {'configured': False, 'pending': True}
     except Exception as exc:  # noqa: BLE001
         fear = {"configured": False, "used_in_quant": False, "error": str(exc)[:180]}
-    if prices.empty:
+    if price_components is None:
         from kr_quant.freshness import freshness_snapshot
 
         return {
@@ -58,10 +104,10 @@ def build_market_snapshot(settings: Settings, *, refresh: bool = False) -> dict[
             "fear_greed": fear,
             "freshness": freshness_snapshot(settings),
         }
-    components = derive_market_components(prices)
+    components = price_components['components']
     krx_as_of = str((components.get("_meta") or {}).get("as_of") or "") or None
     fred_compact: dict[str, Any] = {"configured": False, "used_in_quant": False, "series": []}
-    if settings.fred_api_key:
+    if settings.fred_api_key and not local_only:
         try:
             from kr_quant.ingest.fred import macro_snapshot
 
@@ -79,7 +125,7 @@ def build_market_snapshot(settings: Settings, *, refresh: bool = False) -> dict[
     from kr_quant.context.market_sentiment import compute_kr_market_sentiment
     from kr_quant.freshness import freshness_snapshot
 
-    kr_sent = compute_kr_market_sentiment(prices)
+    kr_sent = price_components['sentiment']
     regime = market_regime(components, cfg)
     fresh = freshness_snapshot(settings)
     details = regime.get("details") or {}
@@ -154,6 +200,11 @@ def build_market_snapshot(settings: Settings, *, refresh: bool = False) -> dict[
         "fear_greed": fear,
         "freshness": fresh,
     }
+    if local_only:
+        payload['partial'] = True
+        payload['label'] = 'KRX 부분 계산 · ' + str(payload.get('label') or '')
+        payload['scope_notice'] = 'KRX 저장 일봉만 먼저 표시합니다. 금리·환율 등 거시지표를 추가 연결 중이며 최종 종합 국면이 아닙니다.'
+        return payload
     _store_market_cache(
         settings,
         {
@@ -209,7 +260,8 @@ def watchlist_state(settings: Settings) -> dict[str, Any]:
 
     # Load prices for latest close
     from kr_quant.strategy.run import _prices
-    prices = _prices(settings)
+    codes = [str(row.get('ticker') or '').zfill(6) for row in raw_rows]
+    prices = _prices(settings, tickers=codes)
     prices_map: dict[str, dict[str, Any]] = {}
     if not prices.empty:
         for t, g in prices.groupby("ticker"):
@@ -217,6 +269,7 @@ def watchlist_state(settings: Settings) -> dict[str, Any]:
             last_row = g.sort_values("trade_date").iloc[-1]
             prices_map[code] = {
                 "close_price": float(last_row.get("close") or 0),
+                "price_as_of": str(last_row.get("trade_date") or '')[:10],
                 "company": str(last_row.get("company") or ""),
                 "market": str(last_row.get("market") or ""),
                 "sector": str(last_row.get("sector") or ""),
@@ -241,6 +294,7 @@ def watchlist_state(settings: Settings) -> dict[str, Any]:
         p_info = prices_map.get(code) or {}
         if p_info:
             item["close_price"] = p_info.get("close_price")
+            item["price_as_of"] = p_info.get("price_as_of")
             item["company"] = item.get("company") or p_info.get("company") or code
             item["market"] = item.get("market") or p_info.get("market") or "KOSPI"
             if p_info.get("sector"):
