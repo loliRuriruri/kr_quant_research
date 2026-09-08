@@ -1,15 +1,16 @@
-"""Bounded free-route evaluation using the production season prompt; no production cache writes."""
+"""Bounded season prompt evaluation; paid Grok requires --allow-paid. No production cache writes."""
 import json
 import time
 import queue
 import threading
+import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
 from kr_quant.web import app as web
 from kr_quant.settings import load_settings
-from kr_quant.research.providers import resolve_tier1_endpoint
+from kr_quant.research.providers import resolve_tier1_endpoint, resolve_provider
 from kr_quant.research.analyze import call_chat, _extract_json
 from kr_quant.research.tier1_contract import ANALYSIS_GUIDANCE
 from kr_quant.research.season_ai_quality import validate_season_card
@@ -47,12 +48,12 @@ def safe_error_category(exc):
     return 'OTHER_ERROR'
 
 
-def bounded_call(endpoint, messages, deadline=60):
+def bounded_call(endpoint, messages, deadline=60, request_timeout=20):
     """CLI-only wall-clock bound; daemon ends when this evaluator exits."""
     result = queue.Queue(maxsize=1)
     def worker():
         try:
-            result.put((True, call_chat(endpoint, messages, timeout=20)))
+            result.put((True, call_chat(endpoint, messages, timeout=request_timeout)))
         except Exception as exc:
             result.put((False, exc))
     threading.Thread(target=worker, daemon=True).start()
@@ -65,12 +66,15 @@ def bounded_call(endpoint, messages, deadline=60):
     return value
 
 
-def run():
-    endpoint = resolve_tier1_endpoint(load_settings())
-    if endpoint.provider != 'openrouter' or not endpoint.model.endswith(':free'):
+def run(provider='free', allow_paid=False, selected_cases=None):
+    if provider != 'free' and (provider != 'xai' or not allow_paid):
+        raise RuntimeError('Grok evaluation requires explicit --allow-paid approval')
+    endpoint = resolve_provider(load_settings(), 'xai') if provider == 'xai' else resolve_tier1_endpoint(load_settings())
+    if provider == 'free' and (endpoint.provider != 'openrouter' or not endpoint.model.endswith(':free')):
         raise RuntimeError('Only configured OpenRouter :free route is allowed')
     records = []
-    for name, fixture in cases():
+    planned = [(name, fixture) for name, fixture in cases() if not selected_cases or name in selected_cases]
+    for name, fixture in planned:
         with patch.object(web, 'api_seasonality_highlights_get', return_value=fixture), patch.object(
             web, 'tier1_cached_chat_json', side_effect=lambda *a, **k: k):
             request = web.api_seasonality_tier1_briefing_get()
@@ -79,7 +83,8 @@ def run():
         start = time.perf_counter()
         try:
             raw, _ = bounded_call(endpoint, [{'role': 'system', 'content': ANALYSIS_GUIDANCE},
-                *request['messages']])
+                *request['messages']], deadline=90 if allow_paid else 60,
+                request_timeout=75 if allow_paid else 20)
             record['raw_output'] = raw
             record['output'] = _extract_json(raw)
             validate_season_card(record['output'])
@@ -97,11 +102,17 @@ def run():
     destination = Path('docs/audits/ai-stage3')
     destination.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    path = destination / f'free-evaluation-{stamp}.json'
-    path.write_text(json.dumps({'model': endpoint.model, 'synthetic': True, 'records': records,
-        'planned_cases': 5, 'unattempted': 5-len(records)}, ensure_ascii=False, indent=2), encoding='utf-8')
+    path = destination / f'{provider}-evaluation-{stamp}.json'
+    path.write_text(json.dumps({'provider': endpoint.provider, 'paid_authorized': allow_paid,
+        'model': endpoint.model, 'synthetic': True, 'records': records,
+        'planned_cases': len(planned), 'unattempted': len(planned)-len(records)}, ensure_ascii=False, indent=2), encoding='utf-8')
     print(path, flush=True)
 
 
 if __name__ == '__main__':
-    run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--provider', choices=['free', 'xai'], default='free')
+    parser.add_argument('--allow-paid', action='store_true')
+    parser.add_argument('--cases', nargs='+', choices=[name for name, _ in cases()])
+    args = parser.parse_args()
+    run(args.provider, args.allow_paid, args.cases)

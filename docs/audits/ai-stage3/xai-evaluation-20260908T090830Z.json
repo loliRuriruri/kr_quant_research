@@ -1,0 +1,60 @@
+{
+  "provider": "xai",
+  "paid_authorized": true,
+  "model": "grok-4.6",
+  "synthetic": true,
+  "records": [
+    {
+      "case": "normal",
+      "input": {
+        "snapshot": {
+          "selection_date": "2026-09-08",
+          "generation_id": "synthetic-normal"
+        },
+        "data": {
+          "current_month": 9,
+          "next_month": 10,
+          "glance_top3": [
+            {
+              "ticker": "000000",
+              "company": "검증용 가상기업",
+              "signal_id": "normal",
+              "current_status": "WATCH",
+              "current_confirmation_evidence": [
+                "3개월 수익률 +4%"
+              ],
+              "current_confirmation_missing": [],
+              "remaining_peak": {
+                "price_as_of": "2026-09-08",
+                "sample_count": 8,
+                "window_end_p50": 0.08,
+                "window_end_positive_count": 6,
+                "window_adverse_excursion_p50": -0.05,
+                "validation_status": "HISTORICAL_ONLY",
+                "costs_included": false
+              }
+            }
+          ]
+        }
+      },
+      "prompt_version": "seasonality_tier1_v4_validated_card",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a stock market seasonality quant specialist. Output strictly in JSON."
+        },
+        {
+          "role": "user",
+          "content": "당신은 주식시장 계절성 통계 검증 연구원입니다.\n실제 계절성 집계:\n{\"current_month\": 9, \"next_month\": 10, \"current_champions\": [], \"upcoming_champions\": [], \"active_presets\": [], \"candidates\": [{\"ticker\": \"000000\", \"company\": \"검증용 가상기업\", \"signal_id\": \"normal\", \"current_status\": \"WATCH\", \"current_evidence\": [\"3개월 수익률 +4%\"], \"missing\": [], \"observed_window\": {\"price_as_of\": \"2026-09-08\", \"sample_count\": 8, \"window_end_p50\": 0.08, \"window_end_positive_count\": 6, \"window_adverse_excursion_p50\": -0.05, \"validation_status\": \"HISTORICAL_ONLY\", \"costs_included\": false}}], \"snapshot\": {\"selection_date\": \"2026-09-08\", \"generation_id\": \"synthetic-normal\"}}\n\n제공된 승률·평균수익률·연도 표본 수만 사용하고 표본 부족과 특정 연도 쏠림 가능성을 설명하세요. 선취매·매집·주문 지시는 하지 마세요.\n후보의 과거 관찰 수익과 현재 확인 근거를 비교하세요. 수익률은 소수 비율이며 올해 예측수익이 아닙니다. 누락값은 0이나 호재로 취급하지 마세요.\n반드시 JSON 형식으로만 반환하세요: {\"headline\": \"현재 결론 1문장\", \"seasonality_brief\": \"입력 종목명과 실제 수치를 사용한 근거 최대 2문장\", \"key_catalysts\": [\"실제 입력된 캘린더 가설\"], \"sample_caution\": \"가장 중요한 반대 근거 또는 한계 1문장\", \"next_check\": \"어떤 자료를 다음에 확인할지 1문장\"}"
+        }
+      ],
+      "factual_review": "NOT_REVIEWED",
+      "status": "FAILED",
+      "error_type": "ReadTimeout",
+      "error_category": "TIMEOUT",
+      "seconds": 20.05
+    }
+  ],
+  "planned_cases": 5,
+  "unattempted": 4
+}

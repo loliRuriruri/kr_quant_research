@@ -1,0 +1,124 @@
+{
+  "provider": "xai",
+  "paid_authorized": true,
+  "model": "grok-4.6",
+  "synthetic": true,
+  "records": [
+    {
+      "case": "normal",
+      "input": {
+        "snapshot": {
+          "selection_date": "2026-09-08",
+          "generation_id": "synthetic-normal"
+        },
+        "data": {
+          "current_month": 9,
+          "next_month": 10,
+          "glance_top3": [
+            {
+              "ticker": "000000",
+              "company": "검증용 가상기업",
+              "signal_id": "normal",
+              "current_status": "WATCH",
+              "current_confirmation_evidence": [
+                "3개월 수익률 +4%"
+              ],
+              "current_confirmation_missing": [],
+              "remaining_peak": {
+                "price_as_of": "2026-09-08",
+                "sample_count": 8,
+                "window_end_p50": 0.08,
+                "window_end_positive_count": 6,
+                "window_adverse_excursion_p50": -0.05,
+                "validation_status": "HISTORICAL_ONLY",
+                "costs_included": false
+              }
+            }
+          ]
+        }
+      },
+      "prompt_version": "seasonality_tier1_v5_plain_language",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a stock market seasonality quant specialist. Output strictly in JSON."
+        },
+        {
+          "role": "user",
+          "content": "당신은 주식시장 계절성 통계 검증 연구원입니다.\n실제 계절성 집계:\n{\"current_month\": 9, \"next_month\": 10, \"current_champions\": [], \"upcoming_champions\": [], \"active_presets\": [], \"candidates\": [{\"ticker\": \"000000\", \"company\": \"검증용 가상기업\", \"signal_id\": \"normal\", \"current_status\": \"WATCH\", \"current_evidence\": [\"3개월 수익률 +4%\"], \"missing\": [], \"observed_window\": {\"price_as_of\": \"2026-09-08\", \"sample_count\": 8, \"window_end_p50\": 0.08, \"window_end_positive_count\": 6, \"window_adverse_excursion_p50\": -0.05, \"validation_status\": \"HISTORICAL_ONLY\", \"costs_included\": false}}], \"snapshot\": {\"selection_date\": \"2026-09-08\", \"generation_id\": \"synthetic-normal\"}}\n\n제공된 승률·평균수익률·연도 표본 수만 사용하고 표본 부족과 특정 연도 쏠림 가능성을 설명하세요. 선취매·매집·주문 지시는 하지 마세요.\n후보의 과거 관찰 수익과 현재 확인 근거를 비교하세요. 수익률은 소수 비율이며 올해 예측수익이 아닙니다. 누락값은 0이나 호재로 취급하지 마세요.\n사용자가 읽는 수익률은 0.08 대신 +8%, -0.12 대신 -12%로 표시하세요. 이미 %가 붙은 현재 근거는 다시 100배 하지 마세요. p50은 중앙값, HISTORICAL_ONLY는 과거 관찰 자료처럼 쉬운 한국어로 풀고 내부 필드명·상태 코드는 출력하지 마세요. signal_id와 generation_id는 식별자일 뿐 상태나 근거로 해석하지 마세요. 자료 지연은 실제 기준일과 누락 항목으로 설명하세요. 첫 결론은 종목의 강점·약점·확인 필요 사항을 말하고 챔피언 목록 유무 같은 메뉴 내부 구성 설명은 생략하세요.\n반드시 JSON 형식으로만 반환하세요: {\"headline\": \"현재 결론 1문장\", \"seasonality_brief\": \"입력 종목명과 실제 수치를 사용한 근거 최대 2문장\", \"key_catalysts\": [\"실제 입력된 캘린더 가설\"], \"sample_caution\": \"가장 중요한 반대 근거 또는 한계 1문장\", \"next_check\": \"어떤 자료를 다음에 확인할지 1문장\"}"
+        }
+      ],
+      "factual_review": "NOT_REVIEWED",
+      "raw_output": "{\"headline\": \"검증용 가상기업은 과거 관찰에서 구간 종료 중앙값 +8%와 8건 중 6건 양수를 보였지만, 올해 확인 근거는 3개월 +4%뿐이라 패턴 지속 여부는 아직 확인할 수 없습니다.\", \"seasonality_brief\": \"검증용 가상기업의 과거 관찰 구간 종료 중앙값은 +8%, 불리한 움직임 중앙값은 -5%이고 가격 기준일은 2026-09-08입니다. 올해 확인된 수치는 3개월 수익률 +4%로 과거 중앙값과 차이가 있으며 비용은 포함되지 않았습니다.\", \"key_catalysts\": [\"입력된 캘린더 가설 없음\"], \"sample_caution\": \"표본이 8건뿐이고 연도별 분포·승률·평균수익률이 제공되지 않아 특정 연도 쏠림 가능성을 배제할 수 없습니다.\", \"next_check\": \"연도별 표본 수와 거래비용을 반영한 구간 종료 수익을 확인해 8건이 특정 해에 치우쳤는지 가리십시오.\"}",
+      "output": {
+        "headline": "검증용 가상기업은 과거 관찰에서 구간 종료 중앙값 +8%와 8건 중 6건 양수를 보였지만, 올해 확인 근거는 3개월 +4%뿐이라 패턴 지속 여부는 아직 확인할 수 없습니다.",
+        "seasonality_brief": "검증용 가상기업의 과거 관찰 구간 종료 중앙값은 +8%, 불리한 움직임 중앙값은 -5%이고 가격 기준일은 2026-09-08입니다. 올해 확인된 수치는 3개월 수익률 +4%로 과거 중앙값과 차이가 있으며 비용은 포함되지 않았습니다.",
+        "key_catalysts": [
+          "입력된 캘린더 가설 없음"
+        ],
+        "sample_caution": "표본이 8건뿐이고 연도별 분포·승률·평균수익률이 제공되지 않아 특정 연도 쏠림 가능성을 배제할 수 없습니다.",
+        "next_check": "연도별 표본 수와 거래비용을 반영한 구간 종료 수익을 확인해 8건이 특정 해에 치우쳤는지 가리십시오."
+      },
+      "status": "SCHEMA_PASS",
+      "seconds": 65.13
+    },
+    {
+      "case": "stale",
+      "input": {
+        "snapshot": {
+          "selection_date": "2026-08-01",
+          "generation_id": "synthetic-stale"
+        },
+        "data": {
+          "current_month": 9,
+          "next_month": 10,
+          "glance_top3": [
+            {
+              "ticker": "000000",
+              "company": "검증용 가상기업",
+              "signal_id": "stale",
+              "current_status": "WATCH",
+              "current_confirmation_evidence": [],
+              "current_confirmation_missing": [
+                "최신 시세 미수집"
+              ],
+              "remaining_peak": {
+                "price_as_of": "2026-08-01",
+                "sample_count": 5,
+                "window_end_p50": 0.06,
+                "window_end_positive_count": 3,
+                "window_adverse_excursion_p50": -0.05,
+                "validation_status": "HISTORICAL_ONLY",
+                "costs_included": false
+              }
+            }
+          ]
+        }
+      },
+      "prompt_version": "seasonality_tier1_v5_plain_language",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a stock market seasonality quant specialist. Output strictly in JSON."
+        },
+        {
+          "role": "user",
+          "content": "당신은 주식시장 계절성 통계 검증 연구원입니다.\n실제 계절성 집계:\n{\"current_month\": 9, \"next_month\": 10, \"current_champions\": [], \"upcoming_champions\": [], \"active_presets\": [], \"candidates\": [{\"ticker\": \"000000\", \"company\": \"검증용 가상기업\", \"signal_id\": \"stale\", \"current_status\": \"WATCH\", \"current_evidence\": [], \"missing\": [\"최신 시세 미수집\"], \"observed_window\": {\"price_as_of\": \"2026-08-01\", \"sample_count\": 5, \"window_end_p50\": 0.06, \"window_end_positive_count\": 3, \"window_adverse_excursion_p50\": -0.05, \"validation_status\": \"HISTORICAL_ONLY\", \"costs_included\": false}}], \"snapshot\": {\"selection_date\": \"2026-08-01\", \"generation_id\": \"synthetic-stale\"}}\n\n제공된 승률·평균수익률·연도 표본 수만 사용하고 표본 부족과 특정 연도 쏠림 가능성을 설명하세요. 선취매·매집·주문 지시는 하지 마세요.\n후보의 과거 관찰 수익과 현재 확인 근거를 비교하세요. 수익률은 소수 비율이며 올해 예측수익이 아닙니다. 누락값은 0이나 호재로 취급하지 마세요.\n사용자가 읽는 수익률은 0.08 대신 +8%, -0.12 대신 -12%로 표시하세요. 이미 %가 붙은 현재 근거는 다시 100배 하지 마세요. p50은 중앙값, HISTORICAL_ONLY는 과거 관찰 자료처럼 쉬운 한국어로 풀고 내부 필드명·상태 코드는 출력하지 마세요. signal_id와 generation_id는 식별자일 뿐 상태나 근거로 해석하지 마세요. 자료 지연은 실제 기준일과 누락 항목으로 설명하세요. 첫 결론은 종목의 강점·약점·확인 필요 사항을 말하고 챔피언 목록 유무 같은 메뉴 내부 구성 설명은 생략하세요.\n반드시 JSON 형식으로만 반환하세요: {\"headline\": \"현재 결론 1문장\", \"seasonality_brief\": \"입력 종목명과 실제 수치를 사용한 근거 최대 2문장\", \"key_catalysts\": [\"실제 입력된 캘린더 가설\"], \"sample_caution\": \"가장 중요한 반대 근거 또는 한계 1문장\", \"next_check\": \"어떤 자료를 다음에 확인할지 1문장\"}"
+        }
+      ],
+      "factual_review": "NOT_REVIEWED",
+      "raw_output": "{\"headline\": \"검증용 가상기업은 과거 관찰에서 창구 종료 중앙값 +6%를 보였지만 표본 5건과 올해 확인 근거·최신 시세 부재로 현재 강약을 확정할 수 없다.\", \"seasonality_brief\": \"검증용 가상기업의 과거 관찰 창구 종료 중앙값은 +6%이고 5개 표본 중 양수는 3건이다. 같은 창구의 불리한 움직임 중앙값은 -5%이며 거래비용은 반영되지 않았고 가격 기준일은 2026-08-01이다.\", \"key_catalysts\": [], \"sample_caution\": \"표본 5건으로는 특정 연도 쏠림을 배제하기 어렵고, 입력된 현재 확인 근거가 없어 과거 수치를 올해 실적으로 해석할 수 없다.\", \"next_check\": \"2026-08-01 이후 최신 시세를 수집해 과거 창구 관찰과 올해 실제 가격 경로가 맞는지 대조해야 한다.\"}",
+      "output": {
+        "headline": "검증용 가상기업은 과거 관찰에서 창구 종료 중앙값 +6%를 보였지만 표본 5건과 올해 확인 근거·최신 시세 부재로 현재 강약을 확정할 수 없다.",
+        "seasonality_brief": "검증용 가상기업의 과거 관찰 창구 종료 중앙값은 +6%이고 5개 표본 중 양수는 3건이다. 같은 창구의 불리한 움직임 중앙값은 -5%이며 거래비용은 반영되지 않았고 가격 기준일은 2026-08-01이다.",
+        "key_catalysts": [],
+        "sample_caution": "표본 5건으로는 특정 연도 쏠림을 배제하기 어렵고, 입력된 현재 확인 근거가 없어 과거 수치를 올해 실적으로 해석할 수 없다.",
+        "next_check": "2026-08-01 이후 최신 시세를 수집해 과거 창구 관찰과 올해 실제 가격 경로가 맞는지 대조해야 한다."
+      },
+      "status": "SCHEMA_PASS",
+      "seconds": 57.95
+    }
+  ],
+  "planned_cases": 2,
+  "unattempted": 0
+}

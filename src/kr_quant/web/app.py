@@ -1996,7 +1996,7 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
-    prompt_version = "seasonality_tier1_v4_validated_card"
+    prompt_version = "seasonality_tier1_v5_plain_language"
     highlights_payload = api_seasonality_highlights_get()
     highlights = highlights_payload.get("data") or {}
     current_rows = highlights.get("current_champions") or []
@@ -2045,6 +2045,10 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
         f"실제 계절성 집계:\n{seasonality_summary}\n\n"
         "제공된 승률·평균수익률·연도 표본 수만 사용하고 표본 부족과 특정 연도 쏠림 가능성을 설명하세요. 선취매·매집·주문 지시는 하지 마세요.\n"
         "후보의 과거 관찰 수익과 현재 확인 근거를 비교하세요. 수익률은 소수 비율이며 올해 예측수익이 아닙니다. 누락값은 0이나 호재로 취급하지 마세요.\n"
+        "사용자가 읽는 수익률은 0.08 대신 +8%, -0.12 대신 -12%로 표시하세요. 이미 %가 붙은 현재 근거는 다시 100배 하지 마세요. "
+        "p50은 중앙값, HISTORICAL_ONLY는 과거 관찰 자료처럼 쉬운 한국어로 풀고 내부 필드명·상태 코드는 출력하지 마세요. "
+        "signal_id와 generation_id는 식별자일 뿐 상태나 근거로 해석하지 마세요. 자료 지연은 실제 기준일과 누락 항목으로 설명하세요. "
+        "첫 결론은 종목의 강점·약점·확인 필요 사항을 말하고 챔피언 목록 유무 같은 메뉴 내부 구성 설명은 생략하세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"현재 결론 1문장\", \"seasonality_brief\": \"입력 종목명과 실제 수치를 사용한 근거 최대 2문장\", \"key_catalysts\": [\"실제 입력된 캘린더 가설\"], \"sample_caution\": \"가장 중요한 반대 근거 또는 한계 1문장\", \"next_check\": \"어떤 자료를 다음에 확인할지 1문장\"}"
     )
     seasonality_context = {

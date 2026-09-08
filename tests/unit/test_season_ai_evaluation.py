@@ -33,3 +33,10 @@ def test_evaluation_wall_clock_timeout(monkeypatch):
     monkeypatch.setitem(bounded.__globals__, 'call_chat', lambda *a, **k: time.sleep(.05))
     with pytest.raises(TimeoutError):
         bounded(None, [], deadline=.001)
+
+
+def test_paid_evaluation_requires_explicit_flag():
+    import pytest
+    namespace = runpy.run_path(str(Path(__file__).parents[2] / 'scripts/evaluate_season_ai.py'))
+    with pytest.raises(RuntimeError, match='allow-paid'):
+        namespace['run']('xai', False)
