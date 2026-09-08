@@ -40,6 +40,8 @@ def toss_reason(row, expected, active, window=1):
         return 'STATUS_UNVERIFIED_OR_INELIGIBLE'
     if day(row.get('to')) != expected:
         return 'FLOW_DATE_MISMATCH'
+    if row.get('source_complete') is False:
+        return 'FLOW_SOURCE_VALUE_MISSING'
     daily = row.get('daily')
     if not isinstance(daily, list) or not daily:
         return 'FLOW_DAILY_MISSING'
@@ -101,6 +103,19 @@ def gate_official_rows(rows, settings, expected=None):
     active = active_tickers(settings, expected)
     final = [r for r in rows if r.get('is_final') is True and day(r.get('trade_date'))
              and day(r['trade_date']) <= expected]
+    # Official event totals are monetary amounts. Never replace absent amounts
+    # with share quantities or zero, or bridge a missing day into a streak.
+    # Exclude the whole affected party series in the supplied history window.
+    invalid_parties = set()
+    occurrences = Counter((r.get('ticker'), r.get('investor_type'), day(r['trade_date'])) for r in final)
+    for row in final:
+        try:
+            valid = not isinstance(row.get('net_value'), bool) and math.isfinite(float(row.get('net_value')))
+        except (TypeError, ValueError):
+            valid = False
+        if not valid or occurrences[(row.get('ticker'), row.get('investor_type'), day(row['trade_date']))] != 1:
+            invalid_parties.add((row.get('ticker'), row.get('investor_type')))
+    final = [r for r in final if (r.get('ticker'), r.get('investor_type')) not in invalid_parties]
     # Both parties must have today's confirmed observation, not just any row.
     current = {r['ticker'] for r in final if day(r['trade_date']) == expected
                and r.get('investor_type') == 'FOREIGN'} & {

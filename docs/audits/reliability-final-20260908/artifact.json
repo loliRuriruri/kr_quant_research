@@ -1,0 +1,140 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "title": "KR Quant 신뢰성 검증과 남은 과제",
+    "sources": [
+      {
+        "id": "integration",
+        "label": "로컬 메뉴 통합 감사",
+        "path": "output/item2-integration-audit.json"
+      },
+      {
+        "id": "pit",
+        "label": "과거 입력 파일 감사",
+        "path": "output/audit/pit-final-20260908.json"
+      },
+      {
+        "id": "fixed",
+        "label": "수급 경계값 재현·수정 후",
+        "path": "output/audit/flow-edge-cases-fixed-20260908.json"
+      },
+      {
+        "id": "report",
+        "label": "상세 작업 및 검증 기록",
+        "path": "docs/RELIABILITY_REMAINING_AND_VERIFICATION_2026_09_08.md"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# KR Quant 신뢰성 검증과 남은 과제"
+      },
+      {
+        "id": "summary",
+        "type": "markdown",
+        "body": "## Executive Summary\n\n**현재 자료로 가능한 재검증과 추가 수급 오류 보완을 수행했습니다.** 원본 누락값을 0으로 해석하는 경로, 원화 금액과 주식 수량을 섞는 경로, 상세 누적 주체가 바뀌는 경로를 보완했습니다.\n\n**전체 전략의 수익성 인증은 아직 불가능합니다.** 공식 기업행위·상폐 정산과 당시 입력 원본을 확보한 뒤 운영 선정기 그대로 과거 성과를 다시 검증해야 합니다.\n\n**남은 우선순위는 데이터입니다.** 최신 수급 수집 → 과거 원본 확보 → 실제 선정기 검증 → 공개판 반영 순서로 진행합니다."
+      },
+      {
+        "id": "verified",
+        "type": "markdown",
+        "sourceId": "report",
+        "body": "## 코드 검증과 투자 성과 검증은 다릅니다\n\n확대 회귀검사 326개, 마지막 보완 후 관련 검사 28개, 웹 스모크 4개가 통과했습니다. 서로 중복된 검사를 합쳐 총 검사 수로 표시하지 않습니다. 전체 저장소 테스트나 전 메뉴 브라우저 성능 측정을 완료했다는 뜻은 아닙니다.\n\n실제 메뉴 연동 검사는 11개 통과했습니다. 후보 순위·상세 수치·기준일 일치는 확인했지만 미래 수익률을 보증하지 않습니다."
+      },
+      {
+        "id": "flowtext",
+        "type": "markdown",
+        "sourceId": "integration",
+        "body": "## 오래된 수급을 현재 후보로 보여주지 않습니다\n\n9월 8일 오전 기대 확정 종가일은 9월 7일이며 시세와 점수가 일치합니다. 선취매 282후보의 거래상태·가격·거래량과 TOP3/상세 일치도 확인했습니다.\n\n아래 비율은 **각 공급자의 저장 종목 중 현재 검사에 통과한 종목 비율**입니다. 토스 0/160, 공식 KIS 46/102입니다. 모집단과 제공 범위가 달라 공급자 품질 순위나 전 시장 커버리지로 비교하면 안 됩니다. 토스는 최신 수집이 남아 있습니다."
+      },
+      {
+        "id": "flowchart",
+        "type": "chart",
+        "chartId": "flow"
+      },
+      {
+        "id": "edges",
+        "type": "markdown",
+        "sourceId": "fixed",
+        "body": "## 비어 있는 수급값을 0으로 판단하지 않도록 보완했습니다\n\n공식 수급 저장본 10,383행 중 순매수 금액·수량이 모두 없는 행은 156행입니다. 원본을 삭제하거나 채운 것이 아니라 현재 신호에 쓰지 않도록 차단했습니다.\n\n합성 재현에서 값 없는 공식 행과 필수 외국인 원본 없는 토스 후보는 수정 후 모두 제외됐습니다. 금액·수량 혼용 입력도 누적하지 않습니다. 실제 저장본에서 단위가 혼용된 시계열은 0개였으므로 이번 재현을 실제 투자 피해 증거로 해석하지 않습니다."
+      },
+      {
+        "id": "history",
+        "type": "markdown",
+        "sourceId": "pit",
+        "body": "## 긴 가격 이력만으로 과거 선정을 복원할 수 없습니다\n\n가격은 6,109,721행·2,508관측일이지만 거래상태는 6기준일, 과거 점수는 14기준일, 현재 유니버스는 1기준일뿐입니다. 공식 기업행위 파일은 없습니다.\n\n확인된 7개 파일의 지정 후보키 중복·키 결측은 0행이고 읽기 전후 해시는 일치했습니다. 이것은 파일 무결성 점검이지 당시 이용 가능성·상폐 포함 완전성의 인증이 아닙니다."
+      },
+      {
+        "id": "next",
+        "type": "markdown",
+        "body": "## 남은 과제는 원천 확보부터 순서대로 진행해야 합니다\n\n1. **최신 수급:** 실제 공급자 원본을 재수집하고 날짜·필수 필드·기간과 일별 값 일치를 확인합니다. 완비 표식 없는 옛 캐시는 재생성해야 합니다.\n2. **기업행위·역사 원본:** 분할·배당·권리락·합병·감자·상폐 정산과 당시 편입·거래상태, 최초/정정 공시·이벤트·수급 버전을 확보합니다.\n3. **실제 전략 검증:** 운영과 같은 선정 규칙에 시점을 주입하고 미래 데이터 불변성, 미사용 기간, 거래비용·체결 제한·벤치마크·반복 탐색 편향을 검증합니다.\n4. **공개판 검증:** 릴리스 push·공개 빌드 및 보안 검사, 누락 자료와 기준일 만료·메뉴 일치를 확인합니다. 이번 작업에서는 push·배포를 실행하지 않았습니다."
+      },
+      {
+        "id": "questions",
+        "type": "markdown",
+        "body": "## 아직 확인해야 할 질문\n\n상장폐지 종목까지 포함한 당시 원본을 어디까지 확보할 수 있는가? 정정 전 공시와 이벤트 지식의 공개시각을 복원할 수 있는가? 불가능한 과거 기간은 미검증으로 남기고 지금부터 고정 모델의 실제 관측을 축적할 것인가?\n\n기존 외부 API에 직접 의존하는 테스트의 격리, 사모·기금 등 선택 필드의 누락/0 구분, 공개 정적판의 날짜 경계 동작도 잔여 과제입니다."
+      },
+      {
+        "id": "limits",
+        "type": "markdown",
+        "body": "## 적용 범위와 해석 한계\n\n로컬 서버에는 패치를 적용했습니다. 원천 수집·API 토큰 갱신·공개 배포는 실행하지 않았습니다. 기존 포트폴리오와 원본 이력은 보존했습니다.\n\n소표본의 과거 상승률이나 참고 통계값은 다음 거래의 성공확률이 아닙니다. 코드·데이터 계약 검증이 통과해도 전체 전략 성과 검증을 완료로 표시하지 않습니다."
+      }
+    ],
+    "charts": [
+      {
+        "id": "flow",
+        "type": "bar",
+        "title": "저장 종목 중 현재 수급 후보 비율 (%)",
+        "description": "2026년 9월 7일 확정 종가 기준 · 공급자별 저장 범위가 분모",
+        "showDescription": true,
+        "dataset": "flow",
+        "sourceId": "integration",
+        "source": {
+          "label": "로컬 수급 적격 감사",
+          "path": "output/item2-integration-audit.json",
+          "query": {
+            "engine": "SQLite",
+            "language": "sql",
+            "sql": "SELECT provider, 100.0 * current / stored AS valid_percent, current, stored, stored-current AS excluded, expected_date FROM stored_flow_coverage ORDER BY current ASC",
+            "tables_used": ["stored_flow_coverage"],
+            "description": "In-memory projection of recorded menu audit provider current/stored counts; executed in companion audit.ipynb. Not market-wide coverage."
+          }
+        },
+        "encodings": {
+          "x": {
+            "field": "provider"
+          },
+          "y": {
+            "field": "valid_percent"
+          }
+        }
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "status": "ready",
+    "datasets": {
+      "flow": [
+        {
+          "provider": "토스",
+          "valid_percent": 0,
+          "current": 0,
+          "stored": 160,
+          "excluded": 160,
+          "expected_date": "2026-09-07"
+        },
+        {
+          "provider": "공식 KIS",
+          "valid_percent": 45.09803921568628,
+          "current": 46,
+          "stored": 102,
+          "excluded": 56,
+          "expected_date": "2026-09-07"
+        }
+      ]
+    }
+  },
+  "sources": []
+}

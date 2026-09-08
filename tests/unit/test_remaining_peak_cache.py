@@ -4,7 +4,8 @@ from kr_quant.strategy import seasonality as module
 
 
 def test_disk_peak_cache_survives_restart_and_invalidates_sources(tmp_path, monkeypatch):
-    s = SimpleNamespace(root=tmp_path, staged_dir=tmp_path/'data/staged', output_dir=tmp_path/'data/output')
+    s = SimpleNamespace(root=tmp_path, staged_dir=tmp_path/'data/staged', output_dir=tmp_path/'data/output',
+                        status_csv=tmp_path/'data/raw/status/krx_status.csv')
     price = s.staged_dir/'live/prices.parquet'
     price.parent.mkdir(parents=True)
     price.write_bytes(b'input signature only')
@@ -42,3 +43,7 @@ def test_disk_peak_cache_survives_restart_and_invalidates_sources(tmp_path, monk
     module._REMAINING_PEAK_CACHE.update(signature=None, values={})
     module._enrich_remaining_peak_rows(s, rows, lookback_years=5)
     assert len(calls) == 5
+    s.status_csv.parent.mkdir(parents=True)
+    s.status_csv.write_text('ticker,as_of_date,status\n005930,2026-09-07,SUSPENDED\n', encoding='utf-8')
+    module._enrich_remaining_peak_rows(s, rows, lookback_years=5)
+    assert len(calls) == 6  # A changed trading status must invalidate cached upside.

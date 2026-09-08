@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from typing import Any
+import math
 
 
 def _i(value: Any) -> int:
     try:
         return int(float(str(value).replace(",", "")))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 
@@ -56,6 +57,18 @@ def _party_net(row: dict[str, Any], *keys: str) -> int:
 
 def summarize_records(records: list[dict[str, Any]], days: int = 5) -> dict[str, Any]:
     rows = [r for r in records if isinstance(r, dict)][: max(1, days)]
+    # Retain proof of missing source fields before legacy display conversion
+    # turns them into zero. Zero is valid only if explicitly supplied.
+    source_complete = bool(rows)
+    for row in rows:
+        for party in ('foreigner', 'institution'):
+            block = row.get(party)
+            value = block.get('netBuyVolume') if isinstance(block, dict) else None
+            try:
+                valid = not isinstance(value, bool) and math.isfinite(float(str(value).replace(',', '')))
+            except (TypeError, ValueError):
+                valid = False
+            source_complete = source_complete and valid
     foreign = _sum_net(rows, "foreigner")
     institution = _sum_net(rows, "institution")
     individual = _sum_net(rows, "individual")
@@ -126,6 +139,7 @@ def summarize_records(records: list[dict[str, Any]], days: int = 5) -> dict[str,
     turn_dual = direction_turn(dual_day, min_days=5)
     return {
         "days": len(rows),
+        "source_complete": source_complete,
         "from": first,
         "to": last,
         "foreign_net": foreign,

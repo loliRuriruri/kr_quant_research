@@ -198,15 +198,22 @@ def ticker_payload(settings: Settings, ticker: str) -> dict[str, Any]:
     finally:
         con.close()
     code = "".join(ch for ch in str(ticker) if ch.isdigit()).zfill(6)
-    chart = daily_chart(rows, max_days=90)
-    inst = []
-    for point in reversed(chart):
-        val = point.get("FUND")
-        if val is None:
-            val = point.get("INSTITUTION_TOTAL")
-        inst.append(float(val or 0))
-    inst_newest = inst
-    current = bool(gate_official_rows(rows, settings))
+    import math
+    # Raw rows remain available for audit; chart amounts must never use qty.
+    monetary_history = []
+    for row in rows:
+        try:
+            if not isinstance(row.get('net_value'), bool) and math.isfinite(float(row.get('net_value'))):
+                monetary_history.append(row)
+        except (TypeError, ValueError):
+            pass
+    chart = daily_chart(monetary_history, max_days=90)
+    current_rows = gate_official_rows(rows, settings)
+    party = 'FUND' if any(r.get('investor_type') == 'FUND' for r in current_rows) else 'INSTITUTION_TOTAL'
+    current_series = sorted((r for r in current_rows if r.get('investor_type') == party),
+                            key=lambda r: str(r['trade_date']), reverse=True)
+    inst_newest = [float(r['net_value']) for r in current_series[:90]]
+    current = bool(current_rows)
     return {
         "used_in_quant": False,
         "ticker": code,
@@ -215,6 +222,8 @@ def ticker_payload(settings: Settings, ticker: str) -> dict[str, Any]:
         "chart": chart,
         "windows": window_sums(inst_newest) if current else {},
         "current_eligible": current,
+        "unit": "KRW",
+        "window_party": party if current else None,
         "history_as_of": chart[-1]['date'] if chart else None,
         "disclaimer": "저장된 확정 수급 이력입니다. 현재 기준일·거래상태 미확인 시 현재 누적 신호는 표시하지 않습니다.",
     }

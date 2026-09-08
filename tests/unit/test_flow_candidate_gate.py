@@ -60,12 +60,37 @@ def test_current_candidates_pass_and_status_change_invalidates_immediately(setti
 
 
 def test_official_requires_current_both_parties_and_drops_old_fund(settings):
-    rows = [dict(ticker='005930', trade_date='2026-09-07', investor_type=kind, is_final=True)
+    rows = [dict(ticker='005930', trade_date='2026-09-07', investor_type=kind, is_final=True, net_value=10)
             for kind in ['FOREIGN', 'INSTITUTION_TOTAL']]
     old = dict(ticker='005930', trade_date='2026-09-04', investor_type='FUND', is_final=True)
     assert gate.gate_official_rows(rows + [old], settings) == rows
     assert gate.gate_official_rows([rows[0], old], settings) == []
     assert gate.gate_official_rows([{**r, 'is_final': False} for r in rows], settings) == []
+
+
+@pytest.mark.parametrize('bad_value', [None, '', float('nan'), float('inf'), True])
+def test_official_missing_amount_never_falls_back_to_quantity(settings, bad_value):
+    rows = [dict(ticker='005930', trade_date='2026-09-07', investor_type=kind,
+                 is_final=True, net_value=10, net_qty=1)
+            for kind in ['FOREIGN', 'INSTITUTION_TOTAL']]
+    rows.append({**rows[0], 'trade_date':'2026-09-04', 'net_value':bad_value})
+    assert gate.gate_official_rows(rows, settings) == []
+
+
+def test_official_duplicate_day_cannot_double_totals(settings):
+    rows = [dict(ticker='005930', trade_date='2026-09-07', investor_type=kind,
+                 is_final=True, net_value=10) for kind in ['FOREIGN', 'INSTITUTION_TOTAL']]
+    assert gate.gate_official_rows(rows + [rows[0]], settings) == []
+
+
+def test_toss_source_missing_is_distinct_from_explicit_zero(settings):
+    from kr_quant.flow.investor import summarize_records
+    raw = dict(date='2026-09-07', institution={'netBuyVolume': 10})
+    summary = dict(ticker='005930', **summarize_records([raw], 1))
+    assert gate.gate_toss_payload(dict(rows=[summary], days=1), settings)['rows'] == []
+    raw['foreigner'] = {'netBuyVolume': 0}
+    summary = dict(ticker='005930', **summarize_records([raw], 1))
+    assert len(gate.gate_toss_payload(dict(rows=[summary], days=1), settings)['rows']) == 1
 
 
 def test_calendar_and_screener_share_gate(settings):
@@ -98,3 +123,22 @@ def test_duplicate_candidates_fail_closed_and_groups_use_canonical_row(settings)
     assert gate.gate_toss_payload(dict(rows=[row(), row()]), settings)['rows'] == []
     result = gate.gate_toss_payload(dict(rows=[row()], dual=[{**row(), 'foreign_net':999}]), settings)
     assert result['rows'][0] == result['dual'][0]
+
+
+def test_ticker_windows_use_filtered_single_party_amounts(settings, monkeypatch):
+    from types import SimpleNamespace
+    from kr_quant.flow import official
+    rows = [dict(ticker='005930', trade_date=day, investor_type=kind,
+                 is_final=True, net_value=amount)
+            for day, amount in [('2026-09-07', 20), ('2026-09-04', 10)]
+            for kind in ['FOREIGN', 'INSTITUTION_TOTAL']]
+    rows += [dict(ticker='005930', trade_date='2026-09-07', investor_type='FUND',
+                  is_final=True, net_value=None, net_qty=999999)]
+    monkeypatch.setattr(official, 'open_settings', lambda s: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(official, 'load_ticker', lambda *a: rows)
+    result = official.ticker_payload(settings, '005930')
+    assert result['rows'] == rows  # Original history is not deleted.
+    assert result['windows']['w5'] == 30
+    assert result['window_party'] == 'INSTITUTION_TOTAL'
+    assert result['unit'] == 'KRW'
+    assert all('FUND' not in point for point in result['chart'])
