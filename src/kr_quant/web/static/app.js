@@ -4959,13 +4959,16 @@ async function loadSeasonalityTier1Briefing() {
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">📅</span>
-              <span style="font-size:13px; font-weight:800; color:#38bdf8;">30개년 빅데이터 시즌 모멘텀 AI 브리핑</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">시즌 후보 분석 · 제공된 표본 기준</span>
               <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
             </div>
             <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
           </div>
-          <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
-          <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.seasonality_brief || "")}</p>
+          <b style="font-size:14px; color:#f8fafc;">결론 · ${escapeHtml(res.headline)}</b>
+          <p style="margin:0; font-size:13px; color:#cbd5e1; line-height:1.6;"><b>근거 · </b>${escapeHtml(res.seasonality_brief || "분석 근거가 제공되지 않았습니다.")}</p>
+          <p style="margin:0;font-size:13px;color:#fbbf24;line-height:1.6;"><b>주의점 · </b>${escapeHtml(res.sample_caution || "검증 한계는 원본 통계에서 확인하세요.")}</p>
+          <p style="margin:0;font-size:13px;color:#7dd3fc;line-height:1.6;"><b>다음 확인 · </b>${escapeHtml(res.next_check || "이전 형식의 분석입니다. 원본의 현재 근거와 기준일을 확인하세요.")}</p>
+          <details><summary>캘린더 가설 자세히</summary>
           ${(res.key_catalysts || []).length ? `
             <div style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; margin-top:4px;">
               <span class="chip" style="font-size:11px; font-weight:700; color:#38bdf8; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.25); padding:2px 8px; border-radius:6px; white-space:nowrap; flex-shrink:0;">📌 주요 캘린더 이벤트</span>
@@ -4973,7 +4976,7 @@ async function loadSeasonalityTier1Briefing() {
                 ${res.key_catalysts.map(c => `<span class="chip" style="font-size:11px; padding:2px 8px; background:rgba(30,41,59,0.85); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1);">${escapeHtml(c)}</span>`).join("")}
               </div>
             </div>` : ""}
-          ${res.sample_caution ? `<div style="font-size:11.5px; color:#fbbf24; background:rgba(245,158,11,0.08); border-left:3px solid #f59e0b; padding:5px 9px; border-radius:4px;">⚠️ <b>표본·재현성:</b> ${escapeHtml(res.sample_caution)}</div>` : ""}
+          </details>
         </div>
       `;
     }

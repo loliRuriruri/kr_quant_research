@@ -1995,13 +1995,26 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
-    prompt_version = "seasonality_tier1_v2"
+    prompt_version = "seasonality_tier1_v3_decision_card"
     highlights_payload = api_seasonality_highlights_get()
     highlights = highlights_payload.get("data") or {}
     current_rows = highlights.get("current_champions") or []
     upcoming_rows = highlights.get("upcoming_champions") or []
     active_presets = highlights.get("active_presets") or []
-    evidence_count = len(current_rows) + len(upcoming_rows) + len(active_presets)
+    candidates = []
+    for row in (highlights.get("glance_top3") or [])[:3]:
+        rem = row.get("remaining_peak") or {}
+        candidates.append({
+            "ticker": row.get("ticker"), "company": row.get("company"),
+            "signal_id": row.get("signal_id"), "current_status": row.get("current_status"),
+            "current_evidence": row.get("current_confirmation_evidence") or [],
+            "missing": row.get("current_confirmation_missing") or [],
+            "observed_window": {key: rem.get(key) for key in (
+                "price_as_of", "sample_count", "window_end_p50", "window_end_positive_count",
+                "window_adverse_excursion_p50", "validation_status", "costs_included")},
+        })
+    snapshot = highlights_payload.get("snapshot") or {}
+    evidence_count = len(current_rows) + len(upcoming_rows) + len(active_presets) + len(candidates)
     if evidence_count <= 0:
         return tier1_unavailable(
             endpoint,
@@ -2019,6 +2032,8 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
             "current_champions": current_rows,
             "upcoming_champions": upcoming_rows,
             "active_presets": active_presets,
+            "candidates": candidates,
+            "snapshot": snapshot,
         },
         ensure_ascii=False,
         default=str,
@@ -2028,7 +2043,8 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
         "당신은 주식시장 계절성 통계 검증 연구원입니다.\n"
         f"실제 계절성 집계:\n{seasonality_summary}\n\n"
         "제공된 승률·평균수익률·연도 표본 수만 사용하고 표본 부족과 특정 연도 쏠림 가능성을 설명하세요. 선취매·매집·주문 지시는 하지 마세요.\n"
-        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 계절성 통계 헤드라인\", \"seasonality_brief\": \"당월 및 익월 통계 해설 2줄\", \"key_catalysts\": [\"실제 활성 이벤트\"], \"sample_caution\": \"표본과 재현성 주의점\"}"
+        "후보의 과거 관찰 수익과 현재 확인 근거를 비교하세요. 수익률은 소수 비율이며 올해 예측수익이 아닙니다. 누락값은 0이나 호재로 취급하지 마세요.\n"
+        "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"현재 결론 1문장\", \"seasonality_brief\": \"입력 종목명과 실제 수치를 사용한 근거 최대 2문장\", \"key_catalysts\": [\"실제 입력된 캘린더 가설\"], \"sample_caution\": \"가장 중요한 반대 근거 또는 한계 1문장\", \"next_check\": \"어떤 자료를 다음에 확인할지 1문장\"}"
     )
     seasonality_context = {
         "current_month": highlights.get("current_month"),
@@ -2036,6 +2052,8 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
         "current_champions": current_rows,
         "upcoming_champions": upcoming_rows,
         "active_presets": active_presets,
+        "candidates": candidates,
+        "snapshot": snapshot,
     }
     return tier1_cached_chat_json(
         s.root,
@@ -2048,6 +2066,8 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
             {"role": "user", "content": prompt},
         ],
         sources=["seasonality_highlights"],
+        as_of=snapshot.get("selection_date"),
+        missing=[f"{row.get('ticker')}: {item}" for row in candidates for item in row["missing"]],
         evidence_count=evidence_count,
     )
 
