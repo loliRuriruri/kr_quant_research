@@ -1,6 +1,8 @@
 """Bounded free-route evaluation using the production season prompt; no production cache writes."""
 import json
 import time
+import queue
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -31,6 +33,38 @@ def cases():
                     'validation_status': 'HISTORICAL_ONLY', 'costs_included': False}}]}}
 
 
+def safe_error_category(exc):
+    """Classify errors without retaining arbitrary provider text or credentials."""
+    text = str(exc).lower()
+    if 'overloaded' in text or '502' in text or '503' in text:
+        return 'PROVIDER_UNAVAILABLE'
+    if '429' in text or 'rate limit' in text:
+        return 'RATE_LIMIT'
+    if '401' in text or '403' in text:
+        return 'AUTHORIZATION'
+    if 'timeout' in type(exc).__name__.lower() or 'timed out' in text:
+        return 'TIMEOUT'
+    return 'OTHER_ERROR'
+
+
+def bounded_call(endpoint, messages, deadline=60):
+    """CLI-only wall-clock bound; daemon ends when this evaluator exits."""
+    result = queue.Queue(maxsize=1)
+    def worker():
+        try:
+            result.put((True, call_chat(endpoint, messages, timeout=20)))
+        except Exception as exc:
+            result.put((False, exc))
+    threading.Thread(target=worker, daemon=True).start()
+    try:
+        ok, value = result.get(timeout=deadline)
+    except queue.Empty:
+        raise TimeoutError('Evaluation wall-clock deadline exceeded') from None
+    if not ok:
+        raise value
+    return value
+
+
 def run():
     endpoint = resolve_tier1_endpoint(load_settings())
     if endpoint.provider != 'openrouter' or not endpoint.model.endswith(':free'):
@@ -44,8 +78,8 @@ def run():
                   'messages': request['messages'], 'factual_review': 'NOT_REVIEWED'}
         start = time.perf_counter()
         try:
-            raw, _ = call_chat(endpoint, [{'role': 'system', 'content': ANALYSIS_GUIDANCE},
-                *request['messages']], timeout=20)
+            raw, _ = bounded_call(endpoint, [{'role': 'system', 'content': ANALYSIS_GUIDANCE},
+                *request['messages']])
             record['raw_output'] = raw
             record['output'] = _extract_json(raw)
             validate_season_card(record['output'])
@@ -54,6 +88,7 @@ def run():
             record['status'] = 'FAILED'
             # Never persist credentials, request headers or arbitrary provider error bodies.
             record['error_type'] = type(exc).__name__
+            record['error_category'] = safe_error_category(exc)
         record['seconds'] = round(time.perf_counter()-start, 2)
         records.append(record)
         print(name, record['status'], record['seconds'], flush=True)

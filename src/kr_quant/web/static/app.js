@@ -4954,6 +4954,14 @@ async function loadUs13fTier1Briefing() {
 async function loadSeasonalityTier1Briefing() {
   const container = $("#seasonality-tier1-briefing");
   if (!container) return;
+  // Re-entering this menu must not start another identical expensive request.
+  if (container._tier1Pending) return;
+  container._tier1Pending = true;
+  const wasEmpty = !container.innerHTML.trim();
+  if (wasEmpty) container.innerHTML = '<p class="hint" role="status">무료 AI 분석 요청 중 · 아래 원본 통계는 먼저 확인할 수 있습니다.</p>';
+  const slowNotice = setTimeout(() => {
+    if (wasEmpty) container.innerHTML = '<p class="hint" role="status">무료 AI 응답이 지연되고 있습니다. 원본 통계는 그대로 사용하세요. 자동 유료 전환은 없습니다.</p>';
+  }, 8000);
   try {
     const res = await api("/api/seasonality/tier1-briefing");
     if (!renderTier1Unavailable(container, res)) return;
@@ -4986,6 +4994,7 @@ async function loadSeasonalityTier1Briefing() {
     }
     appendTier1Meta(container, res);
   } catch (e) { renderTier1Unavailable(container, null, e); }
+  finally { clearTimeout(slowNotice); container._tier1Pending = false; }
 }
 
 async function loadTradeTier1Briefing() {
