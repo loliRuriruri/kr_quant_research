@@ -94,6 +94,39 @@ def test_stock_insights_without_evidence_do_not_invent_catalysts(tmp_path, monke
     assert "quant_score" not in result
 
 
+def test_stock_insights_use_flash_when_free_hop_fails(tmp_path, monkeypatch):
+    from kr_quant.research.analyze import get_tier1_insights
+
+    free = SimpleNamespace(provider="openrouter", model="nvidia/nemotron-3-ultra-550b-a55b:free", label="Nemotron", configured=True)
+    flash = SimpleNamespace(provider="openrouter", model="deepseek/deepseek-v4-flash-0731", label="Flash", configured=True)
+    monkeypatch.setattr("kr_quant.research.providers.resolve_tier1_endpoint", lambda _s: free)
+    monkeypatch.setattr("kr_quant.research.providers.resolve_tier1_routine_paid_endpoint", lambda _s: flash)
+    calls = []
+
+    def chat(endpoint, *_args, **_kwargs):
+        calls.append(endpoint.model)
+        if str(endpoint.model).endswith(":free"):
+            raise TimeoutError("free hang")
+        return json.dumps({
+            "news_analysis": {"summary": "제목만 확인", "sentiment": "근거 부족", "key_driver": "공시"},
+            "events_analysis": {"commentary": "공시 제목", "risk_level": "판단 불가", "key_point": "확인"},
+            "tech_flow_analysis": {"action_guide": "지표 확인", "posture": "근거 부족", "timing_tip": "원본"},
+        }, ensure_ascii=False), {}
+
+    monkeypatch.setattr("kr_quant.research.analyze.call_chat", chat)
+    result = get_tier1_insights(
+        "005930", "삼성전자",
+        news=[{"title": "실적", "source": "n", "snippet": "s"}],
+        events=[{"title": "공시", "date": "2026-09-08"}],
+        tech={"rsi": 50}, flow={"inst": 1},
+        settings=SimpleNamespace(root=tmp_path, openrouter_api_key="test-key"),
+    )
+    assert calls == [free.model, flash.model]
+    assert result["ai_generated"] is True
+    assert result["model"] == flash.model
+    assert result["used_in_quant"] is False
+
+
 def test_tier1_cached_chat_reuses_only_successful_generation(tmp_path, monkeypatch):
     endpoint = SimpleNamespace(provider="OPENROUTER", model="free-model")
     calls = {"count": 0}

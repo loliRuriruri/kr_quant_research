@@ -223,18 +223,34 @@ def tier1_cached_chat_json(
     payload_validator: Callable[[dict[str, Any]], None] | None = None,
     fallback_endpoint: Any = None,
     wall_timeout: float | None = None,
+    allow_fallback: bool = True,
+    routine_endpoint: Any = None,
+    analysis_pro_endpoint: Any = None,
 ) -> dict[str, Any]:
     """Generate a JSON briefing once per exact source snapshot.
 
     Only successful AI generations are persisted. A provider failure is returned
     as UNAVAILABLE so a later request can retry instead of replaying a failure.
     """
-    if fallback_endpoint is not None:
-        from kr_quant.research.approved_season_ai import approved_briefing
-        return approved_briefing(cache_root, endpoint, fallback_endpoint,
-            namespace=namespace, prompt_version=prompt_version, evidence=evidence,
-            messages=messages, as_of=as_of, sources=sources, evidence_count=evidence_count,
-            missing=missing, payload_prefix=payload_prefix, payload_validator=payload_validator)
+    if allow_fallback:
+        from kr_quant.research.approved_season_ai import policy
+        cfg = policy(cache_root)
+        if fallback_endpoint is None and cfg.get("grok_fallback_enabled") is True:
+            try:
+                from kr_quant.research.providers import resolve_provider
+                from kr_quant.settings import load_settings
+                candidate = resolve_provider(load_settings(), "xai")
+                if getattr(candidate, "configured", False) and getattr(candidate, "provider", "") == "xai":
+                    fallback_endpoint = candidate
+            except Exception:  # noqa: BLE001
+                fallback_endpoint = None
+        if fallback_endpoint is not None or cfg.get("routine_paid_enabled") is True:
+            from kr_quant.research.approved_season_ai import approved_briefing
+            return approved_briefing(cache_root, endpoint, fallback_endpoint,
+                namespace=namespace, prompt_version=prompt_version, evidence=evidence,
+                messages=messages, as_of=as_of, sources=sources, evidence_count=evidence_count,
+                missing=missing, payload_prefix=payload_prefix, payload_validator=payload_validator,
+                routine_endpoint=routine_endpoint, analysis_pro_endpoint=analysis_pro_endpoint)
     identity = tier1_cache_identity(
         endpoint,
         namespace=namespace,

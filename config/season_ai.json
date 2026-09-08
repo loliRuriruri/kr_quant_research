@@ -1,6 +1,8 @@
 {
   "grok_fallback_enabled": true,
-  "daily_attempt_limit": 6,
-  "failure_cooldown_seconds": 300,
-  "approved_scope": "seasonality briefing only; user approval 2026-09-08"
+  "routine_paid_enabled": true,
+  "analysis_pro_enabled": true,
+  "daily_attempt_limit": 24,
+  "failure_cooldown_seconds": 90,
+  "approved_scope": "all menu Tier1 briefings; Nemotron free then OpenRouter Flash; analysis Grok then DeepSeek Pro; user approval 2026-09-08"
 }

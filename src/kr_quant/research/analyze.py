@@ -288,8 +288,8 @@ def get_tier1_insights(
     settings: Any = None,
     force: bool = False,
 ) -> dict[str, Any]:
-    """Tier 1 automated free analysis using nvidia/nemotron-3-ultra-550b-a55b:free with caching."""
-    from kr_quant.research.providers import resolve_tier1_endpoint
+    """Stock-click briefing: Nemotron :free first, then OpenRouter Flash if the free hop fails."""
+    from kr_quant.research.providers import resolve_tier1_endpoint, resolve_tier1_routine_paid_endpoint
 
     code = str(ticker).zfill(6)
     today = datetime.now().strftime("%Y-%m-%d")
@@ -298,6 +298,17 @@ def get_tier1_insights(
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     endpoint = resolve_tier1_endpoint(settings)
+    insight_hops = [endpoint]
+    try:
+        flash = resolve_tier1_routine_paid_endpoint(settings)
+        if (
+            getattr(flash, "configured", False)
+            and getattr(flash, "provider", "") != "tier1_unavailable"
+            and getattr(flash, "model", None) != getattr(endpoint, "model", None)
+        ):
+            insight_hops.append(flash)
+    except Exception:
+        pass
     model_id = str(getattr(endpoint, "model", "") or "")
     provider_id = str(getattr(endpoint, "provider", "") or "")
     configured_label = str(getattr(endpoint, "label", "") or "")
@@ -437,28 +448,45 @@ def get_tier1_insights(
     status = "DETERMINISTIC_FALLBACK"
     ai_generated = False
     error_code: str | None = None
+    used_endpoint = endpoint
 
-    try:
-        raw_text, _ = call_chat(
-            endpoint,
-            [{"role": "system", "content": "You are a professional Korean equity research analyst. Output strictly in valid JSON."},
-             {"role": "user", "content": combined_prompt}],
-            timeout=18,
-            json_mode=True,
-        )
-        parsed = _extract_json(raw_text)
-        if isinstance(parsed, dict):
-            if "news_analysis" in parsed and isinstance(parsed["news_analysis"], dict):
-                news_analysis = parsed["news_analysis"]
-            if "events_analysis" in parsed and isinstance(parsed["events_analysis"], dict):
-                events_analysis = parsed["events_analysis"]
-            if "tech_flow_analysis" in parsed and isinstance(parsed["tech_flow_analysis"], dict):
-                tech_flow_analysis = parsed["tech_flow_analysis"]
-            status = "GENERATED"
-            ai_generated = True
-    except Exception as exc:
-        error_code = "TIER1_GENERATION_FAILED"
-        print(f"Tier 1 insight unavailable: {exc}")
+    for hop in insight_hops:
+        if not getattr(hop, "configured", False) or getattr(hop, "provider", "") == "tier1_unavailable":
+            continue
+        try:
+            hop_timeout = 12 if str(getattr(hop, "model", "")).endswith(":free") else 22
+            raw_text, _ = call_chat(
+                hop,
+                [{"role": "system", "content": "You are a professional Korean equity research analyst. Output strictly in valid JSON."},
+                 {"role": "user", "content": combined_prompt}],
+                timeout=hop_timeout,
+                json_mode=True,
+            )
+            parsed = _extract_json(raw_text)
+            if isinstance(parsed, dict):
+                if "news_analysis" in parsed and isinstance(parsed["news_analysis"], dict):
+                    news_analysis = parsed["news_analysis"]
+                if "events_analysis" in parsed and isinstance(parsed["events_analysis"], dict):
+                    events_analysis = parsed["events_analysis"]
+                if "tech_flow_analysis" in parsed and isinstance(parsed["tech_flow_analysis"], dict):
+                    tech_flow_analysis = parsed["tech_flow_analysis"]
+                status = "GENERATED"
+                ai_generated = True
+                used_endpoint = hop
+                error_code = None
+                break
+        except Exception as exc:
+            error_code = "TIER1_GENERATION_FAILED"
+            print(f"Tier 1 insight unavailable ({getattr(hop, 'model', '')}): {exc}")
+
+    endpoint = used_endpoint
+    model_id = str(getattr(endpoint, "model", "") or "")
+    provider_id = str(getattr(endpoint, "provider", "") or "")
+    configured_label = str(getattr(endpoint, "label", "") or "")
+    if ":free" in model_id.lower():
+        tier_label = f"{configured_label or model_id} · 설정 모델 {model_id}"
+    else:
+        tier_label = configured_label or f"{provider_id} {model_id}".strip() or "설정된 설명 모델"
 
     result = {
         "ticker": code,

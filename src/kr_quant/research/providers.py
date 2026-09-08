@@ -310,27 +310,58 @@ def fetch_remote_models(endpoint: LlmEndpoint, timeout: int = 20) -> list[str]:
     return sorted(set(ids))
 
 
-def resolve_tier1_endpoint(settings: Any) -> LlmEndpoint:
-    """Automatic analysis is restricted to the explicit :free route.
+TIER1_FREE_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+TIER1_ROUTINE_PAID_MODEL = "deepseek/deepseek-v4-flash-0731"
+TIER1_ANALYSIS_PRO_MODEL = "deepseek/deepseek-v4-pro-0813"
 
-    Never substitute the user's paid provider or a subscription CLI session.
-    Missing access returns an unconfigured endpoint handled by existing fallbacks.
-    """
+
+def _openrouter_named(settings: Any, model: str, label: str) -> LlmEndpoint:
     or_key = getattr(settings, "openrouter_api_key", None)
     if or_key:
         return LlmEndpoint(
             provider="openrouter",
-            label="NVIDIA Nemotron 550B (OpenRouter :free 라우트)",
+            label=label,
             base_url="https://openrouter.ai/api/v1",
-            model="nvidia/nemotron-3-ultra-550b-a55b:free",
+            model=model,
             api_key=or_key,
         )
     return LlmEndpoint(
         provider="tier1_unavailable",
-        label="무료 AI 연결 없음 · 유료 자동 전환 차단",
+        label=f"{label} 연결 없음",
         base_url="",
-        model="",
+        model=model,
         api_key=None,
+    )
+
+
+def resolve_tier1_endpoint(settings: Any) -> LlmEndpoint:
+    """Routine first hop: OpenRouter NVIDIA Nemotron :free.
+
+    Missing access returns an unconfigured endpoint. Paid hops are resolved
+    separately so a blank free key cannot silently become the user switcher.
+    """
+    return _openrouter_named(
+        settings,
+        TIER1_FREE_MODEL,
+        "NVIDIA Nemotron 550B (OpenRouter :free)",
+    )
+
+
+def resolve_tier1_routine_paid_endpoint(settings: Any) -> LlmEndpoint:
+    """Routine paid hop when :free hangs or fails. Not counted against Grok/Pro budget."""
+    return _openrouter_named(
+        settings,
+        TIER1_ROUTINE_PAID_MODEL,
+        "DeepSeek V4 Flash (OpenRouter)",
+    )
+
+
+def resolve_tier1_analysis_pro_endpoint(settings: Any) -> LlmEndpoint:
+    """Analysis hop after Grok: OpenRouter DeepSeek V4 Pro."""
+    return _openrouter_named(
+        settings,
+        TIER1_ANALYSIS_PRO_MODEL,
+        "DeepSeek V4 Pro (OpenRouter)",
     )
 
 

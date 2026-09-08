@@ -1,5 +1,18 @@
 # KR Quant Research — 2026-09-07 신뢰성 감사 인계
 
+## 최신: 메뉴 브리핑 Nemotron→Flash, 분석 Grok→Pro (2026-09-08)
+
+- 일상: `nvidia/nemotron-3-ultra-550b-a55b:free` 다음 OpenRouter `deepseek/deepseek-v4-flash-0731`. Flash는 분석 한도에 넣지 않는다.
+- 분석: `grok-4.6` 다음 OpenRouter `deepseek/deepseek-v4-pro-0813`. 하루 24회·실패 후 90초. 한도가 끝나도 일상 경로와 같은 날 캐시는 계속 보여 빈 화면을 피한다.
+- 상단 AI 칩은 심층 리포트만. 설정 카드 문구를 실제 경로에 맞게 고침. 정적 캐시 `app.js?v=2.92.0`.
+- 로컬 프로브: 대시보드/랭크/13F Nemotron 캐시, 수급 Grok 캐시, 토스 Nemotron 호환 캐시, 업종 Flash 신규 27초. 매크로는 90초 프로브 한도를 넘김(분석 홉 대기).
+- Quant 점수 미사용. 공개 배포는 시세 지연 가드(`PRICE_DATA_STALE`)로 보류.
+
+## 수급 이벤트 표·경과 수익률 UX
+
+- 메이저 수급이 `TIER1_EVIDENCE_MISSING / investor_flow_events`로 비던 이유: 연속·동반 이벤트 표가 비면 저장된 KIS 표본을 무시했음. 이벤트 표 → 당일 표본 → 저장 건수 순으로 근거를 채운다.
+- 5일/20일 미확정 구간은 확정 수익률 대신 경과 %와 남은 거래일 안내. 연속표는 최근 10일 호버, 이력상태/출처 열 제거.
+
 ## 최신: 사용자 승인 Grok 실모델 검증 성공·시즌 표현 개선 (2026-09-08)
 
 - 유료 사용 승인으로 평가에만 xAI/Grok4.6 적용. `scripts/evaluate_season_ai.py --provider xai --allow-paid`; 운영 Tier1 자동 유료 정책은 미변경.

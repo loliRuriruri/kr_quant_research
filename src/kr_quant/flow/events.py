@@ -181,6 +181,26 @@ def _newest_first(points: list[dict[str, Any]], value_key: str = "net") -> list[
     return [_num(p.get(value_key)) for p in ordered]
 
 
+def _dated_nets(points: list[dict[str, Any]]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for point in points:
+        day = str(point.get("date") or "")[:10]
+        if day:
+            out[day] = _num(point.get("net"))
+    return out
+
+
+def recent_flow_days(
+    primary: list[dict[str, Any]],
+    secondary: list[dict[str, Any]],
+    n: int = 10,
+) -> list[dict[str, Any]]:
+    a_by = _dated_nets(primary)
+    b_by = _dated_nets(secondary)
+    dates = sorted(set(a_by) | set(b_by), reverse=True)[: max(1, n)]
+    return [{"date": day, "primary": a_by.get(day), "foreign": b_by.get(day)} for day in dates]
+
+
 def ticker_events(
     ticker: str,
     company: str | None,
@@ -222,6 +242,7 @@ def ticker_events(
         ),
         "turn": turn,
         "last_date": last_date,
+        "recent": recent_flow_days(primary, secondary, 10),
         "source": source,
         "used_in_quant": False,
     }

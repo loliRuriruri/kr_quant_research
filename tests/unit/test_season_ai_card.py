@@ -19,11 +19,12 @@ def test_season_card_supplies_candidate_facts_and_snapshot(monkeypatch, tmp_path
     monkeypatch.setattr(web, 'tier1_cached_chat_json', chat)
     assert web.api_seasonality_tier1_briefing_get()['ok']
     row = captured['evidence']['candidates'][0]
-    assert row['observed_window']['window_end_p50'] == -.1
-    assert row['observed_window']['window_end_positive_count'] == 0
-    assert row['observed_window']['costs_included'] is None
+    assert row['ticker'] == '105560'
+    assert row['sample_count'] == 3
     assert row['missing'] == ['수급']
-    assert captured['evidence']['snapshot']['generation_id'] == 'g1'
+    assert 'observed_window' not in row
+    assert captured['evidence']['selection_date'] == '2026-09-08'
+    assert 'snapshot' not in captured['evidence']
     assert 'next_check' in captured['messages'][1]['content']
     assert '+8%' in captured['messages'][1]['content']
     assert '식별자일 뿐' in captured['messages'][1]['content']

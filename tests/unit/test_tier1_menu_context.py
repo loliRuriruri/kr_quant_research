@@ -162,7 +162,48 @@ def test_flow_tier1_briefing_receives_actual_share_evidence(monkeypatch):
     assert body["ok"] is True
     assert body["evidence"]["sources"] == ["kis_investor_flow"]
     assert '"w5": 4321' in captured["prompt"]
-    assert "수량 단위, 금액 아님" in captured["prompt"]
+    assert "주수라고 단정하지 마세요" in captured["prompt"]
+
+
+def test_flow_tier1_briefing_uses_stored_sample_when_events_empty(monkeypatch):
+    captured: dict[str, str] = {}
+    monkeypatch.setattr(
+        flow_official,
+        "events_payload",
+        lambda settings, min_turn=5: {
+            "active": "official",
+            "official": {"source": "KIS", "cum5": [], "consecutive": [], "paired": [], "turns": []},
+            "toss": {},
+            "rebalance": {
+                "as_of": "2026-09-08",
+                "party_ko": "기관합계",
+                "top_buy": [{"ticker": "005930", "company": "삼성전자", "net": 1_200_000_000}],
+                "top_sell": [],
+            },
+            "coverage": {"tickers": 102, "rows": 10000, "last_date": "2026-09-08"},
+            "reliability": {"current_tickers": 33},
+        },
+    )
+
+    def fake_tier1(_root, _endpoint, **kwargs):
+        captured["prompt"] = kwargs["messages"][-1]["content"]
+        captured["missing"] = kwargs.get("missing")
+        return {
+            "ok": True,
+            "used_in_quant": False,
+            "headline": "저장 수급",
+            "briefing": "당일 금액",
+            "focus_sectors": [],
+            "evidence": {"sources": kwargs["sources"], "item_count": kwargs["evidence_count"], "missing": kwargs.get("missing")},
+        }
+
+    monkeypatch.setattr(web_app, "tier1_cached_chat_json", fake_tier1)
+    body = client.get("/api/flow/tier1-briefing").json()
+    assert body["ok"] is True
+    assert body["evidence"]["item_count"] == 1
+    assert "investor_flow_events" in (captured.get("missing") or [])
+    assert "삼성전자" in captured["prompt"]
+    assert "1,200,000,000" in captured["prompt"] or "1200000000" in captured["prompt"]
 
 
 def test_trade_tier1_briefing_receives_actual_flow_and_technical_evidence(monkeypatch):

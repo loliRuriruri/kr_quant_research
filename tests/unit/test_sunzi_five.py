@@ -215,6 +215,20 @@ def test_window_sums_and_sample_rebalance():
     assert "전시장" in reb["note"]
 
 
+def test_event_rows_include_recent_days():
+    rows = [
+        {"trade_date": f"2026-08-{day:02d}", "ticker": "005930", "investor_type": kind, "net_value": 10, "is_final": True}
+        for day in range(10, 20)
+        for kind in ("INSTITUTION_TOTAL", "FOREIGN")
+    ]
+    out = from_official_rows(rows)
+    assert out["consecutive"]
+    recent = out["consecutive"][0]["recent"]
+    assert 1 <= len(recent) <= 10
+    assert recent[0]["date"] >= recent[-1]["date"]
+    assert "primary" in recent[0] and "foreign" in recent[0]
+
+
 def test_classify_dart_titles():
     assert classify_report("전환사채(해외전환사채 포함)발행결정") == "CB_ISSUE"
     assert classify_report("자기주식취득 결정") == "BUYBACK"

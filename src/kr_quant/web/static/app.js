@@ -748,7 +748,7 @@ async function runCustomBacktest(query, opts = {}) {
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">🤖</span>
               <span style="font-size:13px; font-weight:800; color:#38bdf8;">Tier 1 백테스트 정밀 진단 리포트</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">${aiRes.ai_generated ? "무료 AI 해석" : "규칙 기반 대체 설명"}</span>
+              ${aiRes.ai_generated ? aiUsageBadge(aiRes) : '<span class="chip" style="font-size:10px;">규칙 기반 대체 설명</span>'}
             </div>
             <span class="chip" style="font-size:11px; font-weight:800; background:rgba(56,189,248,0.15); color:${verdictColor}; border:1px solid ${verdictColor};">
               종합 판정: ${escapeHtml(aiRes.verdict || "적합")}
@@ -1164,6 +1164,7 @@ function sortVal(row, key) {
   }
   if (key === "setup_notional" && typeof setupNotional === "function") return setupNotional(row);
   if (key === "stoch_k") return row.ta && row.ta.stoch_k != null ? Number(row.ta.stoch_k) : null;
+  if (key === "change_pp" && typeof npsChangePp === "function") return npsChangePp(row);
   if (key === "company") return String(row.company || row.issuer_ko || row.issuer || "").toLowerCase();
   if (key === "industry") return String(row.industry || row.sector || "");
   const v = row[key];
@@ -1978,6 +1979,16 @@ function setPageAsOf(text, tip, owner = currentView) {
 function renderPageEvidence(name = currentView) {
   const el = $("#page-evidence");
   if (!el) return;
+  if (name === "nps" || (typeof investorSubtab !== "undefined" && name === "investor" && investorSubtab === "nps")) {
+    if (typeof paintNpsEvidence === "function" && npsCache && npsCache.data) {
+      paintNpsEvidence(npsCache.data, npsCache.rows);
+      return;
+    }
+    el.className = "page-evidence has-tip evidence-pending";
+    el.textContent = "🔎 근거 계약 확인 중… OpenDART 대량보유";
+    el.setAttribute("data-tip", "국민연금 5%는 OpenDART 대량보유상황보고입니다. 일별 기금·토스 연기금 수급이 아니며 Quant에 넣지 않습니다.");
+    return;
+  }
   const item = lastStatus?.evidence_registry?.menus?.[name];
   if (!item) {
     el.className = "page-evidence has-tip evidence-pending";
@@ -3261,15 +3272,62 @@ function renderExtLinksTop(links) {
 
 function stockCoreMarkup(data) {
   const r = data.row || {};
-  const value = (v, digits = 1) => v == null || v === '' || !Number.isFinite(Number(v)) ? '자료 없음' : Number(v).toLocaleString('ko-KR', {maximumFractionDigits: digits});
-  const fields = [['가치 / 30', value(r.value_score)], ['품질 / 25', value(r.quality_score)],
-    ['성장 / 25', value(r.growth_score)], ['모멘텀 / 10', value(r.momentum_score)],
-    ['안정 / 10', value(r.financial_score)], ['PER', value(r.per)], ['PBR', value(r.pbr)],
-    ['ROE (%)', value(r.roe == null ? null : Number(r.roe) * 100)]];
-  return `<section class="stock-core-preview"><h3>${escapeHtml(r.company || r.ticker)} · 저장된 핵심정보</h3>
-    <p>기준일 ${escapeHtml(data.as_of || '미확인')} · 실시간 가격이 아닙니다. 상세 검토 전 기본정보입니다.</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">${fields.map(([label, val]) => `<article class="intro"><span>${label}</span><h3>${val}</h3></article>`).join('')}</div>
-    <div id="stock-enrichment-status" role="status" style="margin-top:16px">심층 자료 불러오는 중: 기업 개요·지배구조, 뉴스·외부 시세, 기술 분석·수급·공시. 가격은 상세 응답에서 기준일과 함께 확인합니다. 준비되면 기존 상세정보 전체를 표시합니다.</div></section>`;
+  const num = (v, digits = 1) => (v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+  const fmtNum = (v, digits = 1) => (v == null ? "—" : v.toLocaleString("ko-KR", { maximumFractionDigits: digits }));
+  const factors = [
+    ["가치", "value", num(r.value_score), 30],
+    ["품질", "quality", num(r.quality_score), 25],
+    ["성장", "growth", num(r.growth_score), 25],
+    ["모멘텀", "momentum", num(r.momentum_score), 10],
+    ["안정", "stability", num(r.financial_score), 10],
+  ];
+  const score = num(r.quant_score);
+  const roe = num(r.roe) == null ? null : num(r.roe) * (Math.abs(num(r.roe)) < 1 ? 100 : 1);
+  const metrics = [
+    ["PER", fmtNum(num(r.per), 1), "배"],
+    ["PBR", fmtNum(num(r.pbr), 2), "배"],
+    ["ROE", roe == null ? "—" : `${fmtNum(roe, 1)}%`, ""],
+    ["신뢰도", fmtNum(num(r.data_confidence), 0), ""],
+  ];
+  const factorCards = factors.map(([label, cls, val, max]) => {
+    const pct = val == null ? 0 : Math.max(0, Math.min(100, (val / max) * 100));
+    return `<article class="stock-core-factor ${cls}">
+      <div class="stock-core-factor-top"><span>${label}</span><b>${val == null ? "—" : fmtNum(val, 1)}<small> / ${max}</small></b></div>
+      <div class="stock-core-bar" aria-hidden="true"><i style="width:${pct.toFixed(0)}%"></i></div>
+    </article>`;
+  }).join("");
+  return `<section class="stock-core-preview">
+    <header class="stock-core-hero">
+      <div>
+        <p class="stock-core-kicker">저장된 핵심정보 · 심층 자료 준비 중</p>
+        <h3>${escapeHtml(r.company || r.ticker || "")}</h3>
+        <p class="stock-core-meta"><span class="chip">${escapeHtml(padTicker(r.ticker || ""))}</span>${r.market ? `<span class="chip">${escapeHtml(r.market)}</span>` : ""}<span>기준일 ${escapeHtml(data.as_of || "미확인")}</span><span>실시간 가격 아님</span></p>
+      </div>
+      <div class="stock-core-score ${score != null && score >= 70 ? "high" : ""}">
+        <span>퀀트 점수</span>
+        <b>${score == null ? "—" : fmtNum(score, 1)}</b>
+      </div>
+    </header>
+    <div class="stock-core-factors">${factorCards}</div>
+    <div class="stock-core-metrics">${metrics.map(([label, val, unit]) => `<article><span>${label}</span><b>${val}${unit ? `<small>${unit}</small>` : ""}</b></article>`).join("")}</div>
+    <div id="stock-enrichment-status" class="stock-enrich-panel" role="status">
+      <div class="stock-enrich-head">
+        <div class="skeleton-spinner" aria-hidden="true"></div>
+        <div>
+          <b>심층 자료를 모으는 중</b>
+          <p>기업 개요·뉴스·기술·수급·공시. 가격은 상세 응답의 기준일과 함께 표시합니다.</p>
+        </div>
+      </div>
+      <div class="stock-enrich-track" aria-hidden="true"><i class="stock-enrich-fill"></i></div>
+      <ul class="stock-enrich-steps">
+        <li>기업 개요</li>
+        <li>뉴스 · 시세</li>
+        <li>기술 · 수급</li>
+        <li>공시</li>
+      </ul>
+      <div class="skeleton-shimmer-card"></div>
+      <div class="skeleton-shimmer-card" style="height:132px"></div>
+    </div></section>`;
 }
 
 async function openStock(ticker) {
@@ -3283,10 +3341,11 @@ async function openStock(ticker) {
       <div class="skeleton-spinner-box">
         <div class="skeleton-spinner"></div>
         <div class="skeleton-loading-text">
-          <b>종목 ${code} 심층 퀀트 & 펀더멘털 데이터 로딩 중...</b>
-          <p>재무제표, 5대 팩터 스코어, 최근 공시, 기술적 지표 및 실시간 뉴스를 집계하고 있습니다.</p>
+          <b>종목 ${code} 심층 자료를 준비하는 중</b>
+          <p>저장된 핵심정보를 먼저 띄우고, 이어서 기업 개요·뉴스·기술·수급·공시를 붙입니다.</p>
         </div>
       </div>
+      <div class="stock-enrich-track" aria-hidden="true"><i class="stock-enrich-fill"></i></div>
       <div class="skeleton-shimmer-card"></div>
       <div class="skeleton-shimmer-card" style="height:140px;"></div>
       <div class="skeleton-shimmer-card" style="height:180px;"></div>
@@ -3844,6 +3903,7 @@ async function openStock(ticker) {
       $("#drawer-title").textContent = `종목 ${code} · 기본정보 표시 / 심층 조회 실패`;
       const status = $("#stock-enrichment-status");
       if (status) {
+        status.classList.add("stock-enrich-failed");
         status.innerHTML = `<p>기본정보는 유지했습니다. 심층 자료를 가져오지 못했습니다: ${escapeHtml(err.message)}</p><button id="stock-detail-retry" type="button">심층 자료 다시 조회</button>`;
         $("#stock-detail-retry").addEventListener('click', () => openStock(code));
       }
@@ -3878,7 +3938,7 @@ async function loadTier1StockInsights(code, isCurrent = () => true) {
         <div class="tier1-ai-card tier1-news-card" style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border:1px solid rgba(56,189,248,0.4); border-radius:10px; padding:12px 14px; box-shadow:0 4px 14px rgba(0,0,0,0.35);">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
             <span style="font-size:12px; font-weight:700; color:#38bdf8; display:flex; align-items:center; gap:6px;">
-              🤖 Tier 1 무료 AI 실시간 뉴스 브리핑
+              🤖 ${escapeHtml(tier1RouteCopy(res).engine)} 뉴스 브리핑
               <span style="font-size:10px; font-weight:400; color:#94a3b8;">(${escapeHtml(res.model || "NVIDIA 550B")})</span>
             </span>
             <span class="chip ${sentCls}" style="font-size:10.5px; font-weight:700; padding:2px 8px;">${sentIcon} ${escapeHtml(na.sentiment || "중립")}</span>
@@ -4668,7 +4728,8 @@ async function renderStatusPanel() {
   const llmName = status.llm_label || status.llm_provider || "openrouter";
   const llmModel = status.llm_model ? status.llm_model.split("/").pop() : "";
   const llmDisplay = llmModel ? `🤖 AI: ${llmName} (${llmModel}) ▾` : `🤖 AI: ${llmName} ▾`;
-  setChip($("#chip-llm"), llmDisplay, `AI 분석 리포트 생성 모델: ${status.llm_model || llmName}. 클릭하여 모델을 즉시 변경할 수 있습니다.`);
+  setChip($("#chip-llm"), llmDisplay, `심층 리포트 생성 모델: ${status.llm_model || llmName}. 메뉴 브리핑은 Nemotron→Flash→(분석) Grok/Pro 고정 경로라 이 칩과 따로입니다.`);
+  paintAiArchitectureCard({ label: status.llm_label || llmName, provider: status.llm_provider, model: status.llm_model });
   renderKpis(status, dashRows);
   renderJob(status.job);
   guideCache = guideCache || await api("/api/guide");
@@ -4727,25 +4788,72 @@ function renderTier1Unavailable(container, res = {}, err = null) {
   return false;
 }
 
+function tier1RouteCopy(res = {}) {
+  if (res.status === "DETERMINISTIC_FALLBACK") {
+    return { engine: "실데이터 자동 요약", modelLine: "규칙 기반 · AI 미사용" };
+  }
+  const model = String(res.model || "");
+  const provider = String(res.provider || "");
+  let engine = "메뉴 브리핑";
+  let cost = "승인된 분석";
+  if (model.endsWith(":free")) {
+    engine = "일상 무료 경로";
+    cost = "비용 0원";
+  } else if (model.includes("flash-0731")) {
+    engine = "일상 Flash 대체";
+    cost = "OpenRouter Flash";
+  } else if (provider === "xai" || model.toLowerCase().startsWith("grok")) {
+    engine = "분석 Grok";
+    cost = "xAI 분석";
+  } else if (model.includes("pro-0813")) {
+    engine = "분석 DeepSeek Pro";
+    cost = "OpenRouter Pro";
+  }
+  return { engine, modelLine: model ? `🤖 ${model} · ${cost}` : `🤖 메뉴 브리핑 · ${cost}` };
+}
+
 function aiUsageBadge(res = {}) {
   if (res.ai_generated !== true || (res.status && res.status !== "GENERATED")) return "";
-  return '<span class="ai-usage-badge" title="AI가 작성한 해석입니다. 원본 계산 수치와 구분됩니다." aria-label="AI 생성 해석" style="display:inline-block;font-size:10px;line-height:16px;padding:0 5px;border:1px solid #a78bfa;border-radius:4px;color:#c4b5fd;vertical-align:middle;">AI</span>';
+  const model = String(res.model || "");
+  let kind = "AI 생성";
+  if (res.provider === "xai" || model.toLowerCase().startsWith("grok")) kind = "AI 생성 · Grok";
+  else if (model.includes("pro-0813")) kind = "AI 생성 · Pro";
+  else if (model.includes("flash-0731")) kind = "AI 생성 · Flash";
+  else if (model.endsWith(":free")) kind = "AI 생성 · 무료";
+  return `<span class="ai-usage-badge" title="이 문장은 AI가 작성한 해석입니다. 표의 원본 계산 수치와 구분하세요." aria-label="AI 생성 해석">${kind}</span>`;
+}
+
+function pinAiUsageBanner(card, res) {
+  if (!card || card.querySelector(".ai-usage-banner")) return;
+  const badge = aiUsageBadge(res);
+  if (!badge) return;
+  card.insertAdjacentHTML(
+    "afterbegin",
+    `<div class="ai-usage-banner">${badge}<span>이 글은 AI가 쓴 해석입니다. 아래 표 숫자는 원본 계산입니다.</span></div>`
+  );
 }
 
 function appendTier1Meta(container, res = {}) {
   if (!container || !res) return;
-  const card = container.querySelector(".tier1-briefing-card") || container.firstElementChild;
-  if (!card || card.querySelector(".tier1-meta-row")) return;
+  const card = container.querySelector(".tier1-briefing-card, .tier1-ai-card") || container.firstElementChild;
+  if (!card) return;
+  pinAiUsageBanner(card, res);
+  if (card.querySelector(".tier1-meta-row")) return;
   const evidence = res.evidence || {};
   const coverageMap = { SUFFICIENT: "근거 충분", PARTIAL: "근거 일부", NONE: "근거 없음" };
   const coverage = coverageMap[evidence.coverage] || "근거 상태 미상";
   const sourceCount = Array.isArray(evidence.sources) ? evidence.sources.length : 0;
-  const cacheLabel = res.cache?.hit === true
-    ? "♻️ 동일 데이터 해설 재사용"
-    : (res.cache?.stored === false ? "⚠️ 새 생성 · 캐시 미저장" : (res.cache ? "✨ 최신 데이터로 새 생성" : ""));
+  let cacheLabel = "";
+  if (res.cache?.pending_reuse) cacheLabel = "♻️ 생성 중 · 직전 해설 유지";
+  else if (res.cache?.last_good_reuse) cacheLabel = "♻️ 한도/실패 · 직전 해설 유지";
+  else if (res.cache?.compatible_reuse) cacheLabel = "♻️ 같은 날 호환 해설 재사용";
+  else if (res.cache?.hit === true) cacheLabel = "♻️ 동일 데이터 해설 재사용";
+  else if (res.cache?.stored === false) cacheLabel = "⚠️ 새 생성 · 캐시 미저장";
+  else if (res.cache) cacheLabel = "✨ 최신 데이터로 새 생성";
+  const generated = Boolean(aiUsageBadge(res));
   card.insertAdjacentHTML("beforeend", `
     <div class="tier1-meta-row" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding-top:7px; margin-top:3px; border-top:1px solid rgba(148,163,184,0.16); font-size:10.5px; color:#94a3b8;">
-      ${aiUsageBadge(res) || '<span class="chip" style="font-size:10px;">계산·규칙 기반 설명 · AI 생성 미확인</span>'}
+      ${generated ? aiUsageBadge(res) : '<span class="chip" style="font-size:10px;">계산·규칙 기반 설명 · AI 생성 아님</span>'}
       ${cacheLabel ? `<span class="chip" style="font-size:10px;">${cacheLabel}</span>` : ""}
       <span class="chip" style="font-size:10px;">📌 ${escapeHtml(coverage)} · ${Number(evidence.item_count || 0)}건</span>
       <span>출처 ${sourceCount}개</span>
@@ -4761,9 +4869,9 @@ async function loadDashTier1Briefing() {
     const res = await api("/api/dashboard/tier1-briefing");
     if (!renderTier1Unavailable(container, res)) return;
     if (res && res.headline) {
-      const isRuleFallback = res.status === "DETERMINISTIC_FALLBACK";
-      const engineLabel = isRuleFallback ? "실데이터 자동 요약" : "Tier 1 무료 엔진";
-      const modelLabel = isRuleFallback ? "규칙 기반 · AI 미사용" : `🤖 ${res.model || "Tier 1 무료 모델"} (비용 0원)`;
+      const route = tier1RouteCopy(res);
+      const engineLabel = route.engine;
+      const modelLabel = route.modelLine;
       container.innerHTML = `
         <div style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,58,138,0.25)); border:1px solid rgba(56,189,248,0.35); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35);">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
@@ -4802,7 +4910,7 @@ async function loadRankTier1Briefing() {
       <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(14,116,144,0.16)); border:1px solid rgba(34,211,238,0.32); border-radius:12px; padding:13px 16px; display:flex; flex-direction:column; gap:8px;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
           <b style="color:#67e8f9; font-size:13px;">🔎 점수·순위 변화 AI 해설</b>
-          <span style="font-size:10.5px; color:#94a3b8;">${escapeHtml(res.model || "Tier 1 무료 모델")}</span>
+          <span style="font-size:10.5px; color:#94a3b8;">${escapeHtml(tier1RouteCopy(res).modelLine)}</span>
         </div>
         <strong style="color:#f8fafc; font-size:14px;">${escapeHtml(res.headline || "")}</strong>
         ${changes ? `<div><b style="font-size:11.5px; color:#38bdf8;">전회 대비 관측</b><ul style="margin:4px 0 0; padding-left:19px; color:#cbd5e1; font-size:12px; line-height:1.5;">${changes}</ul></div>` : ""}
@@ -4827,9 +4935,9 @@ async function loadMarketTier1Briefing() {
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:13px; font-weight:800; color:#c084fc;">🌐 글로벌 매크로 & 공포탐욕 AI 코멘터리</span>
-              <span class="chip ok" style="font-size:10px; font-weight:700;">Tier 1 무료 엔진</span>
+              <span class="chip ok" style="font-size:10px; font-weight:700;">${escapeHtml(tier1RouteCopy(res).engine)}</span>
             </div>
-            <span style="font-size:11px; color:#86efac; font-weight:600;">🤖 ${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")} (비용 0원)</span>
+            <span style="font-size:11px; color:#86efac; font-weight:600;">${escapeHtml(tier1RouteCopy(res).modelLine)}</span>
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)} <span class="chip" style="font-size:11px; margin-left:6px; color:#38bdf8;">${escapeHtml(res.risk_posture || "중립 대응")}</span></b>
           <div style="display:flex; flex-direction:column; gap:4px; font-size:12px; color:#cbd5e1; line-height:1.5;">
@@ -4852,13 +4960,13 @@ async function loadFlowTier1Briefing(containerId = "flow-tier1-briefing") {
     if (!renderTier1Unavailable(container, res)) return;
     if (res && res.headline) {
       container.innerHTML = `
-        <div style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(52,211,153,0.18)); border:1px solid rgba(52,211,153,0.35); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35); margin-bottom:14px;">
+        <div class="tier1-briefing-card" style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(52,211,153,0.18)); border:1px solid rgba(52,211,153,0.35); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35); margin-bottom:14px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:13px; font-weight:800; color:#34d399;">⚡ 외인·기관 메이저 수급 AI 브리핑</span>
-              <span class="chip ok" style="font-size:10px; font-weight:700;">Tier 1 무료 엔진</span>
+              ${res.ai_generated ? aiUsageBadge(res) : '<span class="chip" style="font-size:10px;">계산·규칙 기반</span>'}
             </div>
-            <span style="font-size:11px; color:#86efac; font-weight:600;">🤖 ${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")} (비용 0원)</span>
+            <span style="font-size:11px; color:#86efac; font-weight:600;">${escapeHtml(res.model || "")}</span>
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.briefing || "")}</p>
@@ -4883,9 +4991,9 @@ async function loadTossTier1Briefing() {
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">⚡</span>
               <span style="font-size:13px; font-weight:800; color:#38bdf8;">토스 실시간 시장 모멘텀 AI 브리핑</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">${escapeHtml(tier1RouteCopy(res).engine)}</span>
             </div>
-            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(tier1RouteCopy(res).modelLine)}</span>
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.movers_summary || "")}</p>
@@ -4910,9 +5018,9 @@ async function loadSectorTier1Briefing() {
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">🔄</span>
               <span style="font-size:13px; font-weight:800; color:#38bdf8;">26대 KSIC 업종 순환매 & 주도 섹터 AI 브리핑</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">${escapeHtml(tier1RouteCopy(res).engine)}</span>
             </div>
-            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(tier1RouteCopy(res).modelLine)}</span>
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.leading_sector_comment || "")}</p>
@@ -4937,9 +5045,9 @@ async function loadUs13fTier1Briefing() {
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">🏛️</span>
               <span style="font-size:13px; font-weight:800; color:#38bdf8;">월가 대가 포트폴리오 13F 컨센서스 AI 브리핑</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">${escapeHtml(tier1RouteCopy(res).engine)}</span>
             </div>
-            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(tier1RouteCopy(res).modelLine)}</span>
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.consensus_insight || "")}</p>
@@ -4958,9 +5066,11 @@ async function loadSeasonalityTier1Briefing() {
   if (container._tier1Pending) return;
   container._tier1Pending = true;
   const wasEmpty = !container.innerHTML.trim();
-  if (wasEmpty) container.innerHTML = '<p class="hint" role="status">무료 AI 분석 요청 중 · 아래 원본 통계는 먼저 확인할 수 있습니다.</p>';
+  if (wasEmpty) container.innerHTML = '<p class="hint" role="status">시즌 후보 분석을 불러오는 중 · 아래 원본 통계는 그대로 사용할 수 있습니다.</p>';
   const slowNotice = setTimeout(() => {
-    if (wasEmpty) container.innerHTML = '<p class="hint" role="status">AI 응답이 지연되고 있습니다. 원본 통계는 그대로 사용하세요. 로컬 승인 설정에 따라 Grok으로 대체할 수 있습니다.</p>';
+    if (container._tier1Pending) {
+      container.innerHTML = '<p class="hint" role="status">AI 응답이 지연되고 있습니다. 원본 통계는 그대로 사용하세요. 저장된 Grok 분석이 있으면 바로 재사용합니다.</p>';
+    }
   }, 8000);
   try {
     const res = await api("/api/seasonality/tier1-briefing");
@@ -4972,9 +5082,9 @@ async function loadSeasonalityTier1Briefing() {
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">📅</span>
               <span style="font-size:13px; font-weight:800; color:#38bdf8;">시즌 후보 분석 · 제공된 표본 기준</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">${res.provider === 'xai' ? '승인된 Grok 분석' : '무료 AI 분석'}</span>
+              ${res.ai_generated ? aiUsageBadge(res) : '<span class="chip" style="font-size:10px;">계산·규칙 기반</span>'}
             </div>
-            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(tier1RouteCopy(res).modelLine)}</span>
           </div>
           <b style="font-size:14px; color:#f8fafc;">결론 · ${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:13px; color:#cbd5e1; line-height:1.6;"><b>근거 · </b>${escapeHtml(res.seasonality_brief || "분석 근거가 제공되지 않았습니다.")}</p>
@@ -5010,9 +5120,9 @@ async function loadTradeTier1Briefing() {
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">⚡</span>
               <span style="font-size:13px; font-weight:800; color:#38bdf8;">트레이딩 랩 단기 스윙 & 수급 타점 AI 브리핑</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">${escapeHtml(tier1RouteCopy(res).engine)}</span>
             </div>
-            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(tier1RouteCopy(res).modelLine)}</span>
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.trading_brief || "")}</p>
@@ -5100,7 +5210,7 @@ async function loadSunziTier1Briefing(persona = currentSunziPersona) {
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">⚔️</span>
               <span style="font-size:14px; font-weight:900; color:#38bdf8;">은하퀀트전설 4대 지휘관 당직 전술 브리핑</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10.5px; padding:1px 6px;">Tier 1 무료 AI</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10.5px; padding:1px 6px;">${escapeHtml(tier1RouteCopy(res).engine)}</span>
             </div>
             <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
               <span style="font-size:11.5px; color:#94a3b8; margin-right:4px;">지휘관 변경:</span>
@@ -5147,9 +5257,9 @@ async function loadEmptyTier1Briefing() {
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">🚪</span>
               <span style="font-size:13px; font-weight:800; color:#38bdf8;">메이저 수급 이탈 & 빈집 복귀(턴어라운드) AI 브리핑</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">${escapeHtml(tier1RouteCopy(res).engine)}</span>
             </div>
-            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(tier1RouteCopy(res).modelLine)}</span>
           </div>
           <b style="font-size:14px; color:#f8fafc;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(res.empty_insight || "")}</p>
@@ -5174,9 +5284,9 @@ async function loadStrategyTier1Briefing() {
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">🧪</span>
               <span style="font-size:14px; font-weight:800; color:#38bdf8;">4대 퀀트 매매 타이밍 백테스트 AI 컨센서스 브리핑</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10.5px; padding:1px 7px; font-weight:700;">Tier 1 무료 엔진</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10.5px; padding:1px 7px; font-weight:700;">${escapeHtml(tier1RouteCopy(res).engine)}</span>
             </div>
-            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
+            <span style="font-size:11px; color:#94a3b8;">${escapeHtml(tier1RouteCopy(res).modelLine)}</span>
           </div>
           <b style="font-size:14.5px; color:#f8fafc; line-height:1.4;">${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:12.5px; color:#cbd5e1; line-height:1.55;">${escapeHtml(res.strategy_insight || "")}</p>
@@ -5592,6 +5702,8 @@ function pctCell(v) {
 }
 
 let flowCache = null;
+let npsCache = { rows: [], data: null, filter: "all", q: "" };
+let investorSubtab = "flow";
 
 function flowDays() {
   return Number($("#flow-days")?.value || 5);
@@ -5648,15 +5760,21 @@ function forwardReturnCell(row, horizon) {
   const value = row?.[`ret_${horizon}d`];
   const meta = row?.[`ret_${horizon}d_meta`];
   if (value != null && !Number.isNaN(Number(value)) && meta?.complete !== false) {
-    const dates = meta?.start_date && meta?.end_date ? `${meta.start_date} → ${meta.end_date}` : "전체 관측 구간 충족";
-    return `<span class="has-tip" data-tip-title="D+${horizon} 확정 수익률" data-tip="${escapeHtml(dates)} · 신호일 이후 ${horizon}거래일을 모두 관측한 실측값입니다." tabindex="0">${pctCell(value)}</span>`;
+    const dates = meta?.start_date && meta?.end_date ? `${meta.start_date} → ${meta.end_date}` : `${horizon}거래일을 모두 관측`;
+    return `<span class="fwd-ret done has-tip" data-tip-title="수급 포착 후 ${horizon}거래일 수익률" data-tip="${escapeHtml(dates)} · ${horizon}거래일이 끝난 확정값이며 승률에 들어갑니다." tabindex="0">${pctCell(value)}<small>확정</small></span>`;
   }
   if (meta?.status === "PENDING") {
     const observed = Math.max(0, Number(meta.observed_sessions || 0));
     const required = Math.max(horizon, Number(meta.required_sessions || horizon));
-    return `<span class="warn has-tip" data-tip-title="D+${horizon} 검증 대기" data-tip="현재 D+${observed}/${required}까지 관측했습니다. ${required}거래일이 모두 지난 뒤에만 수익률과 승률 표본에 포함합니다." tabindex="0">대기 D+${observed}/${required}</span>`;
+    const left = Math.max(0, required - observed);
+    const when = left <= 0 ? "곧 확정" : left === 1 ? "내일(다음 거래일) 확정" : `${left}거래일 후 확정`;
+    const interim = meta.interim_return;
+    const soFar = interim == null || Number.isNaN(Number(interim))
+      ? ""
+      : `<b class="fwd-sofar">${pctCell(interim)}</b>`;
+    return `<span class="fwd-ret wait has-tip" data-tip-title="아직 ${required}거래일 수익률이 아닙니다" data-tip="수급 포착 후 ${observed}거래일만 지났습니다. 위에 보이는 %는 지금까지 주가 변화일 뿐이고, ${required}일이 끝나야 이 칸이 확정되며 승률에도 그때 넣습니다." tabindex="0">${soFar}<small>${escapeHtml(when)}</small></span>`;
   }
-  return `<span class="hint has-tip" data-tip-title="D+${horizon} 검증 자료 없음" data-tip="새 수급 스키마로 다시 스캔한 뒤 관측 기간이 충족되면 표시합니다." tabindex="0">—</span>`;
+  return `<span class="hint has-tip" data-tip-title="수익률 자료 없음" data-tip="수급을 다시 스캔하면 포착일 이후 주가 구간을 붙입니다." tabindex="0">자료 없음</span>`;
 }
 
 function filterAmount(rows, key, minKrw) {
@@ -5695,9 +5813,21 @@ function bucketTable(title, rows, amountKey) {
     </tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
+function quoteLast(r) {
+  const direct = r?.last ?? r?.last_close ?? r?.close;
+  if (direct != null && direct !== "" && Number.isFinite(Number(direct))) return Number(direct);
+  const d0 = Array.isArray(r?.daily) && r.daily[0] ? r.daily[0].close : null;
+  if (d0 != null && d0 !== "" && Number.isFinite(Number(d0))) return Number(d0);
+  return null;
+}
+
 function quoteCell(r) {
-  if (r.last == null) return "—";
-  return priceOverlayCell(r.ticker, `${Number(r.last).toLocaleString("ko-KR")}<div class="meta">${pctCell(r.change_rate)}${r.quote_basis === 'saved' ? ' · 저장가격' : ''}</div>`);
+  const last = quoteLast(r);
+  if (last == null) return "—";
+  const chg = r.change_rate == null || r.change_rate === "" ? "" : pctCell(r.change_rate);
+  const basis = r.quote_basis === "saved" ? "저장가격" : "";
+  const meta = [chg, basis].filter(Boolean).join(" · ");
+  return priceOverlayCell(r.ticker, `${last.toLocaleString("ko-KR")}${meta ? `<div class="meta">${meta}</div>` : ""}`);
 }
 
 function plainSignedInt(value) {
@@ -5753,7 +5883,7 @@ function flowTable(title, rows, amountKey, tabId) {
         </div>
         ${rowNote(amountKey === "pe_krw" ? (r.comment_pe_short || r.comment_pe) : (r.comment_flow_short || r.comment_flow))}
       </td>
-      <td class="num has-tip"${flowHistoryTipAttrs(r, "최근가", r.last == null ? "—" : `${Number(r.last).toLocaleString("ko-KR")}원`)}>${quoteCell(r)}</td>
+      <td class="num has-tip"${flowHistoryTipAttrs(r, "최근가", quoteLast(r) == null ? "—" : `${quoteLast(r).toLocaleString("ko-KR")}원`)}>${quoteCell(r)}</td>
       <td class="num has-tip ${r.foreign_net > 0 ? 'text-emerald-400 font-bold' : r.foreign_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "외국인 누적 순매수", plainSignedInt(r.foreign_net))}>${signedInt(r.foreign_net)}</td>
       <td class="num has-tip ${r.institution_net > 0 ? 'text-emerald-400 font-bold' : r.institution_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "기관 누적 순매수", plainSignedInt(r.institution_net))}>${signedInt(r.institution_net)}</td>
       <td class="num has-tip ${r.pe_net > 0 ? 'text-purple-400 font-bold' : r.pe_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "사모펀드 누적 순매수", plainSignedInt(r.pe_net))}>${signedInt(r.pe_net)}</td>
@@ -5780,8 +5910,8 @@ function flowTable(title, rows, amountKey, tabId) {
             <th class="sortable has-tip" data-sort="institution_net" data-tip-title="🏛️ 기관 누적 순매수" data-tip="금융투자, 보험, 투신, 사모 등 기관 투자자 전체의 합산 순매수 주수입니다." tabindex="0">기관(주)</th>
             <th class="sortable has-tip" data-sort="pe_net" data-tip-title="💼 사모펀드 누적 순매수" data-tip="가장 빠른 스마트머니인 사모펀드의 합산 순매수 주수입니다." tabindex="0">사모(주)</th>
             <th class="sortable has-tip" data-sort="${amountKey}" data-tip-title="💵 수급 유입 추정금액" data-tip="(외인+기관 순매수 주수) × 최근 종가로 환산한 실질 자금 유입 규모입니다." tabindex="0">추정금액</th>
-            <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="📈 수급 발생 후 5일 성과" data-tip="신호일 이후 5거래일을 모두 관측한 경우에만 표시하고 승률 표본에 포함합니다." tabindex="0">이후 5일</th>
-            <th class="sortable has-tip" data-sort="ret_20d" data-tip-title="📈 수급 발생 후 20일 성과" data-tip="신호일 이후 20거래일을 모두 관측한 경우에만 표시하고 승률 표본에 포함합니다." tabindex="0">이후 20일</th>
+            <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="수급 포착 후 5거래일 수익률" data-tip="포착일 다음날부터 5거래일이 끝난 뒤에만 %를 보여 줍니다. 끝나기 전에는 경과 일수만 표시하며 승률에 넣지 않습니다." tabindex="0">5일 뒤 수익률</th>
+            <th class="sortable has-tip" data-sort="ret_20d" data-tip-title="수급 포착 후 20거래일 수익률" data-tip="포착일 다음날부터 20거래일이 끝난 뒤에만 %를 보여 줍니다. 끝나기 전에는 경과 일수만 표시합니다." tabindex="0">20일 뒤 수익률</th>
           </tr>
         </thead>
         <tbody>${body}</tbody>
@@ -6014,7 +6144,10 @@ async function loadInvestor() {
   const flowCoverage = flowFresh.coverage || {};
   const coverageNote = flowCoverage.current_tickers != null ? ` · ${flowFresh.expected_date} 기준 ${flowCoverage.current_tickers}/${flowCoverage.stored_tickers}종목 최신` : " · 종목별 최신성 미확인";
   const asof = cov.last_date ? `공식 수급 저장 최신일 ${cov.last_date} · 누적 ${cov.tickers || 0}종목${coverageNote}` : "공식 수급 데이터 없음 (토스 캐시 대체 가동 중)";
-  if (currentView === "investor") setPageAsOf(asof, "KIS 관심종목·고유동성 수급 추적. API 미설정 시 토스 데이터로 자동 대체됩니다.");
+  if (currentView === "investor" && investorSubtab === "flow") {
+    setPageAsOf(asof, "KIS 관심종목·고유동성 수급 추적. API 미설정 시 토스 데이터로 자동 대체됩니다.");
+    renderPageEvidence("investor");
+  }
 
   loadFlowTier1Briefing("investor-tier1-briefing").catch(() => {});
 
@@ -6080,7 +6213,7 @@ async function loadTier1InvestorBriefing() {
       <div class="tier1-ai-card" style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border:1px solid rgba(56,189,248,0.4); border-radius:10px; padding:14px 16px; box-shadow:0 4px 16px rgba(0,0,0,0.3);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <span style="font-size:12.5px; font-weight:700; color:#38bdf8; display:flex; align-items:center; gap:6px;">
-            🤖 Tier 1 무료 AI 메이저 수급 동향 브리핑
+            🤖 ${escapeHtml(tier1RouteCopy(data).engine)} 메이저 수급 동향 브리핑
             <span style="font-size:10.5px; font-weight:400; color:#94a3b8;">(${escapeHtml(data.model || "NVIDIA 550B")})</span>
           </span>
           <div style="display:flex; gap:4px;">${sectors}</div>
@@ -6098,6 +6231,8 @@ async function loadTier1InvestorBriefing() {
 
 let investorEventTab = "consecutive";
 let investorEventSource = "auto";
+let investorEventFilter = "all";
+let investorEventQ = "";
 
 function dirKo(d) {
   if (d === "BUY") return "매수";
@@ -6114,6 +6249,40 @@ function fmtAmt(v) {
   return n.toLocaleString("ko-KR");
 }
 
+function eventHistoryTipAttrs(row, label) {
+  const recent = Array.isArray(row?.recent) ? row.recent.filter((d) => d && d.date).slice(0, 10) : [];
+  const party = row?.party_ko || "기관";
+  const title = `${row?.company || row?.ticker || "종목"} · ${label} · 최근 ${recent.length || 0}거래일`;
+  const tip = recent.length
+    ? recent.map((d) => `${String(d.date || "").slice(5)} · ${party} ${fmtAmt(d.primary)} · 외인 ${fmtAmt(d.foreign)}`).join("\n")
+    : "최근 10거래일 일별 수급이 없습니다.";
+  const hint = `연속 ${row?.days || 0}일 · 누적 ${fmtAmt(row?.cumulative)} · 당일 ${fmtAmt(row?.today_a)} · 외인 당일 ${fmtAmt(row?.today_b)}`;
+  return ` data-tip-layout="event-history" data-tip-title="${escapeHtml(title)}" data-tip="${escapeHtml(tip)}" data-tip-hint="${escapeHtml(hint)}" data-tip-hint-label="연속·당일 요약" tabindex="0"`;
+}
+
+function eventSpark(recent, key = "primary") {
+  const vals = (Array.isArray(recent) ? recent : []).slice(0, 10).map((d) => Number(d?.[key] || 0)).reverse();
+  if (!vals.length) return "";
+  const max = Math.max(...vals.map((v) => Math.abs(v)), 1);
+  return `<span class="inv-spark" aria-hidden="true">${vals.map((v) => {
+    const h = Math.max(2, Math.round((Math.abs(v) / max) * 16));
+    const cls = v > 0 ? "up" : v < 0 ? "down" : "";
+    return `<i class="${cls}" style="height:${h}px"></i>`;
+  }).join("")}</span>`;
+}
+
+function eventRowDir(r, tab, cumKey) {
+  if (tab === "turns") return (r.turn && r.turn.to) || r.turn_to || r.direction;
+  if (tab === "paired") return r.paired_direction;
+  if (String(tab).startsWith("cum")) {
+    const v = Number(r[cumKey]);
+    if (v > 0) return "BUY";
+    if (v < 0) return "SELL";
+    return "FLAT";
+  }
+  return r.direction;
+}
+
 function renderInvestorEvents(data) {
   const box = $("#investor-events-box");
   if (!box) return;
@@ -6123,16 +6292,28 @@ function renderInvestorEvents(data) {
   const src = pick === "official" ? official : toss;
   const reb = data.rebalance || {};
   const tabs = [
-    ["consecutive", `🔥 연속 순매수 (${ (src.consecutive || []).length })`],
-    ["paired", `💎 동반 매수 (${ (src.paired || []).length })`],
+    ["consecutive", `🔥 연속 (${ (src.consecutive || []).length })`],
+    ["paired", `💎 동반 (${ (src.paired || []).length })`],
     ["turns", `🔄 방향전환 (${ (src.turns || []).length })`],
     ["cum5", `📅 5일 누적 (${ (src.cum5 || []).length })`],
     ["cum20", `📅 20일 누적 (${ (src.cum20 || []).length })`],
     ["cum60", `📅 60일 누적 (${ (src.cum60 || []).length })`],
   ];
-  const rows = src[investorEventTab] || [];
   const isCum = String(investorEventTab).startsWith("cum");
   const cumKey = investorEventTab === "cum60" ? "w60" : investorEventTab === "cum5" ? "w5" : "w20";
+  const q = (investorEventQ || "").trim().toLowerCase();
+  const allRows = src[investorEventTab] || [];
+  const rows = allRows.filter((r) => {
+    const hay = `${r.company || ""} ${r.ticker || ""}`.toLowerCase();
+    if (q && !hay.includes(q)) return false;
+    const dir = eventRowDir(r, investorEventTab, cumKey);
+    if (investorEventFilter === "up") return dir === "BUY";
+    if (investorEventFilter === "down") return dir === "SELL";
+    return true;
+  });
+  const consec = src.consecutive || [];
+  const buyN = consec.filter((r) => r.direction === "BUY").length;
+  const sellN = consec.filter((r) => r.direction === "SELL").length;
 
   const renderDirBadge = (d) => {
     if (d === "BUY") return '<span class="chip" style="background:rgba(16,185,129,0.15); color:#34d399; font-weight:800;">🔴 순매수</span>';
@@ -6149,52 +6330,55 @@ function renderInvestorEvents(data) {
     return str;
   };
 
+  const priceHead = `<th class="has-tip" data-tip="KRX 저장 최근 종가입니다.">최근가</th>`;
+  const partyKo = (allRows[0] && allRows[0].party_ko) || reb.party_ko || "기관";
   const head =
     investorEventTab === "turns"
-      ? `<th class="has-tip" data-tip="종목명 및 6자리 코드입니다.">종목명</th><th class="has-tip" data-tip="외인/기관의 매도세가 매수세로 전환된 방향입니다.">전환 방향</th><th class="has-tip" data-tip="전환 직전까지 지속되었던 연속 매도 일수입니다.">이전 연속</th><th class="has-tip" data-tip="오늘 유입된 순매수 주수입니다.">오늘 순매수</th><th class="has-tip" data-tip="데이터 출처입니다.">출처</th>`
+      ? `<th>종목</th>${priceHead}<th>전환</th><th>직전 연속</th><th class="has-tip" data-tip="마우스를 올리면 최근 10거래일 수급이 나옵니다.">오늘 ${escapeHtml(partyKo)}</th><th>오늘 외인</th>`
       : investorEventTab === "paired"
-        ? `<th class="has-tip" data-tip="종목명 및 6자리 코드입니다.">종목명</th><th class="has-tip" data-tip="동반 매수 포지션입니다.">방향</th><th class="has-tip" data-tip="기관 투자자 순매수량입니다.">${escapeHtml(src.pair || "기관")}</th><th class="has-tip" data-tip="외국인 투자자 순매수량입니다.">외국인</th><th class="has-tip" data-tip="데이터 출처입니다.">출처</th>`
+        ? `<th>종목</th>${priceHead}<th>동반</th><th class="has-tip" data-tip="마우스를 올리면 최근 10거래일 수급이 나옵니다.">오늘 ${escapeHtml(partyKo)}</th><th>오늘 외인</th>`
         : isCum
-          ? `<th class="has-tip" data-tip="종목명 및 6자리 코드입니다.">종목명</th><th class="has-tip" data-tip="설정 기간 동안 누적된 합산 순매수량입니다.">누적 순매수</th><th class="has-tip" data-tip="수급 일수입니다.">일수</th><th class="has-tip" data-tip="이력 데이터 충분성 여부입니다.">이력 상태</th><th class="has-tip" data-tip="데이터 출처입니다.">출처</th>`
-        : `<th class="has-tip" data-tip="종목명 및 6자리 코드입니다.">종목명</th><th class="has-tip" data-tip="순매수 또는 순매도 포지션입니다.">방향</th><th class="has-tip" data-tip="쉬지 않고 연속으로 순매수한 거래일 수입니다.">연속 일수</th><th class="has-tip" data-tip="연속 매수 기간 동안 합산된 총 순매수량입니다.">누적 수급</th><th class="has-tip" data-tip="이력 상태입니다.">이력 상태</th><th class="has-tip" data-tip="데이터 출처입니다.">출처</th>`;
+          ? `<th>종목</th>${priceHead}<th class="has-tip" data-tip="마우스를 올리면 최근 10거래일 수급이 나옵니다.">기간 누적</th><th>관측 일수</th><th>오늘 ${escapeHtml(partyKo)}</th><th>오늘 외인</th>`
+        : `<th>종목</th>${priceHead}<th>방향</th><th class="has-tip" data-tip="같은 방향으로 이어진 거래일 수입니다. 마우스를 올리면 최근 10일을 보여 줍니다.">연속</th><th class="has-tip" data-tip="연속 기간 합산입니다. 마우스를 올리면 최근 10일을 보여 줍니다.">연속 합산</th><th>오늘 ${escapeHtml(partyKo)}</th><th>오늘 외인</th>`;
 
   const body = rows
     .slice(0, 40)
     .map((r) => {
-      const srcChip = `<span class="chip" style="background:rgba(255,255,255,0.06); color:#cbd5e1; font-size:11px;">${escapeHtml(r.source || (pick === "official" ? "KIS" : "토스"))}</span>`;
+      const priceCell = `<td class="num">${quoteCell(r)}</td>`;
+      const nameCell = `<td><div style="display:flex; align-items:center; gap:6px;"><b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b><span class="meta">${escapeHtml(r.ticker)}</span></div><div class="meta">${escapeHtml(r.last_date || "")}</div></td>`;
+      const hist = eventHistoryTipAttrs(r, investorEventTab === "turns" ? "방향전환" : investorEventTab === "paired" ? "동반 수급" : isCum ? "누적 수급" : "연속 수급");
       if (isCum) {
         return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
-          <td><div style="display:flex; align-items:center; gap:6px;"><b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b><span class="meta">${escapeHtml(r.ticker)}</span></div></td>
-          <td class="num">${renderAmtBadge(r[cumKey])}</td>
+          ${nameCell}${priceCell}
+          <td class="num has-tip"${hist}>${renderAmtBadge(r[cumKey])}${eventSpark(r.recent)}</td>
           <td class="num">${r[cumKey + "_n"] ? `<b style="color:#38bdf8;">${r[cumKey + "_n"]}일</b>` : "—"}</td>
-          <td>${r[cumKey + "_capped"] ? '<span class="chip" style="background:rgba(245,158,11,0.15); color:#f59e0b; font-size:11px;">이력 짧음</span>' : "정상"}</td>
-          <td>${srcChip}</td></tr>`;
+          <td class="num">${renderAmtBadge(r.today_a)}</td>
+          <td class="num">${renderAmtBadge(r.today_b)}</td></tr>`;
       }
       if (investorEventTab === "turns") {
         const t = r.turn || r;
-        const turnBadge = `<span class="chip" style="background:rgba(250,204,21,0.15); color:#facc15; font-weight:700;">🔄 ${dirKo(t.from || r.turn_from)} ➔ ${dirKo(t.to || r.turn_to)}</span>`;
+        const turnBadge = `<span class="chip" style="background:rgba(250,204,21,0.15); color:#facc15; font-weight:700;">${dirKo(t.from || r.turn_from)} → ${dirKo(t.to || r.turn_to)}</span>`;
         return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
-          <td><div style="display:flex; align-items:center; gap:6px;"><b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b><span class="meta">${escapeHtml(r.ticker)}</span></div></td>
+          ${nameCell}${priceCell}
           <td>${turnBadge}</td>
-          <td class="num">${t.prior_days || r.turn_prior_days ? `<b style="color:#94a3b8;">${t.prior_days || r.turn_prior_days}일</b>` : "—"}</td>
+          <td class="num has-tip"${hist}>${t.prior_days || r.turn_prior_days ? `<b>${t.prior_days || r.turn_prior_days}일</b>` : "—"}${eventSpark(r.recent)}</td>
           <td class="num">${renderAmtBadge(t.today || r.today_a)}</td>
-          <td>${srcChip}</td></tr>`;
+          <td class="num">${renderAmtBadge(r.today_b)}</td></tr>`;
       }
       if (investorEventTab === "paired") {
         return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
-          <td><div style="display:flex; align-items:center; gap:6px;"><b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b><span class="meta">${escapeHtml(r.ticker)}</span></div></td>
+          ${nameCell}${priceCell}
           <td>${renderDirBadge(r.paired_direction)}</td>
-          <td class="num">${renderAmtBadge(r.today_a)}</td>
-          <td class="num">${renderAmtBadge(r.today_b)}</td>
-          <td>${srcChip}</td></tr>`;
+          <td class="num has-tip"${hist}>${renderAmtBadge(r.today_a)}${eventSpark(r.recent)}</td>
+          <td class="num">${renderAmtBadge(r.today_b)}</td></tr>`;
       }
       return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
-        <td><div style="display:flex; align-items:center; gap:6px;"><b style="font-size:13.5px; color:#f8fafc;">${escapeHtml(r.company || "")}</b><span class="meta">${escapeHtml(r.ticker)}</span></div></td>
+        ${nameCell}${priceCell}
         <td>${renderDirBadge(r.direction)}</td>
-        <td class="num"><b style="color:#38bdf8;">${r.days || 0}일 연속</b></td>
-        <td class="num">${renderAmtBadge(r.cumulative)}</td>
-        <td>${r.capped ? '<span class="chip" style="background:rgba(245,158,11,0.15); color:#f59e0b; font-size:11px;">이력 시작</span>' : "정상"}</td>
-        <td>${srcChip}</td></tr>`;
+        <td class="num has-tip"${hist}><b style="color:#38bdf8;">${r.days || 0}일</b>${eventSpark(r.recent)}</td>
+        <td class="num has-tip"${hist}>${renderAmtBadge(r.cumulative)}</td>
+        <td class="num">${renderAmtBadge(r.today_a)}</td>
+        <td class="num">${renderAmtBadge(r.today_b)}</td></tr>`;
     })
     .join("");
 
@@ -6202,8 +6386,52 @@ function renderInvestorEvents(data) {
     ? '<span class="chip" style="background:rgba(56,189,248,0.18); color:#38bdf8; font-weight:800; border:1px solid rgba(56,189,248,0.4);">🏛️ 한국투자증권(KIS) 공식 수급 기준</span>'
     : '<span class="chip" style="background:rgba(168,85,247,0.18); color:#c084fc; font-weight:800; border:1px solid rgba(168,85,247,0.4);">⚡ 토스증권 수급 캐시 기준 (자동 백업 엔진)</span>';
 
+  const rebBuy = (reb.top_buy || []).map((x) => `
+    <button type="button" class="inv-reb-item" data-ticker="${escapeHtml(x.ticker)}">
+      <b>${escapeHtml(x.company || x.ticker)}</b>
+      <span class="nps-chg up">+${escapeHtml(fmtAmt(x.net))}</span>
+    </button>`).join("");
+  const rebSell = (reb.top_sell || []).map((x) => `
+    <button type="button" class="inv-reb-item" data-ticker="${escapeHtml(x.ticker)}">
+      <b>${escapeHtml(x.company || x.ticker)}</b>
+      <span class="nps-chg down">${escapeHtml(fmtAmt(x.net))}</span>
+    </button>`).join("");
+  const rebBlock = reb.empty
+    ? `<aside class="nps-notice"><b>표본 리밸런싱 없음</b><p>${escapeHtml(reb.note || "공식 수급 행이 없어 당일 매수/매도 표본을 못 그립니다.")}</p></aside>`
+    : `<div class="inv-reb">
+        <section>
+          <h3>오늘 ${escapeHtml(reb.party_ko || "기관")}이 더 산 종목 · ${escapeHtml(reb.as_of || "")}</h3>
+          <div class="inv-reb-list">${rebBuy || `<p class="meta">순매수 표본 없음</p>`}</div>
+        </section>
+        <section>
+          <h3>오늘 ${escapeHtml(reb.party_ko || "기관")}이 더 판 종목 · ${escapeHtml(reb.as_of || "")}</h3>
+          <div class="inv-reb-list">${rebSell || `<p class="meta">순매도 표본 없음</p>`}</div>
+        </section>
+      </div>
+      <p class="nps-legend">${escapeHtml(reb.note || "관심종목·고유동성 표본입니다. 전시장 연기금 리밸런싱이 아니며 Quant에 넣지 않습니다.")} 숫자는 원(KRW)입니다.</p>`;
+
   box.innerHTML = `
-    <p class="hint">${escapeHtml(data.reliability?.note || '')} · 현재 공식 후보 ${Number(data.reliability?.current_tickers || 0)} / 저장 ${Number(data.reliability?.stored_tickers || 0)}종목</p>
+    <p class="hint">${escapeHtml(data.reliability?.note || "")} · 현재 공식 후보 ${Number(data.reliability?.current_tickers || 0)} / 저장 ${Number(data.reliability?.stored_tickers || 0)}종목</p>
+    ${src.pair_note ? `<p class="hint">${escapeHtml(src.pair_note)}</p>` : ""}
+    ${src.empty_reason ? `<p class="hint" style="color:#fbbf24;">${escapeHtml(src.empty_reason)}</p>` : ""}
+    <div class="inv-event-kpis">
+      <article class="nps-kpi up ${investorEventFilter === "up" && investorEventTab === "consecutive" ? "on" : ""}" data-inv-filter="up" title="연속 순매수 종목만">
+        <span>연속 순매수</span><b>+${buyN}</b><em>기관·기금 한 방향</em>
+      </article>
+      <article class="nps-kpi down ${investorEventFilter === "down" && investorEventTab === "consecutive" ? "on" : ""}" data-inv-filter="down" title="연속 순매도 종목만">
+        <span>연속 순매도</span><b>${sellN}</b><em>기관·기금 한 방향</em>
+      </article>
+      <article class="nps-kpi" data-inv-tab="paired">
+        <span>외인 동반</span><b>${(src.paired || []).length}</b><em>${escapeHtml(src.pair || "기관+외인")}</em>
+      </article>
+      <article class="nps-kpi over" data-inv-tab="turns">
+        <span>방향전환</span><b>${(src.turns || []).length}</b><em>전환 기준 ${Number($("#investor-turn")?.value || 5)}일</em>
+      </article>
+      <article class="nps-kpi">
+        <span>표본 당일</span><b>${reb.buy_n || 0}/${reb.sell_n || 0}</b><em>매수/매도 · ${escapeHtml(reb.as_of || "—")}</em>
+      </article>
+    </div>
+    ${rebBlock}
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
       <div class="h-tabs" style="margin:0; padding:0; border:none;">
         <button type="button" class="${pick === "official" ? "on" : ""}" data-inv-src="official">🏛️ 공식 KIS (${official.tickers || 0}종목)</button>
@@ -6211,13 +6439,22 @@ function renderInvestorEvents(data) {
       </div>
       <div>${srcBadge}</div>
     </div>
-    <div class="h-tabs" style="margin-bottom:12px;">
+    <div class="h-tabs" style="margin-bottom:10px;">
       ${tabs.map(([id, label]) => `<button type="button" class="${investorEventTab === id ? "on" : ""}" data-inv-tab="${id}">${label}</button>`).join("")}
+    </div>
+    <div class="nps-toolbar">
+      <input data-inv-q type="search" value="${escapeHtml(investorEventQ || "")}" placeholder="종목명 · 코드 검색" />
+      <div class="nps-chips">
+        <button type="button" class="${investorEventFilter === "all" ? "on" : ""}" data-inv-filter="all">전체 방향</button>
+        <button type="button" class="${investorEventFilter === "up" ? "on" : ""}" data-inv-filter="up">순매수</button>
+        <button type="button" class="${investorEventFilter === "down" ? "on" : ""}" data-inv-filter="down">순매도</button>
+      </div>
+      <span class="chip">${rows.length}/${allRows.length}종목</span>
     </div>
     <div class="table-wrap">
       <table>
         <thead><tr>${head}</tr></thead>
-        <tbody>${body || `<tr><td colspan="6" class="hint" style="text-align:center; padding:30px;">해당 조건의 수급 포착 종목이 없습니다.</td></tr>`}</tbody>
+        <tbody>${body || `<tr><td colspan="7" class="hint" style="text-align:center; padding:30px;">해당 조건의 수급 포착 종목이 없습니다.</td></tr>`}</tbody>
       </table>
     </div>
   `;
@@ -6233,8 +6470,31 @@ function renderInvestorEvents(data) {
       renderInvestorEvents(data);
     })
   );
-  box.querySelectorAll("tr.clickable[data-ticker]").forEach((tr) =>
-    tr.addEventListener("click", () => openStock(tr.dataset.ticker).catch((err) => alert(err.message)))
+  box.querySelectorAll("[data-inv-filter]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      investorEventFilter = btn.dataset.invFilter || "all";
+      if (btn.dataset.invFilter && investorEventTab !== "consecutive" && (btn.dataset.invFilter === "up" || btn.dataset.invFilter === "down") && btn.closest(".inv-event-kpis")) {
+        investorEventTab = "consecutive";
+      }
+      renderInvestorEvents(data);
+    })
+  );
+  const qInp = box.querySelector("[data-inv-q]");
+  if (qInp) {
+    qInp.addEventListener("input", () => {
+      investorEventQ = qInp.value || "";
+      const pos = qInp.selectionStart;
+      renderInvestorEvents(data);
+      const again = $("#investor-events-box [data-inv-q]");
+      if (again) {
+        again.focus();
+        const n = again.value.length;
+        again.setSelectionRange(pos == null ? n : pos, pos == null ? n : pos);
+      }
+    });
+  }
+  box.querySelectorAll("tr.clickable[data-ticker], .inv-reb-item[data-ticker]").forEach((el) =>
+    el.addEventListener("click", () => openStock(el.dataset.ticker).catch((err) => alert(err.message)))
   );
 }
 
@@ -6793,76 +7053,306 @@ function setupSunziControls() {
   });
 }
 
+function paintNpsEvidence(data, rows) {
+  const el = $("#page-evidence");
+  if (!el) return;
+  const n = (rows || []).length;
+  const last = data?.coverage?.last_date || "없음";
+  el.className = n ? "page-evidence has-tip evidence-ready" : "page-evidence has-tip evidence-missing";
+  el.textContent = n
+    ? `🔎 근거 검증 가능 · OpenDART 대량보유 · ${n}종목`
+    : "🔎 근거 누락 · OpenDART 대량보유 · 0종목";
+  el.setAttribute(
+    "data-tip",
+    `국민연금 5%는 OpenDART 대량보유상황보고입니다. 일별 기금·토스 연기금 수급이 아니며 Quant에 넣지 않습니다. 최신 보고일 ${last}.`
+  );
+}
+
+function npsChangePp(r) {
+  if (r.previous_ratio == null || r.holding_ratio == null) return null;
+  const v = (Number(r.holding_ratio) - Number(r.previous_ratio)) * 100;
+  return Number.isFinite(v) ? v : null;
+}
+
+function npsHoldingPct(r) {
+  if (r.holding_ratio == null) return null;
+  const v = Number(r.holding_ratio) * 100;
+  return Number.isFinite(v) ? v : null;
+}
+
+function npsFilingAgeDays(r) {
+  const t = Date.parse(r.report_date || "");
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.floor((Date.now() - t) / 86400000));
+}
+
+function npsAgeLabel(age) {
+  if (age == null) return "";
+  if (age === 0) return "오늘 공시";
+  if (age < 30) return `${age}일 전`;
+  if (age < 180) return `${age}일 전`;
+  return `${age}일 전 · 오래됨`;
+}
+
+function npsFilteredRows() {
+  const q = (npsCache.q || "").trim().toLowerCase();
+  const mode = npsCache.filter || "all";
+  const filtered = (npsCache.rows || []).filter((r) => {
+    const hay = `${r.company || ""} ${r.ticker || ""} ${r.holder_name || ""}`.toLowerCase();
+    if (q && !hay.includes(q)) return false;
+    const chg = npsChangePp(r);
+    const pct = npsHoldingPct(r);
+    const age = npsFilingAgeDays(r);
+    if (mode === "up") return chg != null && chg > 0;
+    if (mode === "down") return chg != null && chg < 0;
+    if (mode === "over10") return pct != null && pct >= 10;
+    if (mode === "stale") return age != null && age >= 180;
+    if (mode === "recent") return age != null && age < 90;
+    return true;
+  });
+  return sortedCopy(filtered, "nps", "holding_ratio", "desc");
+}
+
+function npsRowHtml(r) {
+  const pct = npsHoldingPct(r);
+  const chg = npsChangePp(r);
+  const age = npsFilingAgeDays(r);
+  const bar = pct == null ? 0 : Math.max(6, Math.min(100, (pct / 20) * 100));
+  const chgCls = chg == null ? "flat" : chg > 0 ? "up" : chg < 0 ? "down" : "flat";
+  const stale = age != null && age >= 180;
+  const over10 = pct != null && pct >= 10;
+  const dart = r.receipt_no
+    ? `<a class="nps-dart-link" href="https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${encodeURIComponent(r.receipt_no)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">공시 원문</a>`
+    : `<span class="nps-dart-missing">원문 없음</span>`;
+  const badges = `${over10 ? `<span class="nps-badge over10">10%+</span>` : ""}${stale ? `<span class="nps-badge stale">공시 오래됨</span>` : ""}`;
+  return `<tr class="clickable nps-row ${chgCls}${stale ? " stale" : ""}" data-ticker="${escapeHtml(r.ticker)}">
+    <td class="name-cell">
+      <b>${escapeHtml(r.company || r.ticker)}</b>
+      <div class="meta">${escapeHtml(r.ticker || "")}${badges}</div>
+    </td>
+    <td><span class="nps-holder">${escapeHtml(r.holder_name || "국민연금공단")}</span></td>
+    <td>
+      <div class="nps-hold">
+        <b>${pct == null ? "—" : `${pct.toFixed(2)}%`}</b>
+        <div class="nps-hold-bar" aria-hidden="true"><i style="width:${bar.toFixed(0)}%"></i></div>
+      </div>
+    </td>
+    <td class="num"><span class="nps-chg ${chgCls}">${chg == null ? "—" : `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%p`}</span></td>
+    <td class="num">${r.share_count != null ? Number(r.share_count).toLocaleString("ko-KR") : "—"}</td>
+    <td>
+      <div class="nps-date">${escapeHtml(r.report_date || "—")}</div>
+      <div class="meta${stale ? " nps-age-stale" : ""}">${escapeHtml(npsAgeLabel(age))}</div>
+    </td>
+    <td>${dart}</td>
+  </tr>`;
+}
+
+function npsMoverHtml(r, chg) {
+  const pct = npsHoldingPct(r);
+  return `<button type="button" class="nps-mover" data-ticker="${escapeHtml(r.ticker)}">
+    <span class="nps-mover-name">${escapeHtml(r.company || r.ticker)}</span>
+    <span class="nps-chg ${chg > 0 ? "up" : "down"}">${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%p</span>
+    <em>${pct == null ? "—" : `${pct.toFixed(2)}%`} · ${escapeHtml(r.report_date || "")}</em>
+  </button>`;
+}
+
+function setNpsFilter(mode) {
+  npsCache.filter = mode || "all";
+  document.querySelectorAll("[data-nps-filter]").forEach((b) => {
+    b.classList.toggle("on", (b.dataset.npsFilter || "all") === npsCache.filter);
+  });
+  paintNpsTable();
+}
+
+function paintNpsTable() {
+  const rows = npsFilteredRows();
+  const body = rows.map(npsRowHtml).join("")
+    || `<tr><td colspan="7" class="nps-empty">조건에 맞는 공시가 없습니다. 필터를 바꾸거나 공시를 수집하세요.</td></tr>`;
+  $$("[data-nps-body]").forEach((tb) => {
+    tb.innerHTML = body;
+  });
+  $$("[data-nps-count]").forEach((el) => {
+    el.textContent = `${rows.length}/${(npsCache.rows || []).length}종목`;
+  });
+  paintSortHeaders("nps");
+}
+
+async function copyNpsVisible() {
+  const rows = npsFilteredRows();
+  const lines = ["종목\t코드\t지분%\t직전대비%p\t주식수\t보고일"];
+  for (const r of rows) {
+    const pct = npsHoldingPct(r);
+    const chg = npsChangePp(r);
+    lines.push([
+      r.company || "",
+      r.ticker || "",
+      pct == null ? "" : pct.toFixed(2),
+      chg == null ? "" : chg.toFixed(2),
+      r.share_count == null ? "" : r.share_count,
+      r.report_date || "",
+    ].join("\t"));
+  }
+  await navigator.clipboard.writeText(lines.join("\n"));
+}
+
+function bindNpsFilters(root) {
+  root?.querySelectorAll("[data-nps-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => setNpsFilter(btn.dataset.npsFilter || "all"));
+  });
+  const inp = root?.querySelector("[data-nps-q]");
+  if (inp) {
+    inp.addEventListener("input", () => {
+      npsCache.q = inp.value || "";
+      $$("[data-nps-q]").forEach((el) => {
+        if (el !== inp) el.value = npsCache.q;
+      });
+      paintNpsTable();
+    });
+  }
+  root?.querySelectorAll(".nps-mover[data-ticker]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.ticker && btn.dataset.ticker !== "000000") {
+        openStock(btn.dataset.ticker).catch((err) => alert(err.message));
+      }
+    });
+  });
+  const copyBtn = root?.querySelector("[data-nps-copy]");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", () => {
+      copyNpsVisible()
+        .then(() => {
+          copyBtn.textContent = "복사됨";
+          setTimeout(() => { copyBtn.textContent = "표 복사"; }, 1400);
+        })
+        .catch((err) => alert(err.message || "복사하지 못했습니다."));
+    });
+  }
+}
+
 async function loadNps() {
   const box = $("#nps-box");
   const subBox = $("#nps-sub-box");
   if (!box && !subBox) return;
-  const data = await api("/api/nps");
+  const loading = `<div class="nps-loading"><div class="skeleton-spinner"></div><div class="skeleton-loading-text"><b>국민연금 5% 공시를 불러오는 중</b><p>OpenDART 대량보유상황보고 · 일별 기금 수급이 아닙니다</p></div></div>`;
+  if (box) box.innerHTML = loading;
+  if (subBox) subBox.innerHTML = loading;
+  let data;
+  try {
+    data = await api("/api/nps");
+  } catch (err) {
+    const fail = `<div class="nps-empty-card"><b>공시를 불러오지 못했습니다</b><p>${escapeHtml(err.message || String(err))}</p></div>`;
+    if (box) box.innerHTML = fail;
+    if (subBox) subBox.innerHTML = fail;
+    throw err;
+  }
   const cov = data.coverage || {};
   const rows = data.rows || [];
-  const asof = cov.last_date ? `공시 최신 ${cov.last_date} · ${cov.tickers || 0}종목` : "저장된 보유 공시 없음";
-  if (currentView === "nps" || currentView === "investor") setPageAsOf(asof, "OpenDART 대량보유. 일별 기금 수급이 아닙니다.");
-  const body = rows
-    .map((r) => {
-      const chg =
-        r.previous_ratio != null && r.holding_ratio != null
-          ? (Number(r.holding_ratio) - Number(r.previous_ratio)) * 100
-          : null;
-      const dart = r.receipt_no
-        ? `<a class="ext" href="https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${encodeURIComponent(r.receipt_no)}" target="_blank" rel="noopener">공시</a>`
-        : "";
-      return `<tr class="clickable" data-ticker="${escapeHtml(r.ticker)}">
-        <td><b>${escapeHtml(r.company || r.ticker)}</b><div class="meta">${escapeHtml(r.ticker)}</div></td>
-        <td>${escapeHtml(r.holder_name || "")}</td>
-        <td class="num">${r.holding_ratio != null ? `${(Number(r.holding_ratio) * 100).toFixed(2)}%` : "—"}</td>
-        <td class="num">${chg == null ? "—" : `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%p`}</td>
-        <td class="num">${r.share_count != null ? Number(r.share_count).toLocaleString("ko-KR") : "—"}</td>
-        <td>${escapeHtml(r.report_date || "")}</td>
-        <td>${dart}</td>
-      </tr>`;
-    })
-    .join("");
+  npsCache = { rows, data, filter: npsCache.filter || "all", q: npsCache.q || "" };
+  const changes = rows.map((r) => ({ r, chg: npsChangePp(r) }));
+  const up = changes.filter((x) => x.chg != null && x.chg > 0).length;
+  const down = changes.filter((x) => x.chg != null && x.chg < 0).length;
+  const over10 = rows.filter((r) => (npsHoldingPct(r) || 0) >= 10).length;
+  const staleN = rows.filter((r) => {
+    const age = npsFilingAgeDays(r);
+    return age != null && age >= 180;
+  }).length;
+  const topUp = changes.filter((x) => x.chg != null && x.chg > 0).sort((a, b) => b.chg - a.chg).slice(0, 3);
+  const topDown = changes.filter((x) => x.chg != null && x.chg < 0).sort((a, b) => a.chg - b.chg).slice(0, 3);
+  const asof = cov.last_date ? `공시 최신 ${cov.last_date} · ${rows.length}종목` : "저장된 보유 공시 없음";
+  if (currentView === "nps" || (currentView === "investor" && investorSubtab === "nps")) {
+    setPageAsOf(asof, "OpenDART 대량보유. 일별 기금 수급이 아닙니다.");
+    paintNpsEvidence(data, rows);
+  }
+  const dartChip = data.configured
+    ? `<span class="chip fresh">OpenDART 연결됨</span>`
+    : `<span class="chip stale">OpenDART 키 없음</span>`;
+  const movers = (topUp.length || topDown.length)
+    ? `<div class="nps-movers">
+        <section>
+          <h3>지분 증가 상위</h3>
+          <div class="nps-mover-list">${topUp.map((x) => npsMoverHtml(x.r, x.chg)).join("") || `<p class="meta">증가 공시 없음</p>`}</div>
+        </section>
+        <section>
+          <h3>지분 감소 상위</h3>
+          <div class="nps-mover-list">${topDown.map((x) => npsMoverHtml(x.r, x.chg)).join("") || `<p class="meta">감소 공시 없음</p>`}</div>
+        </section>
+      </div>`
+    : "";
   const html = `
     ${asofBanner(asof)}
-    <div class="kpis" style="grid-template-columns:repeat(3,1fr);margin:8px 0 16px">
-      <div class="kpi"><span>OpenDART</span><b class="${data.configured ? "ok" : "warn"}">${data.configured ? "설정됨" : "키 없음"}</b></div>
-      <div class="kpi"><span>종목</span><b>${rows.length}</b></div>
-      <div class="kpi"><span>저장 행</span><b>${cov.rows ?? 0}</b></div>
+    <div class="nps-kpis">
+      <article class="nps-kpi" data-nps-filter="all" title="전체 최신 보고 종목">
+        <span>최신 보고 종목</span>
+        <b>${rows.length}</b>
+        <em>저장 ${cov.rows ?? 0}행 · ${escapeHtml(cov.last_date || "—")}</em>
+      </article>
+      <article class="nps-kpi up ${npsCache.filter === "up" ? "on" : ""}" data-nps-filter="up" title="직전 대비 지분이 늘어난 종목만">
+        <span>지분 증가</span>
+        <b>+${up}</b>
+        <em>직전 보고 대비</em>
+      </article>
+      <article class="nps-kpi down ${npsCache.filter === "down" ? "on" : ""}" data-nps-filter="down" title="직전 대비 지분이 줄어든 종목만">
+        <span>지분 감소</span>
+        <b>${down}</b>
+        <em>직전 보고 대비</em>
+      </article>
+      <article class="nps-kpi over ${npsCache.filter === "over10" ? "on" : ""}" data-nps-filter="over10" title="보유 지분 10% 이상">
+        <span>10% 이상</span>
+        <b>${over10}</b>
+        <em>대량보유 상위</em>
+      </article>
+      <article class="nps-kpi stale ${npsCache.filter === "stale" ? "on" : ""}" data-nps-filter="stale" title="보고일이 6개월 이전">
+        <span>6개월 이전</span>
+        <b>${staleN}</b>
+        <em>공시 시점 확인</em>
+      </article>
     </div>
-    <p class="hint">${escapeHtml(data.disclaimer || "")}</p>
-    <div class="table-wrap">
+    <aside class="nps-notice">
+      <b>일별 기금 수급이 아닙니다</b>
+      <p>${escapeHtml(data.disclaimer || "OpenDART 대량보유상황보고이며 Quant에 넣지 않습니다.")}</p>
+    </aside>
+    ${movers}
+    <div class="nps-toolbar">
+      <input data-nps-q type="search" value="${escapeHtml(npsCache.q || "")}" placeholder="종목명 · 코드 · 보고자 검색" />
+      <div class="nps-chips">
+        <button type="button" class="${npsCache.filter === "all" ? "on" : ""}" data-nps-filter="all">전체</button>
+        <button type="button" class="${npsCache.filter === "up" ? "on" : ""}" data-nps-filter="up">지분 증가</button>
+        <button type="button" class="${npsCache.filter === "down" ? "on" : ""}" data-nps-filter="down">지분 감소</button>
+        <button type="button" class="${npsCache.filter === "over10" ? "on" : ""}" data-nps-filter="over10">10% 이상</button>
+        <button type="button" class="${npsCache.filter === "recent" ? "on" : ""}" data-nps-filter="recent">최근 90일</button>
+        <button type="button" class="${npsCache.filter === "stale" ? "on" : ""}" data-nps-filter="stale">6개월 이전</button>
+      </div>
+      ${dartChip}
+      <span class="chip" data-nps-count></span>
+      <button type="button" class="ghost small" data-nps-copy>표 복사</button>
+    </div>
+    <p class="nps-legend">지분 막대는 20%를 가득 찬 기준으로 그립니다. 열 제목을 누르면 정렬됩니다. 행을 누르면 종목 미리보기가 열립니다.</p>
+    <div class="table-wrap nps-table-wrap">
       <table data-scope="nps">
         <thead>
           <tr>
             <th class="sortable" data-sort="company">종목</th>
             <th>보고자</th>
             <th class="sortable" data-sort="holding_ratio">지분</th>
-            <th>직전대비</th>
+            <th class="sortable" data-sort="change_pp">직전대비</th>
             <th class="sortable" data-sort="share_count">주식수</th>
             <th class="sortable" data-sort="report_date">보고일</th>
             <th>원문</th>
           </tr>
         </thead>
-        <tbody>${body || `<tr><td colspan="7">아직 없습니다. 공시 수집을 누르세요.</td></tr>`}</tbody>
+        <tbody data-nps-body></tbody>
       </table>
     </div>
   `;
   if (box) {
     box.innerHTML = html;
-    box.querySelectorAll("tr.clickable[data-ticker]").forEach((tr) => {
-      if (tr.dataset.ticker && tr.dataset.ticker !== "000000") {
-        tr.addEventListener("click", () => openStock(tr.dataset.ticker).catch((err) => alert(err.message)));
-      }
-    });
+    bindNpsFilters(box);
   }
   if (subBox) {
     subBox.innerHTML = html;
-    subBox.querySelectorAll("tr.clickable[data-ticker]").forEach((tr) => {
-      if (tr.dataset.ticker && tr.dataset.ticker !== "000000") {
-        tr.addEventListener("click", () => openStock(tr.dataset.ticker).catch((err) => alert(err.message)));
-      }
-    });
+    bindNpsFilters(subBox);
   }
+  paintNpsTable();
 }
 
 function smartFlowBox(tab = smartFlowTab) {
@@ -7041,7 +7531,7 @@ function renderEmpty(data) {
         <div class="meta" style="margin-top:2px;">${renderEmptyBadgeTags(r)}</div>
         ${rowNote(r.comment_empty_short || r.comment_empty)}
       </td>
-      <td class="num has-tip"${flowHistoryTipAttrs(r, "최근가", r.last == null ? "—" : `${Number(r.last).toLocaleString("ko-KR")}원`)}>${quoteCell(r)}</td>
+      <td class="num has-tip"${flowHistoryTipAttrs(r, "최근가", quoteLast(r) == null ? "—" : `${quoteLast(r).toLocaleString("ko-KR")}원`)}>${quoteCell(r)}</td>
       <td class="num has-tip font-bold" style="color:#e2e8f0;"${flowHistoryTipAttrs(r, "외국인 보유 지분", r.foreign_holding_rate == null ? "—" : fmtPct(r.foreign_holding_rate, 2))}>${r.foreign_holding_rate == null ? "—" : fmtPct(r.foreign_holding_rate, 2)}</td>
       <td class="num has-tip"${flowHistoryTipAttrs(r, "외국인 지분 변화", r.foreign_rate_chg == null ? "—" : fmtPct(r.foreign_rate_chg, 2))}>${r.foreign_rate_chg == null ? "—" : pctCell(r.foreign_rate_chg)}</td>
       <td class="num has-tip ${r.foreign_net < 0 ? 'text-rose-400 font-bold' : r.foreign_net > 0 ? 'text-emerald-400 font-bold' : ''}"${flowHistoryTipAttrs(r, "외국인 누적 순매수", plainSignedInt(r.foreign_net))}>${signedInt(r.foreign_net)}</td>
@@ -7097,7 +7587,7 @@ function renderEmpty(data) {
             <th class="sortable has-tip" data-sort="holding_exit" data-tip-title="📉 기존 보유고 대비 이탈률" data-tip="외국인이 기존에 보유하고 있던 물량 대비 털어낸 비율입니다." tabindex="0">보유대비</th>
             <th class="sortable has-tip" data-sort="empty_krw" data-tip-title="💵 총 이탈 추정금액" data-tip="(외인+기관 순매도) × 종가로 계산한 이탈 자금 규모입니다." tabindex="0">이탈 추정</th>
             <th class="sortable has-tip" data-sort="sell_streak" data-tip-title="⏳ 연속 순매도 일수" data-tip="외인·기관이 연속으로 매도한 거래일 수입니다." tabindex="0">연속매도</th>
-            <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="📈 빈집 발생 후 5일 성과" data-tip="수급 공백 발생 후 5거래일 동안의 실제 주가 성과입니다." tabindex="0">이후 5일</th>
+            <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="빈집 포착 후 5거래일 수익률" data-tip="5거래일이 끝나야 %를 보여 줍니다. 그전에는 경과 일수만 표시합니다." tabindex="0">5일 뒤 수익률</th>
           </tr>
         </thead>
         <tbody>${body || `<tr><td colspan="13" class="hint" style="text-align:center; padding:30px;">조건에 맞는 종목이 없습니다. 유형을 바꾸거나 다시 스캔해 보세요.</td></tr>`}</tbody>
@@ -7393,7 +7883,7 @@ function renderTrade(data) {
         </div>
         ${rowNote(r.comment_trade_short || r.comment_trade)}
       </td>
-      <td class="num has-tip"${flowHistoryTipAttrs(r, "최근가", r.last == null ? "—" : `${Number(r.last).toLocaleString("ko-KR")}원`)}>${quoteCell(r)}</td>
+      <td class="num has-tip"${flowHistoryTipAttrs(r, "최근가", quoteLast(r) == null ? "—" : `${quoteLast(r).toLocaleString("ko-KR")}원`)}>${quoteCell(r)}</td>
       <td class="num">${renderStochCell(r)}</td>
       <td>${renderTechBadges(r)}</td>
       <td class="num has-tip ${r.foreign_net > 0 ? 'text-emerald-400 font-bold' : r.foreign_net < 0 ? 'text-rose-400' : ''}"${flowHistoryTipAttrs(r, "외국인 누적 순매수", plainSignedInt(r.foreign_net))}>${signedInt(r.foreign_net)}</td>
@@ -7452,7 +7942,7 @@ function renderTrade(data) {
             <th class="sortable has-tip" data-sort="institution_net" data-tip-title="🏛️ 기관 순매수" data-tip="기관 투자자 합산 순매수 주수입니다." tabindex="0">기관(주)</th>
             <th class="sortable has-tip" data-sort="pe_net" data-tip-title="💼 사모펀드 순매수" data-tip="사모펀드 합산 순매수 주수 및 연속 매집 일수입니다." tabindex="0">사모(주)</th>
             <th class="sortable has-tip" data-sort="setup_notional" data-tip-title="💵 수급 유입 추정금액" data-tip="유입된 수급의 원화 환산 추정 규모입니다." tabindex="0">추정금액</th>
-            <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="📈 신호 발생 후 5일 성과" data-tip="신호 발생 후 5거래일 실제 주가 성과입니다." tabindex="0">이후 5일</th>
+            <th class="sortable has-tip" data-sort="ret_5d" data-tip-title="수급 포착 후 5거래일 수익률" data-tip="5거래일이 끝나야 %를 보여 줍니다. 그전에는 경과 일수만 표시합니다." tabindex="0">5일 뒤 수익률</th>
           </tr>
         </thead>
         <tbody>${body || `<tr><td colspan="10" class="hint" style="text-align:center; padding:30px;">조건에 맞는 종목이 없습니다. 종목 범위를 전체로 바꾸거나 금액·셋업·기술 필터를 완화해 보세요.</td></tr>`}</tbody>
@@ -10172,6 +10662,20 @@ function flowTipMetric(segment) {
   </div>`;
 }
 
+function eventHistoryTipHtml(text) {
+  const lines = String(text || "").split("\n").map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return `<div class="float-tip-body">${escapeHtml(text)}</div>`;
+  const rows = lines.map((line) => {
+    const parts = line.split(" · ").map((part) => part.trim());
+    const day = parts.shift() || "—";
+    return `<div class="flow-tip-day-row">
+      <div class="flow-tip-day-head"><time>${escapeHtml(day)}</time></div>
+      <div class="flow-tip-net-grid">${parts.map(flowTipMetric).join("")}</div>
+    </div>`;
+  }).join("");
+  return `<div class="flow-tip-history">${rows}</div>`;
+}
+
 function flowHistoryTipHtml(text) {
   const lines = String(text || "").split("\n").map((line) => line.trim()).filter(Boolean);
   if (!lines.length || !lines.some((line) => line.includes(" · "))) {
@@ -10207,7 +10711,8 @@ function showFloatTip(el) {
   const text = el.getAttribute("data-tip");
   if (!text) return;
   const box = floatTip();
-  const isFlowHistory = el.getAttribute("data-tip-layout") === "flow-history";
+  const tipLayout = el.getAttribute("data-tip-layout");
+  const isFlowHistory = tipLayout === "flow-history" || tipLayout === "event-history";
   box.classList.toggle("flow-history-tip", isFlowHistory);
   const explicitTitle = el.getAttribute("data-tip-title");
   const title = explicitTitle || (el.getAttribute("aria-label") || el.textContent || "").trim().split("\n")[0].slice(0, 45);
@@ -10220,7 +10725,7 @@ function showFloatTip(el) {
     <div class="float-tip-header">
       <h4 class="float-tip-title">${escapeHtml(title)}</h4>
     </div>
-    ${isFlowHistory ? flowHistoryTipHtml(text) : `<div class="float-tip-body">${escapeHtml(text)}</div>`}
+    ${tipLayout === "event-history" ? eventHistoryTipHtml(text) : isFlowHistory ? flowHistoryTipHtml(text) : `<div class="float-tip-body">${escapeHtml(text)}</div>`}
   `;
 
   if (isFlowHistory && hintImpact) {
@@ -10637,7 +11142,7 @@ document.addEventListener("click", (e) => {
       else if (scope === "strategy" && strategyCache) renderStrategy(strategyCache);
       else if (scope === "us13f" && us13fCache) renderUs13f(us13fCache);
       else if (scope === "sunzi") loadSunzi().catch(() => {});
-      else if (scope === "nps") loadNps().catch(() => {});
+      else if (scope === "nps") paintNpsTable();
     }
     return;
   }
@@ -10789,6 +11294,23 @@ function applyModelOptions(ids, selected) {
     $("#llm-model").value = "";
   }
   syncDecorated(sel);
+}
+
+const TIER1_FREE_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free";
+const TIER1_FLASH_MODEL = "deepseek/deepseek-v4-flash-0731";
+const TIER1_PRO_MODEL = "deepseek/deepseek-v4-pro-0813";
+
+function paintAiArchitectureCard(active = {}) {
+  const t1 = $("#tier1-live-model");
+  if (t1) t1.textContent = TIER1_FREE_MODEL;
+  const t2 = $("#tier2-live-model");
+  if (t2) t2.textContent = active.model || lastStatus?.llm_model || "—";
+  const note = $("#tier2-live-note");
+  if (note && (active.model || lastStatus?.llm_model)) {
+    const label = active.label || lastStatus?.llm_label || active.provider || lastStatus?.llm_provider || "선택 모델";
+    const model = active.model || lastStatus?.llm_model;
+    note.innerHTML = `지금 상단 칩은 <b>${escapeHtml(label)} · ${escapeHtml(model)}</b> 입니다. 종목 ‘AI 심층 분석 리포트’ 버튼을 새로 누를 때만 이 모델이 쓰입니다. 메뉴 브리핑은 ${escapeHtml(TIER1_FREE_MODEL)} → ${escapeHtml(TIER1_FLASH_MODEL)} → grok-4.6 → ${escapeHtml(TIER1_PRO_MODEL)} 입니다.`;
+  }
 }
 
 async function persistLlmChoice() {
@@ -13570,6 +14092,7 @@ function setupInvestorSubtabs() {
 
   if (btnFlow && btnNps) {
     btnFlow.addEventListener("click", () => {
+      investorSubtab = "flow";
       btnFlow.classList.add("active");
       btnNps.classList.remove("active");
       paneFlow?.classList.remove("hidden");
@@ -13578,6 +14101,7 @@ function setupInvestorSubtabs() {
       loadInvestorEvents().catch(() => {});
     });
     btnNps.addEventListener("click", () => {
+      investorSubtab = "nps";
       btnNps.classList.add("active");
       btnFlow.classList.remove("active");
       paneNps?.classList.remove("hidden");
@@ -13982,11 +14506,10 @@ async function saveQuickLlmChoice() {
     }
     
     const provLabel = PROVIDER_LABELS[provToSave] || provToSave;
-    setChip($("#chip-llm"), `🤖 AI: ${provLabel} · ${modelToSave.split("/").pop()}`, `AI 분석 리포트 생성 모델: ${modelToSave}`);
-    
+    setChip($("#chip-llm"), `🤖 AI: ${provLabel} · ${modelToSave.split("/").pop()}`, `심층 리포트 생성 모델: ${modelToSave}. 메뉴 브리핑은 Nemotron→Flash→Grok/Pro 고정 경로라 다시 그리지 않습니다.`);
+    paintAiArchitectureCard({ label: provLabel, provider: provToSave, model: modelToSave });
     renderConnections().catch(() => {});
-    
-    showToast(`✅ AI 모델이 <b>${escapeHtml(provLabel)} · ${escapeHtml(modelToSave)}</b>(으)로 변경되었습니다.`, "success", 4000);
+    showToast(`심층 리포트 모델이 <b>${escapeHtml(provLabel)} · ${escapeHtml(modelToSave)}</b>(으)로 바뀌었습니다. 이미 떠 있는 메뉴 브리핑은 캐시라 모델명이 바로 바뀌지 않습니다.`, "success", 5000);
     closeQuickLlmModal();
   } catch (err) {
     showToast(`❌ 모델 변경 실패: ${err.message}`, "error");

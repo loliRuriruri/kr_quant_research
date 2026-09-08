@@ -171,21 +171,114 @@ def events_payload(settings: Settings, min_turn: int = 5) -> dict[str, Any]:
         toss_rows = []
     toss = from_toss_cache_rows(toss_rows, min_turn=min_turn)
     if not official_rows:
-        official["empty_reason"] = "공식 KIS 행이 없습니다. 관심·고유동성 수집 뒤에 연속·동반·전환이 채워집니다."
+        official["empty_reason"] = (
+            f"저장된 공식 수급 {stored_count}종목이 있지만, 기대 종가일 현재 신호로 확정된 종목이 없습니다. "
+            "거래상태 파일이 수급 기준일보다 오래되면 현재 신호를 비웁니다. 원천 이력은 남아 있습니다."
+        )
     if toss.get("skipped_no_daily") and not toss.get("consecutive"):
         toss["empty_reason"] = "토스 캐시에 일별 시계열이 없습니다. 수급 메뉴에서 다시 스캔하면 채워집니다."
+    from kr_quant.timing.snapshot import attach_last_close
+    for block in (official, toss):
+        stamped: list[dict[str, Any]] = []
+        for key in ("consecutive", "paired", "turns", "cum5", "cum20", "cum60"):
+            stamped.extend(block.get(key) or [])
+        attach_last_close(stamped, settings)
+    current_n = len({r.get("ticker") for r in official_rows})
     return {
         "used_in_quant": False,
         "min_turn": min_turn,
         "coverage": cov,
-        "reliability": {"stored_tickers": stored_count, "current_tickers": len({r.get('ticker') for r in official_rows}),
-                        "note": "기대 종가일의 확정 수급과 거래상태가 확인된 종목만 현재 신호에 사용합니다."},
+        "reliability": {
+            "stored_tickers": stored_count,
+            "current_tickers": current_n,
+            "note": "기대 종가일의 확정 수급과 거래가능 종목만 현재 신호입니다. 거래상태가 하루 늦으면 직전 거래상태 유니버스로 표시합니다.",
+        },
         "official": official,
         "toss": toss,
         "rebalance": sample_rebalance(official_rows, names=names),
-        "active": "official" if official_rows else "toss",
+        "active": "official" if (official_rows or stored_count) else "toss",
         "disclaimer": "",
     }
+
+
+def briefing_candidates(flow: dict[str, Any], limit: int = 15) -> tuple[list[dict[str, Any]], list[str]]:
+    """Prefer event tables; otherwise use stored official sample so AI is not blank."""
+    missing: list[str] = []
+    active_key = str(flow.get("active") or "official")
+    active = flow.get(active_key) if isinstance(flow.get(active_key), dict) else {}
+    by_ticker: dict[str, dict[str, Any]] = {}
+    for table_name in ("cum5", "consecutive", "paired", "turns"):
+        for row in (active.get(table_name) or [])[:limit]:
+            if not isinstance(row, dict):
+                continue
+            ticker = str(row.get("ticker") or "").zfill(6)
+            if not ticker.strip("0"):
+                continue
+            item = by_ticker.setdefault(
+                ticker,
+                {
+                    "ticker": ticker,
+                    "company": row.get("company"),
+                    "source": row.get("source") or active.get("source"),
+                    "party": row.get("party_ko"),
+                    "last_date": row.get("last_date"),
+                    "today_primary": row.get("today_a"),
+                    "today_foreign": row.get("today_b"),
+                    "w5": row.get("w5"),
+                    "w20": row.get("w20"),
+                    "streak_days": row.get("days"),
+                    "direction": row.get("direction"),
+                    "paired": row.get("paired"),
+                    "paired_direction": row.get("paired_direction"),
+                    "turn": row.get("turn"),
+                    "event_types": [],
+                    "unit": "net_value_krw_or_qty_if_value_missing",
+                },
+            )
+            if table_name not in item["event_types"]:
+                item["event_types"].append(table_name)
+    if by_ticker:
+        return list(by_ticker.values())[:limit], missing
+    missing.append("investor_flow_events")
+    reb = flow.get("rebalance") or {}
+    sample: list[dict[str, Any]] = []
+    for side, key in (("buy", "top_buy"), ("sell", "top_sell")):
+        for item in reb.get(key) or []:
+            if not isinstance(item, dict):
+                continue
+            sample.append(
+                {
+                    "ticker": item.get("ticker"),
+                    "company": item.get("company"),
+                    "source": active.get("source") or active_key,
+                    "party": reb.get("party_ko"),
+                    "last_date": reb.get("as_of"),
+                    "latest_net_krw": item.get("net"),
+                    "side": side,
+                    "basis": "stored_latest_session",
+                    "unit": "krw",
+                }
+            )
+    if sample:
+        return sample[:limit], missing
+    missing.append("rebalance_sample")
+    cov = flow.get("coverage") or {}
+    rel = flow.get("reliability") or {}
+    if int(cov.get("tickers") or 0) > 0:
+        return [
+            {
+                "source": active.get("source") or "KIS",
+                "stored_tickers": cov.get("tickers"),
+                "stored_rows": cov.get("rows"),
+                "last_date": cov.get("last_date"),
+                "current_tickers": rel.get("current_tickers"),
+                "basis": "coverage_only",
+                "note": "연속·동반·전환 표는 비어 있고 저장된 일별 수급 건수만 있습니다.",
+                "unit": "counts",
+            }
+        ], missing
+    missing.append("stored_investor_flow")
+    return [], missing
 
 
 def ticker_payload(settings: Settings, ticker: str) -> dict[str, Any]:

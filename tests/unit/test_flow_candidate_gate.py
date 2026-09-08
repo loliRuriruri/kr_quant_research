@@ -109,6 +109,39 @@ def test_missing_status_fails_closed(settings):
     assert gate.gate_toss_payload(dict(rows=[row()]), settings)['rows'] == []
 
 
+def test_latest_status_universe_used_when_expected_status_date_missing(settings, monkeypatch):
+    monkeypatch.setattr(gate, 'expected_price_date', lambda: date(2026, 9, 8))
+    rows = [dict(ticker='005930', trade_date='2026-09-08', investor_type=kind, is_final=True, net_value=10)
+            for kind in ['FOREIGN', 'INSTITUTION_TOTAL']]
+    assert gate.gate_official_rows(rows, settings) == rows
+    halted = [dict(ticker='000660', trade_date='2026-09-08', investor_type=kind, is_final=True, net_value=10)
+              for kind in ['FOREIGN', 'INSTITUTION_TOTAL']]
+    assert gate.gate_official_rows(halted, settings) == []
+
+
+def test_toss_uses_warehouse_session_when_clock_expected_missing(settings, monkeypatch):
+    monkeypatch.setattr(gate, 'expected_price_date', lambda: date(2026, 9, 8))
+    payload = dict(rows=[row()], dual=[row()], days=1)
+    result = gate.gate_toss_payload(payload, settings)
+    assert len(result['rows']) == 1
+    assert len(result['dual']) == 1
+    assert result['reliability']['expected_date'] == '2026-09-07'
+    assert result['reliability']['clock_expected'] == '2026-09-08'
+    assert result['reliability']['session_fallback'] is True
+    assert result['need_scan'] is False
+
+
+def test_toss_stale_cache_older_than_warehouse_still_fails_closed(settings, monkeypatch):
+    monkeypatch.setattr(gate, 'expected_price_date', lambda: date(2026, 9, 8))
+    stale = row()
+    stale['to'] = '2026-09-04'
+    stale['daily'][0]['date'] = '2026-09-04'
+    result = gate.gate_toss_payload(dict(rows=[stale], dual=[stale], days=1), settings)
+    assert result['rows'] == []
+    assert result['dual'] == []
+    assert result['need_scan'] is True
+
+
 def test_technical_price_date_and_category_copies_agree(settings):
     from kr_quant.timing.snapshot import attach_technicals
     payload = dict(rows=[row()], trading=[copy.deepcopy(row())], candidate_as_of='2026-09-07')

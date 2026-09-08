@@ -76,6 +76,10 @@ def _fwd_return_detail(hist: pd.DataFrame, start: date, horizon: int) -> dict[st
     detail["end_date"] = levels[-1][0].isoformat()
     detail["observed_sessions"] = min(max(len(levels) - 1, 0), horizon)
     if len(levels) <= horizon:
+        start_lv = levels[0][1]
+        last_lv = levels[-1][1]
+        if start_lv > 0 and last_lv > 0 and len(levels) >= 2:
+            detail["interim_return"] = last_lv / start_lv - 1.0
         return detail
 
     start_date, start_lv = levels[0]
@@ -201,6 +205,81 @@ def _flow_lists(payload: dict[str, Any]) -> list[list[dict[str, Any]]]:
     return out
 
 
+def _finite_price(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number <= 0:
+        return None
+    return number
+
+
+def attach_interim_returns(payload: dict[str, Any], settings: Settings) -> dict[str, Any]:
+    """Fill so-far price change for pending D+n cells. Never marks them complete."""
+    from kr_quant.timing.snapshot import load_prices
+
+    rows = payload.get("rows") or []
+    codes = {str(r.get("ticker") or "").zfill(6) for r in rows if isinstance(r, dict)}
+    if not codes:
+        return payload
+    frame = load_prices(settings, columns=["ticker", "trade_date", "close"], tickers=sorted(codes))
+    if frame is None or frame.empty:
+        return payload
+    work = frame.copy()
+    work["ticker"] = work["ticker"].astype(str).str.zfill(6)
+    work["trade_date"] = pd.to_datetime(work["trade_date"], errors="coerce")
+    work["close"] = pd.to_numeric(work["close"], errors="coerce")
+    work = work.dropna(subset=["ticker", "trade_date", "close"])
+    grouped = {code: grp.sort_values("trade_date") for code, grp in work.groupby("ticker", sort=False)}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        hist = grouped.get(str(row.get("ticker") or "").zfill(6))
+        if hist is None or hist.empty:
+            continue
+        for horizon in (5, 20):
+            meta = row.get(f"ret_{horizon}d_meta")
+            if not isinstance(meta, dict) or meta.get("complete") or meta.get("status") != "PENDING":
+                continue
+            if meta.get("interim_return") is not None:
+                continue
+            start = str(meta.get("start_date") or "")[:10]
+            if not start:
+                continue
+            after = hist[hist["trade_date"].dt.strftime("%Y-%m-%d") >= start]
+            if len(after) < 2:
+                continue
+            start_lv = float(after["close"].iloc[0])
+            last_lv = float(after["close"].iloc[-1])
+            if start_lv > 0:
+                meta["interim_return"] = last_lv / start_lv - 1.0
+                row[f"ret_{horizon}d_meta"] = meta
+    return payload
+
+
+def attach_saved_quotes(payload: dict[str, Any], settings: Settings) -> dict[str, Any]:
+    """Fill display last from stored daily close or KRX parquet. GET must not call Toss."""
+    from kr_quant.timing.snapshot import last_closes
+
+    closes = last_closes(settings)
+    for rows in _flow_lists(payload):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            last = _finite_price(row.get("last")) or _finite_price(row.get("last_close"))
+            if last is None:
+                daily = row.get("daily") or []
+                if daily and isinstance(daily[0], dict):
+                    last = _finite_price(daily[0].get("close"))
+            if last is None:
+                last = closes.get(str(row.get("ticker") or "").zfill(6))
+            if last is not None:
+                row["last"] = last
+                row.setdefault("last_close", last)
+    return payload
+
+
 def attach_company_names(payload: dict[str, Any], settings: Settings) -> dict[str, Any]:
     missing: list[str] = []
     for rows in _flow_lists(payload):
@@ -304,7 +383,8 @@ def load_flow(settings: Settings, days: int = 5) -> dict[str, Any]:
             for row in rows:
                 row['quote_live'] = False
                 row['quote_basis'] = 'saved'
-        return gate_toss_payload(payload, settings)
+        gated = attach_saved_quotes(gate_toss_payload(payload, settings), settings)
+        return attach_interim_returns(gated, settings)
     cached = _load_cache(settings.root)
     if _flow_ready(cached, days):
         named = attach_company_names(cached, settings)
@@ -412,6 +492,8 @@ def scan_flow(
             "ticker": code,
             "company": company,
             **summary,
+            "last": last,
+            "last_close": last,
             "pe_krw": pe_krw,
             "dual_krw": dual_krw,
             "empty_krw": empty_krw,

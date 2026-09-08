@@ -62,6 +62,8 @@ def test_forward_return_waits_for_full_horizon():
     assert detail["observed_sessions"] == 4
     assert detail["required_sessions"] == 5
     assert detail["complete"] is False
+    assert detail.get("return") is None
+    assert abs(detail["interim_return"] - 0.4) < 1e-9
 
 
 def test_forward_return_uses_exact_completed_horizon():

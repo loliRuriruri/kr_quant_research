@@ -1498,7 +1498,7 @@ def _rank_fallback_payload(context: dict[str, Any]) -> dict[str, Any]:
 @app.get("/api/flow/tier1-briefing")
 def api_flow_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
-    from kr_quant.flow.official import events_payload
+    from kr_quant.flow.official import briefing_candidates, events_payload
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
@@ -1506,63 +1506,42 @@ def api_flow_tier1_briefing_get() -> dict[str, Any]:
     active_key = str(flow.get("active") or "official")
     active = flow.get(active_key) if isinstance(flow.get(active_key), dict) else {}
     source_name = "kis_investor_flow" if active_key == "official" else "toss_flow_cache"
-    by_ticker: dict[str, dict[str, Any]] = {}
-    for table_name in ("cum5", "consecutive", "paired", "turns"):
-        for row in (active.get(table_name) or [])[:15]:
-            if not isinstance(row, dict):
-                continue
-            ticker = str(row.get("ticker") or "").zfill(6)
-            if not ticker.strip("0"):
-                continue
-            item = by_ticker.setdefault(
-                ticker,
-                {
-                    "ticker": ticker,
-                    "company": row.get("company"),
-                    "source": row.get("source") or active.get("source"),
-                    "party": row.get("party_ko"),
-                    "last_date": row.get("last_date"),
-                    "today_primary": row.get("today_a"),
-                    "today_foreign": row.get("today_b"),
-                    "w5": row.get("w5"),
-                    "w20": row.get("w20"),
-                    "streak_days": row.get("days"),
-                    "direction": row.get("direction"),
-                    "paired": row.get("paired"),
-                    "paired_direction": row.get("paired_direction"),
-                    "turn": row.get("turn"),
-                    "event_types": [],
-                },
-            )
-            if table_name not in item["event_types"]:
-                item["event_types"].append(table_name)
-    evidence = list(by_ticker.values())[:15]
-    prompt_version = "flow_tier1_v3"
+    evidence, missing = briefing_candidates(flow)
+    prompt_version = "flow_tier1_v4"
     if not evidence:
         return tier1_unavailable(
             endpoint,
             code="TIER1_EVIDENCE_MISSING",
-            message="수급 브리핑에 사용할 실제 종목 데이터가 없습니다.",
+            message="수급 브리핑에 사용할 저장된 종목 데이터가 없습니다. 관심종목 수집 또는 수급 스캔 뒤에 다시 열어 주세요.",
             sources=[source_name],
-            missing=["investor_flow_events"],
+            missing=missing or ["stored_investor_flow"],
             prompt_version=prompt_version,
         )
 
     evidence_json = json.dumps(evidence, ensure_ascii=False, default=str)
     prompt = (
         "당신은 기관 수급 데이터 감사자입니다.\n"
-        f"실제 투자자별 순매수 관측치(수량 단위, 금액 아님):\n{evidence_json}\n\n"
-        "w5/w20은 저장된 거래일 순매수 수량 합계이고 today_primary/today_foreign도 주수입니다. "
-        "제공된 수치와 이벤트 유형만 요약하세요. 업종·원인·지지선·매집 의도를 추정하지 말고, 표본 범위와 기준일을 밝히며 주문·비중 지시는 하지 마세요."
+        f"실제 투자자별 순매수 관측치:\n{evidence_json}\n\n"
+        "공식 KIS net_value·latest_net_krw는 원(KRW)입니다. 이벤트 표의 w5/w20도 같은 원천이면 금액입니다. "
+        "주수라고 단정하지 마세요. 제공된 수치와 이벤트/저장 근거만 요약하세요. "
+        "업종·원인·지지선·매집 의도를 추정하지 말고, 표본 범위와 기준일을 밝히며 주문·비중 지시는 하지 마세요. "
+        "연속·동반 표가 비어 저장 건수만 있으면 그 한계를 말하세요."
         + "\n반드시 JSON 형식으로만 반환하세요: {\"headline\": \"한 줄 헤드라인\", \"briefing\": \"관찰된 수급 공통점과 한계 2줄\", \"focus_sectors\": [\"실제 후보에서 확인된 업종\"]}"
     )
-    sample_lines = [
-        f"{row.get('company') or row['ticker']}: 5일 {float(row.get('w5') or 0):+,.0f}주, {row.get('direction') or 'FLAT'} {int(row.get('streak_days') or 0)}일"
-        for row in evidence[:3]
-    ]
+    sample_lines = []
+    for row in evidence[:3]:
+        name = row.get("company") or row.get("ticker") or "저장표본"
+        if row.get("w5") is not None:
+            sample_lines.append(f"{name}: 5일 {float(row.get('w5') or 0):+,.0f}, {row.get('direction') or 'FLAT'} {int(row.get('streak_days') or 0)}일")
+        elif row.get("latest_net_krw") is not None:
+            sample_lines.append(f"{name}: 당일 {float(row.get('latest_net_krw') or 0):+,.0f}원 ({row.get('side') or ''})")
+        else:
+            sample_lines.append(
+                f"저장 {row.get('stored_tickers')}종목 · 기대일 최신 {row.get('current_tickers')}종목 · 기준 {row.get('last_date')}"
+            )
     fallback_payload = {
-        "headline": f"{active.get('source') or active_key.upper()} 실제 수급 이벤트 {len(evidence)}종목",
-        "briefing": " · ".join(sample_lines) + ". 수량 기반 제한 표본이며 전시장 업종 순위나 매수 의도를 뜻하지 않습니다.",
+        "headline": f"{active.get('source') or active_key.upper()} 저장 수급 {len(evidence)}건 관찰",
+        "briefing": " · ".join(sample_lines) + ". 관심·고유동성 표본이며 전시장 업종 순위나 매수 의도를 뜻하지 않습니다.",
         "focus_sectors": [],
     }
     result = tier1_cached_chat_json(
@@ -1578,6 +1557,7 @@ def api_flow_tier1_briefing_get() -> dict[str, Any]:
         as_of=max((str(row.get("last_date") or "") for row in evidence), default=None) or None,
         sources=[source_name],
         evidence_count=len(evidence),
+        missing=missing,
     )
     if result.get("ok"):
         return result
@@ -1587,6 +1567,7 @@ def api_flow_tier1_briefing_get() -> dict[str, Any]:
         as_of=max((str(row.get("last_date") or "") for row in evidence), default=None) or None,
         sources=[source_name],
         evidence_count=len(evidence),
+        missing=missing,
         prompt_version=prompt_version,
     )
 
@@ -2064,13 +2045,22 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"현재 결론 1문장\", \"seasonality_brief\": \"입력 종목명과 실제 수치를 사용한 근거 최대 2문장\", \"key_catalysts\": [\"실제 입력된 캘린더 가설\"], \"sample_caution\": \"가장 중요한 반대 근거 또는 한계 1문장\", \"next_check\": \"어떤 자료를 다음에 확인할지 1문장\"}"
     )
     seasonality_context = {
+        "selection_date": snapshot.get("selection_date"),
+        "lookback_years": snapshot.get("lookback_years"),
         "current_month": highlights.get("current_month"),
         "next_month": highlights.get("next_month"),
-        "current_champions": current_rows,
-        "upcoming_champions": upcoming_rows,
-        "active_presets": active_presets,
-        "candidates": candidates,
-        "snapshot": snapshot,
+        "candidates": [
+            {
+                "ticker": row.get("ticker"),
+                "company": row.get("company"),
+                "signal_id": row.get("signal_id"),
+                "current_status": row.get("current_status"),
+                "missing": row.get("missing") or [],
+                "price_as_of": (row.get("observed_window") or {}).get("price_as_of"),
+                "sample_count": (row.get("observed_window") or {}).get("sample_count"),
+            }
+            for row in candidates
+        ],
     }
     return tier1_cached_chat_json(
         s.root,
