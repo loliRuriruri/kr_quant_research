@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -55,6 +55,8 @@ def _season_row(stock: dict[str, Any], rank: int) -> dict[str, Any]:
         "rank": rank,
         "pre_entry_rank": rank,
         "pattern_id": f"{stock['ticker']}-08",
+        "signal_id": f"season-fixture-{stock['ticker']}",
+        "generation_id": "season-fixture-v4",
         "window_name": "8월",
         "win_rate": 0.8,
         "sample_count": 5,
@@ -64,7 +66,15 @@ def _season_row(stock: dict[str, Any], rank: int) -> dict[str, Any]:
         "last_close": stock["last_close"],
         "chg_pct": 0.01,
         "common_event_cluster": "여름 실적·계절 관찰",
-        "remaining_peak": {"available": True, "remaining_p50": 0.12, "positive_peak_rate": 0.8, "downside_before_peak_p50": 0.04},
+        "remaining_peak": {"available": True, "remaining_p50": 0.12, "positive_peak_rate": 0.8,
+            "downside_before_peak_p50": -0.04, "window_end_p50": -0.032,
+            "window_end_positive_count": 2, "sample_count": 5, "metric_version": 4,
+            "current_price": stock['last_close'], "price_as_of": "2026-08-28",
+            "window_adverse_excursion_p50": -0.08, "window_close_max_drawdown_p50": -0.1,
+            "window_end_leave_one_year_out": {"min_median": -0.06, "max_median": 0.02},
+            "peak_day_p25": 25, "peak_day_p75": 31, "costs_included": False,
+            "strategy_net_return_p50": None, "strategy_net_status": "EXECUTION_NOT_VALIDATED",
+            "validation_status": "IN_SAMPLE_DESCRIPTIVE_NOT_OOS"},
     }
 
 
@@ -139,6 +149,7 @@ def _all(limit: int = 300) -> dict[str, Any]:
 
 def _highlights() -> dict[str, Any]:
     return {
+        "snapshot": {"generation_id": "season-fixture-v4"},
         "data": {
             "glance_top3": GLANCE,
             "universe_scanned": 2500,
@@ -149,7 +160,7 @@ def _highlights() -> dict[str, Any]:
 
 
 def _discovery() -> dict[str, Any]:
-    return {"rows": GLANCE, "source_as_of": "2026-08-28"}
+    return {"rows": GLANCE, "source_as_of": "2026-08-28", "snapshot": {"generation_id": "season-fixture-v4"}}
 
 
 def _scan(preset: str | None = None, month: int | None = None) -> dict[str, Any]:
@@ -324,6 +335,15 @@ def create_app() -> FastAPI:
     @app.get("/api/seasonality/pre-entry")
     def pre_entry():
         return {**_discovery(), "themes": []}
+
+    @app.get("/api/seasonality/discovery/{ticker}")
+    def season_detail(ticker: str, generation_id: str | None = None):
+        if generation_id and generation_id != 'season-fixture-v4':
+            raise HTTPException(status_code=409, detail='시즌 자료가 갱신됐습니다. 목록을 새로고침해 주세요.')
+        rows = [r for r in GLANCE if r['ticker'] == ticker]
+        if not rows:
+            raise HTTPException(status_code=404, detail='No fixture pattern')
+        return {'patterns': rows, 'snapshot': {'generation_id': 'season-fixture-v4'}}
 
     @app.get("/api/seasonality/themes")
     def themes():

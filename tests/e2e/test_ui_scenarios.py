@@ -138,6 +138,33 @@ def test_glance_top3_matches_seasonality_order(browser_page):
     assert cards[:3] == glance[:3]
 
 
+def test_season_metric_detail_and_pc_layout(browser_page, base_url):
+    page = browser_page.context.browser.new_page(viewport={'width': 1440, 'height': 1000})
+    errors = []
+    page.on('pageerror', lambda exc: errors.append(str(exc)))
+    try:
+        page.goto(base_url, wait_until='domcontentloaded')
+        card = page.locator('.glance-pick-card').first
+        card.wait_for()
+        assert '-3.2%' in card.inner_text() and '2/5회 상승' in card.inner_text()
+        _open_view(page, 'seasonality')
+        page.locator('#tab-v11-pre-entry').click()
+        first = page.locator('#pre-entry-cards-list .pre-entry-card').first
+        first.wait_for()
+        assert '-3.2%' in first.inner_text() and '+12.0%' in first.inner_text()
+        first.get_by_role('button', name='상세 플레이북 ➔').click()
+        detail = page.locator('#disc-modal-deep')
+        detail.wait_for(state='visible')
+        assert '-3.2%' in detail.inner_text() and '+12.0%' in detail.inner_text()
+        assert '아직 산출 전' in detail.inner_text()
+        assert '-6.0% ~ +2.0%' in detail.inner_text()
+        assert page.locator('.expected-kpi-item').evaluate_all(
+            '(items) => items.every(e => e.scrollWidth <= e.clientWidth + 1 && e.scrollHeight <= e.clientHeight + 1)')
+        assert not errors
+    finally:
+        page.close()
+
+
 def test_search_hyundai_name_and_ticker_autocomplete(browser_page):
     _open_view(browser_page, "strategy")
     inp = browser_page.locator("#custom-strategy-q")
