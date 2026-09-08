@@ -29,3 +29,5 @@ def test_season_card_supplies_candidate_facts_and_snapshot(monkeypatch, tmp_path
     assert '+8%' in captured['messages'][1]['content']
     assert '식별자일 뿐' in captured['messages'][1]['content']
     assert '데이터 충돌이나 모순' in captured['messages'][1]['content']
+    assert '올해 근거 없음' in captured['messages'][1]['content']
+    assert captured['prompt_version'] == 'seasonality_tier1_v8_direct_verdict'

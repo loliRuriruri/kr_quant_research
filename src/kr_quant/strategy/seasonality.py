@@ -1129,8 +1129,8 @@ def _enrich_remaining_peak_rows(
             peak_text = f", 오늘 기준 역사적 중앙값 상승여력 {p50 * 100:+.1f}%" if p50 is not None else ""
             risk_text = f"역사적 피크 전 중앙값 하방 {downside * 100:.1f}%" if downside is not None else "가격·거래량 무효화 조건"
             playbook.update({
-                "entry_timing": f"실측 피크 역산 진입 관찰 구간: {metrics.get('entry_window_str')}",
-                "exit_timing": f"역사적 피크 감시 구간: {metrics.get('exit_window_str')}{peak_text}",
+                "entry_timing": f"피크 30~15일 전 날짜 띠: {metrics.get('entry_window_str')} (매집 확인 아님)",
+                "exit_timing": f"피크 전후 감시: {metrics.get('exit_window_str')}{peak_text}",
                 "stop_loss": f"리스크 참고: {risk_text}. 거래정지·거래량 0·가격 지연 시 산출값을 사용하지 않습니다.",
                 "recommendation": "현재가 이후 남은 경로를 과거 동일 계절 진행시점과 비교합니다. 목표가가 아닌 역사적 분포 추정치입니다.",
             })

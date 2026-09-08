@@ -171,11 +171,19 @@ def test_step_direction_agreement_has_no_fifty_percent_floor(portfolio_api):
     module, settings = portfolio_api
     folder = settings.staged_dir / "live"
     folder.mkdir(parents=True)
-    pd.DataFrame({"ticker": ["005380"] * 3, "trade_date": ["2026-08-26", "2026-08-27", "2026-08-28"], "close": [100, 95, 90]}).to_parquet(folder / "prices.parquet")
-    result = module.enrich_momentum_portfolio_with_live_prices(settings, [{"code": "005380", "entry_date": "2026-08-26", "entry_price": 100,
-                "history_curve": [0, 5, 10], "history_curve_source": "OBSERVED"}])[0]
+    pd.DataFrame({
+        "ticker": ["005380"] * 9,
+        "trade_date": [
+            "2024-08-26", "2024-08-27", "2024-08-28",
+            "2025-08-26", "2025-08-27", "2025-08-28",
+            "2026-08-26", "2026-08-27", "2026-08-28",
+        ],
+        "close": [100, 105, 110, 100, 105, 110, 100, 95, 90],
+    }).to_parquet(folder / "prices.parquet")
+    result = module.enrich_momentum_portfolio_with_live_prices(settings, [{"code": "005380", "entry_date": "2026-08-26", "peak_date": "2026-08-28", "entry_price": 100}])[0]
     assert result["trajectory_match"] == 0
     assert result["trajectory_samples"] == 2
+    assert result["sync_status"] == "미달"
 
 
 def test_empty_portfolio_stays_empty_after_last_delete(portfolio_api):

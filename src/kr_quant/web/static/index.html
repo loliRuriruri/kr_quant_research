@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='40' fill='%236ee7b7'%3EQ%3C/text%3E%3C/svg%3E" />
   <title>KR Quant Research</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2.92.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.98.0" />
 </head>
 <body>
   <aside class="nav" id="main-navigation" aria-label="전체 메뉴">
@@ -61,13 +61,11 @@
       <div class="top-right">
         <div class="chips">
           <span class="chip activity-idle has-tip" id="chip-activity" tabindex="0" title="시스템 상태 (클릭하여 실행 파이프라인으로 이동)">🟢 시스템 정상</span>
-          <span class="chip ok has-tip" id="chip-fresh" tabindex="0" title="최근 KRX 종가 시세 기준일">🗓️ 최근 종가 확인 중</span>
           <button type="button" class="chip btn-chip-interactive has-tip" id="chip-llm" tabindex="0" style="cursor:pointer; background:linear-gradient(135deg, rgba(56,189,248,0.18), rgba(168,85,247,0.18)); border:1px solid rgba(56,189,248,0.45); color:#38bdf8; font-weight:700; display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; transition:all 0.2s;" title="클릭하여 AI 분석 LLM 모델을 즉시 교체/선택합니다.">🤖 AI: 확인 중 <span style="font-size:9px; opacity:0.8;">▾</span></button>
         </div>
         <div class="top-actions">
           <button class="ghost" id="btn-price-overlay" title="현재 화면의 최대 50종목 가격만 조회합니다. 점수·수급·시즌 분석은 재계산하지 않습니다.">화면 종목 가격 확인</button>
           <span id="price-overlay-status" class="hint" role="status" aria-live="polite"></span>
-          <button class="ghost" id="btn-krx-now" data-tip="최근 KRX 일봉 종가 시세를 갱신합니다. 장 마감 후 최신 시세를 반영합니다.">시세 받기</button>
           <button class="ghost" id="btn-dash-reload" data-tip="화면 데이터만 다시 불러옵니다. 서버 수집을 다시 하지 않습니다.">화면 새로고침</button>
         </div>
       </div>
@@ -534,6 +532,7 @@
           <button type="button" class="inst-subtab-btn" id="tab-v11-explanation" data-subtab="explanation">🤖 AI 이벤트 역추적</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-calendar" data-subtab="calendar">📅 시즌 이벤트 캘린더 (18개)</button>
           <button type="button" class="inst-subtab-btn" id="tab-v11-heatmap" data-subtab="heatmap">📊 12개월 히트맵</button>
+          <button type="button" class="inst-subtab-btn" id="tab-v11-guide" data-subtab="guide">❓ 숫자 읽는 법</button>
         </div>
 
         <!-- PANE -1: Calendar Momentum Real-Money Portfolio Tracker -->
@@ -597,7 +596,7 @@
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px;">
               <div style="display:flex; align-items:center; gap:8px;">
                 <span style="font-size:16px;">📈</span>
-                <b style="color:#38bdf8; font-size:14px;">진입 후 관측 수익률 · 출처 확인 과거 곡선만 비교</b>
+                <b style="color:#38bdf8; font-size:14px;">지금 주가 vs 과거 평균 경로 · 싱크로율</b>
               </div>
               <div style="display:flex; align-items:center; gap:6px;">
                 <span style="font-size:12px; color:#94a3b8;">종목 선택:</span>
@@ -634,7 +633,7 @@
             <!-- Theme Ranking Sidebar -->
             <div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <span id="theme-ranking-title" style="font-size:13.5px; font-weight:800; color:#fff;">📊 이벤트 테마 계절성 랭킹</span>
+                <span id="theme-ranking-title" style="font-size:13.5px; font-weight:800; color:#fff;">📅 이벤트 테마 · 가까운 일정순</span>
                 <button type="button" id="theme-filter-reset" class="chip" hidden aria-hidden="true" style="cursor:pointer; background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11px;">전체 테마 보기 ✕</button>
               </div>
               <div id="theme-ranking-list" class="theme-ranking-list"></div>
@@ -649,7 +648,7 @@
                 <button type="button" class="preset-chip-btn active" data-pre-sort="score">🏆 종합 점수순</button>
                 <button type="button" class="preset-chip-btn" data-pre-sort="return">📈 5년 수익률순</button>
                 <button type="button" class="preset-chip-btn" data-pre-sort="winrate">🎯 5년 승률순</button>
-                <button type="button" class="preset-chip-btn" data-pre-sort="alpha">📊 월간 중앙수익순</button>
+                <button type="button" class="preset-chip-btn" data-pre-sort="alpha">📊 월간 가운데 수익순</button>
               </div>
             </div>
 
@@ -749,8 +748,8 @@
                   <th style="min-width:140px;">종목명 (코드)</th>
                   <th style="min-width:160px;">반복 상승구간 (관찰 ➔ 피크 감시)</th>
                   <th class="sortable" data-sort="seasonality_score">종합 스코어</th>
-                  <th>과거 승률</th>
-                  <th>월간 중앙수익</th>
+                  <th class="has-tip" data-tip-title="과거 승률" data-tip="과거 같은 달에서 플러스로 끝난 해의 비율입니다. 올해 승률이 아닙니다." tabindex="0">과거 승률</th>
+                  <th class="has-tip" data-tip-title="월간 가운데 수익" data-tip="그달 전체(1일~말일) 수익률의 가운데 해 값입니다. 카드의 ‘지금→구간 끝 수익’과는 기간이 다를 수 있습니다." tabindex="0">월간 가운데 수익</th>
                   <th>벤치마크 알파</th>
                   <th style="min-width:240px;">연도별 실측 트랙 레코드</th>
                   <th>상세</th>
@@ -825,10 +824,10 @@
                   <th>종목명 (코드)</th>
                   <th>시장</th>
                   <th>타겟월</th>
-                  <th class="sortable" data-sort="win_rate">상승 승률</th>
-                  <th class="sortable" data-sort="avg_return">평균 수익률</th>
-                  <th>중간값</th>
-                  <th>표본</th>
+                  <th class="sortable has-tip" data-sort="win_rate" data-tip-title="상승 승률" data-tip="과거 같은 달에서 플러스로 끝난 해의 비율입니다. 올해 승률이 아닙니다." tabindex="0">상승 승률</th>
+                  <th class="sortable has-tip" data-sort="avg_return" data-tip-title="평균 수익률" data-tip="과거 같은 달 수익률을 산술평균한 값입니다. 한두 해 급등에 잘 흔들립니다." tabindex="0">평균 수익률</th>
+                  <th class="has-tip" data-tip-title="가운데 해 수익" data-tip="과거 같은 달 수익률을 줄 세웠을 때 한가운데 해의 값입니다. 평균보다 급등 한 해의 영향을 덜 받습니다." tabindex="0">가운데 해 수익</th>
+                  <th class="has-tip" data-tip-title="표본" data-tip="같은 달을 몇 해 봤는지입니다." tabindex="0">본 해 수</th>
                   <th>12개월 계절성 히트맵</th>
                   <th>이벤트 테마</th>
                   <th>분석</th>
@@ -836,6 +835,41 @@
               </thead>
               <tbody id="seasonality-body"></tbody>
             </table>
+          </div>
+        </div>
+
+        <div id="pane-v11-guide" class="hidden">
+          <div class="season-guide-grid">
+            <article class="season-guide-card">
+              <h3>지금→구간 끝 수익</h3>
+              <p>지금 쓰는 종가 기준일부터, 피크 전후 감시가 끝날 때까지를 과거 해에 맞춰 들고 난 <b>가운데 해</b> 수익률입니다.</p>
+              <p class="meta">조회일이 바뀌면 이 숫자도 바뀝니다. 올해 예상이 아니고, 피크 30~15일 전 날짜 띠의 수익도 아닙니다.</p>
+            </article>
+            <article class="season-guide-card">
+              <h3>상승한 해 · 3/3회 상승</h3>
+              <p>과거 N년 중 지금→구간 끝이 플러스였던 해 수입니다.</p>
+              <p class="meta">3/3회면 세 해 모두 올랐고, 2/3회면 한 해는 안 올랐습니다. 올해도 오른다는 뜻이 아닙니다.</p>
+            </article>
+            <article class="season-guide-card">
+              <h3>최고점까지 오른 폭</h3>
+              <p>과거 같은 달에서 가장 많이 올랐을 때의 가운데 해 상승폭입니다.</p>
+              <p class="meta">나중에 찾은 최고가 기준이라, 그 가격에 팔 수 있다는 뜻이 아닙니다.</p>
+            </article>
+            <article class="season-guide-card">
+              <h3>중간에 빠진 폭</h3>
+              <p>구간 안에서 시작가보다 얼마나 빠졌는지, 가운데 해 기준입니다.</p>
+              <p class="meta">고점 대비 빠진 폭과는 다른 숫자입니다. 둘 다 위험 참고치입니다.</p>
+            </article>
+            <article class="season-guide-card">
+              <h3>가운데 해 수익 vs 평균</h3>
+              <p>가운데 해는 과거 숫자를 줄 세웠을 때 한가운데입니다. 평균은 한두 해 급등에 더 흔들립니다.</p>
+              <p class="meta">카드의 ‘지금→구간 끝 수익’은 조회일 기준 남은 구간이고, 표의 ‘월간 가운데 수익’은 그달 1일~말일 기준이라 다를 수 있습니다.</p>
+            </article>
+            <article class="season-guide-card">
+              <h3>본 해 수</h3>
+              <p>같은 달을 몇 해 봤는지입니다. 3년은 표본이 작습니다.</p>
+              <p class="meta">수수료·체결을 뺀 실제 매매 수익은 아직 계산하지 않았습니다.</p>
+            </article>
           </div>
         </div>
 
@@ -1108,7 +1142,7 @@
         <div class="run-diag-card">
           <div class="run-diag-head">
             <span class="run-diag-icon">📈</span>
-            <span class="run-diag-title">KRX 일봉 시세 데이터</span>
+            <span class="run-diag-title">KRX 공식 일봉 · 스마트 실행</span>
             <span id="run-status-price-badge" class="chip ok">정상</span>
           </div>
           <div class="run-diag-val" id="run-diag-price-date">확인 중</div>
@@ -1128,7 +1162,7 @@
         <div class="run-diag-card">
           <div class="run-diag-head">
             <span class="run-diag-icon">🧬</span>
-            <span class="run-diag-title">퀀트 종합 스코어 & 랭킹</span>
+            <span class="run-diag-title">퀀트 점수 · 같은 공식 종가</span>
             <span id="run-status-quant-badge" class="chip">확인 중</span>
           </div>
           <div class="run-diag-val" id="run-diag-quant-date">확인 중</div>
@@ -1185,8 +1219,8 @@
                   <div class="run-action-badge">⚡ 추천 (매일 18:10 이후)</div>
                   <div class="run-action-name">1. 빠른 일봉 시세 동기화 (Quick Sync)</div>
                   <div class="run-action-desc">
-                    <b>어떤 상황에 누르나요?</b> KRX 공식 일봉이 반영되는 매일 18:10 이후 또는 다음 날 아침에 전 종목의 확정 종가를 받고 싶을 때 누릅니다. 15:30 직후에는 공급처 일봉이 아직 준비되지 않을 수 있습니다.<br>
-                    <span class="run-action-detail">⏱️ 약 15~30초 소요 · API 한도 소모 없음 · 2,700여 개 전 종목 KRX 일봉 최신 갱신</span>
+                    <b>어떤 상황에 누르나요?</b> 저장 종가가 기대 기준일보다 하루 늦을 때 누릅니다. 기대일만 요청하며, KRX가 그 세션을 아직 공개하지 않으면 이전 날짜로 되돌아가 완료 처리하지 않습니다. 15:30~심야에는 공급처 일봉이 비어 있을 수 있습니다.<br>
+                    <span class="run-action-detail">⏱️ 준비돼 있으면 약 15~30초 · 미공개면 바로 미준비로 끝남 · 저장 종가가 기대일과 같을 때만 완료</span>
                   </div>
                 </div>
                 <div class="run-action-box-right">
@@ -1731,7 +1765,7 @@
         </div>
 
         <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.9); border:1.5px solid rgba(56,189,248,0.35); border-radius:10px; padding:10px 16px;">
-          <span id="disc-modal-entry-win" style="color:#38bdf8; font-weight:800; font-size:13.5px;">📈 과거 관찰 구간: —</span>
+          <span id="disc-modal-entry-win" style="color:#38bdf8; font-weight:800; font-size:13.5px;">📅 피크 30~15일 전: —</span>
           <span id="disc-modal-exit-win" style="color:#fbbf24; font-weight:800; font-size:13.5px;">➔ 역사적 피크 감시: —</span>
         </div>
 
@@ -1747,7 +1781,7 @@
             <span id="disc-modal-r3-sub" style="font-size:10px; color:#64748b;">최근 3년 —</span>
           </div>
           <div class="portfolio-kpi-item" style="background:rgba(30,41,59,0.8); padding:10px 12px; border-radius:8px;">
-            <span style="font-size:11px; color:#94a3b8;">월간 중앙수익</span>
+            <span class="has-tip" style="font-size:11px; color:#94a3b8;" data-tip-title="월간 가운데 수익" data-tip="그달 전체(1일~말일) 수익률의 가운데 해 값입니다." tabindex="0">월간 가운데 수익</span>
             <b id="disc-modal-alpha" style="color:#38bdf8; font-size:15px;">—</b>
             <span id="disc-modal-mdd-sub" style="font-size:10px; color:#f87171;">피크 전 하방 —</span>
           </div>
@@ -1979,6 +2013,6 @@
     </div>
 
 
-  <script src="/static/app.js?v=2.92.0"></script>
+  <script src="/static/app.js?v=3.06.0"></script>
 </body>
 </html>

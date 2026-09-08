@@ -464,7 +464,7 @@ def krx_session_available(settings: Settings, as_of: date) -> dict[str, Any]:
             counts[str(market)] = len(rows)
             if not rows:
                 missing.append(str(market))
-        return {
+        result = {
             "ready": not missing,
             "as_of": as_of.isoformat(),
             "missing_markets": missing,
@@ -472,6 +472,13 @@ def krx_session_available(settings: Settings, as_of: date) -> dict[str, Any]:
             "failure_kind": "not_published" if missing else None,
             "retryable": bool(missing),
         }
+        try:
+            from kr_quant.freshness import remember_krx_publish
+
+            remember_krx_publish(settings, as_of, result)
+        except Exception:  # noqa: BLE001
+            pass
+        return result
     except Exception as exc:  # noqa: BLE001
         import requests
         from kr_quant.ingest.krx import KrxResponseError
@@ -493,6 +500,7 @@ def fetch_krx_prices_range(
     lookback_days: int,
     *,
     sleep_sec: float = 0.0,
+    require_as_of: bool = False,
 ) -> pd.DataFrame:
     adapter = KrxOpenApiAdapter(settings.krx_api_key or "", settings.config["ingest"]["krx_base_url"])
     dest = live_dir(settings) / "prices.parquet"
@@ -548,7 +556,18 @@ def fetch_krx_prices_range(
                 time.sleep(pause)
         else:
             logger.info("KRX skip empty %s", cur)
+            if require_as_of and cur == as_of:
+                raise SourceNotReady(
+                    f"KRX {as_of.isoformat()} 일봉이 아직 없습니다. "
+                    "이미 있는 이전 세션만 다시 세고 완료 처리하지 않습니다."
+                )
         cur -= timedelta(days=1)
+
+    if require_as_of and as_of not in have:
+        raise SourceNotReady(
+            f"KRX {as_of.isoformat()} 일봉을 저장하지 못했습니다. "
+            "공급처가 해당 세션을 아직 공개하지 않았거나 일부 시장만 있습니다."
+        )
 
     if collected < lookback_days:
         raise SourceNotReady(

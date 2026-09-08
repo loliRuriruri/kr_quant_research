@@ -67,7 +67,7 @@ def _patch_common(monkeypatch, tmp_path, *, stale=True, quant_state="stale", cov
 
     jobs.RUNNER._cancel.clear()
     monkeypatch.setattr(jobs, "load_settings", lambda: settings)
-    monkeypatch.setattr(freshness, "expected_price_date", lambda now=None: date(2026, 8, 31))
+    monkeypatch.setattr(freshness, "wanted_price_date", lambda now=None: date(2026, 8, 31))
     monkeypatch.setattr(
         freshness,
         "freshness_snapshot",

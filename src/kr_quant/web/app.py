@@ -1979,7 +1979,7 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
-    prompt_version = "seasonality_tier1_v7_focused_candidates"
+    prompt_version = "seasonality_tier1_v8_direct_verdict"
     highlights_payload = api_seasonality_highlights_get()
     highlights = highlights_payload.get("data") or {}
     current_rows = highlights.get("current_champions") or []
@@ -2037,7 +2037,9 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
         "사용자가 읽는 수익률은 0.08 대신 +8%, -0.12 대신 -12%로 표시하세요. 이미 %가 붙은 현재 근거는 다시 100배 하지 마세요. "
         "p50은 중앙값, HISTORICAL_ONLY는 과거 관찰 자료처럼 쉬운 한국어로 풀고 내부 필드명·상태 코드는 출력하지 마세요. "
         "signal_id와 generation_id는 식별자일 뿐 상태나 근거로 해석하지 마세요. 자료 지연은 실제 기준일과 누락 항목으로 설명하세요. "
-        "첫 결론은 종목의 강점·약점·확인 필요 사항을 말하고 챔피언 목록 유무 같은 메뉴 내부 구성 설명은 생략하세요.\n"
+        "headline은 한 줄 판단입니다. '확정할 수 없다', '확인 필요', '참고 가능', '재현 여부는'처럼 결론을 미루는 말은 쓰지 마세요. "
+        "올해 확인 지표가 비면 '올해 근거 없음. 과거만 세다'처럼 말하세요. 과거가 세고 올해 지표가 없으면 올해 산다는 근거가 안 된다고 말하세요. "
+        "매수·매도·목표가·주문은 하지 마세요. 챔피언 목록 유무 같은 메뉴 설명은 생략하세요.\n"
         "champions는 월 전체 통계, candidates는 현재 진행시점에 대응하는 남은 관찰 구간 통계이므로 서로 바꾸어 쓰지 마세요. "
         "구간 중 하락과 구간 종료 수익은 다른 지표이며 둘의 부호 차이를 데이터 충돌이나 모순이라고 부르지 마세요. "
         "window는 창구가 아니라 관찰 구간입니다. 각 문장은 짧게, 캘린더 가설은 최대 2개만 제시하고 없으면 빈 배열을 반환하세요.\n"
@@ -3387,13 +3389,18 @@ def enrich_momentum_portfolio_with_live_prices(settings: Settings, items: list[d
 
     if not items:
         return []
-    codes = [str(item.get("code") or "") for item in items]
+    codes = [str(item.get("code") or "").zfill(6) for item in items if item.get("code")]
     live_quotes = fetch_naver_live_quotes(codes)
     path = live_dir(settings) / "prices.parquet"
     prices = pd.DataFrame()
     if path.exists():
         try:
-            prices = pd.read_parquet(path, columns=["ticker", "trade_date", "close"], filters=[("ticker", "in", codes)])
+            try:
+                prices = pd.read_parquet(path, columns=["ticker", "trade_date", "close"], filters=[("ticker", "in", codes)])
+            except Exception:
+                prices = pd.read_parquet(path, columns=["ticker", "trade_date", "close"])
+                prices = prices[prices["ticker"].astype(str).str.zfill(6).isin(codes)]
+            prices["ticker"] = prices["ticker"].astype(str).str.zfill(6)
             prices["trade_date"] = pd.to_datetime(prices["trade_date"], errors="coerce")
             prices["close"] = pd.to_numeric(prices["close"], errors="coerce")
             prices = prices.dropna(subset=["trade_date", "close"])
@@ -3411,10 +3418,11 @@ def enrich_momentum_portfolio_with_live_prices(settings: Settings, items: list[d
     enriched = []
     for item in items:
         stock = dict(item)
-        code = str(stock.get("code") or "")
+        code = str(stock.get("code") or "").zfill(6)
+        stock["code"] = code
         base = positive(stock.get("entry_price"))
         entry = pd.to_datetime(stock.get("entry_date"), errors="coerce")
-        sub = prices[prices["ticker"].astype(str).str.zfill(6) == code].sort_values("trade_date").drop_duplicates("trade_date", keep="last") if not prices.empty else pd.DataFrame()
+        sub = prices[prices["ticker"] == code].sort_values("trade_date").drop_duplicates("trade_date", keep="last") if not prices.empty else pd.DataFrame()
         observations = {}
         if not sub.empty:
             observations = {row.trade_date.date().isoformat(): float(row.close) for row in sub.itertuples()}
@@ -3435,25 +3443,94 @@ def enrich_momentum_portfolio_with_live_prices(settings: Settings, items: list[d
         curve = [round((observations[day] / base - 1) * 100, 2) for day in dates] if base else []
         if not base:
             dates = []
+        peak = pd.to_datetime(stock.get("peak_date"), errors="coerce")
+        history, history_source = build_observed_history_curve(sub, entry, peak)
         stock.update(actual_curve=curve, actual_dates=dates, current_price=latest,
                      price_as_of=latest_date or None, price_source=source,
                      current_return=round((latest / base - 1) * 100, 2) if latest and base and dates else None,
+                     history_curve=history, history_curve_source=history_source,
                      trajectory_match=None, trajectory_samples=0,
                      trajectory_method="STEP_DIRECTION_AGREEMENT_NOT_FORECAST")
-        # Legacy curves were generated examples. Only compare explicitly sourced curves.
-        history = stock.get("history_curve") or []
-        if stock.get("history_curve_source") == "OBSERVED":
-            n = min(len(curve), len(history))
-            if n >= 2 and all(isinstance(v, (int, float)) and math.isfinite(v) for v in history[:n]):
-                signs = lambda x: (x > 0) - (x < 0)
-                agree = sum(signs(curve[i] - curve[i-1]) == signs(history[i] - history[i-1]) for i in range(1, n))
-                stock["trajectory_match"] = round(100 * agree / (n - 1), 1)
-                stock["trajectory_samples"] = n - 1
-        else:
-            stock["history_curve"] = []
-            stock["history_curve_source"] = "UNVERIFIED_LEGACY"
+        sync, samples, note, status = compute_curve_sync(curve, history)
+        stock["trajectory_match"] = sync
+        stock["sync_rate"] = sync
+        stock["sync_status"] = status
+        stock["trajectory_samples"] = samples
+        stock["sync_note"] = note
+        stock["history_at_now"] = history[len(curve) - 1] if history and curve and len(history) >= len(curve) else (history[-1] if history else None)
         enriched.append(stock)
     return enriched
+
+
+def compute_curve_sync(actual: list, history: list) -> tuple[float | None, int, str, str | None]:
+    """Path vs historical median. Status is 초과/동기/미달 by level, not shape-fail."""
+    n = min(len(actual or []), len(history or []))
+    if n < 2:
+        return None, 0, "과거 평균 경로가 없어 비교하지 못했습니다.", None
+    actual_n = [float(v) for v in actual[:n]]
+    history_n = [float(v) for v in history[:n]]
+    signs = lambda x: (x > 0) - (x < 0)
+    agree = sum(signs(actual_n[i] - actual_n[i - 1]) == signs(history_n[i] - history_n[i - 1]) for i in range(1, n))
+    dir_pct = 100.0 * agree / (n - 1)
+    a = pd.Series(actual_n)
+    h = pd.Series(history_n)
+    if float(a.std()) < 1e-6 or float(h.std()) < 1e-6:
+        corr_pct = 100.0 if abs(actual_n[-1] - history_n[-1]) < 1 else 0.0
+    else:
+        corr = float(a.corr(h))
+        corr_pct = max(0.0, corr) * 100.0 if math.isfinite(corr) else 0.0
+    sync = round(0.6 * dir_pct + 0.4 * corr_pct, 1)
+    now_a, now_h = actual_n[-1], history_n[-1]
+    gap = now_a - now_h
+    if gap > 3:
+        status = "초과"
+        note = f"과거 평균을 위로 뚫음. 지금 {now_a:+.1f}% · 과거 {now_h:+.1f}% · {gap:+.1f}%p"
+    elif gap < -3:
+        status = "미달"
+        note = f"과거 평균보다 아래. 지금 {now_a:+.1f}% · 과거 {now_h:+.1f}% · {gap:+.1f}%p"
+    else:
+        status = "동기"
+        note = f"과거 평균과 비슷한 높이. 지금 {now_a:+.1f}% · 과거 {now_h:+.1f}%"
+    return sync, n - 1, note, status
+
+
+def build_observed_history_curve(prices: pd.DataFrame, entry: Any, peak: Any, lookback_years: int = 5) -> tuple[list[float], str]:
+    """Median % path from prior years, aligned to the same calendar offset from peak."""
+    import calendar
+    from datetime import date, timedelta
+
+    if prices is None or prices.empty or pd.isna(entry) or pd.isna(peak):
+        return [], "UNAVAILABLE"
+    entry_d = entry.date() if hasattr(entry, "date") else entry
+    peak_d = peak.date() if hasattr(peak, "date") else peak
+    offset = max(0, (peak_d - entry_d).days)
+    years = sorted({row.date() if hasattr(row, "date") else row for row in prices["trade_date"].dt.date.unique()})
+    year_set = sorted({d.year for d in years if d.year < peak_d.year})[-int(lookback_years):]
+    series: list[list[float]] = []
+    for year in year_set:
+        day = min(peak_d.day, calendar.monthrange(year, peak_d.month)[1])
+        hist_peak = date(year, peak_d.month, day)
+        hist_start = hist_peak - timedelta(days=offset)
+        hist_end = hist_peak + timedelta(days=4)
+        path = prices[
+            (prices["trade_date"].dt.date >= hist_start) & (prices["trade_date"].dt.date <= hist_end)
+        ].sort_values("trade_date")
+        if len(path) < 3:
+            continue
+        base_px = float(path.iloc[0]["close"])
+        if base_px <= 0:
+            continue
+        series.append([round((float(row.close) / base_px - 1) * 100, 2) for row in path.itertuples()])
+    if not series:
+        return [], "UNAVAILABLE"
+    max_n = max(len(item) for item in series)
+    median: list[float] = []
+    for idx in range(max_n):
+        pts = [item[idx] for item in series if idx < len(item)]
+        if not pts:
+            break
+        median.append(round(float(pd.Series(pts).median()), 2))
+    return median, "OBSERVED"
 
 
 @app.get("/api/seasonality/momentum-portfolio")

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 
-def test_stock_drawer_latest_owner_close_and_async_extras():
+def test_stock_drawer_latest_owner_close_and_async_extras(tmp_path):
     if not shutil.which('node'):
         pytest.skip('Node required')
     source = (Path(__file__).resolve().parents[2] / 'src/kr_quant/web/static/app.js').read_text(encoding='utf-8')
@@ -26,6 +26,7 @@ function $(id) {
 const document={body:{classList:{remove(){},add(){}}}};
 const padTicker = t => String(t).padStart(6,'0');
 const escapeHtml = s => String(s);
+let publicShareMode = false;
 let stockDrawerRequest=0, pending=[], rendered=[];
 const api=path=>new Promise((resolve,reject)=>pending.push({path,resolve,reject}));
 const renderReport=row=>rendered.push(row);
@@ -56,5 +57,8 @@ const renderReport=row=>rendered.push(row);
  assert.equal(typeof $('#stock-detail-retry').click,'function');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 '''
-    result = subprocess.run(['node', '-'], input=script, capture_output=True, text=True, encoding='utf-8', timeout=15)
+    script_file = tmp_path / 'runner.js'
+    script_file.write_text(script, encoding='utf-8')
+    result = subprocess.run(['node', str(script_file)], capture_output=True, text=True, encoding='utf-8', timeout=15)
     assert result.returncode == 0, result.stderr
+

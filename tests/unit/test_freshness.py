@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import yaml
 
-from kr_quant.freshness import expected_price_date, freshness_snapshot, runtime_spec, trading_session_lag
+from kr_quant.freshness import expected_price_date, freshness_snapshot, remember_krx_publish, runtime_spec, trading_session_lag
 from kr_quant.ingest.live import calendar_guard
 from kr_quant.settings import load_settings
 import kr_quant.web.scheduler as scheduler
@@ -20,6 +20,26 @@ def test_expected_price_date_before_and_after_close():
     after = datetime(2026, 8, 20, 18, 30, tzinfo=KST)
     assert expected_price_date(before).isoformat() == "2026-08-19"
     assert expected_price_date(after).isoformat() == "2026-08-20"
+
+
+def test_expected_price_date_does_not_run_ahead_of_unpublished_session():
+    after = datetime(2026, 9, 8, 19, 0, tzinfo=KST)
+    assert expected_price_date(after).isoformat() == "2026-09-08"
+    assert expected_price_date(after, published=date(2026, 9, 7)).isoformat() == "2026-09-07"
+
+
+def test_unpublished_krx_is_pending_not_stale(tmp_path):
+    settings = replace(load_settings(), root=tmp_path)
+    live = settings.staged_dir / "live"
+    live.mkdir(parents=True)
+    pd.DataFrame([{"ticker": "000001", "trade_date": "2026-09-07"}]).to_parquet(live / "prices.parquet", index=False)
+    remember_krx_publish(settings, date(2026, 9, 8), {"ready": False, "failure_kind": "not_published"})
+    snap = freshness_snapshot(settings, now=datetime(2026, 9, 9, 1, 20, tzinfo=KST), screen_as_of="2026-09-07")
+    assert snap["wanted_price_date"] == "2026-09-08"
+    assert snap["expected_price_date"] == "2026-09-07"
+    assert snap["stale_price"] is False
+    assert snap["pending_source"] is True
+    assert snap["sources"]["quant_ranking"]["state"] == "fresh"
 
 
 def test_expected_price_date_weekend_and_holiday():

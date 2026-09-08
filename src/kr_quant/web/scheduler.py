@@ -230,8 +230,8 @@ def _catch_up_due(cfg: dict[str, Any], now: datetime | None = None) -> bool:
                 fresh = freshness_snapshot(load_settings(), now=current)
                 quant = (fresh.get("sources") or {}).get("quant_ranking") or {}
                 if job_kind in {"smart-sync", "live"}:
-                    return bool(fresh.get("stale_price")) or quant.get("state") != "fresh"
-                return bool(fresh.get("stale_price"))
+                    return bool(fresh.get("stale_price") or fresh.get("pending_source")) or quant.get("state") != "fresh"
+                return bool(fresh.get("stale_price") or fresh.get("pending_source"))
             except Exception:  # noqa: BLE001
                 return True
 
@@ -240,7 +240,7 @@ def _catch_up_due(cfg: dict[str, Any], now: datetime | None = None) -> bool:
         from kr_quant.freshness import freshness_snapshot
 
         fresh = freshness_snapshot(load_settings(), now=current)
-        if bool(fresh.get("stale_price")):
+        if bool(fresh.get("stale_price") or fresh.get("pending_source")):
             last_fire = _STATE.get("last_fire")
             if last_fire:
                 try:

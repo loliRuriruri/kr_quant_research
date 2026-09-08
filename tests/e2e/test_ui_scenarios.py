@@ -107,7 +107,7 @@ def test_momentum_unknown_data_has_no_fabricated_confidence(browser_page):
         page.locator("#momentum-cards-grid .card-mom-item").wait_for()
         text = page.locator("#momentum-cards-grid").inner_text()
         assert "자료 없음" in text and "계산 불가" in text
-        assert "출처 확인 표본 없음" in text
+        assert "비교 불가" in text
         assert "-5.0%" in text and "+-5.0%" not in text
         assert "87.8%" not in page.locator("#momentum-kpis").inner_text()
         assert "정상 궤도" not in text

@@ -23,8 +23,11 @@ def now_kst(now: datetime | None = None) -> datetime:
     return now.astimezone(KST)
 
 
-def expected_price_date(now: datetime | None = None) -> date:
-    """Last KRX session that should already be in prices.parquet."""
+def wanted_price_date(now: datetime | None = None) -> date:
+    """Calendar session we try to fetch after SESSION_DONE.
+
+    This is not proof that KRX Open API already published that file.
+    """
     current = now_kst(now)
     today = current.date()
     clock = current.hour * 60 + current.minute
@@ -32,6 +35,59 @@ def expected_price_date(now: datetime | None = None) -> date:
     if is_default_trading_day(today) and clock >= done:
         return today
     return previous_trading_day(today)
+
+
+def expected_price_date(now: datetime | None = None, *, published: date | None = None) -> date:
+    """Last KRX session that should already be in prices.parquet.
+
+    Does not run ahead of a probed unpublished session. Jobs still fetch
+    wanted_price_date(); this only decides whether stored data is stale.
+    """
+    wanted = wanted_price_date(now)
+    if published is None or published >= wanted:
+        return wanted
+    return published
+
+
+def _krx_publish_path(settings: Settings) -> Path:
+    return settings.root / "data" / "cache" / "krx_publish.json"
+
+
+def last_published_krx_date(settings: Settings) -> date | None:
+    path = _krx_publish_path(settings)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+    raw = payload.get("published_date") if isinstance(payload, dict) else None
+    try:
+        return date.fromisoformat(str(raw)[:10]) if raw else None
+    except ValueError:
+        return None
+
+
+def remember_krx_publish(settings: Settings, wanted: date, probe: dict[str, Any]) -> None:
+    """Persist the last probed official session so expected dates do not leap."""
+    from kr_quant.atomic_io import write_json_atomic
+
+    if probe.get("ready"):
+        published = wanted
+    elif probe.get("failure_kind") in {None, "not_published"}:
+        published = previous_trading_day(wanted)
+    else:
+        return
+    write_json_atomic(
+        _krx_publish_path(settings),
+        {
+            "wanted_date": wanted.isoformat(),
+            "published_date": published.isoformat(),
+            "ready": bool(probe.get("ready")),
+            "failure_kind": probe.get("failure_kind"),
+            "probed_at": now_kst().isoformat(),
+        },
+    )
 
 
 def _max_date(series: pd.Series | None) -> date | None:
@@ -238,7 +294,9 @@ def latest_price_date(settings: Settings) -> date | None:
 
 def freshness_snapshot(settings: Settings, *, now: datetime | None = None, screen_as_of: str | None = None) -> dict[str, Any]:
     from kr_quant.run_generation import current_output_path, is_updating
-    expected = expected_price_date(now)
+    wanted = wanted_price_date(now)
+    published = last_published_krx_date(settings)
+    expected = expected_price_date(now, published=published)
     live = settings.staged_dir / "live"
     demo = settings.staged_dir / "demo"
     price_path = live / "prices.parquet" if (live / "prices.parquet").exists() else demo / "prices.parquet"
@@ -261,6 +319,7 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
     lag = None if price_max is None else (expected - price_max).days
     session_lag = trading_session_lag(price_max, expected)
     stale_price = price_max is None or price_max < expected
+    pending_source = price_max is None or price_max < wanted
     stale_screen = screen_day is None or price_max is None or screen_day != price_max
     if stale_price:
         status = "stale"
@@ -327,6 +386,8 @@ def freshness_snapshot(settings: Settings, *, now: datetime | None = None, scree
     return {
         "timezone": "Asia/Seoul",
         "expected_price_date": expected.isoformat(),
+        "wanted_price_date": wanted.isoformat(),
+        "pending_source": pending_source,
         "price_max_date": None if price_max is None else price_max.isoformat(),
         "price_days": price_days,
         "financial_max_available_date": None if financial_max is None else financial_max.isoformat(),

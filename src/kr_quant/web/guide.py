@@ -37,7 +37,7 @@ WARNING_FIX = {
         "파일이 없으면 거래 가능 여부를 확인할 수 없어 모든 후보 선정을 보류합니다."
     ),
     "MODEL_BREAK": "모델 버전이 바뀐 실행입니다. 전일과 점수 비교는 하지 말고 이번 결과만 보세요. 별도 수정은 필요 없습니다.",
-    "SOURCE_NOT_READY": "장 마감 후 오른쪽 위 '시세 받기'로 KRX 일봉을 받은 뒤 실행 탭에서 재계산하세요.",
+    "SOURCE_NOT_READY": "장 마감 후 실행 파이프라인의 스마트 실행으로 KRX 일봉을 받은 뒤 재계산하세요.",
 }
 
 STATUS_LABEL = {
@@ -66,7 +66,7 @@ def explain_run_status(quality: dict[str, Any] | None, *, status_csv_exists: boo
             why.append(WARNING_KO.get(code, code))
             improve.append(WARNING_FIX.get(code, "해당 경고 원인을 해소한 뒤 재계산하세요."))
         if "STATUS_FEED_MISSING" in warnings and not status_csv_exists:
-            improve.append("현재 거래일 KRX 상태 스냅샷이 없습니다. 시세 받기를 실행해 종목기본정보·당일매매정보를 함께 갱신하세요.")
+            improve.append("현재 거래일 KRX 상태 스냅샷이 없습니다. 스마트 실행으로 종목기본정보·당일매매정보를 함께 갱신하세요.")
     elif status == "failed":
         why.append("스크리닝이 실패했습니다.")
         improve.append("실행 탭 로그에서 원인(시세 없음, 키 오류 등)을 보고 다시 실행하세요.")

@@ -60,7 +60,7 @@ def test_index_and_status():
     assert "function renderPbMonthHeat" in js
     assert "function playbookRowFromScan" in js
     assert 'data-ticker="${escapeHtml(r.ticker)}" data-index="${idx}"' in js
-    assert "올해 유효성 확인 지표 (Current Confirmation)" in js
+    assert "현재 지표가 과거 패턴을 뒷받침하나요?" in js
     assert "12개월 기간별 수익 변동성 히트맵" in js
     assert "seasonalityRows[idx]" in js
     assert 'id="dash-seasonality-banner"' in home.text
@@ -223,7 +223,8 @@ def test_research_reports_list_endpoint():
     assert 'data-view="sector"' in html
     assert 'data-view="screens"' in html
     assert "골라보기" in html
-    assert "시세 받기" in html
+    assert "스마트 실행" in html
+    assert "시세 받기" not in html
     assert "drawer-back" in html
     css = client.get("/static/styles.css").text
     assert ".drawer.hidden" in css
@@ -366,7 +367,8 @@ def test_research_reports_list_endpoint():
     assert "KRX 시세만 갱신" in html
     assert "krx-history" in html
     assert "시세 이력 확장" in html
-    assert "chip-fresh" in html
+    assert "chip-fresh" not in html
+    assert "스마트 실행" in html
     spec = client.get("/api/system/spec").json()
     assert spec["orders"] is False
     assert spec["overlays"]["flow"] is False

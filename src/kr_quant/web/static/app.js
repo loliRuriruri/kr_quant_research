@@ -1915,7 +1915,7 @@ const STATUS_TIP = {
   "no-run": "아직 스크리닝을 돌리지 않았습니다.",
   running: "작업이 돌아가고 있습니다.",
   idle: "대기 중입니다.",
-  stale: "장 마감 후 시세가 아직 안 들어왔습니다. 위 시세 받기를 누르세요.",
+  stale: "장 마감 후 시세가 아직 안 들어왔습니다. 실행 파이프라인의 스마트 실행을 쓰세요.",
   fresh: "기대하는 마지막 거래일 시세가 있습니다.",
   screen_lag: "시세는 더 새것인데 점수는 이전 기준일입니다. 재계산이 필요합니다.",
 };
@@ -1928,11 +1928,7 @@ function statusKo(raw) {
 const PRICE_VIEWS = new Set(["dash", "rank", "screens", "sector", "strategy", "market", "trade", "run"]);
 
 function applyPriceChrome(view) {
-  const show = PRICE_VIEWS.has(view || currentView);
-  ["#chip-fresh", "#btn-krx-now"].forEach((sel) => {
-    const el = $(sel);
-    if (el) el.classList.toggle("hidden", !show);
-  });
+  void view;
 }
 
 function fmtWhen(raw) {
@@ -2045,8 +2041,62 @@ function stampFromStatus() {
   if (fresh.price_days) parts.push(`${fresh.price_days}거래일`);
   setPageAsOf(
     parts.join(" · ") || "점수·시세 시점이 없습니다.",
-    "이 메뉴는 재무 Quant와 KRX 일봉을 씁니다. 시세가 늦으면 시세 받기, 점수가 늦으면 재계산하세요."
+    "이 메뉴는 재무 Quant와 KRX 일봉을 씁니다. 시세나 점수가 늦으면 실행 파이프라인의 스마트 실행을 쓰세요."
   );
+}
+
+function krxPipelineBadge(fresh) {
+  const stored = fresh?.price_max_date || "없음";
+  const wanted = fresh?.wanted_price_date || fresh?.expected_price_date || "";
+  if (Boolean(fresh?.stale_price || fresh?.pending_source)) {
+    return {
+      text: "공급처 대기",
+      warn: true,
+      headline: `저장된 공식 종가 ${stored}`,
+      meta: `KRX가 ${wanted || "다음 거래일"} 일봉을 아직 공개하지 않았습니다. 스마트 실행 한 번이 그 파일을 받으면 점수도 같이 바뀝니다. 날짜를 맞추려고 다른 버튼을 누를 필요는 없습니다.`,
+    };
+  }
+  return {
+    text: "공식 종가",
+    warn: false,
+    headline: `공식 종가 ${stored}`,
+    meta: `스마트 실행이 이 종가로 점수를 맞춥니다. ${fresh?.price_days || 0}거래일 저장됨.`,
+  };
+}
+
+function quantPipelineBadge(fresh) {
+  const quant = (fresh?.sources || {}).quant_ranking || {};
+  const lag = quant.lag_trading_days;
+  const aligned = Boolean(quant.aligned_with_stored_prices) || !lag;
+  const scoreDate = quant.observed_date || fresh?.screen_as_of || "없음";
+  const stored = fresh?.price_max_date || "";
+  if (quant.state === "missing") {
+    return { text: "미계산", warn: true, headline: "점수 없음", meta: "스마트 실행이 점수를 계산합니다." };
+  }
+  if ((fresh?.stale_price || fresh?.pending_source) && aligned) {
+    return {
+      text: "종가와 같음",
+      warn: false,
+      headline: `점수 기준 ${scoreDate}`,
+      meta: `점수는 저장된 공식 종가 ${stored}와 같습니다. 다음 공식 일봉이 오면 스마트 실행이 점수도 같이 다시 계산합니다.`,
+    };
+  }
+  if (quant.state === "fresh" || (aligned && !fresh?.stale_price && !fresh?.pending_source)) {
+    return {
+      text: "종가와 같음",
+      warn: false,
+      headline: `점수 기준 ${scoreDate}`,
+      meta: "점수는 저장된 공식 종가와 같습니다.",
+    };
+  }
+  return {
+    text: "스마트 실행",
+    warn: true,
+    headline: `점수 기준 ${scoreDate}`,
+    meta: lag
+      ? `점수가 저장 종가보다 ${lag}거래일 늦습니다. 스마트 실행이 다시 계산합니다.`
+      : "점수가 저장 종가와 다릅니다. 스마트 실행이 다시 계산합니다.",
+  };
 }
 
 function renderRunDiagnostics(status) {
@@ -2068,16 +2118,14 @@ function renderRunDiagnostics(status) {
   const schedBadge = $("#run-diag-sched-badge");
   const smartSummaryEl = $("#smart-run-summary");
   const smartPlanEl = $("#smart-run-plan");
+  const krxBadge = krxPipelineBadge(fresh);
+  const qBadge = quantPipelineBadge(fresh);
 
-  if (pxDateEl) pxDateEl.textContent = fresh.price_max_date || "시세 없음";
-  if (pxMetaEl) {
-    const lag = fresh.lag_trading_days;
-    pxMetaEl.textContent = `${fresh.price_days || 0}거래일 축적 · 기대 기준일 ${fresh.expected_price_date || "—"}${lag ? ` · ${lag}거래일 지연` : ""}`;
-  }
+  if (pxDateEl) pxDateEl.textContent = krxBadge.headline;
+  if (pxMetaEl) pxMetaEl.textContent = krxBadge.meta;
   if (pxBadge) {
-    const isStale = Boolean(fresh.stale_price);
-    pxBadge.textContent = isStale ? "동기화 필요" : "정상 (최신)";
-    pxBadge.className = "chip " + (isStale ? "warn" : "ok");
+    pxBadge.textContent = krxBadge.text;
+    pxBadge.className = "chip " + (krxBadge.warn ? "warn" : "ok");
   }
 
   const sources = fresh.sources || {};
@@ -2111,15 +2159,11 @@ function renderRunDiagnostics(status) {
   }
 
   const quant = sources.quant_ranking || {};
-  if (quantDateEl) quantDateEl.textContent = quant.observed_date || fresh.screen_as_of || "미계산";
-  if (quantMetaEl) {
-    const lag = quant.lag_trading_days;
-    quantMetaEl.textContent = lag ? `최신 시세보다 ${lag}거래일 뒤처짐 · 재계산 필요` : "시세 기준일과 점수 기준일 일치";
-  }
+  if (quantDateEl) quantDateEl.textContent = qBadge.headline;
+  if (quantMetaEl) quantMetaEl.textContent = qBadge.meta;
   if (quantBadge) {
-    const ready = quant.state === "fresh";
-    quantBadge.textContent = ready ? "기준일 일치" : quant.state === "missing" ? "미계산" : "재계산 필요";
-    quantBadge.className = "chip " + (ready ? "ok" : "warn");
+    quantBadge.textContent = qBadge.text;
+    quantBadge.className = "chip " + (qBadge.warn ? "warn" : "ok");
   }
 
   if (schedTimeEl) {
@@ -2135,17 +2179,16 @@ function renderRunDiagnostics(status) {
   }
 
   if (smartSummaryEl || smartPlanEl) {
-    const todo = [];
-    if (fresh.stale_price) todo.push(`KRX 시세 ${fresh.lag_trading_days || 1}거래일 지연 해소`);
-    if (quant.state !== "fresh") todo.push("퀀트 기준일 재계산");
-    if (["missing", "partial"].includes(dart.state)) {
-      todo.push(`DART 50종목 백필${dartCoverage.coverage_pct != null ? ` (현재 ${dartCoverage.coverage_pct}%)` : ""}`);
-    }
-    todo.push("KIS 수급 갱신");
+    const wanted = fresh.wanted_price_date || fresh.expected_price_date || "";
+    const stored = fresh.price_max_date || "";
     if (smartSummaryEl) {
-      smartSummaryEl.textContent = todo.length > 1
-        ? `지금 누르면: ${todo.join(" → ")}`
-        : "핵심 시세·퀀트는 정상입니다. 오늘 수급만 확인합니다.";
+      if (fresh.pending_source || fresh.stale_price) {
+        smartSummaryEl.textContent = `스마트 실행 한 번이면 됩니다. 지금은 KRX가 ${wanted || "다음 거래일"} 일봉을 안 줘서 공식 종가 ${stored}를 유지합니다.`;
+      } else if (quant.state !== "fresh" && !quant.aligned_with_stored_prices) {
+        smartSummaryEl.textContent = "스마트 실행이 점수를 저장된 공식 종가와 맞춥니다.";
+      } else {
+        smartSummaryEl.textContent = `시세와 점수는 공식 종가 ${stored || "확인 중"} 기준입니다. 스마트 실행이 오늘 남은 단계만 합니다.`;
+      }
     }
     if (smartPlanEl) {
       smartPlanEl.textContent = sched.enabled && sched.job_kind === "smart-sync"
@@ -2239,7 +2282,7 @@ function stampRunAsOf() {
     : started
       ? `작업 ${statusKo(job.status)} · 시작 ${started}`
       : "아직 실행한 작업이 없습니다.";
-  setPageAsOf(line, "실행 탭 작업의 시작·종료 시각입니다. 시세 받기와 재계산은 서로 다른 시점입니다.", 'run');
+  setPageAsOf(line, "실행 탭 작업의 시작·종료 시각입니다. 시세 수집과 재계산은 서로 다른 시점입니다.", 'run');
   renderRunDiagnostics(lastStatus);
 }
 
@@ -2757,56 +2800,51 @@ function getMarketSessionInfo() {
 function renderFreshChip(fresh) {
   const el = $("#chip-fresh");
   if (!el) return;
-  const btn = $("#btn-krx-now");
   if (!fresh) {
-    setChip(el, "📅 시세", "시세 정보가 없습니다.");
+    setChip(el, "📅 시세", "시세 정보가 없습니다. 이 표시는 클릭해도 수집하지 않습니다.");
     return;
   }
   const px = fresh.price_max_date || "시세 없음";
   const expected = fresh.expected_price_date || px;
+  const wanted = fresh.wanted_price_date || expected;
   const session = getMarketSessionInfo();
   const stale = Boolean(fresh.stale_price || fresh.stale_screen);
+  const pending = Boolean(fresh.pending_source) && !fresh.stale_price;
+  const noClick = " 이 표시는 클릭해도 시세를 받지 않습니다. 날짜를 맞추려면 실행 파이프라인의 스마트 실행을 쓰세요.";
 
   let label = "";
   let tip = "";
 
-  if (stale) {
-    label = `⚠️ 저장 종가 ${px} · 갱신 필요`;
-    tip = `기대 기준일 ${expected}, 실제 저장 종가 ${px}. 가격 조회 버튼의 별도 시세와 분석 원천 갱신은 다릅니다. 실행 파이프라인에서 수집 결과를 확인하세요.`;
+  if (pending) {
+    label = `종가 ${px} · ${wanted} 미공개`;
+    tip = `지금 공식 저장 종가는 ${px}입니다. KRX가 ${wanted} 일봉을 아직 공개하지 않았습니다. 스마트 실행이 공개되면 받습니다.${noClick}`;
+  } else if (stale) {
+    label = `저장 종가 ${px}`;
+    tip = `기대 기준일 ${expected}, 저장 종가 ${px}.${noClick}`;
   } else if (session.isMarketOpen) {
-    if (!stale) {
-      label = `📅 저장 종가 ${px} · 장중 가격 별도 조회`;
-      tip = `분석에 사용한 공식 일봉 종가: ${px}. 화면 종목 가격 확인은 별도 조회이며, 실시간 틱 수신을 보장하지 않습니다.`;
-    } else {
-      label = `📅 종가 ${px} (시세 동기화 필요)`;
-      tip = `최근 수집된 종가: ${px}. 직전 영업일(${expected}) 시세를 받으려면 상단의 [시세 받기]를 누르세요. (클릭 시 자동 수집)`;
-    }
+    label = `📅 저장 종가 ${px} · 장중 가격 별도 조회`;
+    tip = `분석에 사용한 공식 일봉 종가: ${px}. 화면 종목 가격 확인은 별도 조회이며, 실시간 틱 수신을 보장하지 않습니다.${noClick}`;
   } else if (session.isPostMarket) {
     if (px === session.todayStr) {
       label = `📅 시세 ${px} (당일 마감 최신)`;
-      tip = `최근 KRX 일봉 기준일은 ${px}입니다. 종목별 누락·거래상태는 실행 파이프라인의 품질 결과를 함께 확인하세요.`;
+      tip = `최근 KRX 일봉 기준일은 ${px}입니다.${noClick}`;
     } else {
       label = `📅 최근 종가 ${px} (당일 마감분 수집 대기)`;
-      tip = `오늘(${session.todayStr}) 장이 마감되었습니다. 공식 자료 공개 후 수집이 가능합니다. 버튼 실행 결과를 확인하세요.`;
+      tip = `오늘(${session.todayStr}) 장이 마감되었습니다. 공식 자료 공개 후 스마트 실행이 받습니다.${noClick}`;
     }
   } else if (session.isWeekend) {
     label = `📅 최근 종가 ${px} (주말 휴장)`;
-    tip = `주말/휴일 휴장 상태입니다. 최근 영업일(${px}) 종가 기준 퀀트 지표가 유지됩니다.`;
+    tip = `주말/휴일 휴장 상태입니다. 최근 영업일(${px}) 종가 기준입니다.${noClick}`;
   } else {
     label = `📅 전일 종가 ${px} (개장 전)`;
-    tip = `오늘(${session.todayStr}) 정규장 개장(09:00) 전입니다. 최근 영업일(${px}) 종가 기준입니다.`;
+    tip = `오늘(${session.todayStr}) 정규장 개장(09:00) 전입니다. 최근 영업일(${px}) 종가 기준입니다.${noClick}`;
   }
 
   setChip(el, label, tip);
   el.classList.toggle("stale", stale);
   el.classList.toggle("fresh", !stale && fresh.status === "fresh");
-  if (btn) btn.classList.toggle("primary", Boolean(fresh.stale_price));
-
-  el.onclick = () => {
-    if (stale && btn) {
-      btn.click();
-    }
-  };
+  el.onclick = null;
+  el.tabIndex = -1;
 
   applyPriceChrome(currentView);
 }
@@ -3011,8 +3049,8 @@ async function loadGlanceTop3() {
             <span class="${chgCls}">${chgTxt}</span>
           </div>
           <div class="glance-pick-kpis">
-            <span>관찰기간 말 수익 <b>${observed.end}</b></span>
-            <span>${observed.wins}</span>
+            <span class="has-tip" data-tip-title="${escapeHtml(SEASON_METRIC_COPY.end.tipTitle)}" data-tip="${escapeHtml(SEASON_METRIC_COPY.end.tip)}" tabindex="0">${escapeHtml(SEASON_METRIC_COPY.end.label)} <b>${observed.end}</b></span>
+            <span class="has-tip" data-tip-title="${escapeHtml(SEASON_METRIC_COPY.wins.tipTitle)}" data-tip="${escapeHtml(SEASON_METRIC_COPY.wins.tip)}" tabindex="0">${escapeHtml(SEASON_METRIC_COPY.wins.label)} <b>${observed.wins}</b></span>
           </div>
           <div class="meta">${observed.note}</div>
         </div>
@@ -5089,16 +5127,11 @@ async function loadSeasonalityTier1Briefing() {
           <b style="font-size:14px; color:#f8fafc;">결론 · ${escapeHtml(res.headline)}</b>
           <p style="margin:0; font-size:13px; color:#cbd5e1; line-height:1.6;"><b>근거 · </b>${escapeHtml(res.seasonality_brief || "분석 근거가 제공되지 않았습니다.")}</p>
           <p style="margin:0;font-size:13px;color:#fbbf24;line-height:1.6;"><b>주의점 · </b>${escapeHtml(res.sample_caution || "검증 한계는 원본 통계에서 확인하세요.")}</p>
-          <p style="margin:0;font-size:13px;color:#7dd3fc;line-height:1.6;"><b>다음 확인 · </b>${escapeHtml(res.next_check || "이전 형식의 분석입니다. 원본의 현재 근거와 기준일을 확인하세요.")}</p>
-          <details><summary>캘린더 가설 자세히</summary>
+          <p style="margin:0;font-size:13px;color:#7dd3fc;line-height:1.6;"><b>다음 확인 · </b>${escapeHtml(res.next_check || "올해 수급·공시가 붙었는지 원본 표에서 보세요.")}</p>
           ${(res.key_catalysts || []).length ? `
-            <div style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; margin-top:4px;">
-              <span class="chip" style="font-size:11px; font-weight:700; color:#38bdf8; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.25); padding:2px 8px; border-radius:6px; white-space:nowrap; flex-shrink:0;">📌 주요 캘린더 이벤트</span>
-              <div style="display:flex; flex-wrap:wrap; gap:6px; flex:1;">
-                ${res.key_catalysts.map(c => `<span class="chip" style="font-size:11px; padding:2px 8px; background:rgba(30,41,59,0.85); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1);">${escapeHtml(c)}</span>`).join("")}
-              </div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
+              ${res.key_catalysts.map(c => `<span class="chip" style="font-size:11px; padding:2px 8px;">${escapeHtml(c)}</span>`).join("")}
             </div>` : ""}
-          </details>
         </div>
       `;
     }
@@ -10382,16 +10415,11 @@ async function pollJob() {
   try {
     const job = await api("/api/jobs");
     renderJob(job);
-    const krxBtn = $("#btn-krx-now");
     const smartBtn = $("#smart-sync-btn");
     if (job.status === "running") {
       if (smartBtn) {
         smartBtn.textContent = job.kind === "smart-sync" ? "처리 중…" : "다른 작업 진행 중";
         smartBtn.disabled = true;
-      }
-      if (krxBtn && job.kind === "krx-prices") {
-        krxBtn.textContent = "⏳ 시세 수신 중...";
-        krxBtn.disabled = true;
       }
       setTimeout(pollJob, 1200);
     } else {
@@ -10399,23 +10427,23 @@ async function pollJob() {
         smartBtn.textContent = "▶ 스마트 실행";
         smartBtn.disabled = false;
       }
-      if (krxBtn) {
-        krxBtn.textContent = "시세 받기";
-        krxBtn.disabled = false;
-      }
       if (["success", "partial"].includes(job.status)) {
         const title = JOB_KINDS[job.kind] || job.kind || "작업";
         const partial = job.status === "partial";
         const cancelled = Boolean(job.result?.cancelled) || job.result?.pipeline_status === "interrupted";
         const followup = partial ? escapeHtml(job.result?.next_action || "일부 데이터는 다음 실행에서 이어집니다.") : "";
+        const storedPx = job.result?.freshness?.price_max_date || job.result?.as_of || "";
+        const krxLine = job.kind === "krx-prices" && storedPx && !partial
+          ? `<br>저장 종가 ${escapeHtml(storedPx)}`
+          : "";
         showToast(
           cancelled
             ? `⏸ <b>${title} 중단</b><br>${followup}`
             : partial
               ? `⚠️ <b>${title} 일부 완료</b><br>${followup}`
-              : `✅ <b>${title} 완료</b>`,
+              : `✅ <b>${title} 완료</b>${krxLine}`,
           cancelled || partial ? "warning" : "success",
-          cancelled || partial ? 5500 : 3500,
+          cancelled || partial ? 7000 : 3500,
         );
         await loadStatus();
         await reloadActiveView();
@@ -10467,12 +10495,7 @@ async function startJob(kind) {
     }
   }
 
-  const krxBtn = $("#btn-krx-now");
   const smartBtn = $("#smart-sync-btn");
-  if (krxBtn && kind === "krx-prices") {
-    krxBtn.textContent = "⏳ 시세 수신 중...";
-    krxBtn.disabled = true;
-  }
   const title = JOB_KINDS[kind] || kind;
   showToast(`⏳ <b>${title}</b> 시작 (백그라운드 실행 중…)`, "info", 3000);
 
@@ -10484,10 +10507,6 @@ async function startJob(kind) {
     if (smartBtn) {
       smartBtn.textContent = "▶ 스마트 실행";
       smartBtn.disabled = false;
-    }
-    if (krxBtn) {
-      krxBtn.textContent = "시세 받기";
-      krxBtn.disabled = false;
     }
   }
 }
@@ -10891,8 +10910,7 @@ document.addEventListener("click", (e) => {
   }
   if (e.target.closest("[data-open-status]")) openStatusModal();
 });
-if ($("#btn-krx-now")) {
-  $("#btn-krx-now").addEventListener("click", () => startJob("krx-prices").catch((err) => alert(err.message)));
+if ($("#btn-price-overlay")) {
   $("#btn-price-overlay").addEventListener("click", refreshVisiblePrices);
 }
 if ($("#btn-dash-reload")) {
@@ -11642,6 +11660,74 @@ function seasonPct(value) {
   return `${n > 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
 }
 
+const SEASON_METRIC_COPY = {
+  end: {
+    label: "지금→구간 끝 수익",
+    tipTitle: "지금→구간 끝 수익",
+    tip: "지금 쓰는 종가 기준일부터, 피크 전후 감시가 끝날 때까지를 과거 해에 맞춰 들고 난 가운데 해 수익률입니다. 조회일이 바뀌면 이 숫자도 바뀝니다. 올해 예상이 아닙니다.",
+  },
+  wins: {
+    label: "상승한 해",
+    tipTitle: "상승한 해",
+    tip: "지금→구간 끝이 플러스였던 해 수입니다. 3/3회 상승이면 세 해 모두 그 구간이 올랐다는 뜻입니다.",
+  },
+  adverse: {
+    label: "중간에 빠진 폭",
+    tipTitle: "중간에 빠진 폭",
+    tip: "구간 안에서 시작가보다 얼마나 빠졌는지, 가운데 해 기준입니다. 최고점 대비 낙폭과는 다른 숫자입니다.",
+  },
+  mdd: {
+    label: "고점 대비 빠진 폭",
+    tipTitle: "고점 대비 빠진 폭",
+    tip: "구간 안 최고 종가에서 얼마나 떨어졌는지, 가운데 해 기준입니다. 시작가 대비 하락과 다른 지표입니다.",
+  },
+  price: {
+    label: "현재가",
+    tipTitle: "현재가",
+    tip: "이 숫자를 계산할 때 쓴 최근 종가와 그 날짜입니다.",
+  },
+  peak: {
+    label: "최고점까지 오른 폭",
+    tipTitle: "최고점까지 오른 폭",
+    tip: "과거 같은 달에서 가장 많이 올랐을 때의 가운데 해 상승폭입니다. 그 가격에 팔 수 있다는 뜻이 아닙니다.",
+  },
+  peakRange: {
+    label: "최고점 상승폭 범위",
+    tipTitle: "최고점 상승폭 범위",
+    tip: "과거 해들의 중간 50%가 이 구간에 들어갑니다. 목표 밴드가 아닙니다.",
+  },
+  peakPrice: {
+    label: "참고 환산가",
+    tipTitle: "참고 환산가",
+    tip: "현재가에 과거 가운데 상승폭을 곱한 가격입니다. 목표가가 아닙니다.",
+  },
+  peakDays: {
+    label: "최고점까지 거래일",
+    tipTitle: "최고점까지 거래일",
+    tip: "과거 가운데 해 기준으로, 시작 후 최고점까지 걸린 거래일 수입니다.",
+  },
+  downsideBeforePeak: {
+    label: "최고점 전 빠진 폭",
+    tipTitle: "최고점 전 빠진 폭",
+    tip: "최고점에 닿기 전에 시작가보다 얼마나 빠졌는지, 가운데 해 기준입니다.",
+  },
+  peakWinRate: {
+    label: "최고점이 플러스였던 해",
+    tipTitle: "최고점이 플러스였던 해",
+    tip: "과거 해 중 최고점이 시작가보다 높았던 비율입니다. 나중에 보고 센 값입니다.",
+  },
+  strategy: {
+    label: "실제 매매 수익",
+    tipTitle: "실제 매매 수익",
+    tip: "수수료·체결을 반영한 전략 성과는 아직 계산하지 않았습니다.",
+  },
+  sample: {
+    label: "본 해 수",
+    tipTitle: "본 해 수",
+    tip: "같은 달을 몇 해 봤는지입니다. 독립 검증이 끝난 결과가 아닙니다.",
+  },
+};
+
 function seasonObservation(rem = {}) {
   const available = rem.available === true;
   const count = Number(rem.sample_count || 0);
@@ -11651,8 +11737,39 @@ function seasonObservation(rem = {}) {
     peak: available ? seasonPct(rem.remaining_p50) : "산출 불가",
     adverse: available ? seasonPct(rem.window_adverse_excursion_p50) : "—",
     wins: available && wins != null && count > 0 ? `${wins}/${count}회 상승` : "집계 대기",
-    note: "과거 관찰값 · 비용 전 · 체결·독립 검증 전",
+    note: "과거 같은 달을 본 숫자입니다. 수수료를 빼지 않았고, 올해 예상 수익이 아닙니다.",
   };
+}
+
+function seasonWindowReturnLabel(windowStr) {
+  const raw = String(windowStr || "").replace(/\s/g, "");
+  const match = raw.match(/(\d{1,2}\/\d{1,2}).*?(\d{1,2}\/\d{1,2})/);
+  if (!match) return SEASON_METRIC_COPY.end.label;
+  return `${match[1]}→${match[2]} 수익`;
+}
+
+function seasonKpiHtml(kind, value, opts = {}) {
+  const copy = SEASON_METRIC_COPY[kind] || { label: kind, tipTitle: kind, tip: "" };
+  const shown = opts.label || copy.label;
+  const title = escapeHtml(opts.tipTitle || copy.tipTitle);
+  const tip = escapeHtml(opts.tip || copy.tip);
+  const label = escapeHtml(shown);
+  if (opts.layout === "grid") {
+    const bStyle = opts.bStyle ? ` style="${opts.bStyle}"` : "";
+    return `<div class="expected-kpi-item has-tip" data-tip-title="${title}" data-tip="${tip}" tabindex="0">
+      <span>${label} <small class="metric-q">?</small></span>
+      <b${bStyle}>${value}</b>
+    </div>`;
+  }
+  const extra = opts.highlight
+    ? ' style="border-color:rgba(234,179,8,0.4); background:rgba(234,179,8,0.1);"'
+    : "";
+  const spanStyle = opts.highlight ? ' style="color:#fde047;"' : "";
+  const bStyle = opts.highlight ? ' style="color:#facc15;"' : (opts.bStyle ? ` style="${opts.bStyle}"` : "");
+  return `<div class="pre-entry-kpi-item has-tip"${extra} data-tip-title="${title}" data-tip="${tip}" tabindex="0">
+    <span${spanStyle}>${label} <small class="metric-q">?</small></span>
+    <b${bStyle}>${value}</b>
+  </div>`;
 }
 
 function renderDiscDeepPlaybook(r, months) {
@@ -11792,24 +11909,24 @@ function renderDiscDeepPlaybook(r, months) {
       <div style="margin-top:12px;">
         <span style="font-size:11.5px; font-weight:700; color:#38bdf8;">📊 과거 같은 계절 구간의 수익과 하락 · 비용 전 관찰값</span>
         <div class="expected-kpi-grid">
-          <div class="expected-kpi-item"><span>관찰기간 말 수익 · 중앙값</span><b>${seasonObservation(rem).end}</b></div>
-          <div class="expected-kpi-item"><span>관찰기간 말 상승 횟수</span><b>${seasonObservation(rem).wins}</b></div>
-          <div class="expected-kpi-item"><span>관찰기간 중 기준가 대비 하락 · 중앙값</span><b>${seasonObservation(rem).adverse}</b></div>
-          <div class="expected-kpi-item"><span>종가 고점 대비 최대낙폭 · 연도별 중앙값</span><b>${hasRemaining ? seasonPct(rem.window_close_max_drawdown_p50) : "—"}</b></div>
-          <div class="expected-kpi-item"><span>현재가 · 기준일</span><b style="color:#e2e8f0;">${pbWon(rem.current_price)} <small>${escapeHtml(rem.price_as_of || "")}</small></b></div>
-          <div class="expected-kpi-item"><span>과거 피크 상승폭 · 중앙값</span><b>${seasonObservation(rem).peak}</b></div>
-          <div class="expected-kpi-item"><span>과거 피크 분포 · 하위25~상위25% 경계</span><b>${hasRemaining ? `${seasonPct(rem.remaining_p25)} ~ ${seasonPct(rem.remaining_p75)}` : "—"}</b></div>
-          <div class="expected-kpi-item"><span>과거 분포 환산가 · 목표가 아님</span><b>${hasRemaining && rem.peak_price_p50 != null ? pbWon(rem.peak_price_p50) : "—"}</b></div>
-          <div class="expected-kpi-item"><span>피크까지 중앙 거래일</span><b>${rem.median_trading_days_to_peak == null ? "—" : `${rem.median_trading_days_to_peak}일`}</b></div>
-          <div class="expected-kpi-item"><span>피크 이전 기준가 대비 하락 · 중앙값</span><b>${hasRemaining ? seasonPct(rem.downside_before_peak_p50) : "—"}</b></div>
-          <div class="expected-kpi-item"><span>과거 피크 상승 비율 (사후 관측)</span><b style="color:#34d399;">${rem.positive_peak_rate == null ? "—" : `${(Number(rem.positive_peak_rate) * 100).toFixed(1)}%`}</b></div>
-          <div class="expected-kpi-item"><span>전략수익 · 비용·체결 검증</span><b>아직 산출 전</b></div>
-          <div class="expected-kpi-item"><span>표본 · 검증 상태</span><b>${Number(rem.sample_count || 0)}개년 · 과거 관찰</b></div>
+          ${seasonKpiHtml("end", seasonObservation(rem).end, { layout: "grid" })}
+          ${seasonKpiHtml("wins", seasonObservation(rem).wins, { layout: "grid" })}
+          ${seasonKpiHtml("adverse", seasonObservation(rem).adverse, { layout: "grid" })}
+          ${seasonKpiHtml("mdd", hasRemaining ? seasonPct(rem.window_close_max_drawdown_p50) : "—", { layout: "grid" })}
+          ${seasonKpiHtml("price", `${pbWon(rem.current_price)} <small>${escapeHtml(rem.price_as_of || "")}</small>`, { layout: "grid", bStyle: "color:#e2e8f0;" })}
+          ${seasonKpiHtml("peak", seasonObservation(rem).peak, { layout: "grid" })}
+          ${seasonKpiHtml("peakRange", hasRemaining ? `${seasonPct(rem.remaining_p25)} ~ ${seasonPct(rem.remaining_p75)}` : "—", { layout: "grid" })}
+          ${seasonKpiHtml("peakPrice", hasRemaining && rem.peak_price_p50 != null ? pbWon(rem.peak_price_p50) : "—", { layout: "grid" })}
+          ${seasonKpiHtml("peakDays", rem.median_trading_days_to_peak == null ? "—" : `${rem.median_trading_days_to_peak}일`, { layout: "grid" })}
+          ${seasonKpiHtml("downsideBeforePeak", hasRemaining ? seasonPct(rem.downside_before_peak_p50) : "—", { layout: "grid" })}
+          ${seasonKpiHtml("peakWinRate", rem.positive_peak_rate == null ? "—" : `${(Number(rem.positive_peak_rate) * 100).toFixed(1)}%`, { layout: "grid", bStyle: "color:#34d399;" })}
+          ${seasonKpiHtml("strategy", "아직 산출 전", { layout: "grid" })}
+          ${seasonKpiHtml("sample", `${Number(rem.sample_count || 0)}년 · 과거 관찰`, { layout: "grid" })}
         </div>
-        <p class="meta"><b>한 줄 해석:</b> 과거 ${Number(rem.sample_count || 0)}개년 관찰값입니다. 피크 상승폭은 실제 매매 수익이나 올해 목표수익이 아닙니다.</p>
+        <p class="meta"><b>한 줄 해석:</b> 과거 ${Number(rem.sample_count || 0)}년을 본 숫자입니다. 최고점까지 오른 폭은 실제 매매 수익이나 올해 목표 수익이 아닙니다. 각 숫자에 마우스를 올리면 설명이 뜹니다.</p>
         <details><summary>계산 방법·표본 차이·주의사항 자세히</summary>
-        <p class="meta">${seasonObservation(rem).note}. 피크는 나중에 찾은 최고 가격입니다. 기준가 대비 하락과 고점 대비 최대낙폭은 서로 다른 위험 지표입니다.</p>
-        <p class="meta">한 해씩 제외한 기간 말 수익 중앙값: ${seasonPct(rem.window_end_leave_one_year_out?.min_median)} ~ ${seasonPct(rem.window_end_leave_one_year_out?.max_median)}. 표본 민감도 참고치이며 재학습·독립 검증 결과가 아닙니다.</p>
+        <p class="meta">${seasonObservation(rem).note} 최고점은 나중에 찾은 가격입니다. 중간에 빠진 폭과 고점 대비 빠진 폭은 서로 다른 위험 지표입니다.</p>
+        <p class="meta">한 해씩 빼고 다시 센 지금→구간 끝 수익: ${seasonPct(rem.window_end_leave_one_year_out?.min_median)} ~ ${seasonPct(rem.window_end_leave_one_year_out?.max_median)}. 표본이 한두 해에 얼마나 흔들리는지 보는 참고치이며, 재학습·독립 검증 결과가 아닙니다.</p>
         <p class="meta">피크 날짜의 가운데 50% 범위: ${rem.peak_day_p25 == null ? "—" : escapeHtml(String(rem.peak_day_p25))}일 ~ ${rem.peak_day_p75 == null ? "—" : escapeHtml(String(rem.peak_day_p75))}일. 관찰 구간은 달력일 기준이며 휴장일 체결을 뜻하지 않습니다.</p>
         <div class="meta" style="margin-top:8px;line-height:1.5;">과거 월간 전체구간 P50 ${pbPct(monthlyP50)}와 구분해 계산합니다. ${escapeHtml(rem.methodology || "실제 일봉 경로가 부족하면 값을 표시하지 않습니다.")}</div>
         ${remWarningHtml}
@@ -11832,7 +11949,7 @@ function renderDiscDeepPlaybook(r, months) {
       <b style="color:#34d399;">현재 지표가 과거 패턴을 뒷받침하나요?</b>
       <div class="pb-confirm-grid" style="margin-top:10px;">
         <div class="pb-confirm-cell"><span>역사적 승률</span><b>${((r.win_rate || 0) * 100).toFixed(1)}%</b></div>
-        <div class="pb-confirm-cell"><span>월간 중앙수익</span><b>${pbPct(r.median_return)}</b></div>
+        <div class="pb-confirm-cell has-tip" data-tip-title="월간 가운데 수익" data-tip="그달 전체(1일~말일) 수익률의 가운데 해 값입니다. 카드의 ‘지금→구간 끝 수익’과는 기간이 다를 수 있습니다." tabindex="0"><span>월간 가운데 수익</span><b>${pbPct(r.median_return)}</b></div>
         <div class="pb-confirm-cell"><span>현재 근거</span><b>${(r.current_confirmation_evidence || []).length}개</b></div>
         <div class="pb-confirm-cell"><span>현재 판단</span><b>${escapeHtml(seasonPlainVerdict(r).title)}</b></div>
       </div>
@@ -11883,25 +12000,35 @@ function seasonPlainVerdict(r) {
   const invalidEvidence = validEvidence.length !== (r.current_confirmation_evidence || []).length;
   const evidence = validEvidence.join(' · ');
   const missing = [...(r.current_confirmation_missing || []), ...(invalidEvidence ? ['일부 현재 지표 값 오류 — 재계산 필요'] : [])].join(' · ');
+  const rem = r.remaining_peak || {};
+  const n = Number(rem.sample_count || r.sample_count || 0);
+  const wins = rem.window_end_positive_count;
+  const endTxt = seasonPct(rem.window_end_p50);
+  const pastBit = n > 0 && wins != null && endTxt !== "—" && endTxt !== "산출 불가"
+    ? `과거 ${wins}/${n}회 상승, 지금→구간 끝 ${endTxt}`
+    : (n > 0 ? `과거 ${n}년 관찰` : "과거 표본 부족");
+  const hasNow = validEvidence.length > 0;
   const choices = {
-    BROKEN: ['최근 가격·재무 지표 약세 — 계절성 단독 판단 보류',
-      '최근 3개월 수익률이 -15% 미만이고 퀀트 점수가 48점 미만인 조건입니다. 과거 상승 패턴과 달리 현재 지표가 약하다는 뜻이지, 올해 이벤트 취소나 향후 하락을 확인한 것은 아닙니다.',
-      '과거 상승률보다 최근 가격 회복과 다음 재무·수급 갱신을 먼저 확인하세요. 두 조건 중 하나가 해소돼도 상승이 입증되는 것은 아닙니다.'],
-    WEAKENING: ['최근 반복성이 약해짐 — 과거 평균을 낮춰 해석',
-      '최근 3개년의 해당 월 상승 비율이 50% 미만입니다. 예전 평균이 좋아도 최근에는 같은 상승이 잘 반복되지 않았습니다.',
-      '손실이 난 연도와 올해 가격 흐름을 먼저 비교하세요. 과거 평균 수익률만으로 후보의 우선순위를 높이지 마세요.'],
-    ACTIVE: ['과거 패턴과 현재 지표가 함께 지지 — 추가 검토 후보',
-      '과거 반복성과 현재 가격 지표가 내부 조건을 충족했습니다. 올해 같은 수익이 난다는 판정은 아닙니다.',
-      '남은 관찰기간, 하락폭과 최신 공시·수급을 함께 확인하세요. 이 상태만으로 매수 시점을 결정하지 않습니다.'],
-    WATCH: ['과거 패턴은 참고 가능 — 올해 재현 여부는 확인 필요',
-      '과거 계절성은 후보 탐색 근거이지만 현재 지표만으로 올해도 반복된다고 결론낼 수 없습니다.',
-      '관찰기간 말 수익과 손실 연도를 먼저 보세요. 올해 가격·공시·수급이 뒷받침되는지 확인한 뒤 판단하세요.'],
-    DISCOVERY: ['반복 패턴 탐색 후보 — 현재 근거부터 확인',
-      '과거 가격에서 패턴을 찾았지만 현재 강세 조건을 충족한 후보는 아닙니다.',
-      '실제 이벤트 일정과 현재 가격 흐름을 먼저 확인하세요. 과거 피크 상승폭을 목표 수익으로 사용하지 마세요.'],
-    UNKNOWN: ['현재 판단 자료 부족 — 과거 통계만 참고',
-      '현재 조건을 판정할 근거가 충분하지 않습니다. 자료 누락을 약세나 호재로 해석하지 않습니다.',
-      '누락된 항목을 갱신하기 전에는 올해 유망하다는 결론을 내리지 않습니다.']
+    BROKEN: ['지금은 약하다. 계절성만 보고 사지 말 것',
+      `최근 3개월 수익률이 -15% 미만이거나 퀀트 점수가 48점 미만입니다. ${pastBit}이어도 올해 가격·재무가 약합니다.`,
+      '최근 가격이 회복되기 전에는 과거 상승 구간을 올해 근거로 쓰지 마세요.'],
+    WEAKENING: ['최근엔 잘 안 반복됐다. 과거 평균을 낮춰 볼 것',
+      `최근 3개년 해당 월 상승 비율이 50% 미만입니다. ${pastBit}이어도 최근 해는 약합니다.`,
+      '손실이 난 해를 먼저 보세요. 예전 평균만으로 순위를 올리지 마세요.'],
+    ACTIVE: ['과거와 올해 지표가 같이 받쳐 줌. 검토 가치 있음',
+      `${pastBit}. 올해 연결된 지표도 내부 기준을 통과했습니다. 같은 수익이 올해 난다는 뜻은 아닙니다.`,
+      '남은 구간과 수급·공시가 같은 방향인지만 보세요.'],
+    WATCH: [hasNow ? `과거는 세다. 올해 지표는 따로 봐야 함` : `올해 근거 없음. 과거만 세다`,
+      hasNow
+        ? `${pastBit}. 올해 지표는 있지만 그 지표만으로 올해도 같은 구간이 온다고 말하지 않습니다.`
+        : `${pastBit}. 올해 수급·공시·모멘텀 확인이 없어 올해 강하다고 말할 수 없습니다.`,
+      hasNow ? '올해 지표가 과거 구간과 같은 방향인지 보세요.' : '올해 수급·공시가 붙기 전에는 과거 성적만 있는 종목입니다.'],
+    DISCOVERY: ['탐색 단계다. 올해 강세가 아니다',
+      `${pastBit}. 현재 강세 조건을 아직 통과하지 않았습니다.`,
+      '올해 가격·이벤트가 붙기 전에는 후보 목록일 뿐입니다.'],
+    UNKNOWN: ['올해 판단 자료가 없다. 과거 통계만 있다',
+      '현재 조건을 셀 근거가 없습니다. 빈칸을 약세나 호재로 읽지 마세요.',
+      '누락 항목이 채워지기 전에는 올해 유망하다고 말하지 마세요.']
   };
   const [title, reason, next] = (invalidEvidence ? choices.UNKNOWN : choices[r.current_status]) || choices.UNKNOWN;
   return {title, reason, next, evidence: evidence || '연결된 현재 지표 없음', missing};
@@ -11913,7 +12040,7 @@ function seasonEmptyDiagnostic(report) {
   const insufficient = folds.length > 0 && folds.every(f => f.status === 'INSUFFICIENT_TRAIN');
   return `<div class="season-diagnostic-conclusion"><b>결론: ${insufficient ? '독립 연도 비교는 아직 불가 — 과거 관찰용으로만 사용' : '비교 가능한 결과 없음 — 이 진단으로 우열을 판단하지 않음'}</b>
     <p>${insufficient ? '각 평가 연도보다 앞선 학습 자료가 최소 3개년 필요합니다. 현재 자료에서는 이 조건을 만족하는 평가 연도가 없어, 빈 연도별 결과는 표시하지 않습니다.' : '가격 누락·거래일 조건 등으로 계산 가능한 평가 연도가 없습니다. 결과가 없다는 것이 수익률 0%나 전략 실패라는 뜻은 아닙니다.'}</p>
-    <p><b>지금 볼 것:</b> 위의 관찰기간 말 수익, 상승 횟수와 손실 연도를 비교하세요. 이는 이미 지나간 표본의 설명이며 올해 예상 수익이 아닙니다.</p>
+    <p><b>지금 볼 것:</b> 위의 지금→구간 끝 수익, 상승한 해와 손실 연도를 비교하세요. 이미 지나간 해를 설명하는 숫자이며 올해 예상 수익이 아닙니다.</p>
     <p><b>다음 확인:</b> ${insufficient ? '상장 이력이 충분하면 시세 이력을 확장한 뒤 다시 비교합니다. 신규 상장이라 과거 자체가 짧으면 수집 버튼으로 해결되지 않으며 추가 연도가 쌓여야 합니다.' : '시세 누락·가격 불연속 원인을 확인한 뒤 재진단합니다.'}</p>
     <details><summary>계산하지 못한 연도와 이유 (${folds.length}개)</summary>${folds.map(f => `<p>${escapeHtml(String(f.test_year))}년 · ${escapeHtml(f.status === 'INSUFFICIENT_TRAIN' ? '평가 전에 필요한 3개년 학습 자료 부족' : f.status)}</p>`).join('')}</details></div>`;
 }
@@ -12469,8 +12596,8 @@ async function openDiscoveryDetailModal(r) {
   const remDownside = r.remaining_peak && r.remaining_peak.downside_before_peak_p50;
   setModalText("disc-modal-alpha", pbPct(r.median_return));
   setModalText("disc-modal-mdd-sub", remDownside == null ? "피크 전 하방 —" : `피크 전 하방(P50) ${pbPct(remDownside)}`);
-  setModalText("disc-modal-entry-win", `📈 과거 관찰 구간: ${r.entry_window_str || "실측 피크 산출 대기"}`);
-  setModalText("disc-modal-exit-win", `➔ 역사적 피크 감시: ${r.exit_window_str || "실측 피크 산출 대기"}`);
+  setModalText("disc-modal-entry-win", `📅 피크 30~15일 전: ${r.entry_window_str || "실측 피크 산출 대기"}`);
+  setModalText("disc-modal-exit-win", `➔ 피크 전후 감시: ${r.exit_window_str || "실측 피크 산출 대기"}`);
 
   // Reset embedded chart to hidden
   const chartBox = $("#disc-modal-chart-box");
@@ -12712,33 +12839,18 @@ async function loadPreEntryView() {
 
         <!-- Current-price-to-peak KPI Bar -->
         <div class="pre-entry-kpi-bar">
-          <div class="pre-entry-kpi-item">
-            <span>관찰기간 말 수익 · 중앙값</span>
-            <b>${observed.end}</b>
-          </div>
-          <div class="pre-entry-kpi-item" style="border-color:rgba(234,179,8,0.4); background:rgba(234,179,8,0.1);">
-            <span style="color:#fde047;">관찰기간 말 상승 횟수</span>
-            <b style="color:#facc15;">${observed.wins}</b>
-          </div>
-          <div class="pre-entry-kpi-item">
-            <span>과거 피크 상승폭 · 중앙값</span>
-            <b style="color:#38bdf8;">${observed.peak}</b>
-          </div>
-          <div class="pre-entry-kpi-item">
-            <span>관찰기간 중 기준가 대비 하락 · 중앙값</span>
-            <b style="color:#f87171;">${observed.adverse}</b>
-          </div>
-          <div class="pre-entry-kpi-item">
-            <span>표본 · 검증 상태</span>
-            <b style="color:#fbbf24;">${Number(rem.sample_count || 0)}년 · 과거 관찰</b>
-          </div>
+          ${seasonKpiHtml("end", observed.end)}
+          ${seasonKpiHtml("wins", observed.wins, { highlight: true })}
+          ${seasonKpiHtml("peak", observed.peak, { bStyle: "color:#38bdf8;" })}
+          ${seasonKpiHtml("adverse", observed.adverse, { bStyle: "color:#f87171;" })}
+          ${seasonKpiHtml("sample", `${Number(rem.sample_count || 0)}년 · 과거 관찰`, { bStyle: "color:#fbbf24;" })}
         </div>
 
-        <div class="meta" style="margin:6px 0;">${observed.note}. 피크 상승폭은 연도별 최고 상승폭의 중앙값으로 실제 매도 수익이 아닙니다. 검증된 전략수익은 아직 산출 전입니다.</div>
+        <div class="meta" style="margin:6px 0;">${observed.note} 최고점까지 오른 폭은 나중에 찾은 최고가 기준이라 실제 매도 수익이 아닙니다. 숫자에 마우스를 올리거나 ? 를 누르면 설명이 뜹니다.</div>
         <!-- Timing Window Strip -->
         <div class="pre-entry-timing-strip">
-          <span style="color:#38bdf8; font-weight:700;">📈 과거 관찰 구간: ${escapeHtml(r.entry_window_str || '실측 피크 산출 대기')}</span>
-          <span style="color:#fbbf24; font-weight:700;">➔ 역사적 피크 감시: ${escapeHtml(r.exit_window_str || '실측 피크 산출 대기')}</span>
+          <span class="has-tip" style="color:#38bdf8; font-weight:700;" data-tip-title="피크 30~15일 전" data-tip="과거 최고점 날짜에서 달력으로 30일 전~15일 전을 잘라 둔 띠입니다. 그 기간에 누가 주식을 사 모았다는 매집 확인이 아닙니다." tabindex="0">📅 피크 30~15일 전: ${escapeHtml(r.entry_window_str || '실측 피크 산출 대기')}</span>
+          <span class="has-tip" style="color:#fbbf24; font-weight:700;" data-tip-title="피크 전후 감시" data-tip="과거 최고점 날짜 기준 3일 전~4일 후입니다. 올해 그 날짜에 꼭 고점이 나온다는 뜻이 아닙니다." tabindex="0">➔ 피크 전후 감시: ${escapeHtml(r.exit_window_str || '실측 피크 산출 대기')}</span>
         </div>
 
         <!-- Year-by-Year Track Record Bar -->
@@ -12763,13 +12875,36 @@ async function loadPreEntryView() {
   }).join("");
 }
 
+function nextEventDays(peakMonths, now = new Date()) {
+  const months = [...new Set((peakMonths || []).map(Number).filter((m) => m >= 1 && m <= 12))];
+  if (!months.length) return 9999;
+  const curM = now.getMonth() + 1;
+  if (months.includes(curM)) return 0;
+  let best = 400;
+  for (const pm of months) {
+    const target = new Date(now.getFullYear(), pm - 1, 1);
+    if (target <= now) target.setFullYear(target.getFullYear() + 1);
+    const days = Math.round((target.getTime() - now.getTime()) / 86400000);
+    if (days >= 0 && days < best) best = days;
+  }
+  return best;
+}
+
+function nextEventLabel(peakMonths) {
+  const days = nextEventDays(peakMonths);
+  if (days >= 900) return "일정 없음";
+  if (days === 0) return "이번 달";
+  if (days < 32) return `${days}일 후`;
+  return `약 ${Math.round(days / 30)}개월 후`;
+}
+
 function renderThemeDonutAndRanking(themes) {
   const svg = $("#theme-donut-svg");
   const rankList = $("#theme-ranking-list");
   if (!svg || !rankList || !themes || !themes.length) return;
 
   const titleEl = $("#theme-ranking-title");
-  if (titleEl) titleEl.textContent = `📊 ${themes.length}개 이벤트 테마 계절성 랭킹`;
+  if (titleEl) titleEl.textContent = `📅 ${themes.length}개 이벤트 · 가까운 일정순`;
 
   // Center title
   const top1 = themes[0];
@@ -12822,8 +12957,14 @@ function renderThemeDonutAndRanking(themes) {
     });
   });
 
-  // Render Theme Ranking Sidebar
-  rankList.innerHTML = themes.map((t, idx) => {
+  // Render Theme Ranking Sidebar — nearest event first. Donut stays contribution order.
+  const ranked = [...themes].sort((a, b) => {
+    const da = nextEventDays(a.peak_months);
+    const db = nextEventDays(b.peak_months);
+    if (da !== db) return da - db;
+    return Number(b.weight_share_pct || 0) - Number(a.weight_share_pct || 0);
+  });
+  rankList.innerHTML = ranked.map((t) => {
     const isActive = currentPreEntryTheme === t.theme_id ? "active" : "";
     const avgReturn = Number(t.avg_return || 0);
     const leaderReturn = Number(t.top_leader_return || 0);
@@ -12831,11 +12972,12 @@ function renderThemeDonutAndRanking(themes) {
     const leaderReturnText = `${leaderReturn >= 0 ? "+" : ""}${(leaderReturn * 100).toFixed(1)}%`;
     const peakMonths = (t.peak_months || []).map((month) => `${month}월`).join("·") || "—";
     const noSafeRows = Number(t.candidate_count || 0) === 0;
+    const when = nextEventLabel(t.peak_months);
     return `
       <div class="theme-rank-card ${isActive} ${noSafeRows ? "is-empty" : ""}" data-theme-id="${t.theme_id}" title="${escapeHtml(t.catalyst || "")}">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <b style="color:${t.color}; font-size:12.5px;">${t.emoji} ${t.theme_name}</b>
-          <span class="chip" style="background:rgba(255,255,255,0.08); font-size:11px;">상대 기여 ${t.weight_share_pct}%</span>
+          <span class="chip" style="background:${when === "이번 달" ? "rgba(250,204,21,0.18)" : "rgba(255,255,255,0.08)"}; color:${when === "이번 달" ? "#fde68a" : "#cbd5e1"}; font-size:11px;">${escapeHtml(when)}</span>
         </div>
         <div style="margin-top:4px; font-size:11.5px; color:#cbd5e1; display:flex; justify-content:space-between;">
           <span>기준 ${Number(t.analysis_month || 0)}월: <b class="${avgReturn >= 0 ? "text-emerald-400" : "text-rose-400"}">${avgReturnText}</b></span>
@@ -13233,7 +13375,7 @@ async function loadAIExplanations(offset = 0, generationId = "") {
             <div style="margin-top:4px; font-size:10.5px; color:#64748b;">근거 방식: ${escapeHtml(r.event_explanation_source || '계절성 통계·업종 매핑')}</div>
           </div>
           <div style="text-align:right;">
-            <div style="font-size:14px; font-weight:800; color:#34d399;">승률 ${((r.win_rate || 0)*100).toFixed(0)}% · 월간 중앙수익 ${pbPct(r.median_return)}</div>
+            <div style="font-size:14px; font-weight:800; color:#34d399;">승률 ${((r.win_rate || 0)*100).toFixed(0)}% · 월간 가운데 수익 ${pbPct(r.median_return)}</div>
             <div style="font-size:11.5px; color:#94a3b8;">${r.sample_count}개년 추적</div>
           </div>
         </div>
@@ -13277,6 +13419,7 @@ function setupV11SeasonalityUI() {
   const tabExpl = $("#tab-v11-explanation");
   const tabCal = $("#tab-v11-calendar");
   const tabHeat = $("#tab-v11-heatmap");
+  const tabGuide = $("#tab-v11-guide");
 
   const paneMom = $("#pane-v11-momentum");
   const panePre = $("#pane-v11-pre-entry");
@@ -13284,11 +13427,12 @@ function setupV11SeasonalityUI() {
   const paneExpl = $("#pane-v11-explanation");
   const paneCal = $("#pane-v11-calendar");
   const paneHeat = $("#pane-v11-heatmap");
+  const paneGuide = $("#pane-v11-guide");
 
   function switchV11Subtab(subtab, force = false) {
     currentV11Subtab = subtab;
-    [tabPre, tabDisc, tabExpl, tabCal, tabHeat].forEach((t) => t?.classList.remove("active"));
-    [paneMom, panePre, paneDisc, paneExpl, paneCal, paneHeat].forEach((p) => p?.classList.add("hidden"));
+    [tabPre, tabDisc, tabExpl, tabCal, tabHeat, tabGuide].forEach((t) => t?.classList.remove("active"));
+    [paneMom, panePre, paneDisc, paneExpl, paneCal, paneHeat, paneGuide].forEach((p) => p?.classList.add("hidden"));
 
     if (btnMom) {
       if (subtab === "momentum") {
@@ -13319,6 +13463,9 @@ function setupV11SeasonalityUI() {
     } else if (subtab === "heatmap") {
       tabHeat?.classList.add("active");
       paneHeat?.classList.remove("hidden");
+    } else if (subtab === "guide") {
+      tabGuide?.classList.add("active");
+      paneGuide?.classList.remove("hidden");
     }
 
     const now = Date.now();
@@ -13355,6 +13502,8 @@ function setupV11SeasonalityUI() {
   tabExpl?.addEventListener("click", () => switchV11Subtab("explanation"));
   tabCal?.addEventListener("click", () => switchV11Subtab("calendar"));
   tabHeat?.addEventListener("click", () => switchV11Subtab("heatmap"));
+  tabGuide?.addEventListener("click", () => switchV11Subtab("guide"));
+  $("#btn-open-season-guide")?.addEventListener("click", () => switchV11Subtab("guide"));
 
   const preEntrySortTabs = $("#pre-entry-sort-tabs");
   preEntrySortTabs?.querySelectorAll("[data-pre-sort]").forEach((btn) => {
@@ -14580,6 +14729,16 @@ async function openSeasonalityModalForStock(ticker, name) {
   }
 }
 
+function momentumSyncTone(stock = {}) {
+  const st = stock.sync_status;
+  const shape = Number(stock.sync_rate ?? stock.trajectory_match);
+  const shapeTxt = Number.isFinite(shape) ? ` · 모양 ${shape.toFixed(0)}%` : "";
+  if (st === "초과") return { color: "#34d399", bg: "rgba(16,185,129,0.22)", label: "초과", badge: `초과${shapeTxt}` };
+  if (st === "미달") return { color: "#f87171", bg: "rgba(248,113,113,0.22)", label: "미달", badge: `미달${shapeTxt}` };
+  if (st === "동기") return { color: "#fbbf24", bg: "rgba(251,191,36,0.22)", label: "동기", badge: `동기${shapeTxt}` };
+  return { color: "#94a3b8", bg: "rgba(148,163,184,0.12)", label: "비교 불가", badge: "비교 불가" };
+}
+
 function renderActiveMomentumChart() {
   const canvas = $("#momentum-chart-canvas");
   if (!canvas) return;
@@ -14592,13 +14751,16 @@ function renderActiveMomentumChart() {
     return;
   }
 
-  const rect = canvas.getBoundingClientRect();
-  const width = rect.width || 750;
-  const height = rect.height || 300;
+  const parent = canvas.parentElement;
+  const rect = (parent || canvas).getBoundingClientRect();
+  const width = Math.max(320, Math.floor(rect.width) || 750);
+  const height = Math.max(220, Math.floor(rect.height) || 300);
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
-  ctx.scale(dpr, dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   ctx.fillStyle = "#070b13";
   ctx.fillRect(0, 0, width, height);
@@ -14607,18 +14769,23 @@ function renderActiveMomentumChart() {
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
 
-  const historyCurve = stock.history_curve_source === "OBSERVED" ? (stock.history_curve || []) : [];
-  const actualCurve = stock.actual_curve || [];
+  const historyCurve = stock.history_curve_source === "OBSERVED" ? (stock.history_curve || []).filter((v) => Number.isFinite(Number(v))).map(Number) : [];
+  const actualCurve = (stock.actual_curve || []).filter((v) => Number.isFinite(Number(v))).map(Number);
   if (!historyCurve.length && !actualCurve.length) {
     ctx.fillStyle = "#94a3b8";
-    ctx.fillText("검증 가능한 가격 경로가 없습니다.", 30, 55);
+    ctx.font = "13px sans-serif";
+    ctx.fillText("검증 가능한 가격 경로가 없습니다. 진입일 이후 종가가 붙으면 관측 곡선이 그려집니다.", 24, 48);
     return;
   }
-  const nDays = Math.max(historyCurve.length, actualCurve.length);
-
-  const maxVal = Math.max(...historyCurve, ...actualCurve, 30) * 1.15;
-  const minVal = Math.min(0, ...historyCurve, ...actualCurve) - 2;
-  const valRange = Math.max(10, maxVal - minVal);
+  const nDays = Math.max(historyCurve.length, actualCurve.length, 2);
+  const values = [...historyCurve, ...actualCurve];
+  const rawMax = Math.max(0, ...values);
+  const rawMin = Math.min(0, ...values);
+  const span = Math.max(2, rawMax - rawMin);
+  const pad = span * 0.22;
+  const maxVal = rawMax + pad;
+  const minVal = rawMin - pad;
+  const valRange = maxVal - minVal;
 
   const getY = (val) => padding.top + plotH - ((val - minVal) / valRange) * plotH;
   const getX = (idx) => padding.left + (idx / Math.max(1, nDays - 1)) * plotW;
@@ -14660,10 +14827,10 @@ function renderActiveMomentumChart() {
   ctx.fillText(`🎯 목표 피크일 (${stock.peak_date})`, peakX, padding.top - 12);
   }
 
-  // 1. Draw Past 5-Year Average Trajectory (Dashed Gray/Cyan Line)
-  ctx.strokeStyle = "#94a3b8";
-  ctx.lineWidth = 2;
-  ctx.setLineDash([5, 4]);
+  // Historical average path (dashed gold)
+  ctx.strokeStyle = "#fbbf24";
+  ctx.lineWidth = 2.5;
+  ctx.setLineDash([6, 4]);
   ctx.beginPath();
   historyCurve.forEach((val, i) => {
     const x = getX(i);
@@ -14674,19 +14841,28 @@ function renderActiveMomentumChart() {
   ctx.stroke();
   ctx.setLineDash([]);
 
+  const labelStep = nDays > 12 ? Math.ceil(nDays / 8) : 1;
   historyCurve.forEach((val, i) => {
     const x = getX(i);
     const y = getY(val);
-    ctx.fillStyle = "#64748b";
+    ctx.fillStyle = "#fbbf24";
     ctx.beginPath();
     ctx.arc(x, y, 3, 0, Math.PI * 2);
     ctx.fill();
-
+  });
+  for (let i = 0; i < nDays; i += labelStep) {
+    const x = getX(i);
     ctx.fillStyle = "#94a3b8";
     ctx.font = "10px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(i === 0 ? "진입(D0)" : `D+${i}`, x, height - 12);
-  });
+  }
+  if ((nDays - 1) % labelStep !== 0) {
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`D+${nDays - 1}`, getX(nDays - 1), height - 12);
+  }
 
   // 2. Draw 2026 Actual Price Path (Neon Cyan Solid Line)
   ctx.shadowColor = "#38bdf8";
@@ -14722,27 +14898,45 @@ function renderActiveMomentumChart() {
     }
   });
 
-  // Legend at top-right
+  // Legend + sync badge
   ctx.font = "11px sans-serif";
   ctx.textAlign = "left";
-  ctx.strokeStyle = "#94a3b8";
   ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = "#fbbf24";
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(width - 240, 18);
-  ctx.lineTo(width - 215, 18);
+  ctx.moveTo(width - 250, 16);
+  ctx.lineTo(width - 225, 16);
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = "#94a3b8";
-  ctx.fillText("출처 확인 과거 곡선", width - 210, 22);
+  ctx.fillStyle = "#fbbf24";
+  ctx.fillText("과거 평균 경로", width - 220, 20);
 
   ctx.strokeStyle = "#38bdf8";
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(width - 115, 18);
-  ctx.lineTo(width - 90, 18);
+  ctx.moveTo(width - 118, 16);
+  ctx.lineTo(width - 93, 16);
   ctx.stroke();
   ctx.fillStyle = "#38bdf8";
-  ctx.fillText("진입 후 관측 수익률", width - 110, 22);
+  ctx.fillText("지금 주가", width - 88, 20);
+
+  const tone = momentumSyncTone(stock);
+  ctx.fillStyle = tone.bg;
+  ctx.fillRect(padding.left, 8, 188, 28);
+  ctx.strokeStyle = tone.color;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(padding.left, 8, 188, 28);
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "bold 12px sans-serif";
+  ctx.fillText(tone.badge, padding.left + 8, 26);
+  const note = stock.sync_note || (historyCurve.length ? "" : "과거 평균 경로를 아직 못 만들었습니다.");
+  if (note) {
+    ctx.fillStyle = "#cbd5e1";
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(note, padding.left, height - 8);
+  }
 }
 
 async function loadCalendarMomentumPortfolio() {
@@ -14762,8 +14956,11 @@ async function loadCalendarMomentumPortfolio() {
   const activeItems = momentumPortfolio.filter((item) => !item.exited);
   const totalCount = momentumPortfolio.length;
   const activeCount = activeItems.length;
-  const matches = activeItems.filter((item) => Number.isFinite(item.trajectory_match));
-  const averageMatch = matches.length ? (matches.reduce((sum, item) => sum + item.trajectory_match, 0) / matches.length).toFixed(1) + "%" : "—";
+  const matches = activeItems.filter((item) => item.sync_status);
+  const beat = matches.filter((item) => item.sync_status === "초과").length;
+  const even = matches.filter((item) => item.sync_status === "동기").length;
+  const lag = matches.filter((item) => item.sync_status === "미달").length;
+  const averageMatch = beat || even || lag ? `초과 ${beat}` : "—";
 
   let urgentStock = null;
   let minDays = 999;
@@ -14824,13 +15021,13 @@ async function loadCalendarMomentumPortfolio() {
     <div class="kpi card-emerald">
       <div class="kpi-head">
         <span class="kpi-title">📡 모멘텀 신호등</span>
-        <span class="chip" style="font-size:10px; padding:1px 5px;">계산 가능 ${matches.length}/${activeCount}</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px;">비교 ${matches.length}/${activeCount}</span>
       </div>
       <div class="kpi-main">
         <span class="kpi-num">${averageMatch}</span>
-        <span class="kpi-unit">동조율</span>
+        <span class="kpi-unit">경로</span>
       </div>
-      <div class="kpi-sub-text">출처 확인 곡선의 관측 방향 일치도 · 수익 확률 아님</div>
+      <div class="kpi-sub-text">동기 ${even} · 미달 ${lag} · 과거 평균 대비 높이 · 수익 확률 아님</div>
     </div>
   `;
 
@@ -14911,8 +15108,8 @@ async function loadCalendarMomentumPortfolio() {
 
             <!-- Trajectory Sync Badge -->
             <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; font-size:11.5px;">
-              <span style="color:#94a3b8;">관측 방향 일치도 (수익 확률 아님)</span>
-              <b>${Number.isFinite(stock.trajectory_match) ? `${stock.trajectory_match}% · ${stock.trajectory_samples}구간` : '출처 확인 표본 없음'}</b>
+              <span style="color:#94a3b8;">과거 평균 대비</span>
+              <b style="color:${momentumSyncTone(stock).color};">${escapeHtml(momentumSyncTone(stock).label)}${Number.isFinite(Number(stock.sync_rate)) ? ` · 모양 ${Number(stock.sync_rate).toFixed(0)}%` : ""}</b>
             </div>
           </div>
 
@@ -14949,8 +15146,9 @@ async function loadCalendarMomentumPortfolio() {
     }
   }
 
-  // 4. Render Chart Canvas
+  // 4. Render Chart Canvas — second pass after layout so the canvas has a real size.
   renderActiveMomentumChart();
+  requestAnimationFrame(() => renderActiveMomentumChart());
 
   // 5. Bind Button Events
   cardsContainer.querySelectorAll(".btn-mom-view-detail").forEach((btn) => {

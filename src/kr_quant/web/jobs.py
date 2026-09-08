@@ -260,6 +260,9 @@ class JobRunner:
             else:
                 label = {'partial': '일부 완료', 'error': '실패'}.get(finished_status, '완료')
                 self.logs.append(f"작업 {label}: {kind}")
+                follow = result.get("next_action") or result.get("note")
+                if follow:
+                    self.logs.append(str(follow)[:400])
             record_job_history(history_row)
             if pipeline != "interrupted" and not result.get("cancelled"):
                 if finished_status in {"success", "partial"} and kind in {
@@ -399,34 +402,97 @@ HISTORY_DAYS = 750
 
 
 def job_krx_prices(as_of: str = "auto", lookback_days: int = 10) -> dict[str, Any]:
-    """KRX 일봉·마스터·거래상태를 받는다. OpenDART와 Quant 재계산은 하지 않는다."""
-    from kr_quant.freshness import freshness_snapshot
+    """KRX 일봉·마스터·거래상태를 받는다. OpenDART와 Quant 재계산은 하지 않는다.
+
+    auto는 이미 공개된 이전 세션으로 되돌아가지 않는다. 기대 기준일을 받지
+    못하면 기존 parquet를 유지한 채 partial로 끝낸다. 완료는 저장 종가가
+    기대일과 같을 때만 반환한다.
+    """
+    from kr_quant.exceptions import SourceNotReady
+    from kr_quant.freshness import freshness_snapshot, wanted_price_date
     from kr_quant.ingest.live import fetch_krx_master, fetch_krx_prices_range
 
     s = load_settings()
     if not s.krx_api_key:
         raise RuntimeError("KRX_API_KEY가 없습니다.")
-    d = resolve_as_of(as_of)
+    d = wanted_price_date() if not as_of or as_of == "auto" else date.fromisoformat(str(as_of)[:10])
     days = max(3, min(int(lookback_days or 10), 40))
+    before = freshness_snapshot(s)
+    stored = before.get("price_max_date") or "없음"
+    probe = probe_expected_krx(s, d)
+
+    def _result(*, pipeline_status: str, note: str, master_rows: int = 0, price_rows: int = 0, status_rows: int = 0, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+        fresh = freshness_snapshot(s)
+        stored_now = fresh.get("price_max_date") or stored
+        payload = {
+            "as_of": d.isoformat(),
+            "kind": "krx-prices",
+            "master_rows": master_rows,
+            "price_rows": price_rows,
+            "status_rows": status_rows,
+            "status_path": str(s.status_csv),
+            "lookback_days": days,
+            "freshness": fresh,
+            "used_in_quant": False,
+            "source_ready": pipeline_status == "success",
+            "pipeline_status": pipeline_status,
+            "note": note,
+        }
+        if pipeline_status != "success":
+            payload["next_action"] = (
+                f"KRX {d.isoformat()} 일봉이 저장되지 않았습니다. "
+                f"저장 종가는 {stored_now}입니다. {note}"
+            )
+        if extra:
+            payload.update(extra)
+        return payload
+
+    if not probe.get("ready"):
+        failure_kind = probe.get("failure_kind")
+        retryable = bool(probe.get("retryable", True))
+        if failure_kind in {"authorization", "configuration"} or not retryable:
+            raise RuntimeError(probe.get("error") or f"KRX {d.isoformat()} 인증·설정 오류")
+        missing = ", ".join(probe.get("missing_markets") or []) or "전체"
+        note = f"KRX가 {d.isoformat()} 일봉을 아직 공개하지 않았습니다 (빈 시장: {missing})."
+        RUNNER.logs.append(f"{note} 저장 종가 {stored}를 유지합니다. 완료로 처리하지 않습니다.")
+        return _result(
+            pipeline_status="partial",
+            note=note,
+            extra={"failure_kind": failure_kind, "missing_markets": probe.get("missing_markets") or []},
+        )
+
     master = fetch_krx_master(s, d)
-    prices = fetch_krx_prices_range(s, d, lookback_days=days)
+    try:
+        prices = fetch_krx_prices_range(s, d, lookback_days=days, require_as_of=True)
+    except SourceNotReady as exc:
+        RUNNER.logs.append(str(exc))
+        return _result(pipeline_status="partial", note=str(exc), master_rows=int(len(master)))
+
     status_rows = 0
     if s.status_csv.exists():
         status = pd.read_csv(s.status_csv, dtype={"ticker": str})
         status_rows = int((status["as_of_date"].astype(str) == d.isoformat()).sum())
     fresh = freshness_snapshot(s)
-    return {
-        "as_of": d.isoformat(),
-        "kind": "krx-prices",
-        "master_rows": int(len(master)),
-        "price_rows": int(len(prices)),
-        "status_rows": status_rows,
-        "status_path": str(s.status_csv),
-        "lookback_days": days,
-        "freshness": fresh,
-        "used_in_quant": False,
-        "note": "KRX 시세·종목기본정보·당일 거래상태를 함께 갱신했습니다.",
-    }
+    stored_now = fresh.get("price_max_date")
+    if fresh.get("stale_price") or stored_now != d.isoformat():
+        note = f"수집 후에도 저장 종가 {stored_now or '없음'}, 기대일 {d.isoformat()}."
+        RUNNER.logs.append(note)
+        return _result(
+            pipeline_status="partial",
+            note=note,
+            master_rows=int(len(master)),
+            price_rows=int(len(prices)),
+            status_rows=status_rows,
+        )
+    note = f"KRX 시세 {d.isoformat()} 저장 완료. 저장 종가 {stored_now}."
+    RUNNER.logs.append(note)
+    return _result(
+        pipeline_status="success",
+        note=note,
+        master_rows=int(len(master)),
+        price_rows=int(len(prices)),
+        status_rows=status_rows,
+    )
 
 
 def job_krx_history(as_of: str = "auto", lookback_days: int = HISTORY_DAYS) -> dict[str, Any]:
@@ -605,13 +671,13 @@ def job_smart_sync(
     max_corps is kept for API compatibility; the daily path no longer repeats
     a 400-name bootstrap on top of the resumable DART batch.
     """
-    from kr_quant.freshness import expected_price_date, freshness_snapshot
+    from kr_quant.freshness import freshness_snapshot, wanted_price_date
     from kr_quant.web import smart_ledger as ledger_mod
 
     from zoneinfo import ZoneInfo
 
     s = load_settings()
-    expected = expected_price_date() if not as_of or as_of == "auto" else date.fromisoformat(str(as_of)[:10])
+    expected = wanted_price_date() if not as_of or as_of == "auto" else date.fromisoformat(str(as_of)[:10])
     run_date = datetime.now(ZoneInfo("Asia/Seoul")).date()
     ledger = ledger_mod.begin_or_resume(
         s,

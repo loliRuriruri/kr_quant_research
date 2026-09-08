@@ -143,7 +143,7 @@ def test_flow_get_never_calls_external_quote_batches(monkeypatch):
     def forbidden(*args):
         raise AssertionError('external quotes on GET')
     monkeypatch.setattr(scan, 'attach_live_quotes', forbidden)
-    result = scan.load_flow(SimpleNamespace(root=Path('.')))
+    result = scan.load_flow(SimpleNamespace(root=Path('.'), staged_dir=Path('data/staged')))
     assert result['rows'][0]['last'] == 100 and result['quotes_live'] is False
 
 
@@ -194,7 +194,7 @@ def test_frontend_stale_chip_and_asof_ownership():
     asof = re.search(r'function setPageAsOf\(text, tip, owner = currentView\) \{.*?\n\}', source, re.S).group()
     script = '''
 const assert = require('node:assert/strict');
-const el = {textContent:'', setAttribute(){}, classList:{toggle(){}, add(){}}};
+const el = {textContent:'', setAttribute(){}, classList:{toggle(){}, add(){}}, tabIndex:0};
 const $ = () => el;
 let currentView = 'rank', label = '', tip = '';
 const pageAsOfByView = {};
@@ -204,7 +204,13 @@ let session = {isPreMarket:true,todayStr:'2026-09-08'};
 const getMarketSessionInfo = () => session;
 ''' + chip + '\n' + asof + '''
 renderFreshChip({price_max_date:'2026-09-04',expected_price_date:'2026-09-07',stale_price:true});
-assert(label.includes('갱신 필요')); assert(!label.includes('전일'));
+assert(label.includes('저장 종가 2026-09-04')); assert(!label.includes('전일'));
+assert(!label.includes('갱신 필요'));
+assert(tip.includes('기대 기준일')); assert(tip.includes('클릭해도 시세를 받지'));
+assert(el.onclick === null);
+renderFreshChip({price_max_date:'2026-09-07',expected_price_date:'2026-09-07',wanted_price_date:'2026-09-08',pending_source:true,stale_price:false});
+assert(label.includes('2026-09-07')); assert(label.includes('미공개'));
+assert(!label.includes('갱신 필요'));
 session = {isMarketOpen:true,todayStr:'2026-09-08'};
 renderFreshChip({price_max_date:'2026-09-07',status:'fresh'});
 assert(!label.includes('실시간')); assert(!tip.includes('실시간 틱으로'));
@@ -214,6 +220,47 @@ assert.equal(el.textContent,'rank-date');
 assert.equal(pageAsOfByView.us13f.text,'13F-date');
 '''
     result = subprocess.run(['node', '-e', script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_pipeline_badges_wait_for_krx_instead_of_demanding_resync():
+    import re
+    import shutil
+    import subprocess
+    if not shutil.which('node'):
+        pytest.skip('Node is required for frontend helper regression')
+    source = (Path(__file__).resolve().parents[2] / 'src/kr_quant/web/static/app.js').read_text(encoding='utf-8')
+    block = re.search(
+        r'function krxPipelineBadge\(fresh\) \{.*?^function renderRunDiagnostics',
+        source,
+        re.S | re.M,
+    ).group()
+    helpers = block.rsplit('function renderRunDiagnostics', 1)[0]
+    script = '''
+const assert = require('node:assert/strict');
+''' + helpers + '''
+const waiting = {
+  stale_price: false,
+  pending_source: true,
+  expected_price_date: '2026-09-07',
+  wanted_price_date: '2026-09-08',
+  price_max_date: '2026-09-07',
+  sources: {quant_ranking: {state:'fresh', aligned_with_stored_prices:true, lag_trading_days:0, observed_date:'2026-09-07'}}
+};
+assert.equal(krxPipelineBadge(waiting).text, '공급처 대기');
+assert.equal(quantPipelineBadge(waiting).text, '종가와 같음');
+assert.match(krxPipelineBadge(waiting).headline, /저장된 공식 종가/);
+assert.match(krxPipelineBadge(waiting).meta, /스마트 실행 한 번/);
+assert.doesNotMatch(quantPipelineBadge(waiting).text, /재계산 필요/);
+assert.doesNotMatch(krxPipelineBadge(waiting).text, /동기화 필요/);
+const lagging = {
+  stale_price: false,
+  sources: {quant_ranking: {state:'stale', aligned_with_stored_prices:false, lag_trading_days:1}}
+};
+assert.equal(quantPipelineBadge(lagging).text, '스마트 실행');
+assert.equal(krxPipelineBadge({stale_price:false}).text, '공식 종가');
+'''
+    result = subprocess.run(['node', '-e', script], capture_output=True, text=True, encoding='utf-8')
     assert result.returncode == 0, result.stderr
 
 

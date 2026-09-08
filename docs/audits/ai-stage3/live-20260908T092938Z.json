@@ -1,0 +1,668 @@
+{
+  "input": {
+    "ok": true,
+    "data": {
+      "current_month": 9,
+      "next_month": 10,
+      "current_champions": [
+        {
+          "ticker": "168360",
+          "company": "펨트론",
+          "market": "KOSDAQ",
+          "win_rate": 1.0,
+          "avg_return": 0.4474,
+          "median_return": 0.3369,
+          "years_count": 3,
+          "seasonality_score": 97.5,
+          "tags": [
+            "year_end_calendar"
+          ]
+        },
+        {
+          "ticker": "226590",
+          "company": "엠디바이스",
+          "market": "KOSDAQ",
+          "win_rate": 1.0,
+          "avg_return": 0.9558,
+          "median_return": 0.9558,
+          "years_count": 1,
+          "seasonality_score": 92.5,
+          "tags": []
+        },
+        {
+          "ticker": "376270",
+          "company": "HEM파마",
+          "market": "KOSDAQ",
+          "win_rate": 1.0,
+          "avg_return": 0.4301,
+          "median_return": 0.4301,
+          "years_count": 1,
+          "seasonality_score": 92.5,
+          "tags": []
+        }
+      ],
+      "upcoming_champions": [
+        {
+          "ticker": "079900",
+          "company": "전진건설로봇",
+          "market": "KOSPI",
+          "win_rate": 1.0,
+          "avg_return": 0.343,
+          "median_return": 0.343,
+          "years_count": 2,
+          "seasonality_score": 89.3,
+          "tags": []
+        },
+        {
+          "ticker": "437730",
+          "company": "삼현",
+          "market": "KOSDAQ",
+          "win_rate": 1.0,
+          "avg_return": 0.3499,
+          "median_return": 0.3499,
+          "years_count": 1,
+          "seasonality_score": 87.5,
+          "tags": []
+        },
+        {
+          "ticker": "376900",
+          "company": "로킷헬스케어",
+          "market": "KOSDAQ",
+          "win_rate": 1.0,
+          "avg_return": 0.3458,
+          "median_return": 0.3458,
+          "years_count": 1,
+          "seasonality_score": 87.1,
+          "tags": []
+        }
+      ],
+      "active_presets": [
+        {
+          "key": "winter_heater",
+          "title": "❄️ 겨울 난방 & 보일러 특수",
+          "description": "난방 가동 전 6~8월 선취매 랠리 및 10~11월 실적 반영 종목군",
+          "peak_months": [
+            7,
+            8,
+            10
+          ],
+          "tickers_count": 9
+        },
+        {
+          "key": "dividend_play",
+          "title": "💰 연말 고배당 선취매 랠리",
+          "description": "배당락(12월 말) 2~3개월 전인 9~11월 기관/외인 배당 매집 종목군",
+          "peak_months": [
+            9,
+            10,
+            11
+          ],
+          "tickers_count": 10
+        },
+        {
+          "key": "shopping_frenzy",
+          "title": "🛍️ 광군제 · 블프 · K-콘텐츠/소비재",
+          "description": "하반기 글로벌 쇼핑 시즌 및 여름 휴가철 웹툰/미디어/소비재 특수",
+          "peak_months": [
+            8,
+            9,
+            10,
+            11
+          ],
+          "tickers_count": 10
+        },
+        {
+          "key": "earnings_pead",
+          "title": "📈 실적 상향 · 어닝 서프라이즈 · PEAD",
+          "description": "실적 발표 전 이익추정 상향과 발표 후 양의 드리프트 후보 종목군",
+          "peak_months": [
+            4,
+            7,
+            10,
+            11
+          ],
+          "tickers_count": 3
+        },
+        {
+          "key": "iphone_cycle",
+          "title": "🍎 Apple iPhone 공개 · 양산 공급망 사이클",
+          "description": "7~8월 초도 양산과 9월 공개 전 국내 카메라·OLED·FPCB·MLCC 공급망",
+          "peak_months": [
+            7,
+            8,
+            9
+          ],
+          "tickers_count": 4
+        },
+        {
+          "key": "bio_conference",
+          "title": "🧬 JPM · AACR · ASCO · ESMO 바이오 학회",
+          "description": "초록 공개·임상 발표·기술수출 기대가 집중되는 고위험 바이오 이벤트 종목군",
+          "peak_months": [
+            1,
+            4,
+            5,
+            6,
+            9,
+            10,
+            11,
+            12
+          ],
+          "tickers_count": 5
+        },
+        {
+          "key": "game_show",
+          "title": "🎮 G-STAR · 게임쇼 · 대형 신작 출시",
+          "description": "게임쇼와 신작 공개 전 사전예약·쇼케이스 기대가 반영되는 게임·콘텐츠 종목군",
+          "peak_months": [
+            8,
+            9,
+            10,
+            11
+          ],
+          "tickers_count": 3
+        },
+        {
+          "key": "holiday_consumption",
+          "title": "✈️ 설 · 추석 · 연휴 여행/유통/콘텐츠",
+          "description": "명절과 장기 연휴 전후 소비·여행·콘텐츠 수요 변화를 관찰하는 종목군",
+          "peak_months": [
+            1,
+            2,
+            9,
+            10
+          ],
+          "tickers_count": 4
+        },
+        {
+          "key": "ipo_lockup",
+          "title": "🔓 IPO 의무보유 해제 · 오버행 소화",
+          "description": "락업 해제 전 매도압력과 해제 이후 수급 안정 여부를 구분해 관찰하는 종목군",
+          "peak_months": [
+            3,
+            6,
+            9,
+            12
+          ],
+          "tickers_count": 2
+        }
+      ],
+      "glance_top3": [
+        {
+          "rank": 1,
+          "signal_id": "72a0b6498002de479265af6330ed85ddaf03c2a02d5ad3693b29c0ae93ca3274",
+          "generation_id": "60e8155871da0437e99c1118a26dfc4d44081d8dfee6be746bca305bf87171b0",
+          "pattern_id": "168360_M09_L5",
+          "ticker": "168360",
+          "company": "펨트론",
+          "market": "KOSDAQ",
+          "win_rate": 1.0,
+          "expected_p50": 0.3369,
+          "remaining_peak": {
+            "available": true,
+            "status": "READY",
+            "ticker": "168360",
+            "target_month": 9,
+            "price_as_of": "2026-09-07",
+            "current_price": 13060.0,
+            "price_basis": "ADJUSTED_CLOSE",
+            "sample_count": 3,
+            "confidence": "LOW",
+            "validation_status": "IN_SAMPLE_DESCRIPTIVE_NOT_OOS",
+            "metric_version": 4,
+            "date_policy": "CALENDAR_DAYS_ACTUAL_MONTH_END_V2",
+            "timing_day_unit": "CALENDAR_DAYS_NOT_TRADING_SESSIONS",
+            "peak_day_p25": 17.5,
+            "peak_day_p75": 24.0,
+            "window_end_uncertainty": {
+              "status": "LOW_SAMPLE",
+              "verified": false,
+              "used_in_quant": false,
+              "n": 3,
+              "wins": 2,
+              "positive_fraction": 0.6666666666666666,
+              "wilson95": [
+                0.2076596008020477,
+                0.9385080552796037
+              ],
+              "p_raw_reference": 0.5,
+              "p_bonferroni_reference": null,
+              "family_size": null,
+              "note": "연도 독립·상승확률 50%를 가정한 참고 통계입니다. 신뢰구간은 다음 매매 성공확률이 아닙니다. 동일 데이터로 패턴을 탐색했으며 기업행위·생존편향·전체 모델 OOS는 미검증입니다. 보정 범위는 이번 월×종목 탐색만이며 다른 기간·전략 반복 탐색은 포함하지 않습니다."
+            },
+            "window_end_leave_one_year_out": {
+              "min_median": 0.2094,
+              "max_median": 0.6482,
+              "sign_changes": false,
+              "verified": false,
+              "method": "DROP_ONE_OBSERVED_YEAR_NOT_RETRAINED_OOS"
+            },
+            "strategy_net_return_p50": null,
+            "strategy_net_status": "EXECUTION_NOT_VALIDATED",
+            "window_end_p50": 0.6014,
+            "window_end_positive_count": 2,
+            "window_end_positive_rate": 0.667,
+            "window_adverse_excursion_p50": -0.0539,
+            "window_close_max_drawdown_p50": -0.0785,
+            "costs_included": false,
+            "historical_peak_day": 22,
+            "target_peak_date": "2026-09-22",
+            "entry_window_str": "08/23 ~ 09/07",
+            "exit_window_str": "09/19 ~ 09/26",
+            "entry_stage": "TODAY_ENTRY",
+            "entry_stage_label": "🔥 사전 진입 유효 (피크 D-15)",
+            "remaining_p25": 0.3695,
+            "remaining_p50": 0.6949,
+            "remaining_p75": 0.7049,
+            "remaining_p90": 0.711,
+            "intraday_peak_p50": 0.758,
+            "positive_peak_rate": 1.0,
+            "downside_before_peak_p50": -0.0539,
+            "median_trading_days_to_peak": 10,
+            "realized_since_entry_start": 0.074,
+            "peak_price_p25": 17885.67,
+            "peak_price_p50": 22135.39,
+            "peak_price_p75": 22265.99,
+            "paths": [
+              {
+                "year": 2023,
+                "reference_date": "2023-09-07",
+                "peak_date": "2023-09-13",
+                "remaining_return": 0.0442,
+                "window_end_return": -0.1827,
+                "window_end_date": "2023-09-26",
+                "window_adverse_excursion": -0.2105,
+                "window_close_max_drawdown": -0.2173,
+                "intraday_peak_return": 0.1242,
+                "downside_before_peak": -0.2168,
+                "trading_days_to_peak": 4
+              },
+              {
+                "year": 2024,
+                "reference_date": "2024-09-09",
+                "peak_date": "2024-09-26",
+                "remaining_return": 0.6949,
+                "window_end_return": 0.6949,
+                "window_end_date": "2024-09-26",
+                "window_adverse_excursion": -0.0539,
+                "window_close_max_drawdown": -0.0785,
+                "intraday_peak_return": 0.9199,
+                "downside_before_peak": -0.0539,
+                "trading_days_to_peak": 10
+              },
+              {
+                "year": 2025,
+                "reference_date": "2025-09-08",
+                "peak_date": "2025-09-22",
+                "remaining_return": 0.715,
+                "window_end_return": 0.6014,
+                "window_end_date": "2025-09-26",
+                "window_adverse_excursion": -0.0501,
+                "window_close_max_drawdown": -0.0662,
+                "intraday_peak_return": 0.758,
+                "downside_before_peak": -0.0501,
+                "trading_days_to_peak": 10
+              }
+            ],
+            "warnings": [
+              "피크 수익률은 사후 최고 종가 기준으로 음수가 되지 않을 수 있습니다. 실현 수익률·미래 성공 확률이 아닙니다.",
+              "같은 과거 표본에서 피크일을 찾고 평가한 기술통계입니다. 독립 OOS·거래비용 검증은 미완료입니다."
+            ],
+            "methodology": "동일 계절 진행시점의 종가부터 역사적 피크 구간 최고 종가까지의 수익률 분포"
+          },
+          "seasonality_score": 70.7,
+          "entry_stage": "TODAY_ENTRY",
+          "entry_stage_label": "🔥 사전 진입 유효 (피크 D-15)",
+          "window_name": "9월",
+          "entry_window_str": "08/23 ~ 09/07",
+          "exit_window_str": "09/19 ~ 09/26",
+          "common_event_cluster": "펨트론 9월 계절성 · 3/3개년 상승 · 중앙값 +33.7%",
+          "last_close": 13060.0,
+          "chg_pct": 0.0251,
+          "price_as_of": "2026-09-07"
+        },
+        {
+          "rank": 2,
+          "signal_id": "595edd69d550e0e65b5a6ccc1d0302e7c74e0d392be2acf3cfbbd034780989a7",
+          "generation_id": "60e8155871da0437e99c1118a26dfc4d44081d8dfee6be746bca305bf87171b0",
+          "pattern_id": "304360_M09_L5",
+          "ticker": "304360",
+          "company": "에스바이오메딕스",
+          "market": "KOSDAQ",
+          "win_rate": 1.0,
+          "expected_p50": 0.0974,
+          "remaining_peak": {
+            "available": true,
+            "status": "READY",
+            "ticker": "304360",
+            "target_month": 9,
+            "price_as_of": "2026-09-07",
+            "current_price": 21950.0,
+            "price_basis": "ADJUSTED_CLOSE",
+            "sample_count": 3,
+            "confidence": "LOW",
+            "validation_status": "IN_SAMPLE_DESCRIPTIVE_NOT_OOS",
+            "metric_version": 4,
+            "date_policy": "CALENDAR_DAYS_ACTUAL_MONTH_END_V2",
+            "timing_day_unit": "CALENDAR_DAYS_NOT_TRADING_SESSIONS",
+            "peak_day_p25": 25.5,
+            "peak_day_p75": 28.0,
+            "window_end_uncertainty": {
+              "status": "LOW_SAMPLE",
+              "verified": false,
+              "used_in_quant": false,
+              "n": 3,
+              "wins": 3,
+              "positive_fraction": 1.0,
+              "wilson95": [
+                0.4385029682449546,
+                1.0
+              ],
+              "p_raw_reference": 0.125,
+              "p_bonferroni_reference": null,
+              "family_size": null,
+              "note": "연도 독립·상승확률 50%를 가정한 참고 통계입니다. 신뢰구간은 다음 매매 성공확률이 아닙니다. 동일 데이터로 패턴을 탐색했으며 기업행위·생존편향·전체 모델 OOS는 미검증입니다. 보정 범위는 이번 월×종목 탐색만이며 다른 기간·전략 반복 탐색은 포함하지 않습니다."
+            },
+            "window_end_leave_one_year_out": {
+              "min_median": 0.2054,
+              "max_median": 0.2515,
+              "sign_changes": false,
+              "verified": false,
+              "method": "DROP_ONE_OBSERVED_YEAR_NOT_RETRAINED_OOS"
+            },
+            "strategy_net_return_p50": null,
+            "strategy_net_status": "EXECUTION_NOT_VALIDATED",
+            "window_end_p50": 0.2356,
+            "window_end_positive_count": 3,
+            "window_end_positive_rate": 1.0,
+            "window_adverse_excursion_p50": -0.0312,
+            "window_close_max_drawdown_p50": -0.1104,
+            "costs_included": false,
+            "historical_peak_day": 26,
+            "target_peak_date": "2026-09-26",
+            "entry_window_str": "08/27 ~ 09/11",
+            "exit_window_str": "09/23 ~ 09/30",
+            "entry_stage": "TODAY_ENTRY",
+            "entry_stage_label": "🔥 사전 진입 유효 (피크 D-19)",
+            "remaining_p25": 0.206,
+            "remaining_p50": 0.2356,
+            "remaining_p75": 0.3199,
+            "remaining_p90": 0.3704,
+            "intraday_peak_p50": 0.2959,
+            "positive_peak_rate": 1.0,
+            "downside_before_peak_p50": -0.0692,
+            "median_trading_days_to_peak": 13,
+            "realized_since_entry_start": 0.1486,
+            "peak_price_p25": 26471.7,
+            "peak_price_p50": 27121.42,
+            "peak_price_p75": 28971.81,
+            "paths": [
+              {
+                "year": 2023,
+                "reference_date": "2023-09-07",
+                "peak_date": "2023-09-26",
+                "remaining_return": 0.1763,
+                "window_end_return": 0.1752,
+                "window_end_date": "2023-09-27",
+                "window_adverse_excursion": -0.0972,
+                "window_close_max_drawdown": -0.2157,
+                "intraday_peak_return": 0.2959,
+                "downside_before_peak": -0.0972,
+                "trading_days_to_peak": 13
+              },
+              {
+                "year": 2024,
+                "reference_date": "2024-09-09",
+                "peak_date": "2024-09-25",
+                "remaining_return": 0.4041,
+                "window_end_return": 0.2675,
+                "window_end_date": "2024-09-30",
+                "window_adverse_excursion": 0.0,
+                "window_close_max_drawdown": -0.1104,
+                "intraday_peak_return": 0.5018,
+                "downside_before_peak": -0.0498,
+                "trading_days_to_peak": 9
+              },
+              {
+                "year": 2025,
+                "reference_date": "2025-09-08",
+                "peak_date": "2025-09-30",
+                "remaining_return": 0.2356,
+                "window_end_return": 0.2356,
+                "window_end_date": "2025-09-30",
+                "window_adverse_excursion": -0.0312,
+                "window_close_max_drawdown": -0.0647,
+                "intraday_peak_return": 0.2812,
+                "downside_before_peak": -0.0692,
+                "trading_days_to_peak": 16
+              }
+            ],
+            "warnings": [
+              "피크 수익률은 사후 최고 종가 기준으로 음수가 되지 않을 수 있습니다. 실현 수익률·미래 성공 확률이 아닙니다.",
+              "같은 과거 표본에서 피크일을 찾고 평가한 기술통계입니다. 독립 OOS·거래비용 검증은 미완료입니다."
+            ],
+            "methodology": "동일 계절 진행시점의 종가부터 역사적 피크 구간 최고 종가까지의 수익률 분포"
+          },
+          "seasonality_score": 66.7,
+          "entry_stage": "TODAY_ENTRY",
+          "entry_stage_label": "🔥 사전 진입 유효 (피크 D-19)",
+          "window_name": "9월",
+          "entry_window_str": "08/27 ~ 09/11",
+          "exit_window_str": "09/23 ~ 09/30",
+          "common_event_cluster": "에스바이오메딕스 9월 계절성 · 3/3개년 상승 · 중앙값 +9.7%",
+          "last_close": 21950.0,
+          "chg_pct": 0.1528,
+          "price_as_of": "2026-09-07"
+        },
+        {
+          "rank": 3,
+          "signal_id": "29475f5ed59c3b9febc25f9d892c1bc57ca3dd27290bad79f4b734c2ff97a342",
+          "generation_id": "60e8155871da0437e99c1118a26dfc4d44081d8dfee6be746bca305bf87171b0",
+          "pattern_id": "111770_M09_L5",
+          "ticker": "111770",
+          "company": "영원무역",
+          "market": "KOSPI",
+          "win_rate": 0.8,
+          "expected_p50": 0.0537,
+          "remaining_peak": {
+            "available": true,
+            "status": "READY",
+            "ticker": "111770",
+            "target_month": 9,
+            "price_as_of": "2026-09-07",
+            "current_price": 75100.0,
+            "price_basis": "ADJUSTED_CLOSE",
+            "sample_count": 5,
+            "confidence": "MEDIUM",
+            "validation_status": "IN_SAMPLE_DESCRIPTIVE_NOT_OOS",
+            "metric_version": 4,
+            "date_policy": "CALENDAR_DAYS_ACTUAL_MONTH_END_V2",
+            "timing_day_unit": "CALENDAR_DAYS_NOT_TRADING_SESSIONS",
+            "peak_day_p25": 14.0,
+            "peak_day_p75": 26.0,
+            "window_end_uncertainty": {
+              "status": "EXPLORATORY",
+              "verified": false,
+              "used_in_quant": false,
+              "n": 5,
+              "wins": 4,
+              "positive_fraction": 0.8,
+              "wilson95": [
+                0.37553462976252533,
+                0.9637758913675698
+              ],
+              "p_raw_reference": 0.1875,
+              "p_bonferroni_reference": null,
+              "family_size": null,
+              "note": "연도 독립·상승확률 50%를 가정한 참고 통계입니다. 신뢰구간은 다음 매매 성공확률이 아닙니다. 동일 데이터로 패턴을 탐색했으며 기업행위·생존편향·전체 모델 OOS는 미검증입니다. 보정 범위는 이번 월×종목 탐색만이며 다른 기간·전략 반복 탐색은 포함하지 않습니다."
+            },
+            "window_end_leave_one_year_out": {
+              "min_median": 0.0645,
+              "max_median": 0.0827,
+              "sign_changes": false,
+              "verified": false,
+              "method": "DROP_ONE_OBSERVED_YEAR_NOT_RETRAINED_OOS"
+            },
+            "strategy_net_return_p50": null,
+            "strategy_net_status": "EXECUTION_NOT_VALIDATED",
+            "window_end_p50": 0.0698,
+            "window_end_positive_count": 4,
+            "window_end_positive_rate": 0.8,
+            "window_adverse_excursion_p50": -0.0221,
+            "window_close_max_drawdown_p50": -0.0308,
+            "costs_included": false,
+            "historical_peak_day": 22,
+            "target_peak_date": "2026-09-22",
+            "entry_window_str": "08/23 ~ 09/07",
+            "exit_window_str": "09/19 ~ 09/26",
+            "entry_stage": "TODAY_ENTRY",
+            "entry_stage_label": "🔥 사전 진입 유효 (피크 D-15)",
+            "remaining_p25": 0.0889,
+            "remaining_p50": 0.0954,
+            "remaining_p75": 0.1163,
+            "remaining_p90": 0.13,
+            "intraday_peak_p50": 0.1066,
+            "positive_peak_rate": 1.0,
+            "downside_before_peak_p50": -0.0265,
+            "median_trading_days_to_peak": 9,
+            "realized_since_entry_start": -0.0105,
+            "peak_price_p25": 81776.39,
+            "peak_price_p50": 82264.54,
+            "peak_price_p75": 83834.13,
+            "paths": [
+              {
+                "year": 2021,
+                "reference_date": "2021-09-07",
+                "peak_date": "2021-09-14",
+                "remaining_return": 0.0889,
+                "window_end_return": 0.0592,
+                "window_end_date": "2021-09-24",
+                "window_adverse_excursion": -0.0379,
+                "window_close_max_drawdown": -0.0308,
+                "intraday_peak_return": 0.1066,
+                "downside_before_peak": -0.0379,
+                "trading_days_to_peak": 5
+              },
+              {
+                "year": 2022,
+                "reference_date": "2022-09-07",
+                "peak_date": "2022-09-22",
+                "remaining_return": 0.1392,
+                "window_end_return": 0.0955,
+                "window_end_date": "2022-09-26",
+                "window_adverse_excursion": 0.0,
+                "window_close_max_drawdown": -0.0384,
+                "intraday_peak_return": 0.1623,
+                "downside_before_peak": -0.0265,
+                "trading_days_to_peak": 9
+              },
+              {
+                "year": 2023,
+                "reference_date": "2023-09-07",
+                "peak_date": "2023-09-11",
+                "remaining_return": 0.0615,
+                "window_end_return": -0.0931,
+                "window_end_date": "2023-09-26",
+                "window_adverse_excursion": -0.1006,
+                "window_close_max_drawdown": -0.1456,
+                "intraday_peak_return": 0.0894,
+                "downside_before_peak": -0.0112,
+                "trading_days_to_peak": 2
+              },
+              {
+                "year": 2024,
+                "reference_date": "2024-09-09",
+                "peak_date": "2024-09-26",
+                "remaining_return": 0.1163,
+                "window_end_return": 0.1163,
+                "window_end_date": "2024-09-26",
+                "window_adverse_excursion": -0.0096,
+                "window_close_max_drawdown": -0.0064,
+                "intraday_peak_return": 0.1259,
+                "downside_before_peak": -0.0424,
+                "trading_days_to_peak": 10
+              },
+              {
+                "year": 2025,
+                "reference_date": "2025-09-08",
+                "peak_date": "2025-09-19",
+                "remaining_return": 0.0954,
+                "window_end_return": 0.0698,
+                "window_end_date": "2025-09-26",
+                "window_adverse_excursion": -0.0221,
+                "window_close_max_drawdown": -0.0295,
+                "intraday_peak_return": 0.0954,
+                "downside_before_peak": -0.0221,
+                "trading_days_to_peak": 9
+              }
+            ],
+            "warnings": [
+              "피크 수익률은 사후 최고 종가 기준으로 음수가 되지 않을 수 있습니다. 실현 수익률·미래 성공 확률이 아닙니다.",
+              "같은 과거 표본에서 피크일을 찾고 평가한 기술통계입니다. 독립 OOS·거래비용 검증은 미완료입니다."
+            ],
+            "methodology": "동일 계절 진행시점의 종가부터 역사적 피크 구간 최고 종가까지의 수익률 분포"
+          },
+          "seasonality_score": 66.6,
+          "entry_stage": "TODAY_ENTRY",
+          "entry_stage_label": "🔥 사전 진입 유효 (피크 D-15)",
+          "window_name": "9월",
+          "entry_window_str": "08/23 ~ 09/07",
+          "exit_window_str": "09/19 ~ 09/26",
+          "common_event_cluster": "영원무역 9월 계절성 · 4/5개년 상승 · 중앙값 +5.4%",
+          "last_close": 75100.0,
+          "chg_pct": 0.0013,
+          "price_as_of": "2026-09-07"
+        }
+      ],
+      "universe_scanned": 2472,
+      "universe_listed": 3246,
+      "markets": {
+        "KOSPI": 896,
+        "KOSDAQ": 1576
+      }
+    },
+    "snapshot": {
+      "generation_id": "60e8155871da0437e99c1118a26dfc4d44081d8dfee6be746bca305bf87171b0",
+      "generated_at": "2026-09-08T08:23:45.668742+00:00",
+      "selection_date": "2026-09-08",
+      "lookback_years": 5,
+      "state": "ready",
+      "record_type": "observed_snapshot",
+      "schema": 1
+    }
+  },
+  "result": {
+    "ok": false,
+    "status": "UNAVAILABLE",
+    "ai_generated": false,
+    "used_in_quant": false,
+    "provider": "xai",
+    "model": "grok-4.6",
+    "tier": "Tier 1 무료 설명 엔진",
+    "contract_version": "tier1_briefing_v1.0.0",
+    "prompt_version": "seasonality_tier1_v5_plain_language",
+    "generated_at": "2026-09-08T09:29:38.186466+00:00",
+    "error_code": "TIER1_GENERATION_FAILED",
+    "message": "무료 AI 설명을 생성하지 못했습니다. 원본 계산 결과는 그대로 사용할 수 있습니다.",
+    "evidence": {
+      "as_of": "2026-09-08",
+      "sources": [
+        "seasonality_highlights"
+      ],
+      "item_count": 18,
+      "missing": [],
+      "coverage": "SUFFICIENT"
+    },
+    "cache": {
+      "version": "tier1_data_hash_cache_v2_analysis",
+      "hit": false,
+      "key": "48c1b287bc003433f43a44f23db508e1111daa9e21f47e285779f0921ccd2ec1",
+      "evidence_hash": "f62c7ca4e1e796587c7881e6d7346b60fc1391d5097c06a83c934595ea29fa5d",
+      "stored": false
+    }
+  },
+  "seconds": 95.16,
+  "repeat_cache_hit": null,
+  "repeat_seconds": 0.0,
+  "same_headline": true
+}

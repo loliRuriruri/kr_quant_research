@@ -37,36 +37,28 @@
     "code": "168360",
     "entry_date": "2026-09-07",
     "peak_date": "2026-09-19",
-    "entry_price": 13080,
+    "entry_price": 13134,
     "target_price": 20369,
     "catalyst": "펨트론 9월 계절성 · 3/3개년 상승 · 중앙값 +33.7%",
     "notes": "현재가 이후 남은 경로를 과거 동일 계절 진행시점과 비교합니다. 목표가가 아닌 역사적 분포 추정치입니다.",
     "exited": false,
-    "trajectory_match": 88,
-    "history_curve": [
-      0,
-      1,
-      2.5,
-      4.2,
-      6.5,
-      9,
-      12,
-      15.5,
-      19.5,
-      24,
-      27.5,
-      25,
-      21,
-      17.5
-    ],
+    "trajectory_match": null,
+    "history_curve": [],
     "actual_curve": [
-      1.24
+      -0.15,
+      -1.45
     ],
     "actual_dates": [
-      "2026-09-07"
+      "2026-09-07",
+      "2026-09-08"
     ],
-    "current_price": 13060,
-    "current_return": 1.24
+    "current_price": 12890,
+    "current_return": -1.45,
+    "price_as_of": "2026-09-08",
+    "price_source": "NAVER_QUOTE",
+    "trajectory_samples": 0,
+    "trajectory_method": "STEP_DIRECTION_AGREEMENT_NOT_FORECAST",
+    "history_curve_source": "UNVERIFIED_LEGACY"
   },
   {
     "id": "stock-161580",
@@ -124,37 +116,23 @@
     "code": "204270",
     "entry_date": "2026-08-27",
     "peak_date": "2026-09-12",
-    "entry_price": 20900,
+    "entry_price": 20895,
     "target_price": 22800,
     "catalyst": "9월 글로벌 스마트폰 신작(아이폰) 공개 전 커버글라스 / 기판 부품 공급 랠리",
     "notes": "신제품 공개 키노트 당일 '재료 소멸' 하락 주의. D-2 전량 엑시트 권장.",
     "exited": false,
-    "trajectory_match": 99,
-    "history_curve": [
-      0,
-      0.9,
-      2.2,
-      3.8,
-      5.5,
-      7.8,
-      10.5,
-      13.6,
-      17.2,
-      21,
-      25.1,
-      23.5,
-      19.8,
-      15.2
-    ],
+    "trajectory_match": null,
+    "history_curve": [],
     "actual_curve": [
-      15.38,
-      11.26,
-      9.89,
-      9.01,
-      3.24,
-      1.1,
-      5.11,
-      13.46
+      0.48,
+      -3.11,
+      -4.31,
+      -5.07,
+      -10.1,
+      -11.96,
+      -8.47,
+      -1.2,
+      -3.59
     ],
     "actual_dates": [
       "2026-08-27",
@@ -164,11 +142,17 @@
       "2026-09-02",
       "2026-09-03",
       "2026-09-04",
-      "2026-09-07"
+      "2026-09-07",
+      "2026-09-08"
     ],
-    "current_price": 20650,
-    "current_return": 13.46,
-    "total_return_pct": 1.1
+    "current_price": 20150,
+    "current_return": -3.59,
+    "total_return_pct": 1.1,
+    "price_as_of": "2026-09-08",
+    "price_source": "NAVER_QUOTE",
+    "trajectory_samples": 0,
+    "trajectory_method": "STEP_DIRECTION_AGREEMENT_NOT_FORECAST",
+    "history_curve_source": "UNVERIFIED_LEGACY"
   },
   {
     "id": "stock-178320",
