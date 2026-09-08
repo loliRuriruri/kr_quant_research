@@ -1,5 +1,14 @@
 # KR Quant Research — 2026-09-07 신뢰성 감사 인계
 
+## 최신: 운영 매뉴얼·검증 이력 통합 (2026-09-08)
+
+- 상세 매뉴얼 docs/OPERATIONS_MANUAL_AND_VERIFICATION_2026_09_08.md 및 최종 릴리스 문서 docs/PROJECT_RELEASE_VERIFICATION_2026_09_08.md를 확인한다.
+- 문서 추가 전 origin/main은 549272a였고, 운영 매뉴얼 커밋은 43e8381로 생성했다. 구현 커밋 8d7004d와 사전 복구 태그 savepoint-before-project-release-20260908가 GitHub에 push되어 있다. 릴리스 태그는 release-research-20260908이다.
+- 매일 운영자는 Start-KR-Quant.bat → 실행 파이프라인의 스마트 실행만 사용한다. 개별 KRX/DART/이력 버튼의 사용 조건과 배포 차단 해석을 매뉴얼에 정리했다.
+- 검증 요약: 격리 단위612pass, PC E2E19pass, 실제 데이터 통합11pass, 수급·캐시 회귀25pass, 수급 보안 회귀7pass, 공개판13메뉴 JS 오류0/HTTP 실패0. 공개 배포는 forced=false, code_only=false, 기준일2026-09-07로 확인했다.
+- 사용자 calendar_momentum_portfolio.json 개행 및 PIT 감사 PNG2개는 계속 커밋 제외한다.
+- 기업행위·상폐정산·과거 전체 모집단·완전 PIT/OOS·실제 체결 비용 원천은 여전히 부족하다. 이 항목들을 완료로 바꾸지 않는다.
+
 ## 최신: 프로젝트 릴리스 검증 진행 (2026-09-08)
 
 - **최종 결과 우선:** 격리 전체 단위612pass(162.27초), PC E2E19pass, 실제 통합11pass, 공개 별도ASGI13메뉴 오류0. 구현8d7004d와 사전 저장점 origin push 완료. 정식 공개배포 성공(forced=false/code_only=false), `https://d3f2952d.korea-quant-research.pages.dev`; 운영 별칭과 배포별 build.json HTTP200·8d7004d·9/7·로컬 bundle hash 일치. 로컬8790도 수급141/160·JS2.81.5 확인. 문서 최종 커밋은 공개 구현 식별자와 다를 수 있음.
