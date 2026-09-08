@@ -311,11 +311,10 @@ def fetch_remote_models(endpoint: LlmEndpoint, timeout: int = 20) -> list[str]:
 
 
 def resolve_tier1_endpoint(settings: Any) -> LlmEndpoint:
-    """Tier 1: 100% Free Routine AI Model for real-time news, disclosures, and commentary.
-    Priority 1: OpenRouter with nvidia/nemotron-3-ultra-550b-a55b:free
-    Priority 2: Google Antigravity CLI Session (gemini-2.5-flash)
-    Priority 3: DeepSeek Official API (deepseek-chat)
-    Priority 4: Fallback to whatever provider is configured
+    """Automatic analysis is restricted to the explicit :free route.
+
+    Never substitute the user's paid provider or a subscription CLI session.
+    Missing access returns an unconfigured endpoint handled by existing fallbacks.
     """
     or_key = getattr(settings, "openrouter_api_key", None)
     if or_key:
@@ -326,23 +325,13 @@ def resolve_tier1_endpoint(settings: Any) -> LlmEndpoint:
             model="nvidia/nemotron-3-ultra-550b-a55b:free",
             api_key=or_key,
         )
-    # Check Google agy CLI session
-    try:
-        from kr_quant.research.antigravity_auth import check_agy_auth
-
-        auth = check_agy_auth()
-        if auth.get("connected"):
-            return LlmEndpoint(
-                provider="antigravity",
-                label="Google agy 세션 (무료)",
-                base_url="cli://agy",
-                model="gemini-2.5-flash",
-                api_key="antigravity-cli-cached-session",
-            )
-    except Exception:
-        pass
-    # Fallback to configured user provider
-    return resolve_provider(settings)
+    return LlmEndpoint(
+        provider="tier1_unavailable",
+        label="무료 AI 연결 없음 · 유료 자동 전환 차단",
+        base_url="",
+        model="",
+        api_key=None,
+    )
 
 
 def resolve_tier2_endpoint(settings: Any) -> LlmEndpoint:

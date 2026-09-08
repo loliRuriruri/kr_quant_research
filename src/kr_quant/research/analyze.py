@@ -149,6 +149,8 @@ def call_chat(
     *,
     json_mode: bool = True,
 ) -> tuple[str, dict[str, Any]]:
+    if endpoint.provider == "tier1_unavailable":
+        raise RuntimeError("무료 AI 연결이 없습니다. OpenRouter 무료 경로를 설정하세요. 유료 모델로 자동 전환하지 않습니다.")
     if endpoint.provider == "antigravity" or endpoint.base_url.startswith("cli://"):
         from kr_quant.research.antigravity_auth import call_agy_subprocess
 

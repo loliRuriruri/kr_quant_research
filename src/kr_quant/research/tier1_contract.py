@@ -93,6 +93,9 @@ def tier1_unavailable(
     missing: Iterable[str] | None = None,
     prompt_version: str,
 ) -> dict[str, Any]:
+    if getattr(endpoint, "provider", None) == "tier1_unavailable":
+        code = "TIER1_FREE_ROUTE_NOT_CONFIGURED"
+        message = "무료 AI 연결이 없습니다. 유료 자동 전환은 차단되어 있으며 원본 계산 결과는 그대로 사용할 수 있습니다."
     return {
         "ok": False,
         "status": "UNAVAILABLE",
