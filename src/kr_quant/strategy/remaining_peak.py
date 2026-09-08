@@ -198,6 +198,13 @@ def calculate_remaining_peak_upside(
         intraday_peak = float(path["basis_high"].max())
         through_peak = path[path["date"] <= close_peak_row["date"]]
         downside = float(through_peak["basis_low"].min() / baseline - 1.0)
+        # Full-window risks differ from the dip before a hindsight peak.
+        # Exclude baseline-day low: the reference is that day's close.
+        future_lows = path.iloc[1:]["basis_low"]
+        raw_lows = path.iloc[1:]["low"] if "low" in path else pd.Series(np.nan, index=future_lows.index)
+        valid_lows = raw_lows.notna() & (raw_lows > 0) & np.isfinite(future_lows) & (future_lows > 0)
+        adverse = min(0.0, float(future_lows.min() / baseline - 1.0)) if valid_lows.all() else None
+        close_drawdown = float((path["basis_close"] / path["basis_close"].cummax() - 1.0).min())
         trading_days = int(path.index.get_loc(close_peak_idx)) if close_peak_idx in path.index else 0
         paths.append({
             "year": year,
@@ -205,6 +212,9 @@ def calculate_remaining_peak_upside(
             "peak_date": str(close_peak_row["date"].date()),
             "remaining_return": round(close_peak / baseline - 1.0, 4),
             "window_end_return": round(float(path.iloc[-1]["basis_close"]) / baseline - 1.0, 4),
+            "window_end_date": str(path.iloc[-1]["date"].date()),
+            "window_adverse_excursion": round(adverse, 4) if adverse is not None else None,
+            "window_close_max_drawdown": round(close_drawdown, 4),
             "intraday_peak_return": round(intraday_peak / baseline - 1.0, 4),
             "downside_before_peak": round(downside, 4),
             "trading_days_to_peak": trading_days,
@@ -264,8 +274,15 @@ def calculate_remaining_peak_upside(
         "sample_count": sample_count,
         "confidence": confidence,
         "validation_status": "IN_SAMPLE_DESCRIPTIVE_NOT_OOS",
+        "metric_version": 3,
+        "strategy_net_return_p50": None,
+        "strategy_net_status": "EXECUTION_NOT_VALIDATED",
         "window_end_p50": _pctile(end_returns, 50),
+        "window_end_positive_count": sum(value > 0 for value in end_returns),
         "window_end_positive_rate": round(float(np.mean(np.asarray(end_returns) > 0)), 3) if end_returns else None,
+        "window_adverse_excursion_p50": _pctile([row["window_adverse_excursion"] for row in paths], 50)
+        if all(row["window_adverse_excursion"] is not None for row in paths) else None,
+        "window_close_max_drawdown_p50": _pctile([row["window_close_max_drawdown"] for row in paths], 50),
         "costs_included": False,
         "historical_peak_day": median_peak_day,
         "target_peak_date": str(target_peak_date),

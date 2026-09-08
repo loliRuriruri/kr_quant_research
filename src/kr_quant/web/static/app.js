@@ -2982,7 +2982,7 @@ async function loadGlanceTop3() {
       const rank = Number(p.rank) || 0;
       const wr = ((p.win_rate || 0) * 100).toFixed(0);
       const remaining = p.remaining_peak || {};
-      const ret = remaining.available === true && Number.isFinite(Number(remaining.remaining_p50)) ? pbPct(remaining.remaining_p50) : "산출대기";
+      const observed = seasonObservation(remaining);
       const close = p.last_close == null ? "—" : `${Number(p.last_close).toLocaleString("ko-KR")}원`;
       const chg = Number(p.chg_pct || 0);
       const chgCls = chg > 0 ? "up" : chg < 0 ? "down" : "";
@@ -3000,9 +3000,10 @@ async function loadGlanceTop3() {
             <span class="${chgCls}">${chgTxt}</span>
           </div>
           <div class="glance-pick-kpis">
-            <span>승률 <b style="color:#facc15;">${wr}%</b></span>
-            <span>오늘→피크 <b class="text-emerald-400">${ret}</b></span>
+            <span>관찰기간 말 수익 <b>${observed.end}</b></span>
+            <span>${observed.wins}</span>
           </div>
+          <div class="meta">${observed.note}</div>
         </div>
       `;
     }).join("");
@@ -11059,6 +11060,27 @@ function seasonFailureObservations(r) {
     .map(y => ({year: y.year, text: `${y.year}년: 해당 월 가격 수익률 ${(Number(y.return) * 100).toFixed(1)}% (${Number(y.return) < 0 ? "하락" : "보합"}). 원인 미확인: 해당 연도 공시·실적·수급 근거를 대조하지 않았습니다.`}));
 }
 
+// Seasonal returns are decimal ratios, including returns above 200%.
+// Missing observations must never become 0% through Number(null).
+function seasonPct(value) {
+  if (value == null || value === "" || typeof value === "boolean" || !Number.isFinite(Number(value))) return "—";
+  const n = Number(value);
+  return `${n > 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
+}
+
+function seasonObservation(rem = {}) {
+  const available = rem.available === true;
+  const count = Number(rem.sample_count || 0);
+  const wins = rem.window_end_positive_count;
+  return {
+    end: available ? seasonPct(rem.window_end_p50) : "산출 불가",
+    peak: available ? seasonPct(rem.remaining_p50) : "산출 불가",
+    adverse: available ? seasonPct(rem.window_adverse_excursion_p50) : "—",
+    wins: available && wins != null && count > 0 ? `${wins}/${count}회 상승` : "집계 대기",
+    note: "과거 관찰값 · 비용 전 · 체결·독립 검증 전",
+  };
+}
+
 function renderDiscDeepPlaybook(r, months) {
   const box = $("#disc-modal-deep");
   if (!box) return;
@@ -11068,7 +11090,7 @@ function renderDiscDeepPlaybook(r, months) {
   const pb = r.playbook || {};
   const monthlyP50 = r.expected_p50 ?? r.median_return;
   const rem = r.remaining_peak || {};
-  const hasRemaining = rem.available === true && Number.isFinite(Number(rem.remaining_p50));
+  const hasRemaining = rem.available === true && rem.remaining_p50 != null && Number.isFinite(Number(rem.remaining_p50));
   const remWarnings = Array.isArray(rem.warnings) ? rem.warnings : [];
   const remWarningHtml = remWarnings.length
     ? `<div style="margin-top:9px;color:#fbbf24;font-size:11.5px;line-height:1.5;">⚠️ ${remWarnings.map(escapeHtml).join("<br>⚠️ ")}</div>`
@@ -11194,19 +11216,23 @@ function renderDiscDeepPlaybook(r, months) {
         <li style="color:#fca5a5;">${escapeHtml(pb.stop_loss || "월간 집계에는 경로상 MDD가 없어 손절선을 추정하지 않습니다.")}</li>
       </ul>
       <div style="margin-top:12px;">
-        <span style="font-size:11.5px; font-weight:700; color:#38bdf8;">📊 오늘 현재가 → 역사적 피크 구간 잔여 상승여력</span>
+        <span style="font-size:11.5px; font-weight:700; color:#38bdf8;">📊 과거 같은 계절 구간의 수익과 하락 · 비용 전 관찰값</span>
         <div class="expected-kpi-grid">
+          <div class="expected-kpi-item"><span>관찰기간 말 수익 · 중앙값</span><b>${seasonObservation(rem).end}</b></div>
+          <div class="expected-kpi-item"><span>관찰기간 말 상승 횟수</span><b>${seasonObservation(rem).wins}</b></div>
+          <div class="expected-kpi-item"><span>관찰기간 중 기준가 대비 하락 · 중앙값</span><b>${seasonObservation(rem).adverse}</b></div>
+          <div class="expected-kpi-item"><span>종가 고점 대비 최대낙폭 · 연도별 중앙값</span><b>${hasRemaining ? seasonPct(rem.window_close_max_drawdown_p50) : "—"}</b></div>
           <div class="expected-kpi-item"><span>현재가 · 기준일</span><b style="color:#e2e8f0;">${pbWon(rem.current_price)} <small>${escapeHtml(rem.price_as_of || "")}</small></b></div>
-          <div class="expected-kpi-item"><span>잔여 상승여력(P50)</span><b style="color:#34d399;">${hasRemaining ? pbPct(rem.remaining_p50) : "산출 불가"}</b></div>
-          <div class="expected-kpi-item"><span>보수~낙관 범위(P25~P75)</span><b style="color:#60a5fa;">${hasRemaining ? `${pbPct(rem.remaining_p25)} ~ ${pbPct(rem.remaining_p75)}` : "—"}</b></div>
-          <div class="expected-kpi-item"><span>P50 피크 환산가</span><b style="color:#fbbf24;">${pbWon(rem.peak_price_p50)}</b></div>
+          <div class="expected-kpi-item"><span>과거 피크 상승폭 · 중앙값</span><b>${seasonObservation(rem).peak}</b></div>
+          <div class="expected-kpi-item"><span>과거 피크 분포 · 하위25~상위25% 경계</span><b>${hasRemaining ? `${seasonPct(rem.remaining_p25)} ~ ${seasonPct(rem.remaining_p75)}` : "—"}</b></div>
+          <div class="expected-kpi-item"><span>과거 분포 환산가 · 목표가 아님</span><b>${hasRemaining && rem.peak_price_p50 != null ? pbWon(rem.peak_price_p50) : "—"}</b></div>
           <div class="expected-kpi-item"><span>피크까지 중앙 거래일</span><b>${rem.median_trading_days_to_peak == null ? "—" : `${rem.median_trading_days_to_peak}일`}</b></div>
-          <div class="expected-kpi-item"><span>피크 전 하방(P50)</span><b style="color:#f87171;">${pbPct(rem.downside_before_peak_p50)}</b></div>
+          <div class="expected-kpi-item"><span>피크 이전 기준가 대비 하락 · 중앙값</span><b>${hasRemaining ? seasonPct(rem.downside_before_peak_p50) : "—"}</b></div>
           <div class="expected-kpi-item"><span>과거 피크 상승 비율 (사후 관측)</span><b style="color:#34d399;">${rem.positive_peak_rate == null ? "—" : `${(Number(rem.positive_peak_rate) * 100).toFixed(1)}%`}</b></div>
-          <div class="expected-kpi-item"><span>감시구간 말일 수익률 중앙값 · 비용 전</span><b>${pbPct(rem.window_end_p50)}</b></div>
-          <div class="expected-kpi-item"><span>감시구간 말일 상승 비율</span><b>${pbPct(rem.window_end_positive_rate)}</b></div>
-          <div class="expected-kpi-item"><span>표본 · 신뢰도</span><b>${Number(rem.sample_count || 0)}개년 · ${escapeHtml(rem.confidence || "—")}</b></div>
+          <div class="expected-kpi-item"><span>전략수익 · 비용·체결 검증</span><b>아직 산출 전</b></div>
+          <div class="expected-kpi-item"><span>표본 · 검증 상태</span><b>${Number(rem.sample_count || 0)}개년 · 과거 관찰</b></div>
         </div>
+        <p class="meta">${seasonObservation(rem).note}. 피크는 나중에 찾은 최고 가격입니다. 기준가 대비 하락과 고점 대비 최대낙폭은 서로 다른 위험 지표입니다.</p>
         <div class="meta" style="margin-top:8px;line-height:1.5;">과거 월간 전체구간 P50 ${pbPct(monthlyP50)}와 구분해 계산합니다. ${escapeHtml(rem.methodology || "실제 일봉 경로가 부족하면 값을 표시하지 않습니다.")}</div>
         ${remWarningHtml}
       </div>
@@ -12023,9 +12049,7 @@ async function loadPreEntryView() {
 
     const wr = ((r.win_rate || 0) * 100).toFixed(0);
     const rem = r.remaining_peak || {};
-    const avgRet = rem.available ? pbPct(rem.remaining_p50) : "산출 불가";
-    const remHit = !rem.available || rem.positive_peak_rate == null ? "—" : `${(Number(rem.positive_peak_rate) * 100).toFixed(0)}%`;
-    const remMdd = rem.available ? pbPct(rem.downside_before_peak_p50) : "—";
+    const observed = seasonObservation(rem);
 
     const yearsTrackHtml = (r.years_track || []).map((y) => {
       const cls = y.is_win ? "year-track-win" : "year-track-loss";
@@ -12068,28 +12092,28 @@ async function loadPreEntryView() {
         <!-- Current-price-to-peak KPI Bar -->
         <div class="pre-entry-kpi-bar">
           <div class="pre-entry-kpi-item">
-            <span>오늘→피크 P50</span>
-            <b class="text-emerald-400">${avgRet}</b>
+            <span>관찰기간 말 수익 · 중앙값</span>
+            <b>${observed.end}</b>
           </div>
           <div class="pre-entry-kpi-item" style="border-color:rgba(234,179,8,0.4); background:rgba(234,179,8,0.1);">
-            <span style="color:#fde047;">과거 피크 상승 비율</span>
-            <b style="color:#facc15;">${remHit}</b>
+            <span style="color:#fde047;">관찰기간 말 상승 횟수</span>
+            <b style="color:#facc15;">${observed.wins}</b>
           </div>
           <div class="pre-entry-kpi-item">
-            <span>P50 피크 환산가</span>
-            <b style="color:#38bdf8;">${pbWon(rem.peak_price_p50)}</b>
+            <span>과거 피크 상승폭 · 중앙값</span>
+            <b style="color:#38bdf8;">${observed.peak}</b>
           </div>
           <div class="pre-entry-kpi-item">
-            <span>피크 전 하방(P50)</span>
-            <b style="color:#f87171;">${remMdd}</b>
+            <span>관찰기간 중 기준가 대비 하락 · 중앙값</span>
+            <b style="color:#f87171;">${observed.adverse}</b>
           </div>
           <div class="pre-entry-kpi-item">
-            <span>표본 · 신뢰도</span>
-            <b style="color:#fbbf24;">${Number(rem.sample_count || 0)}년 · ${escapeHtml(rem.confidence || "—")}</b>
+            <span>표본 · 검증 상태</span>
+            <b style="color:#fbbf24;">${Number(rem.sample_count || 0)}년 · 과거 관찰</b>
           </div>
         </div>
 
-        <div class="meta" style="margin:6px 0;">사후 피크 기준 과거 기술통계 · 미래 수익 확률 아님 · 독립 OOS/비용 검증 전. 감시구간 말일 중앙수익 ${pbPct(rem.window_end_p50)} (비용 전)</div>
+        <div class="meta" style="margin:6px 0;">${observed.note}. 피크 상승폭은 연도별 최고 상승폭의 중앙값으로 실제 매도 수익이 아닙니다. 검증된 전략수익은 아직 산출 전입니다.</div>
         <!-- Timing Window Strip -->
         <div class="pre-entry-timing-strip">
           <span style="color:#38bdf8; font-weight:700;">📈 과거 관찰 구간: ${escapeHtml(r.entry_window_str || '실측 피크 산출 대기')}</span>

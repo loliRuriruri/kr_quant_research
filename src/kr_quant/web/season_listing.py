@@ -14,7 +14,11 @@ invalidating_conditions'''.split())
 def pre_entry_card(row, lookback):
     fields = EXPLANATION_FIELDS | {'event_hypothesis', 'last_close', 'latest_price'}
     peak_fields = {'available', 'remaining_p50', 'positive_peak_rate', 'downside_before_peak_p50',
-                   'peak_price_p50', 'sample_count', 'confidence', 'window_end_p50', 'price_as_of'}
+                   'peak_price_p50', 'sample_count', 'confidence', 'window_end_p50', 'price_as_of',
+                   'metric_version', 'validation_status', 'costs_included',
+                   'strategy_net_return_p50', 'strategy_net_status',
+                   'window_end_positive_count', 'window_end_positive_rate',
+                   'window_adverse_excursion_p50', 'window_close_max_drawdown_p50'}
     return {**{k: deepcopy(v) for k, v in row.items() if k in fields},
             'remaining_peak': {k: deepcopy(v) for k, v in (row.get('remaining_peak') or {}).items() if k in peak_fields},
             'detail_required': True, 'lookback_years': lookback}

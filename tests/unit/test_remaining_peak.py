@@ -126,3 +126,81 @@ def test_remaining_peak_excludes_zero_volume_current_quote():
 
     assert result["available"] is False
     assert any("거래량이 0" in warning for warning in result["warnings"])
+
+
+def test_falling_paths_keep_losses_separate_from_zero_hindsight_peak():
+    prices = _seasonal_prices(range(2021, 2027))
+    for year in range(2021, 2027):
+        mask = prices.trade_date.dt.year == year
+        values = [200.0 - i for i in range(int(mask.sum()))]
+        for column in ("close", "adj_close", "high", "low"):
+            prices.loc[mask, column] = values
+    result = calculate_remaining_peak_upside(prices, "005930", 9, as_of_date="2026-08-26")
+    assert result["available"]
+    assert result["remaining_p50"] == 0
+    assert result["window_end_p50"] < 0
+    assert result["window_end_positive_count"] == 0
+    assert result["window_end_positive_rate"] == 0
+    assert result["window_adverse_excursion_p50"] < 0
+    assert result["window_close_max_drawdown_p50"] < 0
+    assert result["strategy_net_return_p50"] is None
+    assert result["strategy_net_status"] == "EXECUTION_NOT_VALIDATED"
+    assert result["costs_included"] is False
+    for path in result["paths"]:
+        assert path["window_end_date"] >= path["peak_date"]
+        assert path["window_adverse_excursion"] <= path["downside_before_peak"]
+
+
+def test_drawdown_uses_running_high_not_entry_baseline():
+    prices = _seasonal_prices(range(2021, 2027))
+    result = calculate_remaining_peak_upside(prices, "005930", 9, as_of_date="2026-08-26")
+    assert result["window_close_max_drawdown_p50"] < result["window_adverse_excursion_p50"]
+    assert result["metric_version"] == 3
+
+
+def test_missing_adjusted_lows_are_not_reported_as_zero_risk():
+    prices = _seasonal_prices(range(2021, 2027))
+    prices["low"] = float("nan")
+    result = calculate_remaining_peak_upside(prices, "005930", 9, as_of_date="2026-08-26")
+    assert result["window_adverse_excursion_p50"] is None
+    assert result["window_close_max_drawdown_p50"] < 0
+
+
+def test_summary_preserves_metric_contract_without_heavy_paths():
+    from kr_quant.web.season_listing import pre_entry_card
+    result = calculate_remaining_peak_upside(_seasonal_prices(range(2021, 2027)), "005930", 9, as_of_date="2026-08-26")
+    card = pre_entry_card({"ticker": "005930", "remaining_peak": result}, 5)
+    for key in ("metric_version", "window_end_positive_count", "window_adverse_excursion_p50",
+                "window_close_max_drawdown_p50", "strategy_net_return_p50", "strategy_net_status",
+                "validation_status", "costs_included"):
+        assert card["remaining_peak"][key] == result[key]
+    assert "paths" not in card["remaining_peak"]
+
+
+def test_season_ui_formats_missing_and_large_returns_without_unit_guessing():
+    import json
+    from pathlib import Path
+    import shutil
+    import subprocess
+    import pytest
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is needed for the real JS formatter regression")
+    js = (Path(__file__).parents[2] / "src/kr_quant/web/static/app.js").read_text(encoding="utf-8")
+    start = js.index("function seasonPct(")
+    end = js.index("function renderDiscDeepPlaybook(", start)
+    script = js[start:end] + '''
+console.log(JSON.stringify({missing: seasonPct(null), large: seasonPct(3), zero: seasonPct(0),
+  old: seasonObservation({available:true, sample_count:5}),
+  unavailable: seasonObservation({available:false, window_end_p50:0.2}),
+  ready: seasonObservation({available:true, sample_count:5, window_end_positive_count:2, window_end_p50:-0.1})}));
+'''
+    values = json.loads(subprocess.check_output([node, "-e", script], text=True, encoding="utf-8"))
+    assert values["missing"] == "—"
+    assert values["large"] == "+300.0%"
+    assert values["zero"] == "0.0%"
+    assert values["old"]["end"] == "—"
+    assert values["old"]["wins"] == "집계 대기"
+    assert values["unavailable"]["end"] == "산출 불가"
+    assert values["ready"]["end"] == "-10.0%"
+    assert values["ready"]["wins"] == "2/5회 상승"
