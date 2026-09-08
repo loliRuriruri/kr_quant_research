@@ -3259,6 +3259,19 @@ function renderExtLinksTop(links) {
   `;
 }
 
+function stockCoreMarkup(data) {
+  const r = data.row || {};
+  const value = (v, digits = 1) => v == null || v === '' || !Number.isFinite(Number(v)) ? '자료 없음' : Number(v).toLocaleString('ko-KR', {maximumFractionDigits: digits});
+  const fields = [['가치 / 30', value(r.value_score)], ['품질 / 25', value(r.quality_score)],
+    ['성장 / 25', value(r.growth_score)], ['모멘텀 / 10', value(r.momentum_score)],
+    ['안정 / 10', value(r.financial_score)], ['PER', value(r.per)], ['PBR', value(r.pbr)],
+    ['ROE (%)', value(r.roe == null ? null : Number(r.roe) * 100)]];
+  return `<section class="stock-core-preview"><h3>${escapeHtml(r.company || r.ticker)} · 저장된 핵심정보</h3>
+    <p>기준일 ${escapeHtml(data.as_of || '미확인')} · 실시간 가격이 아닙니다. 상세 검토 전 기본정보입니다.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">${fields.map(([label, val]) => `<article class="intro"><span>${label}</span><h3>${val}</h3></article>`).join('')}</div>
+    <div id="stock-enrichment-status" role="status" style="margin-top:16px">심층 자료 불러오는 중: 기업 개요·지배구조, 뉴스·외부 시세, 기술 분석·수급·공시. 가격은 상세 응답에서 기준일과 함께 확인합니다. 준비되면 기존 상세정보 전체를 표시합니다.</div></section>`;
+}
+
 async function openStock(ticker) {
   const code = padTicker(ticker);
   const request = ++stockDrawerRequest;
@@ -3281,9 +3294,22 @@ async function openStock(ticker) {
   `;
   const bar = $("#global-progress-bar");
   if (bar) bar.style.display = "block";
+  let settled = false;
+  let coreShown = false;
+  // Start both requests together. A late preview must never overwrite full data
+  // or the next selected stock. Public snapshots already contain full detail.
+  if (!publicShareMode) {
+    api(`/api/results/stock/${code}/core`).then(core => {
+      if (settled || !isCurrent() || padTicker(core.row?.ticker || '') !== code) return;
+      coreShown = true;
+      $("#drawer-title").textContent = `${core.row.company || code} · 기본정보 표시 / 심층 자료 준비 중`;
+      $("#drawer-body").innerHTML = stockCoreMarkup(core);
+    }).catch(() => {}); // Full request remains authoritative and has retry UI.
+  }
 
   try {
     const data = await api(`/api/results/stock/${code}`);
+    settled = true;
     if (!isCurrent()) return;
     const r = data.row || {};
     if (padTicker(r.ticker || '') !== code) throw new Error('요청 종목과 응답 종목이 다릅니다. 다시 확인해 주세요.');
@@ -3812,7 +3838,17 @@ async function openStock(ticker) {
     });
     loadTier1StockInsights(code, isCurrent).catch(() => {});
   } catch (err) {
+    settled = true;
     if (!isCurrent()) return;
+    if (coreShown) {
+      $("#drawer-title").textContent = `종목 ${code} · 기본정보 표시 / 심층 조회 실패`;
+      const status = $("#stock-enrichment-status");
+      if (status) {
+        status.innerHTML = `<p>기본정보는 유지했습니다. 심층 자료를 가져오지 못했습니다: ${escapeHtml(err.message)}</p><button id="stock-detail-retry" type="button">심층 자료 다시 조회</button>`;
+        $("#stock-detail-retry").addEventListener('click', () => openStock(code));
+      }
+      return;
+    }
     $("#drawer-title").textContent = `종목 ${code} · 조회 실패`;
     $("#drawer-body").innerHTML = `<div class="stock-detail-error" role="alert"><h3>데이터를 불러오지 못했습니다</h3><p>${escapeHtml(err.message)}</p><button type="button" id="stock-detail-retry">이 종목 다시 조회</button><p class="hint">종목 상세 조회를 재시도합니다. 일봉 수집·점수 재계산 버튼이 아닙니다.</p></div>`;
     $("#stock-detail-retry").addEventListener('click', () => openStock(code));

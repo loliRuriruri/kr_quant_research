@@ -1144,6 +1144,15 @@ def _load_profile(ticker: str) -> dict[str, Any]:
     return {}
 
 
+@app.get("/api/results/stock/{ticker}/core")
+def api_stock_core(ticker: str, as_of: str | None = None) -> dict[str, Any]:
+    """Saved facts only: never wait for external research providers."""
+    row, day = _load_stock_row(ticker, as_of)
+    row["ticker"] = str(row.get("ticker") or ticker).zfill(6)
+    return {"row": row, "as_of": day, "partial": True,
+            "pending": ["기업 개요·지배구조", "뉴스·외부 시세", "기술 분석·수급·공시"]}
+
+
 @app.get("/api/results/stock/{ticker}")
 def api_stock(ticker: str, as_of: str | None = None) -> dict[str, Any]:
     from kr_quant.context.explain import clean_reason_list
