@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+import calendar
 from typing import Any
 
 import numpy as np
@@ -17,7 +18,7 @@ def _as_date(value: date | datetime | str | pd.Timestamp | None) -> date | None:
 
 
 def _safe_date(year: int, month: int, day: int) -> date:
-    day = max(1, min(int(day), 28))
+    day = max(1, min(int(day), calendar.monthrange(int(year), int(month))[1]))
     return date(int(year), int(month), day)
 
 
@@ -134,7 +135,7 @@ def calculate_remaining_peak_upside(
     completed["year"] = completed["date"].dt.year
     historical_months: list[tuple[int, pd.DataFrame]] = []
     for year, group in completed.groupby("year"):
-        month_end = _safe_date(int(year), month, 28)
+        month_end = _safe_date(int(year), month, 31)
         if month == price_as_of.month and int(year) == price_as_of.year:
             continue
         if price_as_of <= month_end and int(year) == price_as_of.year:
@@ -159,7 +160,7 @@ def calculate_remaining_peak_upside(
 
     peak_days = [int(group.loc[group["basis_close"].idxmax(), "date"].day) for _, group in historical_months]
     median_peak_day = int(round(float(np.median(peak_days))))
-    median_peak_day = max(1, min(median_peak_day, 28))
+    median_peak_day = max(1, min(median_peak_day, 31))
 
     target_year = price_as_of.year
     target_peak_date = _safe_date(target_year, month, median_peak_day)
@@ -263,6 +264,10 @@ def calculate_remaining_peak_upside(
             realized_since_entry = round(current_basis / entry_price - 1.0, 4)
 
     confidence = "MEDIUM" if sample_count >= 5 else "LOW"
+    from kr_quant.research.statistical_reliability import sample_reliability
+    uncertainty = sample_reliability([{"year": row["year"], "return": row["window_end_return"]} for row in paths])
+    leave_one_out = [float(np.median(end_returns[:i] + end_returns[i+1:]))
+                     for i in range(sample_count)] if sample_count > 1 else []
     return {
         "available": available,
         "status": status,
@@ -274,7 +279,18 @@ def calculate_remaining_peak_upside(
         "sample_count": sample_count,
         "confidence": confidence,
         "validation_status": "IN_SAMPLE_DESCRIPTIVE_NOT_OOS",
-        "metric_version": 3,
+        "metric_version": 4,
+        "date_policy": "CALENDAR_DAYS_ACTUAL_MONTH_END_V2",
+        "timing_day_unit": "CALENDAR_DAYS_NOT_TRADING_SESSIONS",
+        "peak_day_p25": _pctile(peak_days, 25),
+        "peak_day_p75": _pctile(peak_days, 75),
+        "window_end_uncertainty": uncertainty,
+        "window_end_leave_one_year_out": {
+            "min_median": round(min(leave_one_out), 4) if leave_one_out else None,
+            "max_median": round(max(leave_one_out), 4) if leave_one_out else None,
+            "sign_changes": bool(leave_one_out and min(leave_one_out) < 0 < max(leave_one_out)),
+            "verified": False, "method": "DROP_ONE_OBSERVED_YEAR_NOT_RETRAINED_OOS",
+        },
         "strategy_net_return_p50": None,
         "strategy_net_status": "EXECUTION_NOT_VALIDATED",
         "window_end_p50": _pctile(end_returns, 50),

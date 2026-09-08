@@ -155,7 +155,7 @@ def test_drawdown_uses_running_high_not_entry_baseline():
     prices = _seasonal_prices(range(2021, 2027))
     result = calculate_remaining_peak_upside(prices, "005930", 9, as_of_date="2026-08-26")
     assert result["window_close_max_drawdown_p50"] < result["window_adverse_excursion_p50"]
-    assert result["metric_version"] == 3
+    assert result["metric_version"] == 4
 
 
 def test_missing_adjusted_lows_are_not_reported_as_zero_risk():
@@ -164,6 +164,60 @@ def test_missing_adjusted_lows_are_not_reported_as_zero_risk():
     result = calculate_remaining_peak_upside(prices, "005930", 9, as_of_date="2026-08-26")
     assert result["window_adverse_excursion_p50"] is None
     assert result["window_close_max_drawdown_p50"] < 0
+
+
+def test_actual_month_end_and_leap_year_dates():
+    from kr_quant.strategy.remaining_peak import _safe_date
+    assert str(_safe_date(2024, 2, 31)) == '2024-02-29'
+    assert str(_safe_date(2025, 2, 31)) == '2025-02-28'
+    assert str(_safe_date(2026, 4, 31)) == '2026-04-30'
+    assert str(_safe_date(2026, 7, 31)) == '2026-07-31'
+
+
+def test_month_end_peak_is_not_pulled_back_to_28_and_rolls_year():
+    rows = []
+    for year in range(2021, 2027):
+        for dt in pd.date_range(f'{year}-06-20', f'{year}-08-10'):
+            close = 110 - abs((dt-pd.Timestamp(f'{year}-07-31')).days)*.2
+            rows.append({'ticker': '005930', 'trade_date': dt, 'open': close, 'close': close,
+                         'adj_close': close, 'high': close, 'low': close, 'volume': 10000})
+    frame = pd.DataFrame(rows)
+    result = calculate_remaining_peak_upside(frame, '005930', 7, as_of_date='2026-07-10')
+    assert result['historical_peak_day'] == 31
+    assert result['target_peak_date'] == '2026-07-31'
+    assert result['entry_window_str'] == '07/01 ~ 07/16'
+    assert result['timing_day_unit'] == 'CALENDAR_DAYS_NOT_TRADING_SESSIONS'
+    assert result['peak_day_p25'] == result['peak_day_p75'] == 31
+    rolled = calculate_remaining_peak_upside(frame, '005930', 7, as_of_date='2026-08-10')
+    assert rolled['target_peak_date'] == '2027-07-31'
+
+
+def test_window_uncertainty_uses_same_years_not_future_win_probability():
+    result = calculate_remaining_peak_upside(_seasonal_prices(range(2021, 2027)), '005930', 9, as_of_date='2026-08-26')
+    stats = result['window_end_uncertainty']
+    assert stats['n'] == result['sample_count']
+    assert stats['wins'] == result['window_end_positive_count']
+    assert stats['verified'] is False
+    assert stats['wilson95'][0] < stats['positive_fraction']
+    loo = result['window_end_leave_one_year_out']
+    assert loo['min_median'] <= loo['max_median']
+    assert loo['verified'] is False
+    assert 'NOT_RETRAINED_OOS' in loo['method']
+
+
+def test_corrected_calendar_can_change_candidate_eligibility_explicitly():
+    from datetime import date
+    from kr_quant.strategy.remaining_peak import _stage_for
+    from kr_quant.strategy.pre_entry_ranking import rank_pre_entry_from_inputs
+    def ranked(peak_day):
+        stage, _ = _stage_for(date(2026, 7, 15), date(2026, 7, peak_day))
+        row = {'ticker': '005930', 'pattern_id': 'month-end', 'entry_stage': stage,
+               'seasonality_score': 60, 'remaining_peak': {'available': True, 'remaining_p50': .1,
+                                                        'price_as_of': '2026-07-15'}}
+        return rank_pre_entry_from_inputs([row], clean_set={'005930'},
+               quotes={'005930': {'last_close': 2000, 'as_of': '2026-07-15'}})
+    assert ranked(28) == []  # Old clamp incorrectly put this in the rally stage.
+    assert ranked(31)[0]['ticker'] == '005930'
 
 
 def test_summary_preserves_metric_contract_without_heavy_paths():

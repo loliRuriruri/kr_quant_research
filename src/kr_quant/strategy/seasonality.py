@@ -1049,7 +1049,7 @@ def _enrich_remaining_peak_rows(
 
     # Persist only exact source-generation matches. Adjustment/manifest changes
     # invalidate these metrics too, even when nominal prices stay unchanged.
-    signature = [3, str(settings.root.resolve()), date.today().isoformat(), _seasonality_source_signature(settings)]
+    signature = [4, str(settings.root.resolve()), date.today().isoformat(), _seasonality_source_signature(settings)]
     cache_path = settings.root / "data" / "cache" / "remaining_peak_metrics_v1.json"
     requested: list[tuple[dict[str, Any], str, int, tuple[str, int, int]]] = []
     for source in rows:

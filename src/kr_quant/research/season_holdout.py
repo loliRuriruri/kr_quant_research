@@ -83,7 +83,7 @@ def evaluate_season_holdout(prices, *, ticker: str, as_of: date, sessions,
                 continue
             candidates.append({'month': month, 'train_years': [v['year'] for v in history],
                                'median_return': float(np.median([v['return'] for v in history])),
-                               'exit_day': min(28, max(1, int(round(float(np.median([v['peak_day'] for v in history]))))))})
+                               'exit_day': min(calendar.monthrange(year, month)[1], max(1, int(round(float(np.median([v['peak_day'] for v in history]))))))})
         candidates.sort(key=lambda v: (-v['median_return'], v['month']))
         fold = {'test_year': year, 'selected_at': f'{year}-01-01', 'train_cutoff': f'{year-1}-12-31',
                 'candidates': candidates, 'selection': None, 'status': 'INSUFFICIENT_TRAIN',
@@ -150,7 +150,7 @@ def evaluate_season_holdout(prices, *, ticker: str, as_of: date, sessions,
             'validation_status': 'TEMPORAL_HOLDOUT_RAW_DIAGNOSTIC', 'summary': summary, 'folds': folds,
             'excluded_training_months': dict(excluded),
             'methodology': {'min_train_years': min_train_years, 'price_basis': 'UNVERIFIED_RAW_OHLC',
-                'rule': 'prior-year data: best median monthly open-to-close return, median historical peak day capped at 28; next year month open to fixed exit close',
+                'rule': 'prior-year data: best median monthly open-to-close return, median historical peak day bounded by actual target month end; next year month open to fixed exit close',
                 'calendar': 'supplied observed market dates, not certified exchange calendar',
                 'current_year_excluded': True, 'production_pre_entry_model_validated': False,
                 'limitations': ['사후 설계한 기준모형의 재구성입니다. 미열람 잠금 OOS나 실제 당시 선정 이력이 아닙니다.',

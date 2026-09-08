@@ -77,6 +77,14 @@ def test_optional_execution_retains_unfilled_fold(history):
     assert item['execution_diagnostic']['net_return'] is None
 
 
+def test_holdout_month_end_selection_can_use_day_30(history):
+    mask = (history.trade_date.dt.month == 9) & (history.trade_date.dt.year < 2023)
+    history.loc[mask, 'close'] = 100 + history.loc[mask, 'trade_date'].dt.day * .4
+    item = fold(run(history), 2023)
+    assert item['selection']['month'] == 9
+    assert item['selection']['exit_day'] > 28
+
+
 def test_future_price_changes_cannot_change_past_selection_or_exit_result(history):
     original = run(history)
     changed = history.copy()

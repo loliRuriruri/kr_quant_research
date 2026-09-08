@@ -11233,6 +11233,8 @@ function renderDiscDeepPlaybook(r, months) {
           <div class="expected-kpi-item"><span>표본 · 검증 상태</span><b>${Number(rem.sample_count || 0)}개년 · 과거 관찰</b></div>
         </div>
         <p class="meta">${seasonObservation(rem).note}. 피크는 나중에 찾은 최고 가격입니다. 기준가 대비 하락과 고점 대비 최대낙폭은 서로 다른 위험 지표입니다.</p>
+        <p class="meta">한 해씩 제외한 기간 말 수익 중앙값: ${seasonPct(rem.window_end_leave_one_year_out?.min_median)} ~ ${seasonPct(rem.window_end_leave_one_year_out?.max_median)}. 표본 민감도 참고치이며 재학습·독립 검증 결과가 아닙니다.</p>
+        <p class="meta">피크 날짜의 가운데 50% 범위: ${rem.peak_day_p25 == null ? "—" : escapeHtml(String(rem.peak_day_p25))}일 ~ ${rem.peak_day_p75 == null ? "—" : escapeHtml(String(rem.peak_day_p75))}일. 관찰 구간은 달력일 기준이며 휴장일 체결을 뜻하지 않습니다.</p>
         <div class="meta" style="margin-top:8px;line-height:1.5;">과거 월간 전체구간 P50 ${pbPct(monthlyP50)}와 구분해 계산합니다. ${escapeHtml(rem.methodology || "실제 일봉 경로가 부족하면 값을 표시하지 않습니다.")}</div>
         ${remWarningHtml}
       </div>
@@ -11244,6 +11246,7 @@ function renderDiscDeepPlaybook(r, months) {
         <span class="chip" style="background:rgba(139,92,246,0.2); color:#c084fc; font-size:11px;">신뢰도: ${escapeHtml(r.event_confidence || "미확인")}</span>
       </div>
       <div style="margin-top:8px; font-size:14px; font-weight:800; color:#fff;">${escapeHtml(r.common_event_cluster || "계절성 수요 증가 및 제품 사이클")}</div>
+      <p class="meta">이벤트 설명 등급은 시즌 점수 구성요소입니다(${r.score_breakdown?.event_explanation == null ? "점수 미확인" : escapeHtml(String(r.score_breakdown.event_explanation)) + "/10점"}). 실제 해당 연도의 이벤트 발생·수익 원인을 검증했다는 뜻은 아닙니다.</p>
       <p style="margin:4px 0 0; font-size:12px; color:#cbd5e1; line-height:1.5;">${escapeHtml(r.window_name || "해당 구간")}의 가격 반복성과 업종 가설입니다. 가격 통계만으로 실적 개선·수급 유입의 원인을 입증하지는 못합니다.</p>
       <div style="margin-top:8px; font-size:11.5px; color:#94a3b8;">📌 추가 확인: ${escapeHtml(r.secondary_cluster || "공시·실적·수급 근거 확인 필요")}</div>
     </div>
