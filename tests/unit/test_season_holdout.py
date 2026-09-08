@@ -52,6 +52,31 @@ def test_train_selects_month_and_fixed_exit_before_test_year(history):
     assert max(f['test_year'] for f in report['folds']) == 2025
 
 
+def test_optional_execution_keeps_fixed_open_outcome_separate(history):
+    from kr_quant.strategy.engine import ExecutionModel
+    result = evaluate_season_holdout(history, ticker='005930', as_of=date(2026, 9, 7),
+                                    sessions=history.trade_date,
+                                    execution_model=ExecutionModel(slippage_bps=5))
+    item = fold(result, 2023)
+    diagnostic = item['execution_diagnostic']
+    assert diagnostic['entry']['date'] == '2023-09-01'
+    assert diagnostic['exit']['date'] == '2023-09-15'
+    assert diagnostic['gross_return'] == 0  # Both opens are 100, unlike exit close.
+    assert diagnostic['net_return'] < 0
+    assert item['diagnostic_return'] == -.075
+    assert result['summary']['verified_count'] == 0
+
+
+def test_optional_execution_retains_unfilled_fold(history):
+    from kr_quant.strategy.engine import ExecutionModel
+    history.loc[history.trade_date.between('2023-09-01', '2023-09-05'), 'open'] = float('nan')
+    result = evaluate_season_holdout(history, ticker='005930', as_of=date(2026, 9, 7),
+                                    sessions=history.trade_date, execution_model=ExecutionModel())
+    item = fold(result, 2023)
+    assert item['execution_diagnostic']['status'] == 'ENTRY_UNFILLED'
+    assert item['execution_diagnostic']['net_return'] is None
+
+
 def test_future_price_changes_cannot_change_past_selection_or_exit_result(history):
     original = run(history)
     changed = history.copy()

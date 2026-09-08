@@ -14,7 +14,8 @@ import pandas as pd
 
 
 def evaluate_season_holdout(prices, *, ticker: str, as_of: date, sessions,
-                            lookback_years: int = 5, min_train_years: int = 3) -> dict:
+                            lookback_years: int = 5, min_train_years: int = 3,
+                            execution_model=None) -> dict:
     if lookback_years not in (0, 2, 3, 5) or min_train_years < 2:
         raise ValueError('지원 기간 0/2/3/5년, 최소 학습 표본 2년 이상')
     ticker = str(ticker).zfill(6)
@@ -87,7 +88,8 @@ def evaluate_season_holdout(prices, *, ticker: str, as_of: date, sessions,
         fold = {'test_year': year, 'selected_at': f'{year}-01-01', 'train_cutoff': f'{year-1}-12-31',
                 'candidates': candidates, 'selection': None, 'status': 'INSUFFICIENT_TRAIN',
                 'entry_date': None, 'exit_date': None, 'diagnostic_return': None,
-                'verified_return': None, 'worst_close_return': None, 'cost_scenarios': {}}
+                'verified_return': None, 'worst_close_return': None, 'cost_scenarios': {},
+                'execution_diagnostic': None}
         if not candidates:
             folds.append(fold)
             continue
@@ -107,6 +109,16 @@ def evaluate_season_holdout(prices, *, ticker: str, as_of: date, sessions,
             continue
         exit_day = scheduled[0]
         path = group[group['_date'].dt.date <= exit_day] if group is not None else None
+        # Keep execution failures even when the legacy full-month diagnostic
+        # rejects the price path. Never substitute its close return for a fill.
+        if execution_model is not None:
+            from kr_quant.research.season_execution import evaluate_fixed_window
+            first_session = calendar_months[(year, month)][0]
+            prior = [d for d in market_days if d < first_session]
+            if prior:
+                fold['execution_diagnostic'] = evaluate_fixed_window(
+                    frame, ticker=ticker, sessions=market_days, signal_date=prior[-1],
+                    exit_date=exit_day, as_of=as_of, model=execution_model)
         problem = quality(path, year, month, end_day=exit_day)
         if problem != 'OK':
             fold['status'] = problem
