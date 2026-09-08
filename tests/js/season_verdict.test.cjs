@@ -23,3 +23,9 @@ test('zero diagnostic folds show conclusion, not empty result cards', () => {
   assert.equal(ctx.seasonEmptyDiagnostic({summary:{diagnostic_count:1}}), '');
   assert.match(ctx.seasonEmptyDiagnostic({summary:{diagnostic_count:0},folds:[{test_year:2025,status:'PRICE_PATH_MISSING'}]}), /전략 실패라는 뜻은 아닙니다/);
 });
+test('invalid cached current evidence is not rendered as a valid signal', () => {
+  const v = ctx.seasonPlainVerdict({current_status:'ACTIVE',current_confirmation_evidence:['3개월 수익률 +nan%', '퀀트 점수 26.7']});
+  assert(!v.evidence.includes('nan'));
+  assert.match(v.title,/자료 부족/);
+  assert.match(v.missing,/재계산/);
+});

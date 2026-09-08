@@ -11268,17 +11268,20 @@ function renderDiscDeepPlaybook(r, months) {
           <div class="expected-kpi-item"><span>전략수익 · 비용·체결 검증</span><b>아직 산출 전</b></div>
           <div class="expected-kpi-item"><span>표본 · 검증 상태</span><b>${Number(rem.sample_count || 0)}개년 · 과거 관찰</b></div>
         </div>
+        <p class="meta"><b>한 줄 해석:</b> 과거 ${Number(rem.sample_count || 0)}개년 관찰값입니다. 피크 상승폭은 실제 매매 수익이나 올해 목표수익이 아닙니다.</p>
+        <details><summary>계산 방법·표본 차이·주의사항 자세히</summary>
         <p class="meta">${seasonObservation(rem).note}. 피크는 나중에 찾은 최고 가격입니다. 기준가 대비 하락과 고점 대비 최대낙폭은 서로 다른 위험 지표입니다.</p>
         <p class="meta">한 해씩 제외한 기간 말 수익 중앙값: ${seasonPct(rem.window_end_leave_one_year_out?.min_median)} ~ ${seasonPct(rem.window_end_leave_one_year_out?.max_median)}. 표본 민감도 참고치이며 재학습·독립 검증 결과가 아닙니다.</p>
         <p class="meta">피크 날짜의 가운데 50% 범위: ${rem.peak_day_p25 == null ? "—" : escapeHtml(String(rem.peak_day_p25))}일 ~ ${rem.peak_day_p75 == null ? "—" : escapeHtml(String(rem.peak_day_p75))}일. 관찰 구간은 달력일 기준이며 휴장일 체결을 뜻하지 않습니다.</p>
         <div class="meta" style="margin-top:8px;line-height:1.5;">과거 월간 전체구간 P50 ${pbPct(monthlyP50)}와 구분해 계산합니다. ${escapeHtml(rem.methodology || "실제 일봉 경로가 부족하면 값을 표시하지 않습니다.")}</div>
         ${remWarningHtml}
+        </details>
       </div>
     </div>
 
     <div style="margin-top:14px; background:rgba(30,41,59,0.5); border:1px solid rgba(139,92,246,0.3); border-radius:12px; padding:14px 16px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <b style="color:#c084fc; font-size:13.5px;">🤖 AI 공통 이벤트 역추적 (Event Explanation)</b>
+        <b style="color:#c084fc; font-size:13.5px;">반복 패턴의 배경 가설 · 사실 확인 필요</b>
         <span class="chip" style="background:rgba(139,92,246,0.2); color:#c084fc; font-size:11px;">신뢰도: ${escapeHtml(r.event_confidence || "미확인")}</span>
       </div>
       <div style="margin-top:8px; font-size:14px; font-weight:800; color:#fff;">${escapeHtml(r.common_event_cluster || "계절성 수요 증가 및 제품 사이클")}</div>
@@ -11295,7 +11298,7 @@ function renderDiscDeepPlaybook(r, months) {
         <div class="pb-confirm-cell"><span>현재 근거</span><b>${(r.current_confirmation_evidence || []).length}개</b></div>
         <div class="pb-confirm-cell"><span>현재 판단</span><b>${escapeHtml(seasonPlainVerdict(r).title)}</b></div>
       </div>
-      <p class="meta" style="margin:8px 0 0;">근거: ${escapeHtml((r.current_confirmation_evidence || []).join(" · ") || "연결된 현재 확인 근거 없음")}<br>미연결: ${escapeHtml((r.current_confirmation_missing || []).join(" · ") || "없음")}</p>
+      <p class="meta" style="margin:8px 0 0;">근거: ${escapeHtml(seasonPlainVerdict(r).evidence)}<br>미확인: ${escapeHtml(seasonPlainVerdict(r).missing || "없음")}</p>
     </div>
 
     <div style="margin-top:14px;background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px 16px;">
@@ -11338,8 +11341,10 @@ function renderDiscDeepPlaybook(r, months) {
 }
 
 function seasonPlainVerdict(r) {
-  const evidence = (r.current_confirmation_evidence || []).join(' · ');
-  const missing = (r.current_confirmation_missing || []).join(' · ');
+  const validEvidence = (r.current_confirmation_evidence || []).filter(x => !/[+-]?(?:nan|inf(?:inity)?)\b/i.test(String(x)));
+  const invalidEvidence = validEvidence.length !== (r.current_confirmation_evidence || []).length;
+  const evidence = validEvidence.join(' · ');
+  const missing = [...(r.current_confirmation_missing || []), ...(invalidEvidence ? ['일부 현재 지표 값 오류 — 재계산 필요'] : [])].join(' · ');
   const choices = {
     BROKEN: ['최근 가격·재무 지표 약세 — 계절성 단독 판단 보류',
       '최근 3개월 수익률이 -15% 미만이고 퀀트 점수가 48점 미만인 조건입니다. 과거 상승 패턴과 달리 현재 지표가 약하다는 뜻이지, 올해 이벤트 취소나 향후 하락을 확인한 것은 아닙니다.',
@@ -11360,7 +11365,7 @@ function seasonPlainVerdict(r) {
       '현재 조건을 판정할 근거가 충분하지 않습니다. 자료 누락을 약세나 호재로 해석하지 않습니다.',
       '누락된 항목을 갱신하기 전에는 올해 유망하다는 결론을 내리지 않습니다.']
   };
-  const [title, reason, next] = choices[r.current_status] || choices.UNKNOWN;
+  const [title, reason, next] = (invalidEvidence ? choices.UNKNOWN : choices[r.current_status]) || choices.UNKNOWN;
   return {title, reason, next, evidence: evidence || '연결된 현재 지표 없음', missing};
 }
 

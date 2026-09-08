@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import math
 from statistics import median
 from typing import Any
 from kr_quant.strategy.discovery_engine import SeasonalityPattern
@@ -431,7 +432,8 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         if value is None:
             return None
         try:
-            return float(value)
+            result = float(value)
+            return result if math.isfinite(result) else None
         except (TypeError, ValueError):
             return None
 

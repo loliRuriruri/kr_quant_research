@@ -12,7 +12,14 @@ from kr_quant.hashing import sha256_json
 
 
 TIER1_CONTRACT_VERSION = "tier1_briefing_v1.0.0"
-TIER1_CACHE_VERSION = "tier1_data_hash_cache_v1"
+TIER1_CACHE_VERSION = "tier1_data_hash_cache_v2_analysis"
+
+ANALYSIS_GUIDANCE = """출력 JSON 필드와 길이 제한은 유지하세요. 메뉴 사용법 대신 제공된 결과를 분석하세요.
+요약의 첫 문장은 현재 결론, 다음 문장은 그 결론을 지지하거나 반박하는 실제 수치·대상·기준일입니다.
+가능하면 가장 강한 근거와 충돌하는 근거를 비교하고, 다음 확인 항목을 구체적으로 하나 제시하세요.
+자료가 없으면 어떤 판단이 불가능한지 한 번만 밝히세요. 같은 면책 문구를 각 필드에 반복하지 마세요.
+과거 관측과 올해 확인 사실, 업종 가설을 구분하세요. 뉴스 제목만으로 사건의 원인·실적 효과를 확정하지 마세요.
+없는 수치·인과관계·목표가·매매 지시를 만들지 말고, 기존 계산 점수와 순위를 바꾸지 마세요."""
 
 
 def _clean_items(values: Iterable[str] | None) -> list[str]:
@@ -231,7 +238,8 @@ def tier1_cached_chat_json(
     try:
         from kr_quant.research.analyze import _extract_json, call_chat
 
-        raw_text, _ = call_chat(endpoint, messages, timeout=timeout, json_mode=True)
+        analytical_messages = [{"role": "system", "content": ANALYSIS_GUIDANCE}, *messages]
+        raw_text, _ = call_chat(endpoint, analytical_messages, timeout=timeout, json_mode=True)
         payload = {**(payload_prefix or {}), **_extract_json(raw_text)}
     except Exception as exc:
         print(f"Tier 1 {namespace} briefing unavailable: {exc}")
