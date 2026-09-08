@@ -11252,12 +11252,12 @@ function renderDiscDeepPlaybook(r, months) {
     </div>
 
     <div style="margin-top:14px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.25);border-radius:12px;padding:14px 16px;">
-      <b style="color:#34d399;">올해 유효성 확인 지표 (Current Confirmation)</b>
+      <b style="color:#34d399;">현재 지표가 과거 패턴을 뒷받침하나요?</b>
       <div class="pb-confirm-grid" style="margin-top:10px;">
         <div class="pb-confirm-cell"><span>역사적 승률</span><b>${((r.win_rate || 0) * 100).toFixed(1)}%</b></div>
         <div class="pb-confirm-cell"><span>월간 중앙수익</span><b>${pbPct(r.median_return)}</b></div>
         <div class="pb-confirm-cell"><span>현재 근거</span><b>${(r.current_confirmation_evidence || []).length}개</b></div>
-        <div class="pb-confirm-cell"><span>상태</span><b>${escapeHtml(st)}</b></div>
+        <div class="pb-confirm-cell"><span>현재 판단</span><b>${escapeHtml(seasonPlainVerdict(r).title)}</b></div>
       </div>
       <p class="meta" style="margin:8px 0 0;">근거: ${escapeHtml((r.current_confirmation_evidence || []).join(" · ") || "연결된 현재 확인 근거 없음")}<br>미연결: ${escapeHtml((r.current_confirmation_missing || []).join(" · ") || "없음")}</p>
     </div>
@@ -11301,6 +11301,44 @@ function renderDiscDeepPlaybook(r, months) {
   `;
 }
 
+function seasonPlainVerdict(r) {
+  const evidence = (r.current_confirmation_evidence || []).join(' · ');
+  const missing = (r.current_confirmation_missing || []).join(' · ');
+  const choices = {
+    BROKEN: ['최근 가격·재무 지표 약세 — 계절성 단독 판단 보류',
+      '최근 3개월 수익률이 -15% 미만이고 퀀트 점수가 48점 미만인 조건입니다. 과거 상승 패턴과 달리 현재 지표가 약하다는 뜻이지, 올해 이벤트 취소나 향후 하락을 확인한 것은 아닙니다.',
+      '과거 상승률보다 최근 가격 회복과 다음 재무·수급 갱신을 먼저 확인하세요. 두 조건 중 하나가 해소돼도 상승이 입증되는 것은 아닙니다.'],
+    WEAKENING: ['최근 반복성이 약해짐 — 과거 평균을 낮춰 해석',
+      '최근 3개년의 해당 월 상승 비율이 50% 미만입니다. 예전 평균이 좋아도 최근에는 같은 상승이 잘 반복되지 않았습니다.',
+      '손실이 난 연도와 올해 가격 흐름을 먼저 비교하세요. 과거 평균 수익률만으로 후보의 우선순위를 높이지 마세요.'],
+    ACTIVE: ['과거 패턴과 현재 지표가 함께 지지 — 추가 검토 후보',
+      '과거 반복성과 현재 가격 지표가 내부 조건을 충족했습니다. 올해 같은 수익이 난다는 판정은 아닙니다.',
+      '남은 관찰기간, 하락폭과 최신 공시·수급을 함께 확인하세요. 이 상태만으로 매수 시점을 결정하지 않습니다.'],
+    WATCH: ['과거 패턴은 참고 가능 — 올해 재현 여부는 확인 필요',
+      '과거 계절성은 후보 탐색 근거이지만 현재 지표만으로 올해도 반복된다고 결론낼 수 없습니다.',
+      '관찰기간 말 수익과 손실 연도를 먼저 보세요. 올해 가격·공시·수급이 뒷받침되는지 확인한 뒤 판단하세요.'],
+    DISCOVERY: ['반복 패턴 탐색 후보 — 현재 근거부터 확인',
+      '과거 가격에서 패턴을 찾았지만 현재 강세 조건을 충족한 후보는 아닙니다.',
+      '실제 이벤트 일정과 현재 가격 흐름을 먼저 확인하세요. 과거 피크 상승폭을 목표 수익으로 사용하지 마세요.'],
+    UNKNOWN: ['현재 판단 자료 부족 — 과거 통계만 참고',
+      '현재 조건을 판정할 근거가 충분하지 않습니다. 자료 누락을 약세나 호재로 해석하지 않습니다.',
+      '누락된 항목을 갱신하기 전에는 올해 유망하다는 결론을 내리지 않습니다.']
+  };
+  const [title, reason, next] = choices[r.current_status] || choices.UNKNOWN;
+  return {title, reason, next, evidence: evidence || '연결된 현재 지표 없음', missing};
+}
+
+function seasonEmptyDiagnostic(report) {
+  const folds = report.folds || [];
+  if (Number(report.summary?.diagnostic_count) > 0) return '';
+  const insufficient = folds.length > 0 && folds.every(f => f.status === 'INSUFFICIENT_TRAIN');
+  return `<div class="season-diagnostic-conclusion"><b>결론: ${insufficient ? '독립 연도 비교는 아직 불가 — 과거 관찰용으로만 사용' : '비교 가능한 결과 없음 — 이 진단으로 우열을 판단하지 않음'}</b>
+    <p>${insufficient ? '각 평가 연도보다 앞선 학습 자료가 최소 3개년 필요합니다. 현재 자료에서는 이 조건을 만족하는 평가 연도가 없어, 빈 연도별 결과는 표시하지 않습니다.' : '가격 누락·거래일 조건 등으로 계산 가능한 평가 연도가 없습니다. 결과가 없다는 것이 수익률 0%나 전략 실패라는 뜻은 아닙니다.'}</p>
+    <p><b>지금 볼 것:</b> 위의 관찰기간 말 수익, 상승 횟수와 손실 연도를 비교하세요. 이는 이미 지나간 표본의 설명이며 올해 예상 수익이 아닙니다.</p>
+    <p><b>다음 확인:</b> ${insufficient ? '상장 이력이 충분하면 시세 이력을 확장한 뒤 다시 비교합니다. 신규 상장이라 과거 자체가 짧으면 수집 버튼으로 해결되지 않으며 추가 연도가 쌓여야 합니다.' : '시세 누락·가격 불연속 원인을 확인한 뒤 재진단합니다.'}</p>
+    <details><summary>계산하지 못한 연도와 이유 (${folds.length}개)</summary>${folds.map(f => `<p>${escapeHtml(String(f.test_year))}년 · ${escapeHtml(f.status === 'INSUFFICIENT_TRAIN' ? '평가 전에 필요한 3개년 학습 자료 부족' : f.status)}</p>`).join('')}</details></div>`;
+}
+
 function appendSeasonHoldoutPanel(box, r) {
   const uncertainty = r.statistical_reliability;
   if (box && uncertainty) {
@@ -11315,9 +11353,9 @@ function appendSeasonHoldoutPanel(box, r) {
   if (!box) return;
   const details = document.createElement("details");
   details.className = "card";
-  details.innerHTML = '<summary>연도 분리 진단 · 과거 자료로만 월·종료일 선택</summary><div class="season-holdout-body" aria-live="polite"></div>';
+  details.innerHTML = '<summary>이 패턴을 다른 연도에도 적용할 수 있었나? · 추가 진단</summary><div class="season-holdout-body" aria-live="polite"></div>';
   const body = details.querySelector(".season-holdout-body");
-  box.prepend(details);
+  box.append(details);
   let loading = false;
   details.addEventListener("toggle", async () => {
     if (!details.open || loading) return;
@@ -11333,6 +11371,8 @@ function appendSeasonHoldoutPanel(box, r) {
         if (data.state === "ERROR") { body.textContent = data.detail; return; }
         if (data.state !== "READY") { await new Promise(resolve => setTimeout(resolve, 1000)); continue; }
         const report = data.report, s = report.summary;
+        const emptyConclusion = seasonEmptyDiagnostic(report);
+        if (emptyConclusion) { body.innerHTML = emptyConclusion; return; }
         const labels = {INSUFFICIENT_TRAIN:"학습 표본 부족", NO_POSITIVE_TRAIN_MONTH:"양수 학습 월 없음", RAW_PRICE_DIAGNOSTIC:"원시 가격 진단",
           MARKET_CALENDAR_INCOMPLETE:"거래일 자료 부족", PRICE_PATH_MISSING:"가격 누락", INVALID_PRICE:"가격 오류", NO_TRADING_VOLUME:"무거래 포함",
           PRICE_DISCONTINUITY:"가격 불연속", EXIT_DATE_MISSING:"종료일 누락"};
@@ -11824,7 +11864,7 @@ async function openDiscoveryDetailModal(r) {
 
   const stagePill = $("#disc-modal-stage-pill");
   if (stagePill) {
-    stagePill.textContent = r.entry_stage_label || "실측 피크 산출 대기";
+    stagePill.textContent = r.remaining_peak?.target_peak_date ? `과거 피크 참고일 ${r.remaining_peak.target_peak_date} · 진입 신호 아님` : "계절 일정 확인 중 · 진입 신호 아님";
     let cls = "stage-today";
     if (r.entry_stage === "PRE_ENTRY_15" || r.entry_stage === "PRE_ENTRY_30") cls = "stage-pre-entry";
     else if (r.entry_stage === "ACCUMULATE_60") cls = "stage-accumulate";
@@ -11835,15 +11875,14 @@ async function openDiscoveryDetailModal(r) {
 
   setModalText("disc-modal-theme", r.common_event_cluster || "계절적 수요 증가 및 분기 실적 모멘텀");
 
-  const stKo = r.current_status === "ACTIVE" ? "🟢 상태 판정: 현재 근거 확인 (ACTIVE)" :
-               r.current_status === "WATCH" ? "🟡 상태 판정: 관찰 대상 (WATCH)" :
-               r.current_status === "WEAKENING" ? "🟠 상태 판정: 엣지 약화 (WEAKENING)" :
-               r.current_status === "BROKEN" ? "🔴 상태 판정: 가설 훼손 (BROKEN)" :
-               r.current_status === "UNKNOWN" ? "⚪ 상태 판정: 현재 근거 부족 (UNKNOWN)" : "🟣 상태 판정: 신규 발굴 (DISCOVERY)";
-  setModalText("disc-modal-status-text", stKo);
+  const verdict = seasonPlainVerdict(r);
+  setModalText("disc-modal-status-text", `현재 결론: ${verdict.title}`);
+  const verdictTitle = $("#disc-modal-status-text");
+  if (verdictTitle) verdictTitle.style.color = r.current_status === 'BROKEN' ? '#fca5a5' : '#7dd3fc';
+  setModalText("disc-modal-status-reason", `${verdict.reason}\n확인한 수치: ${verdict.evidence}${verdict.missing ? `\n아직 확인 못한 항목: ${verdict.missing}` : ''}`);
 
   const pb = r.playbook || {};
-  setModalText("disc-modal-recommendation", `💡 연구 대응: ${pb.recommendation || "월별 반복 수익률은 탐색 근거이며 주문 신호가 아닙니다."}`);
+  setModalText("disc-modal-recommendation", `다음 확인: ${verdict.next}`);
   setModalText("disc-modal-window", r.window_name || "—");
   setModalText("disc-modal-sample-sub", `${r.sample_count || r.years_count || 0}개년 과거 표본`);
   setModalText("disc-modal-winrate", `${((r.win_rate || 0) * 100).toFixed(1)}%`);
@@ -12273,7 +12312,7 @@ const STATUS_HOVER_GUIDE_DATA = {
     actionColor: "#c084fc",
   },
   WEAKENING: {
-    title: "🟠 WEAKENING (엣지 약화)",
+    title: "🟠 최근 상승 반복성 약화",
     color: "#f97316",
     desc: "과거에는 강했으나 최근 3년간 승률/월간 수익률이 하락하여 계절성 모멘텀이 둔화된 상태",
     criteria: "최근 3개년 승률 50% 미만",
@@ -12281,11 +12320,11 @@ const STATUS_HOVER_GUIDE_DATA = {
     actionColor: "#fb923c",
   },
   BROKEN: {
-    title: "🔴 BROKEN (가설 훼손)",
+    title: "🔴 최근 가격·재무 지표 약세",
     color: "#ef4444",
-    desc: "최근 3개월간 급락했거나 올해 펀더멘털 악화/실적 쇼크로 계절성 룰이 깨진 종목",
-    criteria: "3개월 수익률 -15% 이하 및 퀀트 종합점수 48점 미만",
-    action: "계절성 가설을 사용하지 말고 훼손 근거를 재검토",
+    desc: "과거 계절성과 별개로 현재 가격·퀀트 지표가 약한 상태입니다. 실적 쇼크나 이벤트 취소가 확인됐다는 뜻은 아닙니다.",
+    criteria: "3개월 수익률 -15% 미만 및 퀀트 종합점수 48점 미만 (두 조건 모두)",
+    action: "계절성만으로 판단하지 말고 가격 회복·최신 재무·수급을 먼저 확인",
     actionColor: "#f87171",
   },
 };
@@ -12431,19 +12470,19 @@ async function loadDiscoveryRanked(offset = 0, generationId = "") {
 
   tbody.innerHTML = discoveryRows.map((r, idx) => {
     let statusCls = "status-discovery";
-    let statusKo = "🟣 DISCOVERY";
+    let statusKo = "🟣 탐색 후보";
     if (r.current_status === "ACTIVE") {
       statusCls = "status-active";
-      statusKo = "🟢 ACTIVE";
+      statusKo = "🟢 현재 지표 지지";
     } else if (r.current_status === "WATCH") {
       statusCls = "status-watch";
-      statusKo = "🟡 WATCH";
+      statusKo = "🟡 추가 확인";
     } else if (r.current_status === "WEAKENING") {
       statusCls = "status-weakening";
-      statusKo = "🟠 WEAKENING";
+      statusKo = "🟠 반복성 약화";
     } else if (r.current_status === "BROKEN") {
       statusCls = "status-broken";
-      statusKo = "🔴 BROKEN";
+      statusKo = "🔴 현재 지표 약세";
     }
 
     let gradeCls = "grade-b";
