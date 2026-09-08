@@ -79,6 +79,24 @@ def test_official_split_adj_close_is_continuous():
     assert adj[2] == 1_000
 
 
+def test_future_action_and_paid_rights_do_not_become_split_factors():
+    event = _split_event()
+    event['ex_date'] = '2030-01-01'
+    assert apply_official_adjustments(_split_prices(), event)['adj_factor'].eq(1).all()
+    event['ex_date'] = '2018-05-01'
+    event['event_type'] = 'RIGHTS'
+    assert apply_official_adjustments(_split_prices(), event)['adj_factor'].eq(1).all()
+
+
+def test_unsorted_prices_preserve_order_but_returns_use_time_order():
+    prices = _split_prices()
+    before = apply_official_adjustments(prices, _split_event())
+    reversed_prices = prices.iloc[::-1]
+    after = apply_official_adjustments(reversed_prices, _split_event())
+    pd.testing.assert_series_equal(before['price_return'], after['price_return'].sort_index())
+    assert list(after.index) == list(reversed_prices.index)
+
+
 def test_unconfirmed_or_sourceless_event_is_ignored():
     events = pd.DataFrame(
         [

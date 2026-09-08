@@ -32,6 +32,9 @@ def evaluate_season_holdout(prices, *, ticker: str, as_of: date, sessions,
         raise ValueError('중복 거래일 가격')
     for col in ('open', 'close', 'volume'):
         frame[col] = pd.to_numeric(frame[col], errors='coerce')
+    # Include month-boundary gaps: a split/rights reset at the first session
+    # must not disappear when monthly groups are formed.
+    frame['_overnight_jump'] = (frame['open']/frame['close'].shift()-1).abs().gt(.35)
     market_days = sorted({pd.Timestamp(d).date() for d in sessions if pd.Timestamp(d).date() <= as_of})
     calendar_months = {}
     for day in market_days:
@@ -50,7 +53,7 @@ def evaluate_season_holdout(prices, *, ticker: str, as_of: date, sessions,
             return 'INVALID_PRICE'
         if not (np.isfinite(group['volume']) & (group['volume'] > 0)).all():
             return 'NO_TRADING_VOLUME'
-        if group['close'].pct_change().abs().gt(.35).any() or (group['close']/group['open']-1).abs().gt(.35).any():
+        if group['_overnight_jump'].any() or group['close'].pct_change().abs().gt(.35).any() or (group['close']/group['open']-1).abs().gt(.35).any():
             return 'PRICE_DISCONTINUITY'
         return 'OK'
 
@@ -125,6 +128,11 @@ def evaluate_season_holdout(prices, *, ticker: str, as_of: date, sessions,
                'median': float(np.median(values)) if values else None,
                'positive_fraction': sum(v > 0 for v in values)/len(values) if values else None,
                'min': min(values) if values else None, 'max': max(values) if values else None}
+    from kr_quant.research.statistical_reliability import sample_reliability
+    summary['uncertainty'] = sample_reliability([
+        {'year': f['test_year'], 'return': f['diagnostic_return']}
+        for f in folds if f['diagnostic_return'] is not None])
+    summary['excluded_or_unavailable_count'] = len(folds)-len(values)
     return {'ticker': ticker, 'as_of': str(as_of), 'lookback_years': lookback_years,
             'record_type': 'RECONSTRUCTED_REFERENCE_RULE',
             'validation_status': 'TEMPORAL_HOLDOUT_RAW_DIAGNOSTIC', 'summary': summary, 'folds': folds,

@@ -16,6 +16,7 @@ from kr_quant.hashing import sha256_file
 
 
 SOURCES = {
+    "corporate_actions": ("data/staged/live/corporate_actions.parquet", ("ticker", "event_type", "ex_date")),
     "prices": ("data/staged/live/prices.parquet", ("ticker", "trade_date")),
     "master": ("data/staged/live/master.parquet", ("ticker",)),
     "listing_history": ("data/staged/live/listing_history.parquet", ("ticker", "event_type", "event_date")),

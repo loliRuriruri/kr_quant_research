@@ -21,7 +21,7 @@ from kr_quant.universe.tradability import evaluate_candidate_tradability, evalua
 
 logger = logging.getLogger("kr_quant.strategy.seasonality")
 SEASONALITY_CACHE_VERSION = 3
-DISCOVERY_CACHE_VERSION = 8
+DISCOVERY_CACHE_VERSION = 9
 
 EVENT_PRESETS: dict[str, dict[str, Any]] = {
     "winter_heater": {
@@ -1183,9 +1183,11 @@ def scan_seasonality_discovery(
             sc_row = {**scored_map.get(ticker, {}), **flow_map.get(ticker, {})}
 
             for m_stat in months:
-                pat = pattern_from_month_stat(ticker, company, market, m_stat, lookback_years=lookback_years)
+                pat = pattern_from_month_stat(ticker, company, market, m_stat, lookback_years=lookback_years, as_of_date=date.today())
                 if pat and pat.win_rate >= 0.50 and pat.sample_count >= 2:
                     exp_res = explain_and_score_pattern(pat, sc_row)
+                    from kr_quant.research.statistical_reliability import sample_reliability
+                    exp_res['statistical_reliability'] = sample_reliability(pat.years_track, family_size=len(stocks_map)*12)
                     all_patterns.append(exp_res)
 
         all_patterns.sort(key=lambda x: x["seasonality_score"], reverse=True)

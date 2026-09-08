@@ -72,6 +72,15 @@ def test_whole_test_year_can_change_outcome_but_not_its_selection(history):
     assert after['diagnostic_return'] == 0 and before['diagnostic_return'] < 0
 
 
+def test_month_boundary_jump_cannot_escape_quality_gate(history):
+    bad = history.copy()
+    bad.loc[bad.trade_date == '2023-08-31', 'close'] = 200
+    result = fold(run(bad), 2023)
+    assert result['selection']['month'] == 9
+    assert result['status'] == 'PRICE_DISCONTINUITY'
+    assert result['diagnostic_return'] is None
+
+
 def test_all_history_and_small_window_meaning(history):
     all_years = fold(run(history, 0), 2025)
     recent = fold(run(history, 5), 2025)

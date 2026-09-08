@@ -23,7 +23,8 @@ _ERRORS = {}
 
 
 def _code_hash():
-    return sha256_json([sha256_file(Path(season_holdout.__file__)), sha256_file(Path(__file__))])
+    from kr_quant.research import statistical_reliability
+    return sha256_json([sha256_file(Path(season_holdout.__file__)), sha256_file(Path(__file__)), sha256_file(Path(statistical_reliability.__file__))])
 
 
 _LOADED_CODE_HASH = _code_hash()

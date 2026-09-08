@@ -11262,6 +11262,16 @@ function renderDiscDeepPlaybook(r, months) {
 }
 
 function appendSeasonHoldoutPanel(box, r) {
+  const uncertainty = r.statistical_reliability;
+  if (box && uncertainty) {
+    const interval = uncertainty.wilson95;
+    box.insertAdjacentHTML('beforeend', `<div class="hint" style="padding:12px;border:1px solid #334155;border-radius:8px;margin:12px 0;">
+      <b>계절성 표본 신뢰성 · 검증 성과 아님</b><br>
+      유효 ${Number(uncertainty.n || 0)}개년 · 상승 ${Number(uncertainty.wins || 0)}개년<br>
+      상승 비율의 95% 참고 구간: ${interval ? `${fmtPct(interval[0])} ~ ${fmtPct(interval[1])}` : '자료 부족'}<br>
+      이번 탐색 ${Number(uncertainty.family_size || 0).toLocaleString()}개 월·종목 조합 · 보정 p값 ${uncertainty.p_bonferroni_reference == null ? '미산출' : Number(uncertainty.p_bonferroni_reference).toPrecision(3)}<br>
+      ${escapeHtml(uncertainty.note || '유효한 연도 표본이 부족합니다.')}</div>`);
+  }
   if (!box) return;
   const details = document.createElement("details");
   details.className = "card";
@@ -11297,7 +11307,9 @@ function appendSeasonHoldoutPanel(box, r) {
           진입은 선택 월 첫 거래일 시가, 종료는 과거 피크일 중앙값(최대 28일) 이후 첫 거래일 종가입니다. 해당 연도 최고가로 청산하지 않습니다.</p>
           <p class="hint">가격 기준 ${escapeHtml(report.price_as_of || "미확인")} · 미완료 현재 연도 제외 · 최소 학습 3개년<br>
           전체 ${s.folds_total}개 연도 중 원시 가격 진단 ${s.diagnostic_count}개 / 기업행위·체결 검증 ${s.verified_count}개.
-          진단 평균 ${fmtPct(s.mean)} · 중앙값 ${fmtPct(s.median)} · 진단 표본 내 상승 비율 ${fmtPct(s.positive_fraction)}</p>
+          진단 평균 ${fmtPct(s.mean)} · 중앙값 ${fmtPct(s.median)} · 진단 표본 내 상승 비율 ${fmtPct(s.positive_fraction)}<br>
+          미관측·제외 연도 ${Number(s.excluded_or_unavailable_count || 0)}개 · 상승 비율 95% 참고 구간 ${s.uncertainty?.wilson95 ? s.uncertainty.wilson95.map(fmtPct).join(' ~ ') : '표본 부족'}<br>
+          위 구간은 독립 연도 가정의 참고치이며, 전체 선취매 모델의 미래 승률이나 초과수익 검증이 아닙니다.</p>
           <div class="season-holdout-folds">${rows}</div>
           <p class="hint">${report.methodology.limitations.map(escapeHtml).join("<br>")}</p>`;
         return;

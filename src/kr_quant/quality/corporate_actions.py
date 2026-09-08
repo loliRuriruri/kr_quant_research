@@ -23,9 +23,11 @@ EVENT_COLUMNS = [
     "confirmed",
     "notes",
 ]
-RATIO_TYPES = frozenset({"SPLIT", "MERGE", "BONUS", "RIGHTS", "REDUCTION"})
+# Paid rights and reductions require subscription/cash terms. A share ratio
+# alone is not evidence for a pure split adjustment.
+RATIO_TYPES = frozenset({"SPLIT", "MERGE", "BONUS"})
 DIVIDEND_TYPES = frozenset({"DIVIDEND"})
-EVENT_TYPES = RATIO_TYPES | DIVIDEND_TYPES | {"MERGER"}
+EVENT_TYPES = RATIO_TYPES | DIVIDEND_TYPES | {"MERGER", "RIGHTS", "REDUCTION"}
 
 
 def empty_actions() -> pd.DataFrame:
@@ -85,8 +87,12 @@ def apply_official_adjustments(prices: pd.DataFrame, actions: pd.DataFrame | Non
     out = prices.copy()
     date_column = "trade_date" if "trade_date" in out.columns else "date"
     out["_ca_date"] = pd.to_datetime(out[date_column], errors="coerce").dt.date
+    out['_ca_order'] = range(len(out))
+    out = out.sort_values(['ticker', '_ca_date'] if 'ticker' in out else ['_ca_date'])
     out["adj_factor"] = 1.0
     events = normalize_actions(actions)
+    if not events.empty and out['_ca_date'].notna().any():
+        events = events[events['ex_date'] <= out['_ca_date'].max()]
     if not events.empty and "ticker" in out.columns:
         out["ticker"] = out["ticker"].map(lambda value: canonical_ticker(value) or str(value))
         factors = []
@@ -122,7 +128,7 @@ def apply_official_adjustments(prices: pd.DataFrame, actions: pd.DataFrame | Non
     out["total_return"] = pd.to_numeric(out["price_return"], errors="coerce").fillna(0) + pd.to_numeric(
         out["dividend_return"], errors="coerce"
     ).fillna(0)
-    return out.drop(columns=["_ca_date"])
+    return out.sort_values('_ca_order').drop(columns=["_ca_date", '_ca_order'])
 
 
 def explain_breaks_with_actions(issues: pd.DataFrame, actions: pd.DataFrame | None) -> pd.DataFrame:
