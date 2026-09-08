@@ -5,6 +5,13 @@
 
 - GitHub: [loliRuriruri/kr_quant_research](https://github.com/loliRuriruri/kr_quant_research)
 - 공개 웹(읽기 전용 스냅샷): [korea-quant-research.pages.dev](https://korea-quant-research.pages.dev/)
+- 운영 매뉴얼·검증 이력: [docs/OPERATIONS_MANUAL_AND_VERIFICATION_2026_09_08.md](docs/OPERATIONS_MANUAL_AND_VERIFICATION_2026_09_08.md)
+
+---
+
+## 운영 매뉴얼
+
+매일 실행할 버튼, 데이터 기준일 해석, 수급·계절성·백테스트의 원천, 장애 대응, 롤백, 실제 검증 결과는 [운영 매뉴얼 및 검증 이력](docs/OPERATIONS_MANUAL_AND_VERIFICATION_2026_09_08.md)을 참고하세요. 평소에는 실행 파이프라인의 **스마트 실행**만 사용하고, 개별 수집 버튼은 해당 데이터가 부족하거나 장애를 복구할 때만 사용합니다.
 
 ---
 
