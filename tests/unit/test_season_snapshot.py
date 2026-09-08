@@ -12,7 +12,7 @@ from kr_quant.strategy import seasonality as engine
 @pytest.fixture
 def prepared(tmp_path, monkeypatch):
     s = SimpleNamespace(root=tmp_path, data_dir=tmp_path/'data', staged_dir=tmp_path/'data/staged',
-                        output_dir=tmp_path/'data/output', config={})
+                        output_dir=tmp_path/'data/output', status_csv=tmp_path/'data/status.csv', config={})
     price = s.staged_dir/'live/prices.parquet'
     price.parent.mkdir(parents=True)
     price.write_bytes(b'source 1')

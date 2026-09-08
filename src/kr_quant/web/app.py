@@ -2425,10 +2425,12 @@ def _load_stock_row(ticker: str, as_of: str | None = None) -> tuple[dict[str, An
 def _web_cache_generation() -> tuple:
     """New local data generations must not remain hidden behind endpoint TTLs."""
     s = load_settings()
-    paths = [s.root / "data" / "output" / "current_manifest.json"]
+    paths = [s.root / "data" / "output" / "current_manifest.json", s.status_csv,
+             s.root / "data" / "cache" / "investor_flow.json"]
     paths += [s.root / "data" / "staged" / "live" / name for name in
               ("prices.parquet", "financial_facts.parquet", "master.parquet", "corporate_actions.parquet")]
-    return tuple((str(p), p.stat().st_mtime_ns, p.stat().st_size) if p.exists() else (str(p), None) for p in paths)
+    from kr_quant.freshness import expected_price_date
+    return (expected_price_date().isoformat(),) + tuple((str(p), p.stat().st_mtime_ns, p.stat().st_size) if p.exists() else (str(p), None) for p in paths)
 
 
 @app.get("/api/macro")

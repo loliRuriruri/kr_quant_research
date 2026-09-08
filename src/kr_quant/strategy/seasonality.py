@@ -195,7 +195,8 @@ def _load_flow_confirmation_map(settings: Settings) -> dict[str, dict[str, Any]]
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    rows = payload.get("rows") if isinstance(payload, dict) else None
+    from kr_quant.flow.reliability import gate_toss_payload
+    rows = gate_toss_payload(payload, settings).get("rows") if isinstance(payload, dict) else None
     if not isinstance(rows, list):
         return {}
     out: dict[str, dict[str, Any]] = {}
@@ -448,7 +449,7 @@ def _completed_month_rows(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def _seasonality_source_signature(settings: Settings) -> list:
-    paths = [settings.staged_dir / mode / "prices.parquet" for mode in ("live", "demo")]
+    paths = [settings.status_csv] + [settings.staged_dir / mode / "prices.parquet" for mode in ("live", "demo")]
     paths += [settings.output_dir / "current_manifest.json", settings.staged_dir / "live" / "master.parquet"]
     paths += [settings.staged_dir / mode / "corporate_actions.parquet" for mode in ("live", "demo")]
     paths += [settings.output_dir / "latest_all_stocks.parquet", settings.staged_dir / "live" / "krx_master.parquet",

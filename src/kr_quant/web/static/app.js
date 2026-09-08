@@ -5921,9 +5921,10 @@ function flowReady(data) {
   return Boolean(data && !data.need_scan && Array.isArray(data.rows) && Array.isArray(data.trading));
 }
 
+let flowValidatedAt = 0;
 async function ensureFlow(force) {
   const days = flowDays();
-  if (!force && flowCache && flowCache.days === days && flowReady(flowCache)) {
+  if (!force && flowCache && Date.now() - flowValidatedAt < 30000 && flowCache.days === days && flowReady(flowCache)) {
     return flowCache;
   }
   let data = await api(`/api/flow?days=${days}&compact=true`);
@@ -5931,6 +5932,7 @@ async function ensureFlow(force) {
     data = await api("/api/flow", { method: "POST", body: JSON.stringify({ days }) });
   }
   flowCache = data;
+  flowValidatedAt = Date.now();
   return data;
 }
 
@@ -6148,6 +6150,7 @@ function renderInvestorEvents(data) {
     : '<span class="chip" style="background:rgba(168,85,247,0.18); color:#c084fc; font-weight:800; border:1px solid rgba(168,85,247,0.4);">⚡ 토스증권 수급 캐시 기준 (자동 백업 엔진)</span>';
 
   box.innerHTML = `
+    <p class="hint">${escapeHtml(data.reliability?.note || '')} · 현재 공식 후보 ${Number(data.reliability?.current_tickers || 0)} / 저장 ${Number(data.reliability?.stored_tickers || 0)}종목</p>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
       <div class="h-tabs" style="margin:0; padding:0; border:none;">
         <button type="button" class="${pick === "official" ? "on" : ""}" data-inv-src="official">🏛️ 공식 KIS (${official.tickers || 0}종목)</button>
@@ -6841,10 +6844,22 @@ function renderSmartFlowActive(data = flowCache) {
   } else {
     renderFlow(data);
   }
+  const box = smartFlowBox();
+  if (box && data.reliability_note) {
+    box.querySelector('[data-flow-reliability]')?.remove();
+    box.insertAdjacentHTML('afterbegin', `<p class="hint" data-flow-reliability>${escapeHtml(data.reliability_note)}</p>`);
+  }
 }
 
 function setSmartFlowTab(tab) {
   smartFlowTab = ["overview", "vacancy", "technical", "stats"].includes(tab) ? tab : "overview";
+  if (Date.now() - flowValidatedAt >= 30000) {
+    loadSmartFlow(false).catch((e) => {
+      const box = smartFlowBox();
+      if (box) box.textContent = e.message || '수급 기준 재확인 실패';
+    });
+    return;
+  }
   renderSmartFlowActive(flowCache);
 }
 
@@ -6852,9 +6867,9 @@ async function loadSmartFlow(force = false) {
   syncSmartFlowTabs();
   const box = smartFlowBox();
   if (!box) return;
-  box.innerHTML = force || !flowReady(flowCache)
+  box.innerHTML = force
     ? "<p>토스 수급을 스캔하는 중… 거래대금·랭킹 종목을 포함해 1~2분 걸릴 수 있습니다.</p>"
-    : "<p>수급 데이터를 불러오는 중…</p>";
+    : "<p>저장 수급의 날짜·거래상태를 확인하는 중…</p>";
   if (force) flowLimit = {};
   const data = await ensureFlow(force);
   renderSmartFlowActive(data);

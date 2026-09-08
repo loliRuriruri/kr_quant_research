@@ -102,9 +102,11 @@ def attach_technicals(
     frame = prices if prices is not None else load_prices(settings,
         columns=['ticker', 'trade_date', 'high', 'low', 'close'], tickers=sorted(codes))
     if frame is None or frame.empty:
-        for row in rows:
-            if isinstance(row, dict):
-                row["ta"] = {"ok": False, "used_in_quant": False, "labels": [], "bars": 0}
+        for values in payload.values():
+            if isinstance(values, list):
+                for row in values:
+                    if isinstance(row, dict) and row.get('ticker'):
+                        row["ta"] = {"ok": False, "used_in_quant": False, "labels": [], "bars": 0}
         return payload
     work = frame.copy()
     work["ticker"] = work["ticker"].astype(str).str.zfill(6)
@@ -115,7 +117,20 @@ def attach_technicals(
         if not isinstance(row, dict):
             continue
         code = str(row.get("ticker") or "").zfill(6)
-        row["ta"] = technical_snapshot(grouped.get(code))
+        history = grouped.get(code)
+        price_as_of = None if history is None or history.empty else str(pd.to_datetime(history['trade_date']).max().date())
+        if payload.get('candidate_as_of') and price_as_of != payload['candidate_as_of']:
+            row['ta'] = {'ok': False, 'used_in_quant': False, 'labels': [], 'bars': 0,
+                         'reason': 'TECHNICAL_PRICE_DATE_MISMATCH', 'as_of': price_as_of}
+        else:
+            row["ta"] = {**technical_snapshot(history), 'as_of': price_as_of}
+    # JSON cache lists do not share row objects; keep every category consistent.
+    signals = {str(r.get('ticker') or '').zfill(6): r['ta'] for r in rows if isinstance(r, dict)}
+    for values in payload.values():
+        if isinstance(values, list):
+            for item in values:
+                if isinstance(item, dict) and str(item.get('ticker') or '').zfill(6) in signals:
+                    item['ta'] = signals[str(item['ticker']).zfill(6)]
     note = " 스토캐스틱(5,3,3)·일목(9-26-52)은 KRX OHLC."
     disc = str(payload.get("disclaimer") or "")
     if "스토캐스틱" not in disc:

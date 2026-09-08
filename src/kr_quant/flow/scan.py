@@ -294,6 +294,7 @@ def _with_comments(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_flow(settings: Settings, days: int = 5) -> dict[str, Any]:
+    from kr_quant.flow.reliability import gate_toss_payload
     def stored(payload):
         # GET displays the saved analysis. External prices have their own small
         # user-triggered endpoint; never wait for all Toss batches on menu entry.
@@ -303,14 +304,14 @@ def load_flow(settings: Settings, days: int = 5) -> dict[str, Any]:
             for row in rows:
                 row['quote_live'] = False
                 row['quote_basis'] = 'saved'
-        return payload
+        return gate_toss_payload(payload, settings)
     cached = _load_cache(settings.root)
     if _flow_ready(cached, days):
         named = attach_company_names(cached, settings)
-        return _with_comments(stored(attach_technicals(named, settings)))
+        return _with_comments(attach_technicals(stored(named), settings))
     if cached and cached.get("days") == days:
         patched = attach_company_names({**cached, "need_scan": True, "used_in_quant": False}, settings)
-        return _with_comments(stored(patched))
+        return _with_comments(attach_technicals(stored(patched), settings))
     return {
         "configured": bool(settings.toss_client_id and settings.toss_client_secret),
         "used_in_quant": False,
@@ -340,13 +341,16 @@ def scan_flow(
     tickers: list[tuple[str, str]] | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
+    from kr_quant.flow.reliability import gate_toss_payload, day
+    from kr_quant.freshness import expected_price_date
+    expected = expected_price_date().isoformat()
     cached = None if force else _load_cache(settings.root)
     if (
         _flow_ready(cached, days)
         and (time.time() - float(cached.get("fetched_at") or 0)) < 1800  # type: ignore[union-attr]
     ):
         named = attach_company_names(cached, settings)
-        return _with_comments(attach_live_quotes(attach_technicals(named, settings), settings))
+        return _with_comments(attach_live_quotes(attach_technicals(gate_toss_payload(named, settings), settings), settings))
     if not settings.toss_client_id or not settings.toss_client_secret:
         return {"configured": False, "used_in_quant": False, "error": "토스증권 키가 필요합니다.", "rows": []}
 
@@ -371,7 +375,10 @@ def scan_flow(
         try:
             payload = get_investor_trading(settings.toss_client_id, settings.toss_client_secret, code)
             records = payload.get("records") if isinstance(payload, dict) else []
-            summary = summarize_records(records if isinstance(records, list) else [], days=days)
+            records = [r for r in records if isinstance(r, dict) and day(r.get('date'))
+                       and day(r['date']) <= expected and r.get('is_final') is not False] if isinstance(records, list) else []
+            records.sort(key=lambda r: day(r['date']), reverse=True)
+            summary = summarize_records(records, days=days)
         except Exception:  # noqa: BLE001
             errors += 1
             continue
@@ -470,7 +477,7 @@ def scan_flow(
     out = attach_company_names(out, settings)
     out = attach_technicals(out, settings, prices=prices)
     _save_cache(settings.root, out)
-    return _with_comments(attach_live_quotes(out, settings))
+    return _with_comments(attach_live_quotes(attach_technicals(gate_toss_payload(out, settings), settings, prices=prices), settings))
 
 
 def diagnose_ticker_flow(settings: Settings, query: str, days: int = 5) -> dict[str, Any]:
@@ -528,6 +535,12 @@ def diagnose_ticker_flow(settings: Settings, query: str, days: int = 5) -> dict[
         except Exception:
             records = []
 
+    from kr_quant.flow.reliability import gate_toss_payload, day
+    from kr_quant.freshness import expected_price_date
+    expected = expected_price_date().isoformat()
+    records = [r for r in records if isinstance(r, dict) and day(r.get('date'))
+               and day(r['date']) <= expected and r.get('is_final') is not False]
+    records.sort(key=lambda r: day(r['date']), reverse=True)
     summary = summarize_records(records, days=days)
     from kr_quant.strategy.run import _prices
     prices = _prices(settings)
@@ -556,7 +569,10 @@ def diagnose_ticker_flow(settings: Settings, query: str, days: int = 5) -> dict[
     from kr_quant.timing.snapshot import attach_technicals
     from kr_quant.web.comments import flow_comment
 
-    dummy_payload = {"rows": [row]}
+    dummy_payload = gate_toss_payload({"rows": [row], "days": days}, settings)
+    if not dummy_payload['rows']:
+        return {"ok": False, "found_in_scan": False, "error": dummy_payload['reliability_note'],
+                "reliability": dummy_payload['reliability']}
     attached = attach_technicals(dummy_payload, settings, prices=prices)
     row = (attached.get("rows") or [row])[0]
     row["comment"] = flow_comment(row)

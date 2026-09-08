@@ -137,6 +137,7 @@ def collection_is_current(settings: Settings) -> bool:
 
 
 def events_payload(settings: Settings, min_turn: int = 5) -> dict[str, Any]:
+    from kr_quant.flow.reliability import gate_official_rows, gate_toss_payload
     from kr_quant.flow.events import from_official_rows, from_toss_cache_rows, sample_rebalance
     from kr_quant.flow.scan import cache_path
     from kr_quant.flow.store import load_all_flows, open_settings
@@ -147,6 +148,8 @@ def events_payload(settings: Settings, min_turn: int = 5) -> dict[str, Any]:
         cov = coverage(con)
     finally:
         con.close()
+    stored_count = len({r.get('ticker') for r in official_rows})
+    official_rows = gate_official_rows(official_rows, settings)
     names: dict[str, str] = {}
     try:
         from kr_quant.flow.universe import resolve_names
@@ -163,7 +166,7 @@ def events_payload(settings: Settings, min_turn: int = 5) -> dict[str, Any]:
 
         raw = cache_path(settings.root)
         if raw.exists():
-            toss_rows = list((json.loads(raw.read_text(encoding="utf-8")) or {}).get("rows") or [])
+            toss_rows = list(gate_toss_payload(json.loads(raw.read_text(encoding="utf-8")) or {}, settings).get("rows") or [])
     except Exception:  # noqa: BLE001
         toss_rows = []
     toss = from_toss_cache_rows(toss_rows, min_turn=min_turn)
@@ -175,6 +178,8 @@ def events_payload(settings: Settings, min_turn: int = 5) -> dict[str, Any]:
         "used_in_quant": False,
         "min_turn": min_turn,
         "coverage": cov,
+        "reliability": {"stored_tickers": stored_count, "current_tickers": len({r.get('ticker') for r in official_rows}),
+                        "note": "기대 종가일의 확정 수급과 거래상태가 확인된 종목만 현재 신호에 사용합니다."},
         "official": official,
         "toss": toss,
         "rebalance": sample_rebalance(official_rows, names=names),
@@ -185,6 +190,7 @@ def events_payload(settings: Settings, min_turn: int = 5) -> dict[str, Any]:
 
 def ticker_payload(settings: Settings, ticker: str) -> dict[str, Any]:
     from kr_quant.flow.events import daily_chart, window_sums
+    from kr_quant.flow.reliability import gate_official_rows
 
     con = open_settings(settings)
     try:
@@ -199,13 +205,16 @@ def ticker_payload(settings: Settings, ticker: str) -> dict[str, Any]:
         if val is None:
             val = point.get("INSTITUTION_TOTAL")
         inst.append(float(val or 0))
-    inst_newest = list(reversed(inst))
+    inst_newest = inst
+    current = bool(gate_official_rows(rows, settings))
     return {
         "used_in_quant": False,
         "ticker": code,
         "rows": rows,
         "n": len(rows),
         "chart": chart,
-        "windows": window_sums(inst_newest),
-        "disclaimer": "저장된 KIS 종목별 수급 행의 최근 90일 범위입니다.",
+        "windows": window_sums(inst_newest) if current else {},
+        "current_eligible": current,
+        "history_as_of": chart[-1]['date'] if chart else None,
+        "disclaimer": "저장된 확정 수급 이력입니다. 현재 기준일·거래상태 미확인 시 현재 누적 신호는 표시하지 않습니다.",
     }

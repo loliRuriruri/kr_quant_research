@@ -138,6 +138,8 @@ def test_flow_get_never_calls_external_quote_batches(monkeypatch):
     monkeypatch.setattr(scan, 'attach_company_names', lambda p, s: p)
     monkeypatch.setattr(scan, 'attach_technicals', lambda p, s: p)
     monkeypatch.setattr(scan, '_with_comments', lambda p: p)
+    # This test isolates GET network behavior; gate contracts have dedicated fixtures.
+    monkeypatch.setattr('kr_quant.flow.reliability.gate_toss_payload', lambda p, s: p)
     def forbidden(*args):
         raise AssertionError('external quotes on GET')
     monkeypatch.setattr(scan, 'attach_live_quotes', forbidden)

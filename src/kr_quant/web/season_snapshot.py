@@ -39,7 +39,7 @@ def source_identity(settings, lookback: int) -> dict:
     paths += sorted(settings.output_dir.glob("as_of_date=*/all_stocks.parquet"))
     paths += sorted(settings.output_dir.glob("as_of_date=*/scored_all.parquet"))
     code = Path(__file__).resolve().parents[1]
-    code_paths = sorted((code / "strategy").glob("*.py")) + sorted((code / "universe").glob("*.py")) + [Path(__file__)]
+    code_paths = sorted((code / "strategy").glob("*.py")) + sorted((code / "universe").glob("*.py")) + [Path(__file__), code / 'flow' / 'reliability.py']
     sources = _seasonality_source_signature(settings) + [
         [str(p), p.stat().st_mtime_ns, p.stat().st_size] if p.exists() else [str(p), None]
         for p in paths

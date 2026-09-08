@@ -72,6 +72,25 @@ def run(probe_source=False):
                      'count': len(rows), 'top3': [r['ticker'] for r in picks],
                      'price_dates': sorted({str(r.get('price_as_of')) for r in rows}),
                      'detail_checked': len(inspected)}
+    flow = get('/api/flow?days=5')
+    events = get('/api/investor/events')
+    from kr_quant.flow.reliability import FLOW_LISTS
+    flow_rows = [r for key in FLOW_LISTS for r in flow.get(key, [])]
+    checks['all_flow_categories_current_active'] = all(
+        r.get('to') == fresh['expected_price_date'] and r['ticker'] in active for r in flow_rows)
+    checks['flow_exclusion_counts_reconcile'] = (
+        flow['reliability']['source_rows'] == flow['reliability']['current_rows'] + flow['reliability']['excluded_rows'])
+    from kr_quant.screens import _flow_tickers
+    from kr_quant.strategy.seasonality import _load_flow_confirmation_map
+    checks['screen_and_calendar_use_same_current_flow'] = (
+        _flow_tickers(settings, 'dual') == {r['ticker'] for r in flow.get('dual', [])}
+        and set(_load_flow_confirmation_map(settings)) == {r['ticker'] for r in flow.get('rows', [])})
+    official = events.get('official') or {}
+    official_rows = [r for key in ('consecutive', 'paired', 'turns', 'cum5', 'cum20', 'cum60')
+                     for r in official.get(key, [])]
+    checks['official_event_candidates_current_active'] = all(r['ticker'] in active for r in official_rows)
+    out['flow'] = {'toss': flow['reliability'], 'official': events['reliability'],
+                   'note': 'An empty current Toss candidate set is valid when saved sources are stale; positive paths covered by fixtures.'}
     ready = publication_readiness(ROOT)
     out['publication'] = {k: ready.get(k) for k in ('ready', 'errors', 'price_max_date', 'as_of_date', 'expected_price_date', 'eligible_rows')}
     if probe_source:

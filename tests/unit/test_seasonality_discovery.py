@@ -100,7 +100,7 @@ def test_remaining_peak_cache_fill_is_shared_between_concurrent_requests(tmp_pat
     price_path = tmp_path / "staged" / "live" / "prices.parquet"
     price_path.parent.mkdir(parents=True)
     price_path.write_bytes(b"cache-signature")
-    settings = SimpleNamespace(root=tmp_path, staged_dir=tmp_path / "staged", output_dir=tmp_path / "output")
+    settings = SimpleNamespace(root=tmp_path, staged_dir=tmp_path / "staged", output_dir=tmp_path / "output", status_csv=tmp_path / "status.csv")
     prices = pd.DataFrame(
         {
             "ticker": ["000001"],

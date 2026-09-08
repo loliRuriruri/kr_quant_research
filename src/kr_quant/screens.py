@@ -287,21 +287,14 @@ def _flow_tickers(settings: Settings, key: str) -> set[str]:
 
     if not data:
         return set()
+    from kr_quant.flow.reliability import gate_toss_payload
+    data = gate_toss_payload(data, settings)
 
     tickers: set[str] = set()
-    raw_rows = (
-        data.get(key)
-        or data.get(f"{key}_buyers")
-        or data.get(f"{key}_sellers")
-        or []
-    )
+    raw_rows = data.get(key) or []  # Legacy code-only aliases have no date evidence.
     for row in raw_rows:
         if isinstance(row, dict):
             code = str(row.get("ticker") or "").zfill(6)
-            if code:
-                tickers.add(code)
-        elif isinstance(row, str):
-            code = str(row).zfill(6)
             if code:
                 tickers.add(code)
     return tickers

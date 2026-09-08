@@ -130,8 +130,10 @@ def build_evidence_registry(
 
     flow_path = cache_dir / "investor_flow.json"
     flow = _json(flow_path)
+    from kr_quant.flow.reliability import gate_toss_payload
+    flow = gate_toss_payload(flow, settings)
     flow_count = max(_cache_count(flow, "rows", "dual", "combined"), _cache_count(flow, "pension"))
-    flow_as_of = str(flow.get("as_of") or flow.get("to") or flow.get("source_as_of") or "") or None
+    flow_as_of = flow.get('candidate_as_of') if flow_count else None
     flow_state = "READY_WITH_LIMITS" if flow_count else "MISSING"
 
     sector_path = cache_dir / "sector_rank.json"
