@@ -4,6 +4,16 @@ from kr_quant.strategy import seasonality as module
 
 
 def test_disk_peak_cache_survives_restart_and_invalidates_sources(tmp_path, monkeypatch):
+    # Other endpoint tests can still have background snapshot builders running.
+    # Isolate module globals so this cache test never patches their calculator.
+    import importlib.util
+    import sys
+    original_module = module
+    spec = importlib.util.spec_from_file_location('kr_quant.strategy._peak_cache_under_test', original_module.__file__)
+    isolated_module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, isolated_module)
+    spec.loader.exec_module(isolated_module)
+    monkeypatch.setattr(sys.modules[__name__], 'module', isolated_module)
     s = SimpleNamespace(root=tmp_path, staged_dir=tmp_path/'data/staged', output_dir=tmp_path/'data/output',
                         status_csv=tmp_path/'data/raw/status/krx_status.csv')
     price = s.staged_dir/'live/prices.parquet'

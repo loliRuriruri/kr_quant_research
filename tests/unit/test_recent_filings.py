@@ -7,7 +7,7 @@ from kr_quant.ingest import recent_filings as recent
 
 @pytest.mark.parametrize('response', [{'status':'020'}, {'status':'000', 'list':[]}])
 def test_financial_provider_error_is_not_success(tmp_path, monkeypatch, response):
-    settings = replace(load_settings(), root=tmp_path)
+    settings = replace(load_settings(), root=tmp_path, opendart_api_key='fixture-not-a-real-key')
     folder = settings.staged_dir / 'live'
     folder.mkdir(parents=True)
     pd.DataFrame([dict(ticker='388610', corp_code='01221752', rcept_no='old',

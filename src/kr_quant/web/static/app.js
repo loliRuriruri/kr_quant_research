@@ -10220,7 +10220,18 @@ document.addEventListener("focusin", (e) => {
   if (el) showFloatTip(el);
 });
 document.addEventListener("focusout", hideFloatTip);
-document.addEventListener("scroll", hideFloatTip, true);
+let tipScrollFrame = 0;
+document.addEventListener("scroll", () => {
+  hideFloatTip();
+  if (tipScrollFrame) cancelAnimationFrame(tipScrollFrame);
+  tipScrollFrame = requestAnimationFrame(() => {
+    tipScrollFrame = 0;
+    // A queued scroll event may arrive after pointerover (including scrollIntoView).
+    // Re-anchor only to a cell still under the pointer, never to a stale target.
+    const hovered = document.querySelector("[data-tip]:hover");
+    if (hovered) showFloatTip(hovered);
+  });
+}, true);
 if ($("#strategy-refresh")) {
   $("#strategy-refresh").addEventListener("click", () => loadStrategy(true).catch((err) => alert(err.message)));
 }

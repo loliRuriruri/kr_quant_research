@@ -214,6 +214,11 @@ def test_flow_hover_shows_daily_lines_and_period_total(browser_page):
     assert "08-28" in tip or "종가" in tip
     assert "설정기간 집계" in tip or "5거래일" in tip
     assert "외인" in tip
+    browser_page.evaluate("document.dispatchEvent(new Event('scroll'))")
+    browser_page.wait_for_timeout(100)
+    assert browser_page.locator("#float-tip").is_visible()
+    browser_page.mouse.move(0, 0)
+    browser_page.wait_for_selector("#float-tip.hidden", state="attached")
 
 
 def test_long_strategy_and_company_names_are_not_clipped(browser_page):
