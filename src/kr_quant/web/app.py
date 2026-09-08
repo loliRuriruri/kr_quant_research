@@ -1992,10 +1992,11 @@ def api_us13f_tier1_briefing_get() -> dict[str, Any]:
 @app.get("/api/seasonality/tier1-briefing")
 def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
+    from kr_quant.research.season_ai_quality import validate_season_card
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
-    prompt_version = "seasonality_tier1_v3_decision_card"
+    prompt_version = "seasonality_tier1_v4_validated_card"
     highlights_payload = api_seasonality_highlights_get()
     highlights = highlights_payload.get("data") or {}
     current_rows = highlights.get("current_champions") or []
@@ -2061,6 +2062,7 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
         namespace="seasonality",
         prompt_version=prompt_version,
         evidence=seasonality_context,
+        payload_validator=validate_season_card,
         messages=[
             {"role": "system", "content": "You are a stock market seasonality quant specialist. Output strictly in JSON."},
             {"role": "user", "content": prompt},

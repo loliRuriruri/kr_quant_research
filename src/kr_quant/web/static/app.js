@@ -4287,7 +4287,7 @@ function reportArticleHtml(rec) {
       ? `<p class="hint">빠진 제목: ${(rec.missing_headings || []).join(", ")}</p>`
       : "";
     return `
-      <p class="hint">${rec.prompt_version || ""} · ${rec.provider || ""} ${rec.model || ""} · ${(rec.researched_at || "").replace("T", " ").slice(0, 16)}</p>
+      <p class="hint">${aiUsageBadge(rec)} ${rec.prompt_version || ""} · ${rec.provider || ""} ${rec.model || ""} · ${(rec.researched_at || "").replace("T", " ").slice(0, 16)}</p>
       <div class="report">${renderMarkdown(rec.report_markdown || "")}</div>
       ${miss}
       <p class="hint">${rec.disclaimer || ""}</p>
@@ -4312,7 +4312,7 @@ function openReportModal(rec, customTitle = null) {
   const code = padTicker(rec.ticker);
   const company = rec.company || code;
   const title = customTitle || `📑 ${escapeHtml(company)} (${code}) 심층 리서치 & 인포그래픽 리포트`;
-  const md = renderMarkdown(rec.report_markdown || "");
+  const md = aiUsageBadge(rec) + renderMarkdown(rec.report_markdown || "");
   const usage = rec.usage || {};
   const tokensStr = usage.total_tokens ? `🪙 소모 토큰: ${Number(usage.total_tokens).toLocaleString()} (입력 ${Number(usage.prompt_tokens || 0).toLocaleString()} / 출력 ${Number(usage.completion_tokens || 0).toLocaleString()})` : "🪙 토큰: 기록 없음";
   const meta = `${rec.provider || ""} · ${rec.model || ""} · 기준일 ${rec.as_of_date || ""} · ${tokensStr}`;
@@ -4727,6 +4727,11 @@ function renderTier1Unavailable(container, res = {}, err = null) {
   return false;
 }
 
+function aiUsageBadge(res = {}) {
+  if (res.ai_generated !== true || (res.status && res.status !== "GENERATED")) return "";
+  return '<span class="ai-usage-badge" title="AI가 작성한 해석입니다. 원본 계산 수치와 구분됩니다." aria-label="AI 생성 해석" style="display:inline-block;font-size:10px;line-height:16px;padding:0 5px;border:1px solid #a78bfa;border-radius:4px;color:#c4b5fd;vertical-align:middle;">AI</span>';
+}
+
 function appendTier1Meta(container, res = {}) {
   if (!container || !res) return;
   const card = container.querySelector(".tier1-briefing-card") || container.firstElementChild;
@@ -4735,13 +4740,12 @@ function appendTier1Meta(container, res = {}) {
   const coverageMap = { SUFFICIENT: "근거 충분", PARTIAL: "근거 일부", NONE: "근거 없음" };
   const coverage = coverageMap[evidence.coverage] || "근거 상태 미상";
   const sourceCount = Array.isArray(evidence.sources) ? evidence.sources.length : 0;
-  const fallback = res.status === "DETERMINISTIC_FALLBACK";
   const cacheLabel = res.cache?.hit === true
     ? "♻️ 동일 데이터 해설 재사용"
     : (res.cache?.stored === false ? "⚠️ 새 생성 · 캐시 미저장" : (res.cache ? "✨ 최신 데이터로 새 생성" : ""));
   card.insertAdjacentHTML("beforeend", `
     <div class="tier1-meta-row" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding-top:7px; margin-top:3px; border-top:1px solid rgba(148,163,184,0.16); font-size:10.5px; color:#94a3b8;">
-      <span class="chip" style="font-size:10px;">${fallback ? "🧮 규칙 기반 설명" : "🤖 AI 해석"}</span>
+      ${aiUsageBadge(res) || '<span class="chip" style="font-size:10px;">계산·규칙 기반 설명 · AI 생성 미확인</span>'}
       ${cacheLabel ? `<span class="chip" style="font-size:10px;">${cacheLabel}</span>` : ""}
       <span class="chip" style="font-size:10px;">📌 ${escapeHtml(coverage)} · ${Number(evidence.item_count || 0)}건</span>
       <span>출처 ${sourceCount}개</span>

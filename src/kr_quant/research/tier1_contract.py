@@ -5,7 +5,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Callable
 from uuid import uuid4
 
 from kr_quant.hashing import sha256_json
@@ -62,6 +62,7 @@ def tier1_success(
     prompt_version: str,
 ) -> dict[str, Any]:
     return {
+        **payload,
         "ok": True,
         "status": "GENERATED",
         "ai_generated": True,
@@ -78,7 +79,6 @@ def tier1_success(
             evidence_count=evidence_count,
             missing=missing,
         ),
-        **payload,
     }
 
 
@@ -130,6 +130,7 @@ def tier1_deterministic_fallback(
 ) -> dict[str, Any]:
     """Return a calculation-only explanation without pretending AI succeeded."""
     return {
+        **payload,
         "ok": True,
         "status": "DETERMINISTIC_FALLBACK",
         "ai_generated": False,
@@ -146,7 +147,6 @@ def tier1_deterministic_fallback(
             evidence_count=evidence_count,
             missing=missing,
         ),
-        **payload,
     }
 
 
@@ -220,6 +220,7 @@ def tier1_cached_chat_json(
     missing: Iterable[str] | None = None,
     timeout: int = 15,
     payload_prefix: dict[str, Any] | None = None,
+    payload_validator: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Generate a JSON briefing once per exact source snapshot.
 
@@ -235,6 +236,11 @@ def tier1_cached_chat_json(
     cache_dir = Path(cache_root) / "data" / "cache" / "tier1_briefings"
     cache_path = cache_dir / f"{_cache_namespace(namespace)}_{identity['cache_key'][:24]}.json"
     cached = _read_generated_cache(cache_path, identity)
+    if cached is not None and payload_validator is not None:
+        try:
+            payload_validator(cached)
+        except ValueError:
+            cached = None
     if cached is not None:
         return cached
 
@@ -244,6 +250,8 @@ def tier1_cached_chat_json(
         analytical_messages = [{"role": "system", "content": ANALYSIS_GUIDANCE}, *messages]
         raw_text, _ = call_chat(endpoint, analytical_messages, timeout=timeout, json_mode=True)
         payload = {**(payload_prefix or {}), **_extract_json(raw_text)}
+        if payload_validator is not None:
+            payload_validator(payload)
     except Exception as exc:
         print(f"Tier 1 {namespace} briefing unavailable: {exc}")
         result = tier1_unavailable(

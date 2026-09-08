@@ -195,6 +195,7 @@ def write_report(
 
     record = {
         "schema_version": "research_report_v4",
+        "ai_generated": True,
         "prompt_version": PROMPT_VERSION,
         "run_id": run_id or "",
         "ticker": ticker,
