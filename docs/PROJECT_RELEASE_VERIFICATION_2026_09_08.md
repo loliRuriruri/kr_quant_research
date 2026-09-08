@@ -35,6 +35,23 @@
 
 필요한 후속 입력: 제공 권한을 갖춘 공식 기업행위/상폐정산 이력, 당시 모집단·거래상태 및 최초/정정 공시 버전. 이 자료의 수급 범위·비용·권한이 결정되어야 완전한 역사적 검증을 진행할 수 있다. 이 보고서는 해당 과제를 완료로 바꾸는 승인서가 아니다.
 
+## 최종 단위검사와 로컬 적용
+
+- 격리 전체 단위검사 **612 passed**, 162.27초. `output/release-isolated-20260908/release-unit-final.xml`.
+- 위 XML SHA256: `311f2c7ade151800a55ddb79aac9dedf0f5f1ea0463cf581335d458fac27f465`.
+- 실서버8790 `/api/flow?days=5` HTTP200, 현재141/원천160 재확인. HTML의 JS 버전2.81.5 반영 확인. 새로고침으로 호버 패치 적용.
+- 구현 커밋 `8d7004d`와 작업 전 저장점은 GitHub origin에 push 완료. 이 시점의 정식 공개배포 결과는 아래 후속 기록을 참조한다.
+
 ## 보존
 
 사용자가 변경한 `data/calendar_momentum_portfolio.json`과 감사 실패 PNG2개는 유지하며 릴리스 커밋에서 제외한다. 공개 배포는 별도 성공 확인 기록이 있기 전까지 완료로 간주하지 않는다.
+
+## 공개 배포 최종 확인
+
+- 정식 `scripts/publish_public.py` 성공. `forced=false`, `code_only=false`, 원천 live·품질 success. 안전장치 우회 없음.
+- 배포 주소: https://d3f2952d.korea-quant-research.pages.dev
+- 운영 주소: https://korea-quant-research.pages.dev/
+- 두 주소의 `build.json` HTTP200, 커밋 `8d7004d9a4f6973e5f718116698bdc590f9c7ab2`, 기준일2026-09-07, 로컬 빌드와 bundle SHA256 일치.
+- 공개 시즌 월별 탐색727행 모두 `all_months` 12개 포함. 데이터가 없는 달에 충분한 표본이 있다는 의미는 아니다.
+- 배포 기록 `logs/public_publish.json`, 산출물 `dist-public` 보관. 최종 문서 커밋이 구현 커밋보다 뒤에 오더라도 공개 코드 버전은 위 식별자로 확인한다.
+- **운영 코드 검증·GitHub 저장·공개 배포는 완료. 전체 역사적 종목선정 성과 인증은 미완료.** 기능 개발을 잠정 종료할 수는 있으나 후자의 완료 여부를 바꿀 수는 없다.

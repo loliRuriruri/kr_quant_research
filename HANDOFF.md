@@ -2,6 +2,8 @@
 
 ## 최신: 프로젝트 릴리스 검증 진행 (2026-09-08)
 
+- **최종 결과 우선:** 격리 전체 단위612pass(162.27초), PC E2E19pass, 실제 통합11pass, 공개 별도ASGI13메뉴 오류0. 구현8d7004d와 사전 저장점 origin push 완료. 정식 공개배포 성공(forced=false/code_only=false), `https://d3f2952d.korea-quant-research.pages.dev`; 운영 별칭과 배포별 build.json HTTP200·8d7004d·9/7·로컬 bundle hash 일치. 로컬8790도 수급141/160·JS2.81.5 확인. 문서 최종 커밋은 공개 구현 식별자와 다를 수 있음.
+
 - 상세 `docs/PROJECT_RELEASE_VERIFICATION_2026_09_08.md`. 작업 전 코드 저장점 `savepoint-before-project-release-20260908` → f247132.
 - 토스 실제 재수집160/오류0, 현재141·제외19. 원천 캐시 백업 보존. 실제 데이터 통합11개 통과, 시즌282·TOP3/상세 일치. KIS 현재46/저장102.
 - 스크롤 직후 호버창 소실 수정, PC E2E19 통과. 공개 별도 빌드3633파일 보안 패턴/금지파일 검사 통과, API29·스크리너13·상세2765. 공개 로컬ASGI 스모크13메뉴·JS오류0·HTTP실패0. v2.81.5.
