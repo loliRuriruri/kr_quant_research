@@ -4717,7 +4717,7 @@ function renderTier1Unavailable(container, res = {}, err = null) {
   container.innerHTML = `
     <div class="tier1-briefing-card" style="background:rgba(120,53,15,0.12); border:1px solid rgba(245,158,11,0.45); border-radius:10px; padding:11px 14px; margin-bottom:14px;">
       <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
-        <b style="font-size:12.5px; color:#fbbf24;">⚠️ Tier 1 설명 사용 불가</b>
+        <b style="font-size:12.5px; color:#fbbf24;">⚠️ AI 해석 사용 불가</b>
         <span class="chip" style="font-size:10px; color:#fbbf24;">${escapeHtml(code)}</span>
       </div>
       <p style="margin:6px 0 0; color:#cbd5e1; font-size:12px; line-height:1.5;">${escapeHtml(message)}</p>
@@ -4960,7 +4960,7 @@ async function loadSeasonalityTier1Briefing() {
   const wasEmpty = !container.innerHTML.trim();
   if (wasEmpty) container.innerHTML = '<p class="hint" role="status">무료 AI 분석 요청 중 · 아래 원본 통계는 먼저 확인할 수 있습니다.</p>';
   const slowNotice = setTimeout(() => {
-    if (wasEmpty) container.innerHTML = '<p class="hint" role="status">무료 AI 응답이 지연되고 있습니다. 원본 통계는 그대로 사용하세요. 자동 유료 전환은 없습니다.</p>';
+    if (wasEmpty) container.innerHTML = '<p class="hint" role="status">AI 응답이 지연되고 있습니다. 원본 통계는 그대로 사용하세요. 로컬 승인 설정에 따라 Grok으로 대체할 수 있습니다.</p>';
   }, 8000);
   try {
     const res = await api("/api/seasonality/tier1-briefing");
@@ -4972,7 +4972,7 @@ async function loadSeasonalityTier1Briefing() {
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:16px;">📅</span>
               <span style="font-size:13px; font-weight:800; color:#38bdf8;">시즌 후보 분석 · 제공된 표본 기준</span>
-              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">Tier 1 무료 엔진</span>
+              <span class="chip" style="background:rgba(52, 211, 153, 0.15); color:#34d399; font-size:10px; padding:1px 6px;">${res.provider === 'xai' ? '승인된 Grok 분석' : '무료 AI 분석'}</span>
             </div>
             <span style="font-size:11px; color:#94a3b8;">${escapeHtml(res.model || "nvidia/nemotron-3-ultra-550b-a55b:free")}</span>
           </div>

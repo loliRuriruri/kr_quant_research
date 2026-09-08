@@ -69,7 +69,7 @@ def tier1_success(
         "used_in_quant": False,
         "provider": getattr(endpoint, "provider", None),
         "model": getattr(endpoint, "model", None),
-        "tier": "Tier 1 무료 설명 엔진",
+        "tier": "무료 AI 해석" if str(getattr(endpoint, "model", "")).endswith(":free") else "승인된 AI 해석",
         "contract_version": TIER1_CONTRACT_VERSION,
         "prompt_version": prompt_version,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -221,12 +221,20 @@ def tier1_cached_chat_json(
     timeout: int = 15,
     payload_prefix: dict[str, Any] | None = None,
     payload_validator: Callable[[dict[str, Any]], None] | None = None,
+    fallback_endpoint: Any = None,
+    wall_timeout: float | None = None,
 ) -> dict[str, Any]:
     """Generate a JSON briefing once per exact source snapshot.
 
     Only successful AI generations are persisted. A provider failure is returned
     as UNAVAILABLE so a later request can retry instead of replaying a failure.
     """
+    if fallback_endpoint is not None:
+        from kr_quant.research.approved_season_ai import approved_briefing
+        return approved_briefing(cache_root, endpoint, fallback_endpoint,
+            namespace=namespace, prompt_version=prompt_version, evidence=evidence,
+            messages=messages, as_of=as_of, sources=sources, evidence_count=evidence_count,
+            missing=missing, payload_prefix=payload_prefix, payload_validator=payload_validator)
     identity = tier1_cache_identity(
         endpoint,
         namespace=namespace,
@@ -248,7 +256,11 @@ def tier1_cached_chat_json(
         from kr_quant.research.analyze import _extract_json, call_chat
 
         analytical_messages = [{"role": "system", "content": ANALYSIS_GUIDANCE}, *messages]
-        raw_text, _ = call_chat(endpoint, analytical_messages, timeout=timeout, json_mode=True)
+        if wall_timeout is None:
+            raw_text, _ = call_chat(endpoint, analytical_messages, timeout=timeout, json_mode=True)
+        else:
+            from kr_quant.research.approved_season_ai import bounded_chat
+            raw_text, _ = bounded_chat(endpoint, analytical_messages, timeout, wall_timeout)
         payload = {**(payload_prefix or {}), **_extract_json(raw_text)}
         if payload_validator is not None:
             payload_validator(payload)

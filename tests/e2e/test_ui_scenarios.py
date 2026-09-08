@@ -157,6 +157,7 @@ def test_season_metric_detail_and_pc_layout(browser_page, base_url):
         detail.wait_for(state='visible')
         assert '-3.2%' in detail.inner_text() and '+12.0%' in detail.inner_text()
         assert '아직 산출 전' in detail.inner_text()
+        detail.get_by_text('계산 방법·표본 차이·주의사항 자세히', exact=True).click()
         assert '-6.0% ~ +2.0%' in detail.inner_text()
         assert page.locator('.expected-kpi-item').evaluate_all(
             '(items) => items.every(e => e.scrollWidth <= e.clientWidth + 1 && e.scrollHeight <= e.clientHeight + 1)')

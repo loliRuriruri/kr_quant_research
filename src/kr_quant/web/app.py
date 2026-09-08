@@ -1993,15 +1993,18 @@ def api_us13f_tier1_briefing_get() -> dict[str, Any]:
 def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
     from kr_quant.research.providers import resolve_tier1_endpoint
     from kr_quant.research.season_ai_quality import validate_season_card
+    from kr_quant.research.approved_season_ai import policy
+    from kr_quant.research.providers import resolve_provider
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
-    prompt_version = "seasonality_tier1_v5_plain_language"
+    prompt_version = "seasonality_tier1_v7_focused_candidates"
     highlights_payload = api_seasonality_highlights_get()
     highlights = highlights_payload.get("data") or {}
     current_rows = highlights.get("current_champions") or []
     upcoming_rows = highlights.get("upcoming_champions") or []
-    active_presets = highlights.get("active_presets") or []
+    active_presets = [{key: preset.get(key) for key in ('title', 'peak_months', 'tickers_count')}
+                      for preset in (highlights.get("active_presets") or [])]
     candidates = []
     for row in (highlights.get("glance_top3") or [])[:3]:
         rem = row.get("remaining_peak") or {}
@@ -2009,12 +2012,17 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
             "ticker": row.get("ticker"), "company": row.get("company"),
             "signal_id": row.get("signal_id"), "current_status": row.get("current_status"),
             "current_evidence": row.get("current_confirmation_evidence") or [],
-            "missing": row.get("current_confirmation_missing") or [],
+            "missing": row.get("current_confirmation_missing") or (
+                ['현재 확인 지표 미연결'] if not row.get('current_confirmation_evidence') else []),
             "observed_window": {key: rem.get(key) for key in (
                 "price_as_of", "sample_count", "window_end_p50", "window_end_positive_count",
                 "window_adverse_excursion_p50", "validation_status", "costs_included")},
         })
     snapshot = highlights_payload.get("snapshot") or {}
+    if candidates:
+        # The card explains these candidates, not unrelated monthly/event lists.
+        # Those lists remain intact in the source endpoint and the original UI.
+        current_rows, upcoming_rows, active_presets = [], [], []
     evidence_count = len(current_rows) + len(upcoming_rows) + len(active_presets) + len(candidates)
     if evidence_count <= 0:
         return tier1_unavailable(
@@ -2049,6 +2057,10 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
         "p50은 중앙값, HISTORICAL_ONLY는 과거 관찰 자료처럼 쉬운 한국어로 풀고 내부 필드명·상태 코드는 출력하지 마세요. "
         "signal_id와 generation_id는 식별자일 뿐 상태나 근거로 해석하지 마세요. 자료 지연은 실제 기준일과 누락 항목으로 설명하세요. "
         "첫 결론은 종목의 강점·약점·확인 필요 사항을 말하고 챔피언 목록 유무 같은 메뉴 내부 구성 설명은 생략하세요.\n"
+        "champions는 월 전체 통계, candidates는 현재 진행시점에 대응하는 남은 관찰 구간 통계이므로 서로 바꾸어 쓰지 마세요. "
+        "구간 중 하락과 구간 종료 수익은 다른 지표이며 둘의 부호 차이를 데이터 충돌이나 모순이라고 부르지 마세요. "
+        "window는 창구가 아니라 관찰 구간입니다. 각 문장은 짧게, 캘린더 가설은 최대 2개만 제시하고 없으면 빈 배열을 반환하세요.\n"
+        "현재 후보가 있으면 그 후보만 비교하세요. 출력 전체는 한국어 약 400자 이내의 짧은 요약으로 작성하세요.\n"
         "반드시 JSON 형식으로만 반환하세요: {\"headline\": \"현재 결론 1문장\", \"seasonality_brief\": \"입력 종목명과 실제 수치를 사용한 근거 최대 2문장\", \"key_catalysts\": [\"실제 입력된 캘린더 가설\"], \"sample_caution\": \"가장 중요한 반대 근거 또는 한계 1문장\", \"next_check\": \"어떤 자료를 다음에 확인할지 1문장\"}"
     )
     seasonality_context = {
@@ -2067,6 +2079,7 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
         prompt_version=prompt_version,
         evidence=seasonality_context,
         payload_validator=validate_season_card,
+        fallback_endpoint=resolve_provider(s, 'xai') if policy(s.root).get('grok_fallback_enabled') is True else None,
         messages=[
             {"role": "system", "content": "You are a stock market seasonality quant specialist. Output strictly in JSON."},
             {"role": "user", "content": prompt},

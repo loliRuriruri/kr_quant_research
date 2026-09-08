@@ -27,3 +27,4 @@ def test_season_card_supplies_candidate_facts_and_snapshot(monkeypatch, tmp_path
     assert 'next_check' in captured['messages'][1]['content']
     assert '+8%' in captured['messages'][1]['content']
     assert '식별자일 뿐' in captured['messages'][1]['content']
+    assert '데이터 충돌이나 모순' in captured['messages'][1]['content']
