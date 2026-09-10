@@ -33,3 +33,28 @@ def test_routine_flash_and_analysis_pro_are_openrouter_named_hops():
     assert flash.provider == 'openrouter' and pro.provider == 'openrouter'
     missing = providers.resolve_tier1_routine_paid_endpoint(SimpleNamespace(openrouter_api_key=None))
     assert not missing.configured
+
+
+def test_tier1_hops_honor_user_selection_and_stay_fail_closed():
+    settings = SimpleNamespace(
+        openrouter_api_key='test-key', xai_api_key='x-test', opencode_go_api_key='go-test',
+        deepseek_api_key=None, opencode_api_key=None, xai_base_url=None,
+        tier1_routine_provider='opencode_go', tier1_routine_model='deepseek/deepseek-v4.1-flash',
+        tier1_analysis_provider='opencode_go', tier1_analysis_model='minimax-m3',
+    )
+    routine = providers.resolve_tier1_endpoint(settings)
+    assert (routine.provider, routine.model) == ('opencode_go', 'deepseek/deepseek-v4.1-flash')
+    assert routine.configured and routine.label == 'OpenCode Go'
+    analysis = providers.resolve_tier1_analysis_endpoint(settings)
+    assert (analysis.provider, analysis.model) == ('opencode_go', 'minimax-m3')
+    assert analysis.configured
+    # A selected provider without its own key stays unavailable instead of
+    # borrowing another provider's key.
+    missing = SimpleNamespace(**{**vars(settings), 'opencode_go_api_key': None})
+    ep = providers.resolve_tier1_endpoint(missing)
+    assert ep.provider == 'tier1_unavailable' and not ep.configured
+    assert ep.base_url == ''
+    # Unknown provider/model falls back to the hop default, never another hop.
+    weird = SimpleNamespace(**{**vars(settings), 'tier1_routine_provider': 'nope', 'tier1_routine_model': ''})
+    ep2 = providers.resolve_tier1_endpoint(weird)
+    assert (ep2.provider, ep2.model) == ('openrouter', providers.TIER1_FREE_MODEL)

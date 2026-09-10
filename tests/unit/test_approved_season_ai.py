@@ -164,6 +164,26 @@ def test_flash_before_grok_does_not_spend_analysis_budget(monkeypatch, tmp_path)
     assert not (tmp_path / 'data/cache/tier1_briefings/season-budget.json').exists()
 
 
+def test_analysis_hop_uses_configured_provider(monkeypatch, tmp_path):
+    setup(tmp_path)
+    ns = SimpleNamespace(openrouter_api_key=None, xai_api_key=None, deepseek_api_key=None,
+        opencode_api_key=None, opencode_go_api_key='go-test', xai_base_url=None,
+        tier1_analysis_provider='opencode_go', tier1_analysis_model='minimax-m3')
+    monkeypatch.setattr('kr_quant.settings.load_settings', lambda: ns)
+    calls = []
+    def chat(endpoint, *args):
+        calls.append((endpoint.provider, endpoint.model))
+        if endpoint.provider == 'openrouter':
+            raise TimeoutError()
+        return json.dumps(CARD), {}
+    monkeypatch.setattr(approved, 'bounded_chat', chat)
+    result = contract.tier1_cached_chat_json(tmp_path, FREE, namespace='seasonality', prompt_version='test',
+        evidence={'v': 9}, messages=[], evidence_count=1, as_of='2026-09-08',
+        sources=['test'], missing=[], payload_validator=validate_season_card)
+    assert result['ok'] and result['provider'] == 'opencode_go'
+    assert ('opencode_go', 'minimax-m3') in calls
+
+
 def test_analysis_pro_after_grok_failure(monkeypatch, tmp_path):
     setup(tmp_path)
     calls = []

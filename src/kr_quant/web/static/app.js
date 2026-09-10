@@ -4766,7 +4766,7 @@ async function renderStatusPanel() {
   const llmName = status.llm_label || status.llm_provider || "openrouter";
   const llmModel = status.llm_model ? status.llm_model.split("/").pop() : "";
   const llmDisplay = llmModel ? `🤖 AI: ${llmName} (${llmModel}) ▾` : `🤖 AI: ${llmName} ▾`;
-  setChip($("#chip-llm"), llmDisplay, `심층 리포트 생성 모델: ${status.llm_model || llmName}. 메뉴 브리핑은 Nemotron→Flash→(분석) Grok/Pro 고정 경로라 이 칩과 따로입니다.`);
+  setChip($("#chip-llm"), llmDisplay, `심층 리포트 생성 모델: ${status.llm_model || llmName}. 메뉴 브리핑은 API 설정의 Tier1 체인 순서대로라 이 칩과 따로입니다.`);
   paintAiArchitectureCard({ label: status.llm_label || llmName, provider: status.llm_provider, model: status.llm_model });
   renderKpis(status, dashRows);
   renderJob(status.job);
@@ -10083,6 +10083,8 @@ function setupKeyShowHideToggles() {
               "key-xai": "xai_api_key",
               "key-deepseek": "deepseek_api_key",
               "key-openrouter": "openrouter_api_key",
+              "key-opencode": "opencode_api_key",
+              "key-opencode-go": "opencode_go_api_key",
               "key-naver-id": "naver_client_id",
               "key-naver-secret": "naver_client_secret",
               "key-naver-map-id": "naver_map_client_id",
@@ -10127,6 +10129,7 @@ async function loadSettings() {
   syncDecorated($("#llm-model-select"));
   renderGrokAuth(s.grok_auth);
   renderAntigravityAuth(s.antigravity_auth);
+  renderTier1Config(s);
   await loadModels({ reset: false }).catch(() => {});
   renderConnections().catch(() => {});
   metaLine($("#meta-opendart"), s.opendart_api_key);
@@ -10151,6 +10154,8 @@ async function loadSettings() {
   metaLine($("#meta-xai"), s.xai_api_key);
   metaLine($("#meta-deepseek"), s.deepseek_api_key);
   if ($("#meta-openrouter") && s.openrouter_api_key) metaLine($("#meta-openrouter"), s.openrouter_api_key);
+  if ($("#meta-opencode") && s.opencode_api_key) metaLine($("#meta-opencode"), s.opencode_api_key);
+  if ($("#meta-opencode-go") && s.opencode_go_api_key) metaLine($("#meta-opencode-go"), s.opencode_go_api_key);
   if ($("#meta-kiwoom-app")) metaLine($("#meta-kiwoom-app"), s.kiwoom_app_key);
   if ($("#meta-kiwoom-secret")) metaLine($("#meta-kiwoom-secret"), s.kiwoom_secret_key);
   if ($("#meta-tavily")) metaLine($("#meta-tavily"), s.tavily_api_key);
@@ -10177,6 +10182,8 @@ async function saveSettings() {
       xai_api_key: keyOrNull("#key-xai"),
       deepseek_api_key: keyOrNull("#key-deepseek"),
       openrouter_api_key: keyOrNull("#key-openrouter"),
+      opencode_api_key: keyOrNull("#key-opencode"),
+      opencode_go_api_key: keyOrNull("#key-opencode-go"),
       kis_app_key: keyOrNull("#key-kis"),
       kis_app_secret: keyOrNull("#key-kis-secret"),
       naver_client_id: keyOrNull("#key-naver-id"),
@@ -11202,7 +11209,7 @@ function decorateSelect(sel) {
       const item = document.createElement("button");
       item.type = "button";
       item.className = "sel-item" + (opt.selected ? " on" : "");
-      const info = MODEL_TOKEN_INFO[opt.value];
+      const info = modelTokenInfo($("#llm-provider")?.value, opt.value);
       if (info && sel.id === "llm-model-select") {
         const isFree = info.badge.includes("무료") || info.badge.includes("CLI");
         item.innerHTML = `
@@ -11245,6 +11252,8 @@ const PROVIDER_LABELS = {
   antigravity: "Google agy",
   deepseek: "DeepSeek",
   openrouter: "OpenRouter",
+  opencode: "OpenCode Zen",
+  opencode_go: "OpenCode Go",
 };
 
 const PROVIDER_MODELS = {
@@ -11275,6 +11284,26 @@ const PROVIDER_MODELS = {
     "z-ai/glm-5.2",
     "upstage/solar-pro4",
   ],
+  opencode: [
+    "deepseek/deepseek-v4-flash-0731",
+    "openai/gpt-5.6-luna",
+    "zhipuai/glm-5.3-flash",
+    "google/gemini-3.7-flash",
+    "anthropic/claude-sonnet-5",
+    "moonshotai/kimi-k3",
+    "deepseek/deepseek-v4-pro",
+    "xai/grok-4.6",
+  ],
+  opencode_go: [
+    "deepseek-v4-pro",
+    "deepseek/deepseek-v4.1-flash",
+    "zhipuai/glm-5.3-flash",
+    "openai/gpt-5.6-luna",
+    "xai/grok-4.6",
+    "minimax-m3",
+    "muse-spark-1.3-contributor",
+    "moonshotai/kimi-k3",
+  ],
 };
 
 const MODEL_TOKEN_INFO = {
@@ -11291,7 +11320,36 @@ const MODEL_TOKEN_INFO = {
   "grok-4.6": { badge: "⚡ xAI 기본", tokens: "표준 요금제", desc: "xAI 최신 Grok 4.6 리서치" },
   "deepseek-chat": { badge: "🧠 공식 API", tokens: "초저비용 ($0.14 / 1M 토큰)", desc: "DeepSeek 공식 API 직접 연동" },
   "deepseek-reasoner": { badge: "🧠 공식 API", tokens: "표준 ($0.55 / 1M 토큰)", desc: "DeepSeek R1 공식 추론 직접 연동" },
+  "zhipuai/glm-5.3-flash": { badge: "⚡ 초저비용", tokens: "초저비용 ($0.15 / 1M 토큰)", desc: "Zen 경유 GLM 플래시 · 가성비 추론" },
+  "anthropic/claude-sonnet-5": { badge: "🧠 정밀분석", tokens: "고효율 ($2.00 / 1M 토큰)", desc: "Zen 경유 Claude 정밀 리서치·추론" },
+  "moonshotai/kimi-k3": { badge: "📚 장문분석", tokens: "대용량 ($3.00 / 1M 토큰)", desc: "Zen 경유 1M 컨텍스트 장문 분석" },
+  "deepseek/deepseek-v4-pro": { badge: "⚡ 프로추론", tokens: "고효율 ($1.74 / 1M 토큰)", desc: "Zen 경유 정밀 퀀트 분석 및 고급 추론" },
+  "xai/grok-4.6": { badge: "🛰️ 최신 Grok", tokens: "표준 ($2.00 / 1M 토큰)", desc: "Zen 경유 xAI 최신 Grok 리서치" },
+  "deepseek-v4-pro": { badge: "⚡ 프로추론", tokens: "고효율 ($0.66 / 1M 토큰)", desc: "Go 경유 DeepSeek V4 Pro 신규모델" },
+  "deepseek/deepseek-v4.1-flash": { badge: "⭐ Go 기본", tokens: "초저비용 ($0.15 / 1M 토큰)", desc: "Go 경유 DeepSeek V4.1 Flash" },
+  "minimax-m3": { badge: "🧠 고지능", tokens: "저비용 ($0.30 / 1M 토큰)", desc: "Go 경유 MiniMax-M3 코딩·추론" },
+  "muse-spark-1.3-contributor": { badge: "✨ 기여모델", tokens: "초저비용 ($0.10 / 1M 토큰)", desc: "Go 경유 Muse Spark 1.3" },
 };
+
+// Zen shares some model ids with OpenRouter at different prices.
+// Provider-scoped entries win over MODEL_TOKEN_INFO for that provider.
+const MODEL_TOKEN_INFO_OVERRIDES = {
+  opencode: {
+    "deepseek/deepseek-v4-flash-0731": { badge: "⭐ 기본추천", tokens: "초저비용 ($0.14 / 1M 토큰)", desc: "Zen 실전 기본 · 초저비용 플래시" },
+    "openai/gpt-5.6-luna": { badge: "🔮 차세대 경량", tokens: "저비용 ($0.20 / 1M 토큰)", desc: "Zen 경유 OpenAI 차세대 경량 플래그십" },
+    "google/gemini-3.7-flash": { badge: "⚡ 초고속", tokens: "표준 ($1.50 / 1M 토큰)", desc: "Zen 경유 Google 차세대 초고속 Flash" },
+  },
+  opencode_go: {
+    "zhipuai/glm-5.3-flash": { badge: "⚡ 초저비용", tokens: "초저비용 ($0.15 / 1M 토큰)", desc: "Go 경유 GLM 플래시 · 가성비 추론" },
+    "openai/gpt-5.6-luna": { badge: "🔮 차세대 경량", tokens: "저비용 ($0.20 / 1M 토큰)", desc: "Go 경유 OpenAI 차세대 경량 플래그십" },
+    "xai/grok-4.6": { badge: "🛰️ 최신 Grok", tokens: "표준 ($2.00 / 1M 토큰)", desc: "Go 경유 xAI 최신 Grok 리서치" },
+    "moonshotai/kimi-k3": { badge: "📚 장문분석", tokens: "대용량 ($3.00 / 1M 토큰)", desc: "Go 경유 1M 컨텍스트 장문 분석" },
+  },
+};
+
+function modelTokenInfo(provider, id) {
+  return ((MODEL_TOKEN_INFO_OVERRIDES[provider] || {})[id]) || MODEL_TOKEN_INFO[id];
+}
 
 function applyModelOptions(ids, selected) {
   const sel = $("#llm-model-select");
@@ -11318,16 +11376,98 @@ const TIER1_FREE_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free";
 const TIER1_FLASH_MODEL = "deepseek/deepseek-v4-flash-0731";
 const TIER1_PRO_MODEL = "deepseek/deepseek-v4-pro-0813";
 
+const TIER1_SLOTS = [
+  { key: "routine", provId: "tier1-routine-provider", modelId: "tier1-routine-model" },
+  { key: "routine_paid", provId: "tier1-routine-paid-provider", modelId: "tier1-routine-paid-model" },
+  { key: "analysis", provId: "tier1-analysis-provider", modelId: "tier1-analysis-model" },
+  { key: "analysis_pro", provId: "tier1-analysis-pro-provider", modelId: "tier1-analysis-pro-model" },
+];
+
+function fillTier1ProviderSelect(sel, selected) {
+  sel.innerHTML = "";
+  Object.entries(PROVIDER_LABELS).forEach(([value, label]) => {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+  if (selected && PROVIDER_LABELS[selected]) sel.value = selected;
+}
+
+function fillTier1ModelSelect(sel, provider, selected) {
+  const list = [...new Set([(PROVIDER_MODELS[provider] || []), selected].flat().filter(Boolean))];
+  sel.innerHTML = "";
+  list.forEach((id) => {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = id;
+    sel.appendChild(opt);
+  });
+  if (selected && list.includes(selected)) sel.value = selected;
+}
+
+function renderTier1Config(s) {
+  const tier1 = (s && s.tier1) || {};
+  TIER1_SLOTS.forEach((slot) => {
+    const provSel = document.getElementById(slot.provId);
+    const modelSel = document.getElementById(slot.modelId);
+    if (!provSel || !modelSel) return;
+    const cur = tier1[slot.key] || {};
+    fillTier1ProviderSelect(provSel, cur.provider);
+    fillTier1ModelSelect(modelSel, provSel.value, cur.model);
+    provSel.onchange = () => fillTier1ModelSelect(modelSel, provSel.value, modelSel.value);
+  });
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value || "미설정";
+  };
+  setText("tier1-live-model", (tier1.routine || {}).model);
+  setText("tier1-live-paid-model", (tier1.routine_paid || {}).model);
+  setText("tier1-live-analysis-model", (tier1.analysis || {}).model);
+  setText("tier1-live-pro-model", (tier1.analysis_pro || {}).model);
+}
+
+async function saveTier2Config() {
+  const state = $("#tier2-save-state");
+  if (state) state.textContent = "저장 중…";
+  try {
+    await saveSettings();
+    await loadSettings();
+    if (state) state.textContent = "저장됨. 심층 리포트 버튼부터 적용됩니다.";
+  } catch (err) {
+    if (state) state.textContent = `저장 실패: ${err.message}`;
+  }
+}
+
+async function saveTier1Config() {
+  const state = $("#tier1-save-state");
+  const body = {};
+  const fieldOf = (slot, kind) => (kind === "prov" ? `tier1_${slot}_provider` : `tier1_${slot}_model`);
+  TIER1_SLOTS.forEach((slot) => {
+    const prov = document.getElementById(slot.provId);
+    const model = document.getElementById(slot.modelId);
+    body[fieldOf(slot.key, "prov")] = prov ? prov.value : null;
+    body[fieldOf(slot.key, "model")] = model && model.value.trim() ? model.value.trim() : null;
+  });
+  if (state) state.textContent = "저장 중…";
+  try {
+    const s = await api("/api/settings", { method: "PUT", body: JSON.stringify(body) });
+    renderTier1Config(s);
+    renderConnections().catch(() => {});
+    if (state) state.textContent = "저장됨. 다음 브리핑부터 적용됩니다.";
+  } catch (err) {
+    if (state) state.textContent = `저장 실패: ${err.message}`;
+  }
+}
+
 function paintAiArchitectureCard(active = {}) {
-  const t1 = $("#tier1-live-model");
-  if (t1) t1.textContent = TIER1_FREE_MODEL;
   const t2 = $("#tier2-live-model");
   if (t2) t2.textContent = active.model || lastStatus?.llm_model || "—";
   const note = $("#tier2-live-note");
   if (note && (active.model || lastStatus?.llm_model)) {
     const label = active.label || lastStatus?.llm_label || active.provider || lastStatus?.llm_provider || "선택 모델";
     const model = active.model || lastStatus?.llm_model;
-    note.innerHTML = `지금 상단 칩은 <b>${escapeHtml(label)} · ${escapeHtml(model)}</b> 입니다. 종목 ‘AI 심층 분석 리포트’ 버튼을 새로 누를 때만 이 모델이 쓰입니다. 메뉴 브리핑은 ${escapeHtml(TIER1_FREE_MODEL)} → ${escapeHtml(TIER1_FLASH_MODEL)} → grok-4.6 → ${escapeHtml(TIER1_PRO_MODEL)} 입니다.`;
+    note.innerHTML = `지금 상단 칩은 <b>${escapeHtml(label)} · ${escapeHtml(model)}</b> 입니다. 종목 ‘AI 심층 분석 리포트’ 버튼을 새로 누를 때만 이 모델이 쓰입니다. 메뉴 브리핑은 왼쪽 카드의 체인(일상 1순위 → 대체 → 분석 1순위 → 대체) 순서대로 시도합니다.`;
   }
 }
 
@@ -11384,6 +11524,8 @@ async function loadModels({ reset = false } = {}) {
 }
 
 $("#save-keys").addEventListener("click", () => saveSettings().catch((err) => alert(err.message)));
+$("#tier1-save-btn")?.addEventListener("click", () => saveTier1Config().catch((err) => alert(err.message)));
+$("#tier2-save-btn")?.addEventListener("click", () => saveTier2Config().catch((err) => alert(err.message)));
 $("#test-keys").addEventListener("click", () => testSettings().catch((err) => alert(err.message)));
 if ($("#telegram-chats")) {
   $("#telegram-chats").addEventListener("click", () => findTelegramChats().catch((err) => alert(err.message)));
@@ -14615,7 +14757,7 @@ function selectQuickProvider(prov) {
       const bg = active ? "rgba(56,189,248,0.2)" : "#111c30";
       const border = active ? "1px solid #38bdf8" : "1px solid rgba(255,255,255,0.08)";
       const color = active ? "#38bdf8" : "#cbd5e1";
-      const info = MODEL_TOKEN_INFO[m] || { badge: "AI 모델", tokens: "표준 토큰 소모", desc: "" };
+      const info = modelTokenInfo(prov, m) || { badge: "AI 모델", tokens: "표준 토큰 소모", desc: "" };
       const isFree = info.badge.includes("무료") || info.badge.includes("CLI");
       return `
         <button type="button" class="tag-btn quick-mod-chip" data-model="${escapeHtml(m)}" style="background:${bg}; border:${border}; color:${color}; font-size:12px; padding:8px 12px; cursor:pointer; border-radius:8px; display:flex; justify-content:space-between; align-items:center; width:100%; gap:10px; text-align:left; transition:all 0.15s; box-sizing:border-box;">
@@ -14671,7 +14813,7 @@ async function saveQuickLlmChoice() {
     }
     
     const provLabel = PROVIDER_LABELS[provToSave] || provToSave;
-    setChip($("#chip-llm"), `🤖 AI: ${provLabel} · ${modelToSave.split("/").pop()}`, `심층 리포트 생성 모델: ${modelToSave}. 메뉴 브리핑은 Nemotron→Flash→Grok/Pro 고정 경로라 다시 그리지 않습니다.`);
+    setChip($("#chip-llm"), `🤖 AI: ${provLabel} · ${modelToSave.split("/").pop()}`, `심층 리포트 생성 모델: ${modelToSave}. 메뉴 브리핑은 API 설정의 Tier1 체인 순서대로라 다시 그리지 않습니다.`);
     paintAiArchitectureCard({ label: provLabel, provider: provToSave, model: modelToSave });
     renderConnections().catch(() => {});
     showToast(`심층 리포트 모델이 <b>${escapeHtml(provLabel)} · ${escapeHtml(modelToSave)}</b>(으)로 바뀌었습니다. 이미 떠 있는 메뉴 브리핑은 캐시라 모델명이 바로 바뀌지 않습니다.`, "success", 5000);

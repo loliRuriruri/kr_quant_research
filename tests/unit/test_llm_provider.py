@@ -45,9 +45,62 @@ def test_xai_drops_openrouter_model():
 
 def test_removed_providers_fall_back_to_grok():
     assert "openai" not in PROVIDERS
-    assert set(PROVIDERS) == {"xai", "antigravity", "deepseek", "openrouter"}
+    assert set(PROVIDERS) == {"xai", "antigravity", "deepseek", "openrouter", "opencode", "opencode_go"}
     assert resolve_provider(_S(), "openai").provider == "xai"
-    assert resolve_provider(_S(), "opencode").provider == "xai"
+
+
+def test_opencode_zen_provider():
+    from kr_quant.research.providers import coerce_model, fallback_models, list_chat_models, model_fits_provider, normalize_provider, sort_models
+
+    assert normalize_provider("opencode") == "opencode"
+    assert normalize_provider("zen") == "opencode"
+
+    class S(_S):
+        llm_provider = "opencode"
+        llm_model = None
+        opencode_api_key = "zen-test"
+
+    ep = resolve_provider(S())
+    assert ep.provider == "opencode"
+    assert ep.base_url == "https://opencode.ai/zen/v1"
+    assert ep.model == "deepseek/deepseek-v4-flash-0731"
+    assert ep.configured
+    assert model_fits_provider("opencode", "openai/gpt-5.6-luna")
+    assert model_fits_provider("opencode", "kimi-k2.5")
+    assert coerce_model("opencode", "openai/gpt-5.6-luna") == "openai/gpt-5.6-luna"
+    curated = list_chat_models(ep)
+    assert curated == fallback_models("opencode") == sort_models("opencode", curated)
+    assert len(curated) == 8
+
+    class NoKey(_S):
+        llm_provider = "opencode"
+        llm_model = None
+        opencode_api_key = None
+
+    assert resolve_provider(NoKey()).configured is False
+
+
+def test_opencode_go_provider():
+    from kr_quant.research.providers import fallback_models, list_chat_models, model_fits_provider, normalize_provider, sort_models
+
+    assert normalize_provider("opencode-go") == "opencode_go"
+
+    class S(_S):
+        llm_provider = "opencode_go"
+        llm_model = None
+        opencode_go_api_key = "go-test"
+
+    ep = resolve_provider(S())
+    assert ep.provider == "opencode_go"
+    assert ep.base_url == "https://opencode.ai/zen/go/v1"
+    assert ep.model == "deepseek-v4-pro"
+    assert ep.configured
+    assert model_fits_provider("opencode_go", "deepseek/deepseek-v4.1-flash")
+    assert model_fits_provider("opencode_go", "minimax-m3")
+    assert model_fits_provider("opencode_go", "muse-spark-1.3-contributor")
+    curated = list_chat_models(ep)
+    assert curated == fallback_models("opencode_go") == sort_models("opencode_go", curated)
+    assert len(curated) == 8
 
 
 def test_antigravity_provider():

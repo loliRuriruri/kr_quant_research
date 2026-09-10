@@ -122,6 +122,16 @@ class SettingsIn(BaseModel):
     xai_api_key: str | None = None
     deepseek_api_key: str | None = None
     openrouter_api_key: str | None = None
+    opencode_api_key: str | None = None
+    opencode_go_api_key: str | None = None
+    tier1_routine_provider: str | None = None
+    tier1_routine_model: str | None = None
+    tier1_routine_paid_provider: str | None = None
+    tier1_routine_paid_model: str | None = None
+    tier1_analysis_provider: str | None = None
+    tier1_analysis_model: str | None = None
+    tier1_analysis_pro_provider: str | None = None
+    tier1_analysis_pro_model: str | None = None
     llm_provider: str | None = None
     llm_model: str | None = None
     custom_llm_base_url: str | None = None
@@ -431,6 +441,8 @@ def api_status(request: Request) -> dict[str, Any]:
             "xai": mask_secret(s.xai_api_key),
             "deepseek": mask_secret(s.deepseek_api_key),
             "openrouter": mask_secret(s.openrouter_api_key),
+            "opencode": mask_secret(s.opencode_api_key),
+            "opencode_go": mask_secret(s.opencode_go_api_key),
             "kis": mask_secret(s.kis_app_key),
         },
         "job": RUNNER.snapshot(),
@@ -442,12 +454,33 @@ def api_settings_get(request: Request) -> dict[str, Any]:
     if public_share_mode(request):
         return {"public_mode": True, "locked": True}
     from kr_quant.research.providers import PROVIDERS, resolve_provider
+    from kr_quant.research.providers import (
+        resolve_tier1_analysis_endpoint,
+        resolve_tier1_analysis_pro_endpoint,
+        resolve_tier1_endpoint,
+        resolve_tier1_routine_paid_endpoint,
+    )
 
     s = load_settings()
     active = resolve_provider(s)
+
+    def _tier1_summary(ep):
+        return {
+            "provider": ep.provider,
+            "label": ep.label,
+            "model": ep.model,
+            "configured": bool(ep.configured),
+        }
+
     return {
         "llm_provider": s.llm_provider or "xai",
         "llm_model": active.model,
+        "tier1": {
+            "routine": _tier1_summary(resolve_tier1_endpoint(s)),
+            "routine_paid": _tier1_summary(resolve_tier1_routine_paid_endpoint(s)),
+            "analysis": _tier1_summary(resolve_tier1_analysis_endpoint(s)),
+            "analysis_pro": _tier1_summary(resolve_tier1_analysis_pro_endpoint(s)),
+        },
         "custom_llm_base_url": s.custom_llm_base_url or "",
         "custom_llm_api_key": mask_secret(s.custom_llm_api_key),
         "providers": {
@@ -460,6 +493,8 @@ def api_settings_get(request: Request) -> dict[str, Any]:
                         "xai": s.xai_api_key or _grok_auth_public().get("connected"),
                         "deepseek": s.deepseek_api_key,
                         "openrouter": s.openrouter_api_key,
+                        "opencode": s.opencode_api_key,
+                        "opencode_go": s.opencode_go_api_key,
                     }.get(name)
                 ),
             }
@@ -470,6 +505,8 @@ def api_settings_get(request: Request) -> dict[str, Any]:
         "xai_api_key": mask_secret(s.xai_api_key),
         "deepseek_api_key": mask_secret(s.deepseek_api_key),
         "openrouter_api_key": mask_secret(s.openrouter_api_key),
+        "opencode_api_key": mask_secret(s.opencode_api_key),
+        "opencode_go_api_key": mask_secret(s.opencode_go_api_key),
         "kis_app_key": mask_secret(s.kis_app_key),
         "kis_app_secret": mask_secret(s.kis_app_secret),
         "kis_base_url": s.kis_base_url,
@@ -497,6 +534,8 @@ def api_settings_get(request: Request) -> dict[str, Any]:
             "xai": "https://console.x.ai/",
             "deepseek": "https://platform.deepseek.com/",
             "openrouter": "https://openrouter.ai/keys",
+            "opencode": "https://opencode.ai/auth",
+            "opencode_go": "https://opencode.ai/auth",
             "fred": "https://fred.stlouisfed.org/docs/api/api_key.html",
             "telegram": "https://core.telegram.org/bots",
             "tavily": "https://tavily.com/",
@@ -514,6 +553,8 @@ def api_settings_raw() -> dict[str, Any]:
         "xai_api_key": s.xai_api_key or "",
         "deepseek_api_key": s.deepseek_api_key or "",
         "openrouter_api_key": s.openrouter_api_key or "",
+        "opencode_api_key": s.opencode_api_key or "",
+        "opencode_go_api_key": s.opencode_go_api_key or "",
         "kis_app_key": s.kis_app_key or "",
         "kis_app_secret": s.kis_app_secret or "",
         "naver_client_id": s.naver_client_id or "",
@@ -542,12 +583,25 @@ def api_settings_put(body: SettingsIn, request: Request) -> dict[str, Any]:
     model = body.llm_model
     if provider is not None:
         model = coerce_model(provider, model)
+
+    def _tier1_provider(value):
+        return normalize_provider(value) if value is not None else None
     mapping = {
         "OPENDART_API_KEY": body.opendart_api_key,
         "KRX_API_KEY": body.krx_api_key,
         "XAI_API_KEY": body.xai_api_key,
         "DEEPSEEK_API_KEY": body.deepseek_api_key,
         "OPENROUTER_API_KEY": body.openrouter_api_key,
+        "OPENCODE_API_KEY": body.opencode_api_key,
+        "OPENCODE_GO_API_KEY": body.opencode_go_api_key,
+        "TIER1_ROUTINE_PROVIDER": _tier1_provider(body.tier1_routine_provider),
+        "TIER1_ROUTINE_MODEL": body.tier1_routine_model,
+        "TIER1_ROUTINE_PAID_PROVIDER": _tier1_provider(body.tier1_routine_paid_provider),
+        "TIER1_ROUTINE_PAID_MODEL": body.tier1_routine_paid_model,
+        "TIER1_ANALYSIS_PROVIDER": _tier1_provider(body.tier1_analysis_provider),
+        "TIER1_ANALYSIS_MODEL": body.tier1_analysis_model,
+        "TIER1_ANALYSIS_PRO_PROVIDER": _tier1_provider(body.tier1_analysis_pro_provider),
+        "TIER1_ANALYSIS_PRO_MODEL": body.tier1_analysis_pro_model,
         "LLM_PROVIDER": provider,
         "LLM_MODEL": model,
         "CUSTOM_LLM_BASE_URL": body.custom_llm_base_url,
@@ -889,6 +943,10 @@ def api_llm_connections() -> dict[str, Any]:
             via = "API 키" if s.deepseek_api_key else None
         elif name == "openrouter":
             via = "API 키" if s.openrouter_api_key else None
+        elif name == "opencode":
+            via = "API 키" if s.opencode_api_key else None
+        elif name == "opencode_go":
+            via = "API 키" if s.opencode_go_api_key else None
         models = fallback_models(name)
         source = "fallback"
         if ep.configured and name != "openrouter":
@@ -1972,10 +2030,9 @@ def api_us13f_tier1_briefing_get() -> dict[str, Any]:
 
 @app.get("/api/seasonality/tier1-briefing")
 def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
-    from kr_quant.research.providers import resolve_tier1_endpoint
+    from kr_quant.research.providers import resolve_tier1_endpoint, resolve_tier1_analysis_endpoint
     from kr_quant.research.season_ai_quality import validate_season_card
     from kr_quant.research.approved_season_ai import policy
-    from kr_quant.research.providers import resolve_provider
 
     s = load_settings()
     endpoint = resolve_tier1_endpoint(s)
@@ -2071,7 +2128,7 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
         prompt_version=prompt_version,
         evidence=seasonality_context,
         payload_validator=validate_season_card,
-        fallback_endpoint=resolve_provider(s, 'xai') if policy(s.root).get('grok_fallback_enabled') is True else None,
+        fallback_endpoint=resolve_tier1_analysis_endpoint(s) if policy(s.root).get('grok_fallback_enabled') is True else None,
         messages=[
             {"role": "system", "content": "You are a stock market seasonality quant specialist. Output strictly in JSON."},
             {"role": "user", "content": prompt},

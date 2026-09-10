@@ -1,4 +1,4 @@
-"""Bounded menu-briefing cascade: Nemotron :free → Flash → Grok → Pro."""
+"""Bounded menu-briefing cascade: routine → routine-paid → analysis → analysis-pro."""
 import json
 import os
 import queue
@@ -231,7 +231,6 @@ def approved_briefing(root, endpoint, fallback, **kwargs):
     analysis_grok = fallback if (
         cfg.get('grok_fallback_enabled') is True
         and _usable(fallback)
-        and getattr(fallback, 'provider', None) == 'xai'
     ) else None
     hops = _endpoint_list(endpoint, routine, analysis_grok, analysis_pro)
     folder = Path(root) / 'data/cache/tier1_briefings'

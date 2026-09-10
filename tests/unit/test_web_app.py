@@ -223,6 +223,84 @@ def test_models_for_xai_do_not_keep_openrouter_id():
     assert all("/" not in m or m == data["selected"] for m in data["models"])
 
 
+def test_tier1_chain_settings_roundtrip(monkeypatch):
+    data = client.get("/api/settings").json()
+    assert set(data["tier1"]) == {"routine", "routine_paid", "analysis", "analysis_pro"}
+    for hop in data["tier1"].values():
+        assert set(hop) == {"provider", "label", "model", "configured"}
+    assert data["tier1"]["routine"]["model"].endswith(":free")
+    assert data["tier1"]["analysis"]["provider"] in {"xai", "tier1_unavailable"}
+    captured = {}
+    monkeypatch.setattr("kr_quant.web.app.upsert_env_file", lambda path, mapping: captured.update(mapping))
+    monkeypatch.setattr("kr_quant.web.app.apply_env_to_process", lambda path: None)
+    body = {"tier1_routine_provider": "opencode_go", "tier1_routine_model": "deepseek/deepseek-v4.1-flash",
+            "tier1_analysis_provider": "opencode_go", "tier1_analysis_model": "minimax-m3"}
+    resp = client.put("/api/settings", json=body)
+    assert resp.status_code == 200
+    assert captured["TIER1_ROUTINE_PROVIDER"] == "opencode_go"
+    assert captured["TIER1_ROUTINE_MODEL"] == "deepseek/deepseek-v4.1-flash"
+    assert captured["TIER1_ANALYSIS_PROVIDER"] == "opencode_go"
+    assert captured["TIER1_ANALYSIS_MODEL"] == "minimax-m3"
+    html = client.get("/").text
+    for sel in ("tier1-routine-provider", "tier1-routine-model", "tier1-routine-paid-provider",
+                "tier1-routine-paid-model", "tier1-analysis-provider", "tier1-analysis-model",
+                "tier1-analysis-pro-provider", "tier1-analysis-pro-model",
+                "tier1-save-btn", "tier1-live-model", "tier1-live-paid-model",
+                "tier1-live-analysis-model", "tier1-live-pro-model",
+                "tier2-save-btn", "tier2-save-state"):
+        assert f'id="{sel}"' in html
+    js = client.get("/static/app.js").text
+    assert "TIER1_SLOTS" in js and "renderTier1Config" in js and "saveTier1Config" in js
+
+
+def test_opencode_models_and_settings_wiring():
+    data = client.get("/api/llm/models?provider=opencode").json()
+    assert data["provider"] == "opencode"
+    assert data["label"] == "OpenCode Zen"
+    assert data["default_model"] == "deepseek/deepseek-v4-flash-0731"
+    assert data["models"][:8] == [
+        "deepseek/deepseek-v4-flash-0731",
+        "openai/gpt-5.6-luna",
+        "zhipuai/glm-5.3-flash",
+        "google/gemini-3.7-flash",
+        "anthropic/claude-sonnet-5",
+        "moonshotai/kimi-k3",
+        "deepseek/deepseek-v4-pro",
+        "xai/grok-4.6",
+    ]
+    settings = client.get("/api/settings").json()
+    assert "opencode_api_key" in settings
+    assert settings["providers"]["opencode"]["label"] == "OpenCode Zen"
+    assert settings["help"]["opencode"] == "https://opencode.ai/auth"
+    home = client.get("/").text
+    assert 'value="opencode"' in home
+    assert 'id="key-opencode"' in home
+    assert 'data-provider="opencode"' in home
+    go = client.get("/api/llm/models?provider=opencode_go").json()
+    assert go["provider"] == "opencode_go"
+    assert go["label"] == "OpenCode Go"
+    assert go["default_model"] == "deepseek-v4-pro"
+    # The active ambient model is appended after the curated lineup, if new.
+    assert go["models"][:8] == [
+        "deepseek-v4-pro",
+        "deepseek/deepseek-v4.1-flash",
+        "zhipuai/glm-5.3-flash",
+        "openai/gpt-5.6-luna",
+        "xai/grok-4.6",
+        "minimax-m3",
+        "muse-spark-1.3-contributor",
+        "moonshotai/kimi-k3",
+    ]
+    assert settings["providers"]["opencode_go"]["label"] == "OpenCode Go"
+    assert 'value="opencode_go"' in home
+    assert 'id="key-opencode-go"' in home
+    assert 'data-provider="opencode_go"' in home
+    js = client.get("/static/app.js").text
+    assert "function modelTokenInfo" in js
+    assert "key-opencode" in js
+    assert "opencode_api_key" in js
+
+
 def test_research_reports_list_endpoint():
     data = client.get("/api/research/reports").json()
     assert "rows" in data
@@ -403,7 +481,7 @@ def test_connections_lists_providers():
     data = client.get("/api/llm/connections").json()
     assert "active" in data
     names = {c["id"] for c in data["connections"]}
-    assert names == {"xai", "antigravity", "deepseek", "openrouter"}
+    assert names == {"xai", "antigravity", "deepseek", "openrouter", "opencode", "opencode_go"}
     html = client.get("/").text
     assert "llm-active-line" in html
 
@@ -433,7 +511,7 @@ def test_settings_has_no_standalone_openai():
     assert 'value="openai"' not in home.text
     data = client.get("/api/settings").json()
     assert "openai" not in data["providers"]
-    assert set(data["providers"]) == {"xai", "antigravity", "deepseek", "openrouter"}
+    assert set(data["providers"]) == {"xai", "antigravity", "deepseek", "openrouter", "opencode", "opencode_go"}
     assert "openai_api_key" not in data
     assert "fred_api_key" in data
     assert "telegram_bot_token" in data

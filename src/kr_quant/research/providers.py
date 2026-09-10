@@ -66,6 +66,40 @@ PROVIDERS = {
             "upstage/solar-pro4",
         ],
     },
+    "opencode": {
+        "label": "OpenCode Zen",
+        "base_url": "https://opencode.ai/zen/v1",
+        "model": "deepseek/deepseek-v4-flash-0731",
+        "env_key": "OPENCODE_API_KEY",
+        "help": "https://opencode.ai/auth",
+        "fallback_models": [
+            "deepseek/deepseek-v4-flash-0731",
+            "openai/gpt-5.6-luna",
+            "zhipuai/glm-5.3-flash",
+            "google/gemini-3.7-flash",
+            "anthropic/claude-sonnet-5",
+            "moonshotai/kimi-k3",
+            "deepseek/deepseek-v4-pro",
+            "xai/grok-4.6",
+        ],
+    },
+    "opencode_go": {
+        "label": "OpenCode Go",
+        "base_url": "https://opencode.ai/zen/go/v1",
+        "model": "deepseek-v4-pro",
+        "env_key": "OPENCODE_GO_API_KEY",
+        "help": "https://opencode.ai/auth",
+        "fallback_models": [
+            "deepseek-v4-pro",
+            "deepseek/deepseek-v4.1-flash",
+            "zhipuai/glm-5.3-flash",
+            "openai/gpt-5.6-luna",
+            "xai/grok-4.6",
+            "minimax-m3",
+            "muse-spark-1.3-contributor",
+            "moonshotai/kimi-k3",
+        ],
+    },
 }
 
 DEFAULT_PROVIDER = "xai"
@@ -79,7 +113,7 @@ OPENROUTER_MODEL_ALIASES: dict[str, str] = {
     "qwen/qwen-2.5-vl-72b-instruct": "qwen/qwen2.5-vl-72b-instruct",
 }
 
-REMOVED_PROVIDERS = frozenset({"openai", "opencode", "custom"})
+REMOVED_PROVIDERS = frozenset({"openai", "custom"})
 
 
 def normalize_provider(name: str | None) -> str:
@@ -88,6 +122,10 @@ def normalize_provider(name: str | None) -> str:
         return "xai"
     if n in ("agy", "google", "gemini", "antigravity_cli", "google_antigravity", "antigravity"):
         return "antigravity"
+    if n in ("zen", "opencode_zen", "opencodezen"):
+        return "opencode"
+    if n in ("opencode-go", "opencodego", "opencode_go"):
+        return "opencode_go"
     if n in REMOVED_PROVIDERS:
         return DEFAULT_PROVIDER
     return n or DEFAULT_PROVIDER
@@ -99,6 +137,9 @@ def model_fits_provider(provider: str, model: str | None) -> bool:
         return False
     if provider == "openrouter":
         return "/" in m
+    if provider in ("opencode", "opencode_go"):
+        # Zen/Go serve both prefixed (author/model) and short model ids.
+        return True
     if provider == "antigravity":
         return "/" not in m
     if "/" in m:
@@ -164,6 +205,8 @@ def resolve_provider(settings: Any, provider: str | None = None) -> LlmEndpoint:
         "antigravity": session_key,
         "deepseek": getattr(settings, "deepseek_api_key", None),
         "openrouter": getattr(settings, "openrouter_api_key", None),
+        "opencode": getattr(settings, "opencode_api_key", None),
+        "opencode_go": getattr(settings, "opencode_go_api_key", None),
     }
     model = coerce_model(name, getattr(settings, "llm_model", None))
     base = spec["base_url"]
@@ -256,11 +299,41 @@ def sort_models(provider: str, models: list[str]) -> list[str]:
         tail = [m for m in uniq if m not in head]
         return head + tail
 
+    if provider == "opencode":
+        pinned = [
+            "deepseek/deepseek-v4-flash-0731",
+            "openai/gpt-5.6-luna",
+            "zhipuai/glm-5.3-flash",
+            "google/gemini-3.7-flash",
+            "anthropic/claude-sonnet-5",
+            "moonshotai/kimi-k3",
+            "deepseek/deepseek-v4-pro",
+            "xai/grok-4.6",
+        ]
+        head = [m for m in pinned if m in uniq]
+        tail = [m for m in uniq if m not in head]
+        return head + tail
+
+    if provider == "opencode_go":
+        pinned = [
+            "deepseek-v4-pro",
+            "deepseek/deepseek-v4.1-flash",
+            "zhipuai/glm-5.3-flash",
+            "openai/gpt-5.6-luna",
+            "xai/grok-4.6",
+            "minimax-m3",
+            "muse-spark-1.3-contributor",
+            "moonshotai/kimi-k3",
+        ]
+        head = [m for m in pinned if m in uniq]
+        tail = [m for m in uniq if m not in head]
+        return head + tail
+
     return uniq
 
 
 def list_chat_models(endpoint: LlmEndpoint) -> list[str]:
-    if endpoint.provider in ("antigravity", "openrouter"):
+    if endpoint.provider in ("antigravity", "openrouter", "opencode", "opencode_go"):
         curated = fallback_models(endpoint.provider)
         if endpoint.model and endpoint.model not in curated:
             curated.append(endpoint.model)
@@ -312,56 +385,103 @@ def fetch_remote_models(endpoint: LlmEndpoint, timeout: int = 20) -> list[str]:
 
 TIER1_FREE_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 TIER1_ROUTINE_PAID_MODEL = "deepseek/deepseek-v4-flash-0731"
+TIER1_ANALYSIS_MODEL = "grok-4.6"
 TIER1_ANALYSIS_PRO_MODEL = "deepseek/deepseek-v4-pro-0813"
 
 
-def _openrouter_named(settings: Any, model: str, label: str) -> LlmEndpoint:
-    or_key = getattr(settings, "openrouter_api_key", None)
-    if or_key:
-        return LlmEndpoint(
-            provider="openrouter",
-            label=label,
-            base_url="https://openrouter.ai/api/v1",
-            model=model,
-            api_key=or_key,
+def _tier1_endpoint(settings: Any, *, hop: str, provider_attr: str, model_attr: str,
+                    default_provider: str, default_model: str) -> LlmEndpoint:
+    """User-configurable Tier1 hop that reuses the provider registry.
+
+    Missing access returns an unconfigured endpoint. It never borrows another
+    provider's key, so an unset key cannot silently become a paid call.
+    The label always names the effective provider so cards never show a
+    stale model name.
+    """
+    from types import SimpleNamespace
+
+    name = normalize_provider(getattr(settings, provider_attr, None) or default_provider)
+    if name not in PROVIDERS:
+        name = default_provider
+    model = coerce_model(name, str(getattr(settings, model_attr, None) or "").strip() or default_model)
+    if name in ("xai", "antigravity"):
+        # Session/CLI providers keep their dedicated resolution path.
+        shim = SimpleNamespace(
+            llm_provider=name,
+            llm_model=model,
+            xai_api_key=getattr(settings, "xai_api_key", None),
+            xai_base_url=getattr(settings, "xai_base_url", None),
         )
-    return LlmEndpoint(
-        provider="tier1_unavailable",
-        label=f"{label} 연결 없음",
-        base_url="",
-        model=model,
-        api_key=None,
-    )
+        ep = resolve_provider(shim, name)
+    else:
+        key = getattr(settings, f"{name}_api_key", None)
+        ep = LlmEndpoint(
+            provider=name,
+            label=str(PROVIDERS[name]["label"]),
+            base_url=str(PROVIDERS[name]["base_url"]).rstrip("/"),
+            model=model,
+            api_key=key,
+        )
+    if not ep.configured:
+        return LlmEndpoint(
+            provider="tier1_unavailable",
+            label=f"Tier1 {hop} 연결 없음",
+            base_url="",
+            model=ep.model,
+            api_key=None,
+        )
+    return ep
 
 
 def resolve_tier1_endpoint(settings: Any) -> LlmEndpoint:
-    """Routine first hop: OpenRouter NVIDIA Nemotron :free.
+    """Routine first hop (default OpenRouter NVIDIA Nemotron :free).
 
     Missing access returns an unconfigured endpoint. Paid hops are resolved
     separately so a blank free key cannot silently become the user switcher.
     """
-    return _openrouter_named(
+    return _tier1_endpoint(
         settings,
-        TIER1_FREE_MODEL,
-        "NVIDIA Nemotron 550B (OpenRouter :free)",
+        hop="일상 1순위",
+        provider_attr="tier1_routine_provider",
+        model_attr="tier1_routine_model",
+        default_provider="openrouter",
+        default_model=TIER1_FREE_MODEL,
     )
 
 
 def resolve_tier1_routine_paid_endpoint(settings: Any) -> LlmEndpoint:
     """Routine paid hop when :free hangs or fails. Not counted against Grok/Pro budget."""
-    return _openrouter_named(
+    return _tier1_endpoint(
         settings,
-        TIER1_ROUTINE_PAID_MODEL,
-        "DeepSeek V4 Flash (OpenRouter)",
+        hop="일상 대체",
+        provider_attr="tier1_routine_paid_provider",
+        model_attr="tier1_routine_paid_model",
+        default_provider="openrouter",
+        default_model=TIER1_ROUTINE_PAID_MODEL,
+    )
+
+
+def resolve_tier1_analysis_endpoint(settings: Any) -> LlmEndpoint:
+    """Analysis first hop (default xAI Grok). Shares the daily analysis budget."""
+    return _tier1_endpoint(
+        settings,
+        hop="분석 1순위",
+        provider_attr="tier1_analysis_provider",
+        model_attr="tier1_analysis_model",
+        default_provider="xai",
+        default_model=TIER1_ANALYSIS_MODEL,
     )
 
 
 def resolve_tier1_analysis_pro_endpoint(settings: Any) -> LlmEndpoint:
-    """Analysis hop after Grok: OpenRouter DeepSeek V4 Pro."""
-    return _openrouter_named(
+    """Analysis hop after the first analysis hop fails (default OpenRouter DeepSeek V4 Pro)."""
+    return _tier1_endpoint(
         settings,
-        TIER1_ANALYSIS_PRO_MODEL,
-        "DeepSeek V4 Pro (OpenRouter)",
+        hop="분석 대체",
+        provider_attr="tier1_analysis_pro_provider",
+        model_attr="tier1_analysis_pro_model",
+        default_provider="openrouter",
+        default_model=TIER1_ANALYSIS_PRO_MODEL,
     )
 
 

@@ -237,10 +237,10 @@ def tier1_cached_chat_json(
         cfg = policy(cache_root)
         if fallback_endpoint is None and cfg.get("grok_fallback_enabled") is True:
             try:
-                from kr_quant.research.providers import resolve_provider
+                from kr_quant.research.providers import resolve_tier1_analysis_endpoint
                 from kr_quant.settings import load_settings
-                candidate = resolve_provider(load_settings(), "xai")
-                if getattr(candidate, "configured", False) and getattr(candidate, "provider", "") == "xai":
+                candidate = resolve_tier1_analysis_endpoint(load_settings())
+                if getattr(candidate, "configured", False) and getattr(candidate, "provider", "") != "tier1_unavailable":
                     fallback_endpoint = candidate
             except Exception:  # noqa: BLE001
                 fallback_endpoint = None

@@ -1417,7 +1417,7 @@
           <span class="evidence-badge tier-a" style="background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4); font-weight:700;">캐시 우선 · 빈 화면 방지</span>
         </div>
         <p class="hint" style="margin-top:6px; color:#cbd5e1; font-size:13px; line-height:1.6;">
-          메뉴 상단 브리핑은 상단 AI 칩과 별개입니다. <b>일상</b>은 Nemotron 무료 → OpenRouter Flash, <b>분석</b>이 필요할 때만 Grok 4.6 → DeepSeek Pro를 씁니다. 같은 날 생성된 해설은 재사용하고, 한도·대기 중이어도 직전 해설을 유지합니다. Quant 점수는 바꾸지 않습니다.
+          메뉴 상단 브리핑은 상단 AI 칩과 별개입니다. 아래 체인 순서대로 시도합니다. 같은 날 생성된 해설은 재사용하고, 한도·대기 중이어도 직전 해설을 유지합니다. Quant 점수는 바꾸지 않습니다.
         </p>
 
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-top:16px;">
@@ -1430,9 +1430,43 @@
               <span class="chip ok" style="font-weight:800; font-size:11px; padding:2px 8px;">일상 무료 + Flash</span>
             </div>
             <div id="tier1-live-cascade" style="font-size:12px; color:#94a3b8; line-height:1.7;">
-              1순위 일상: <code id="tier1-live-model" style="color:#86efac; font-weight:700;">nvidia/nemotron-3-ultra-550b-a55b:free</code><br />
-              2순위 일상: <code style="color:#86efac; font-weight:700;">deepseek/deepseek-v4-flash-0731</code> (OpenRouter, 분석 한도와 별개)<br />
-              분석: <code style="color:#fde68a; font-weight:700;">grok-4.6</code> → <code style="color:#fde68a; font-weight:700;">deepseek/deepseek-v4-pro-0813</code> (하루 24회, 실패 후 90초)
+              1순위 일상: <code id="tier1-live-model" style="color:#86efac; font-weight:700;">확인 중</code><br />
+              2순위 일상: <code id="tier1-live-paid-model" style="color:#86efac; font-weight:700;">확인 중</code> <span id="tier1-live-paid-note">(분석 한도와 별개)</span><br />
+              분석: <code id="tier1-live-analysis-model" style="color:#fde68a; font-weight:700;">확인 중</code> → <code id="tier1-live-pro-model" style="color:#fde68a; font-weight:700;">확인 중</code> (하루 24회, 실패 후 90초)
+            </div>
+            <div style="font-size:12px; color:#cbd5e1; line-height:1.6; border-top:1px solid rgba(34,197,94,0.25); padding-top:10px;">
+              <b>브리핑 체인 직접 설정:</b>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;">
+                <label style="display:flex; flex-direction:column; gap:4px;">1순위 일상 제공자
+                  <select id="tier1-routine-provider" style="background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 8px; font-size:12px;"></select>
+                </label>
+                <label style="display:flex; flex-direction:column; gap:4px;">1순위 일상 모델
+                  <select id="tier1-routine-model" style="background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 8px; font-size:12px;"></select>
+                </label>
+                <label style="display:flex; flex-direction:column; gap:4px;">2순위 일상(대체) 제공자
+                  <select id="tier1-routine-paid-provider" style="background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 8px; font-size:12px;"></select>
+                </label>
+                <label style="display:flex; flex-direction:column; gap:4px;">2순위 일상(대체) 모델
+                  <select id="tier1-routine-paid-model" style="background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 8px; font-size:12px;"></select>
+                </label>
+                <label style="display:flex; flex-direction:column; gap:4px;">분석 1순위 제공자
+                  <select id="tier1-analysis-provider" style="background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 8px; font-size:12px;"></select>
+                </label>
+                <label style="display:flex; flex-direction:column; gap:4px;">분석 1순위 모델
+                  <select id="tier1-analysis-model" style="background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 8px; font-size:12px;"></select>
+                </label>
+                <label style="display:flex; flex-direction:column; gap:4px;">분석 대체 제공자
+                  <select id="tier1-analysis-pro-provider" style="background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 8px; font-size:12px;"></select>
+                </label>
+                <label style="display:flex; flex-direction:column; gap:4px;">분석 대체 모델
+                  <select id="tier1-analysis-pro-model" style="background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 8px; font-size:12px;"></select>
+                </label>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+                <button type="button" class="ghost" id="tier1-save-btn" style="font-size:12px; padding:6px 14px;">브리핑 체인 저장</button>
+                <span id="tier1-save-state" style="font-size:11.5px; color:#94a3b8;"></span>
+              </div>
+              <div style="font-size:11px; color:#94a3b8; margin-top:6px;">키가 없는 제공자를 고르면 해당 홉은 건너뜁니다. 유료 홉으로 자동 전환하지 않습니다.</div>
             </div>
             <div style="font-size:12px; color:#cbd5e1; line-height:1.6;">
               <b>자동 적용 메뉴:</b>
@@ -1471,6 +1505,33 @@
             <p id="tier2-live-note" style="margin:0; font-size:11.5px; color:#bae6fd; background:rgba(56,189,248,0.1); padding:8px 10px; border-radius:6px;">
               상단 AI 칩에서 바꾼 모델은 여기와 ‘AI 심층 분석 리포트’ 버튼에만 적용됩니다. 이미 화면에 떠 있는 메뉴 브리핑은 다시 만들지 않습니다.
             </p>
+            <div style="border-top:1px solid rgba(56,189,248,0.25); padding-top:10px;">
+              <b style="font-size:12px; color:#cbd5e1;">심층 리포트 모델 직접 설정:</b>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;">
+                <label style="font-size:12px; color:#cbd5e1;">AI 분석 제공자 (기본: Grok)
+                  <select id="llm-provider" style="width:100%; margin-top:4px; background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 8px; font-size:12px;">
+                    <option value="xai" selected>Grok (xAI) — 기본</option>
+                    <option value="antigravity">Antigravity CLI (Google) — agy 세션</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="opencode">OpenCode Zen</option>
+                    <option value="opencode_go">OpenCode Go</option>
+                  </select>
+                </label>
+                <label style="font-size:12px; color:#cbd5e1;">모델 선택
+                  <select id="llm-model-select" style="width:100%; margin-top:4px; background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 8px; font-size:12px;">
+                    <option value="">목록을 불러오세요</option>
+                  </select>
+                  <input id="llm-model" placeholder="또는 모델 id를 직접 입력" style="width:100%; margin-top:6px; background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 8px; font-size:12px; box-sizing:border-box;" />
+                  <button type="button" class="ghost" id="load-models" style="margin-top:8px">모델 목록 불러오기</button>
+                </label>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+                <button type="button" class="ghost" id="tier2-save-btn" style="font-size:12px; padding:6px 14px;">심층 리포트 모델 저장</button>
+                <span id="tier2-save-state" style="font-size:11.5px; color:#94a3b8;"></span>
+              </div>
+              <div style="font-size:11px; color:#94a3b8; margin-top:6px;">버튼 클릭 시에만 생성·과금됩니다.</div>
+            </div>
           </div>
         </div>
       </article>
@@ -1483,28 +1544,13 @@
             <button class="primary" id="save-keys">저장</button>
           </div>
         </div>
-        <p class="hint">키는 이 PC의 <code>.env</code>에만 저장됩니다. 칸을 비우고 저장하면 기존 값을 유지하고, 지우려면 <code>CLEAR</code>를 넣으세요. 메뉴 브리핑은 Nemotron 무료가 멈추면 OpenRouter Flash가 이어서 호출됩니다. <b>상단에서 고른 모델</b>은 심층 리포트 버튼을 눌렀을 때만 과금됩니다. 제공자·모델을 바꾸면 바로 저장됩니다.</p>
+        <p class="hint">키는 이 PC의 <code>.env</code>에만 저장됩니다. 칸을 비우고 저장하면 기존 값을 유지하고, 지우려면 <code>CLEAR</code>를 넣으세요. 메뉴 브리핑은 위 Tier1 카드의 체인 순서대로 호출됩니다. <b>Tier 2 카드에서 고른 모델</b>은 심층 리포트 버튼을 눌렀을 때만 과금됩니다. 제공자·모델을 바꾸면 바로 저장됩니다.</p>
         <div id="llm-connections" class="llm-connections">
           <p>현재 분석: <b id="llm-active-line">확인 중</b></p>
           <ul id="llm-conn-list"></ul>
         </div>
         <div id="test-box-top"></div>
         <div class="settings-grid">
-          <label>AI 분석 제공자 (기본: Grok)
-            <select id="llm-provider">
-              <option value="xai" selected>Grok (xAI) — 기본</option>
-              <option value="antigravity">Antigravity CLI (Google) — agy 세션</option>
-              <option value="deepseek">DeepSeek</option>
-              <option value="openrouter">OpenRouter</option>
-            </select>
-          </label>
-          <label>모델 선택
-            <select id="llm-model-select">
-              <option value="">목록을 불러오세요</option>
-            </select>
-            <input id="llm-model" placeholder="또는 모델 id를 직접 입력" />
-            <button type="button" class="ghost" id="load-models" style="margin-top:8px">모델 목록 불러오기</button>
-          </label>
           <div class="grok-connect">
             <div class="card-h">
               <h3>Grok AUTH</h3>
@@ -1558,6 +1604,14 @@
           <label>OpenRouter API 키
             <span class="meta" id="meta-openrouter">미설정</span>
             <div class="key-field-wrap"><input id="key-openrouter" type="password" autocomplete="off" placeholder="openrouter.ai/keys 에서 발급" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-openrouter">👁️</button></div>
+          </label>
+          <label>OpenCode Zen API 키
+            <span class="meta" id="meta-opencode">미설정</span>
+            <div class="key-field-wrap"><input id="key-opencode" type="password" autocomplete="off" placeholder="opencode.ai/auth 에서 발급" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-opencode">👁️</button></div>
+          </label>
+          <label>OpenCode Go API 키
+            <span class="meta" id="meta-opencode-go">미설정</span>
+            <div class="key-field-wrap"><input id="key-opencode-go" type="password" autocomplete="off" placeholder="opencode.ai/auth 에서 발급 (Go)" /><button type="button" class="btn-toggle-pw" title="키 보이기/숨기기" data-target="key-opencode-go">👁️</button></div>
           </label>
           <label>네이버 Client ID
             <span class="meta" id="meta-naver-id">미설정</span>
@@ -1989,6 +2043,14 @@
                 <b style="font-size:12px;">🌐 OpenRouter</b>
                 <span style="font-size:10px; color:#94a3b8;">인기 글로벌 모델</span>
               </button>
+              <button type="button" class="quick-prov-btn" data-provider="opencode" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
+                <b style="font-size:12px;">🌀 OpenCode Zen</b>
+                <span style="font-size:10px; color:#94a3b8;">102종 모델 게이트웨이</span>
+              </button>
+              <button type="button" class="quick-prov-btn" data-provider="opencode_go" style="padding:9px 12px; border-radius:8px; border:1px solid #1e293b; background:#131d33; color:#f1f5f9; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:2px; transition:all 0.15s;">
+                <b style="font-size:12px;">🔷 OpenCode Go</b>
+                <span style="font-size:10px; color:#94a3b8;">36종 Go 게이트웨이</span>
+              </button>
             </div>
           </div>
 
@@ -2013,6 +2075,6 @@
     </div>
 
 
-  <script src="/static/app.js?v=3.06.1"></script>
+  <script src="/static/app.js?v=3.06.6"></script>
 </body>
 </html>

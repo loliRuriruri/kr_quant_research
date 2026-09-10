@@ -36,6 +36,16 @@ class Settings:
     xai_api_key: str | None
     deepseek_api_key: str | None
     openrouter_api_key: str | None
+    opencode_api_key: str | None
+    opencode_go_api_key: str | None
+    tier1_routine_provider: str | None
+    tier1_routine_model: str | None
+    tier1_routine_paid_provider: str | None
+    tier1_routine_paid_model: str | None
+    tier1_analysis_provider: str | None
+    tier1_analysis_model: str | None
+    tier1_analysis_pro_provider: str | None
+    tier1_analysis_pro_model: str | None
     llm_provider: str
     llm_model: str | None
     xai_base_url: str
@@ -149,6 +159,16 @@ def load_settings(root: Path | None = None) -> Settings:
         xai_api_key=os.environ.get("XAI_API_KEY") or os.environ.get("GROK_API_KEY") or None,
         deepseek_api_key=os.environ.get("DEEPSEEK_API_KEY") or None,
         openrouter_api_key=os.environ.get("OPENROUTER_API_KEY") or None,
+        opencode_api_key=os.environ.get("OPENCODE_API_KEY") or None,
+        opencode_go_api_key=os.environ.get("OPENCODE_GO_API_KEY") or None,
+        tier1_routine_provider=os.environ.get("TIER1_ROUTINE_PROVIDER") or None,
+        tier1_routine_model=os.environ.get("TIER1_ROUTINE_MODEL") or None,
+        tier1_routine_paid_provider=os.environ.get("TIER1_ROUTINE_PAID_PROVIDER") or None,
+        tier1_routine_paid_model=os.environ.get("TIER1_ROUTINE_PAID_MODEL") or None,
+        tier1_analysis_provider=os.environ.get("TIER1_ANALYSIS_PROVIDER") or None,
+        tier1_analysis_model=os.environ.get("TIER1_ANALYSIS_MODEL") or None,
+        tier1_analysis_pro_provider=os.environ.get("TIER1_ANALYSIS_PRO_PROVIDER") or None,
+        tier1_analysis_pro_model=os.environ.get("TIER1_ANALYSIS_PRO_MODEL") or None,
         llm_provider=_normalize_llm_provider(os.environ.get("LLM_PROVIDER")),
         llm_model=os.environ.get("LLM_MODEL") or None,
         xai_base_url=os.environ.get("XAI_BASE_URL") or "https://api.x.ai/v1",
