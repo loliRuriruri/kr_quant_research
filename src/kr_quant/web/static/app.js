@@ -11772,6 +11772,21 @@ function seasonKpiHtml(kind, value, opts = {}) {
   </div>`;
 }
 
+// Season grade badge shared by the discovery list and the TOP10 cards.
+// Grades come from the same season bundle, so S+/S/A+/A/B/C map to the
+// existing .grade-badge styles. A row without a grade renders nothing.
+function seasonGradeBadge(grade) {
+  const text = String(grade ?? "").trim().toUpperCase();
+  if (!text) return "";
+  let cls = "grade-b";
+  if (text === "S+") cls = "grade-s-plus";
+  else if (text === "S") cls = "grade-s";
+  else if (text === "A+") cls = "grade-a-plus";
+  else if (text === "A") cls = "grade-a";
+  else if (text === "C") cls = "grade-c";
+  return `<span class="grade-badge ${cls}">${escapeHtml(text)}</span>`;
+}
+
 function renderDiscDeepPlaybook(r, months) {
   const box = $("#disc-modal-deep");
   if (!box) return;
@@ -12823,6 +12838,7 @@ async function loadPreEntryView() {
           <div>
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <span class="chip" style="background:#eab308; color:#0f172a; font-weight:900; font-size:12px;">${rankBadge}</span>
+              ${seasonGradeBadge(r.grade)}
               <b style="font-size:18px; color:#fff;">${escapeHtml(r.company || r.ticker)}</b>
               <span class="chip" style="background:#1e293b; color:#94a3b8; font-family:monospace;">${escapeHtml(r.market || 'KOSPI')} ${escapeHtml(r.ticker)}</span>
               <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:11.5px;">${escapeHtml(r.window_name)} (${r.sample_count}개년 관측)</span>

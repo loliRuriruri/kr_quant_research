@@ -133,6 +133,18 @@ def test_menu_evidence_keeps_quant_relation_in_tooltip_only():
     assert "점수 관계 ${quantDetail}" in js
 
 
+def test_pre_entry_top10_cards_show_season_grade_badge():
+    js = client.get("/static/app.js").text
+    css = client.get("/static/styles.css").text
+    assert "function seasonGradeBadge" in js
+    assert "seasonGradeBadge(r.grade)" in js
+    assert ".grade-badge" in css
+
+    from kr_quant.web.season_listing import pre_entry_card
+    card = pre_entry_card({"ticker": "005930", "grade": "A", "remaining_peak": {}}, 5)
+    assert card["grade"] == "A"
+
+
 def test_pre_entry_ui_rejects_null_ranks_and_binds_filters():
     home = client.get("/").text
     js = client.get("/static/app.js").text

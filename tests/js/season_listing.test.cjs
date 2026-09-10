@@ -58,5 +58,20 @@ function extract(start, end) {
   assert.deepEqual(applied, ['new']);
   assert.equal(count.textContent, '0개');
   assert.match(pending[0].path, /view=summary&offset=0&limit=50/);
+
+  // The TOP10 cards share the discovery grade scale via seasonGradeBadge.
+  const gradeCtx = vm.createContext({escapeHtml: String});
+  vm.runInContext(extract('function seasonGradeBadge(', '\nfunction renderDiscDeepPlaybook('), gradeCtx);
+  assert.match(gradeCtx.seasonGradeBadge('S+'), /grade-s-plus/);
+  assert.match(gradeCtx.seasonGradeBadge('S+'), /S\+/);
+  assert.match(gradeCtx.seasonGradeBadge('S'), /grade-s"/);
+  assert.match(gradeCtx.seasonGradeBadge('A+'), /grade-a-plus/);
+  assert.match(gradeCtx.seasonGradeBadge('A'), /grade-a"/);
+  assert.match(gradeCtx.seasonGradeBadge('B'), /grade-b/);
+  assert.match(gradeCtx.seasonGradeBadge('C'), /grade-c/);
+  assert.match(gradeCtx.seasonGradeBadge('b'), /grade-b/);
+  assert.equal(gradeCtx.seasonGradeBadge(''), '');
+  assert.equal(gradeCtx.seasonGradeBadge(null), '');
+  assert.equal(gradeCtx.seasonGradeBadge(undefined), '');
   console.log('season listing JS: exact detail, period=0, missing signal, full-row compatibility, stale response PASS');
 })().catch(error => {console.error(error); process.exitCode = 1;});
