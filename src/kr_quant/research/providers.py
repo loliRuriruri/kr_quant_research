@@ -89,20 +89,36 @@ PROVIDERS = {
         "model": "deepseek-v4-pro",
         "env_key": "OPENCODE_GO_API_KEY",
         "help": "https://opencode.ai/auth",
+        # Go serves short model ids on the chat/completions surface only.
+        # /responses (grok-4.6, gpt-5.6-luna, muse-spark) and /messages
+        # (minimax, qwen) models are excluded because call_chat speaks
+        # chat/completions.
         "fallback_models": [
             "deepseek-v4-pro",
-            "deepseek/deepseek-v4.1-flash",
-            "zhipuai/glm-5.3-flash",
-            "openai/gpt-5.6-luna",
-            "xai/grok-4.6",
-            "minimax-m3",
-            "muse-spark-1.3-contributor",
-            "moonshotai/kimi-k3",
+            "deepseek-v4.1-flash",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-vision-exp",
+            "glm-5.3-flash",
+            "kimi-k3",
+            "kimi-k2.7-code",
+            "mimo-v2.5",
         ],
     },
 }
 
 DEFAULT_PROVIDER = "xai"
+
+OPENCODE_GO_MODEL_ALIASES: dict[str, str] = {
+    "deepseek/deepseek-v4.1-flash": "deepseek-v4.1-flash",
+    "deepseek/deepseek-v4-flash": "deepseek-v4-flash",
+    "deepseek/deepseek-v4-flash-vision-exp": "deepseek-v4-flash-vision-exp",
+    "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
+    "zhipuai/glm-5.3-flash": "glm-5.3-flash",
+    "zhipuai/glm-5.3": "glm-5.3",
+    "zhipuai/glm-5.2": "glm-5.2",
+    "moonshotai/kimi-k3": "kimi-k3",
+    "moonshotai/kimi-k2.7-code": "kimi-k2.7-code",
+}
 
 OPENROUTER_MODEL_ALIASES: dict[str, str] = {
     "deepseek/deepseek-chat-0731": "deepseek/deepseek-v4-flash-0731",
@@ -156,6 +172,14 @@ def coerce_model(provider: str, model: str | None) -> str:
     m = str(model or "").strip()
     if provider == "openrouter" and m in OPENROUTER_MODEL_ALIASES:
         return OPENROUTER_MODEL_ALIASES[m]
+    if provider == "opencode_go":
+        if m in OPENCODE_GO_MODEL_ALIASES:
+            return OPENCODE_GO_MODEL_ALIASES[m]
+        short = m.split("/")[-1] if "/" in m else m
+        # Only the chat/completions catalog is callable through call_chat.
+        if short in set(spec["fallback_models"]):
+            return short
+        return str(spec["model"])
     if model_fits_provider(provider, m):
         return m
     return str(spec["model"])
@@ -317,13 +341,13 @@ def sort_models(provider: str, models: list[str]) -> list[str]:
     if provider == "opencode_go":
         pinned = [
             "deepseek-v4-pro",
-            "deepseek/deepseek-v4.1-flash",
-            "zhipuai/glm-5.3-flash",
-            "openai/gpt-5.6-luna",
-            "xai/grok-4.6",
-            "minimax-m3",
-            "muse-spark-1.3-contributor",
-            "moonshotai/kimi-k3",
+            "deepseek-v4.1-flash",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-vision-exp",
+            "glm-5.3-flash",
+            "kimi-k3",
+            "kimi-k2.7-code",
+            "mimo-v2.5",
         ]
         head = [m for m in pinned if m in uniq]
         tail = [m for m in uniq if m not in head]
@@ -357,6 +381,15 @@ def extra_headers(endpoint: LlmEndpoint) -> dict[str, str]:
         return {
             "HTTP-Referer": "http://127.0.0.1:8787",
             "X-Title": "KR Quant Screener",
+        }
+    if endpoint.provider == "opencode_go":
+        # Go requires a client-identifying agent and a stable session header;
+        # otherwise requests are rejected as unroutable.
+        from uuid import uuid4
+
+        return {
+            "User-Agent": "kr-quant-research/1.0",
+            "x-opencode-session": f"krq-{uuid4().hex}",
         }
     return {}
 

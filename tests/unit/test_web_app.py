@@ -229,7 +229,8 @@ def test_tier1_chain_settings_roundtrip(monkeypatch):
     for hop in data["tier1"].values():
         assert set(hop) == {"provider", "label", "model", "configured"}
     assert data["tier1"]["routine"]["model"].endswith(":free")
-    assert data["tier1"]["analysis"]["provider"] in {"xai", "tier1_unavailable"}
+    from kr_quant.research.providers import PROVIDERS
+    assert data["tier1"]["analysis"]["provider"] in set(PROVIDERS) | {"tier1_unavailable"}
     captured = {}
     monkeypatch.setattr("kr_quant.web.app.upsert_env_file", lambda path, mapping: captured.update(mapping))
     monkeypatch.setattr("kr_quant.web.app.apply_env_to_process", lambda path: None)
@@ -283,13 +284,13 @@ def test_opencode_models_and_settings_wiring():
     # The active ambient model is appended after the curated lineup, if new.
     assert go["models"][:8] == [
         "deepseek-v4-pro",
-        "deepseek/deepseek-v4.1-flash",
-        "zhipuai/glm-5.3-flash",
-        "openai/gpt-5.6-luna",
-        "xai/grok-4.6",
-        "minimax-m3",
-        "muse-spark-1.3-contributor",
-        "moonshotai/kimi-k3",
+        "deepseek-v4.1-flash",
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp",
+        "glm-5.3-flash",
+        "kimi-k3",
+        "kimi-k2.7-code",
+        "mimo-v2.5",
     ]
     assert settings["providers"]["opencode_go"]["label"] == "OpenCode Go"
     assert 'value="opencode_go"' in home

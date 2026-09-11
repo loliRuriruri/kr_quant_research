@@ -168,7 +168,7 @@ def test_analysis_hop_uses_configured_provider(monkeypatch, tmp_path):
     setup(tmp_path)
     ns = SimpleNamespace(openrouter_api_key=None, xai_api_key=None, deepseek_api_key=None,
         opencode_api_key=None, opencode_go_api_key='go-test', xai_base_url=None,
-        tier1_analysis_provider='opencode_go', tier1_analysis_model='minimax-m3')
+        tier1_analysis_provider='opencode_go', tier1_analysis_model='glm-5.3-flash')
     monkeypatch.setattr('kr_quant.settings.load_settings', lambda: ns)
     calls = []
     def chat(endpoint, *args):
@@ -181,7 +181,7 @@ def test_analysis_hop_uses_configured_provider(monkeypatch, tmp_path):
         evidence={'v': 9}, messages=[], evidence_count=1, as_of='2026-09-08',
         sources=['test'], missing=[], payload_validator=validate_season_card)
     assert result['ok'] and result['provider'] == 'opencode_go'
-    assert ('opencode_go', 'minimax-m3') in calls
+    assert ('opencode_go', 'glm-5.3-flash') in calls
 
 
 def test_analysis_pro_after_grok_failure(monkeypatch, tmp_path):

@@ -4347,34 +4347,55 @@ function renderMarkdown(src) {
   const lines = String(src || "").split(/\r?\n/);
   const out = [];
   let table = [];
+  let list = [];
+  const inline = (s) =>
+    s.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  const flushList = () => {
+    if (list.length) {
+      out.push(`<ul class="md-list">${list.map((li) => `<li>${li}</li>`).join("")}</ul>`);
+      list = [];
+    }
+  };
   const flushTable = () => {
     if (!table.length) return;
-    const rows = table.filter((r) => !r.every((c) => /^[\s:-]*$/.test(c)));
+    const rows = table.filter((cells, i) => !(i === 1 && cells.every((c) => /^:?-{2,}:?$/.test(c.trim()))));
     if (rows.length) {
-      out.push("<table>");
+      out.push('<div class="md-table-wrap"><table class="md-table">');
       rows.forEach((cells, i) => {
         const tag = i === 0 ? "th" : "td";
-        out.push("<tr>" + cells.map((c) => `<${tag}>${c}</${tag}>`).join("") + "</tr>");
+        out.push("<tr>" + cells.map((c) => `<${tag}>${inline(c)}</${tag}>`).join("") + "</tr>");
       });
-      out.push("</table>");
+      out.push("</table></div>");
     }
     table = [];
   };
   for (const raw of lines) {
-    const escaped = escapeHtml(raw);
-    if (raw.trim().startsWith("|") && raw.trim().endsWith("|")) {
-      table.push(raw.trim().slice(1, -1).split("|").map((c) => escapeHtml(c.trim())));
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+      flushList();
+      table.push(trimmed.slice(1, -1).split("|").map((c) => escapeHtml(c.trim())));
       continue;
     }
     flushTable();
-    if (/^###\s+/.test(raw)) out.push(`<h4>${escapeHtml(raw.replace(/^###\s+/, ""))}</h4>`);
-    else if (/^##\s+/.test(raw)) out.push(`<h3>${escapeHtml(raw.replace(/^##\s+/, ""))}</h3>`);
-    else if (/^#\s+/.test(raw)) out.push(`<h3>${escapeHtml(raw.replace(/^#\s+/, ""))}</h3>`);
-    else if (/^[-*]\s+/.test(raw)) out.push(`<li>${escapeHtml(raw.replace(/^[-*]\s+/, "")).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</li>`);
-    else if (!raw.trim()) out.push("<br>");
-    else out.push(`<p>${escaped.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</p>`);
+    if (/^[-*]\s+/.test(trimmed)) {
+      list.push(inline(escapeHtml(trimmed.replace(/^[-*]\s+/, ""))));
+      continue;
+    }
+    if (/^\d+\.\s+/.test(trimmed)) {
+      list.push(inline(escapeHtml(trimmed.replace(/^\d+\.\s+/, ""))));
+      continue;
+    }
+    flushList();
+    if (/^###\s+/.test(trimmed)) out.push(`<h4 class="md-h4">${inline(escapeHtml(trimmed.replace(/^###\s+/, "")))}</h4>`);
+    else if (/^##\s+/.test(trimmed)) out.push(`<h3 class="md-h2">${inline(escapeHtml(trimmed.replace(/^##\s+/, "")))}</h3>`);
+    else if (/^#\s+/.test(trimmed)) out.push(`<h2 class="md-h1">${inline(escapeHtml(trimmed.replace(/^#\s+/, "")))}</h2>`);
+    else if (/^-{3,}\s*$/.test(trimmed)) out.push(`<hr class="md-hr">`);
+    else if (/^>\s?/.test(trimmed)) out.push(`<blockquote class="md-quote">${inline(escapeHtml(trimmed.replace(/^>\s?/, "")))}</blockquote>`);
+    else if (!trimmed) out.push("");
+    else out.push(`<p>${inline(escapeHtml(trimmed))}</p>`);
   }
   flushTable();
+  flushList();
   return out.join("");
 }
 
@@ -4412,8 +4433,15 @@ function openReportModal(rec, customTitle = null) {
   const title = customTitle || `📑 ${escapeHtml(company)} (${code}) 심층 리서치 & 인포그래픽 리포트`;
   const md = aiUsageBadge(rec) + renderMarkdown(rec.report_markdown || "");
   const usage = rec.usage || {};
-  const tokensStr = usage.total_tokens ? `🪙 소모 토큰: ${Number(usage.total_tokens).toLocaleString()} (입력 ${Number(usage.prompt_tokens || 0).toLocaleString()} / 출력 ${Number(usage.completion_tokens || 0).toLocaleString()})` : "🪙 토큰: 기록 없음";
-  const meta = `${rec.provider || ""} · ${rec.model || ""} · 기준일 ${rec.as_of_date || ""} · ${tokensStr}`;
+  const tokensShort = usage.total_tokens
+    ? `${Number(usage.total_tokens).toLocaleString()} 토큰 (입 ${Number(usage.prompt_tokens || 0).toLocaleString()} / 출 ${Number(usage.completion_tokens || 0).toLocaleString()})`
+    : "토큰 기록 없음";
+  const metaBar = `
+    <div class="report-meta-bar">
+      <span class="chip" style="background:rgba(56,189,248,0.12); color:#7dd3fc; border:1px solid rgba(56,189,248,0.3);">🤖 ${escapeHtml(rec.provider || "미상")} · ${escapeHtml(rec.model || "미상")}</span>
+      <span class="chip" style="background:rgba(148,163,184,0.1); color:#cbd5e1;">📅 기준일 ${escapeHtml(rec.as_of_date || "미상")}</span>
+      <span class="chip" style="background:rgba(251,191,36,0.1); color:#fde68a; border:1px solid rgba(251,191,36,0.25);">🪙 ${escapeHtml(tokensShort)}</span>
+    </div>`;
 
   const infographicUrl = `/api/research/${code}/infographic?as_of=${encodeURIComponent(rec.as_of_date || "")}`;
 
@@ -4506,8 +4534,8 @@ function openReportModal(rec, customTitle = null) {
     </div>
 
     <!-- Pane 2: Markdown Deep-Dive View -->
-    <div id="modal-pane-markdown" class="hidden">
-      <div class="meta" style="margin-bottom:12px">${escapeHtml(meta)}</div>
+    <div id="modal-pane-markdown" class="hidden report-md-pane">
+      ${metaBar}
       ${btHtml}
       <div class="report-render">${md}</div>
     </div>
@@ -11296,13 +11324,13 @@ const PROVIDER_MODELS = {
   ],
   opencode_go: [
     "deepseek-v4-pro",
-    "deepseek/deepseek-v4.1-flash",
-    "zhipuai/glm-5.3-flash",
-    "openai/gpt-5.6-luna",
-    "xai/grok-4.6",
-    "minimax-m3",
-    "muse-spark-1.3-contributor",
-    "moonshotai/kimi-k3",
+    "deepseek-v4.1-flash",
+    "deepseek-v4-flash",
+    "deepseek-v4-flash-vision-exp",
+    "glm-5.3-flash",
+    "kimi-k3",
+    "kimi-k2.7-code",
+    "mimo-v2.5",
   ],
 };
 
@@ -11325,10 +11353,14 @@ const MODEL_TOKEN_INFO = {
   "moonshotai/kimi-k3": { badge: "📚 장문분석", tokens: "대용량 ($3.00 / 1M 토큰)", desc: "Zen 경유 1M 컨텍스트 장문 분석" },
   "deepseek/deepseek-v4-pro": { badge: "⚡ 프로추론", tokens: "고효율 ($1.74 / 1M 토큰)", desc: "Zen 경유 정밀 퀀트 분석 및 고급 추론" },
   "xai/grok-4.6": { badge: "🛰️ 최신 Grok", tokens: "표준 ($2.00 / 1M 토큰)", desc: "Zen 경유 xAI 최신 Grok 리서치" },
-  "deepseek-v4-pro": { badge: "⚡ 프로추론", tokens: "고효율 ($0.66 / 1M 토큰)", desc: "Go 경유 DeepSeek V4 Pro 신규모델" },
-  "deepseek/deepseek-v4.1-flash": { badge: "⭐ Go 기본", tokens: "초저비용 ($0.15 / 1M 토큰)", desc: "Go 경유 DeepSeek V4.1 Flash" },
-  "minimax-m3": { badge: "🧠 고지능", tokens: "저비용 ($0.30 / 1M 토큰)", desc: "Go 경유 MiniMax-M3 코딩·추론" },
-  "muse-spark-1.3-contributor": { badge: "✨ 기여모델", tokens: "초저비용 ($0.10 / 1M 토큰)", desc: "Go 경유 Muse Spark 1.3" },
+  "deepseek-v4-pro": { badge: "⚡ 프로추론", tokens: "고효율 ($0.66 / 1M 토큰)", desc: "Go 경유 DeepSeek V4 Pro (정액제)" },
+  "deepseek-v4.1-flash": { badge: "⭐ Go 기본", tokens: "초저비용 ($0.15 / 1M 토큰)", desc: "Go 경유 DeepSeek V4.1 Flash" },
+  "deepseek-v4-flash": { badge: "⚡ 초고속", tokens: "초저비용 ($0.15 / 1M 토큰)", desc: "Go 경유 DeepSeek V4 Flash" },
+  "deepseek-v4-flash-vision-exp": { badge: "👁️ 비전", tokens: "저비용 ($0.15 / 1M 토큰)", desc: "Go 경유 DeepSeek V4 Flash Vision" },
+  "glm-5.3-flash": { badge: "⚡ 초저비용", tokens: "초저비용 ($0.15 / 1M 토큰)", desc: "Go 경유 GLM-5.3 Flash · 가성비 추론" },
+  "kimi-k3": { badge: "📚 장문분석", tokens: "대용량 ($3.00 / 1M 토큰)", desc: "Go 경유 1M 컨텍스트 장문 분석" },
+  "kimi-k2.7-code": { badge: "🧠 코딩특화", tokens: "고효율 ($0.95 / 1M 토큰)", desc: "Go 경유 Kimi K2.7 Code" },
+  "mimo-v2.5": { badge: "✨ 가성비", tokens: "초저비용 ($0.14 / 1M 토큰)", desc: "Go 경유 MiMo V2.5" },
 };
 
 // Zen shares some model ids with OpenRouter at different prices.
@@ -11338,12 +11370,6 @@ const MODEL_TOKEN_INFO_OVERRIDES = {
     "deepseek/deepseek-v4-flash-0731": { badge: "⭐ 기본추천", tokens: "초저비용 ($0.14 / 1M 토큰)", desc: "Zen 실전 기본 · 초저비용 플래시" },
     "openai/gpt-5.6-luna": { badge: "🔮 차세대 경량", tokens: "저비용 ($0.20 / 1M 토큰)", desc: "Zen 경유 OpenAI 차세대 경량 플래그십" },
     "google/gemini-3.7-flash": { badge: "⚡ 초고속", tokens: "표준 ($1.50 / 1M 토큰)", desc: "Zen 경유 Google 차세대 초고속 Flash" },
-  },
-  opencode_go: {
-    "zhipuai/glm-5.3-flash": { badge: "⚡ 초저비용", tokens: "초저비용 ($0.15 / 1M 토큰)", desc: "Go 경유 GLM 플래시 · 가성비 추론" },
-    "openai/gpt-5.6-luna": { badge: "🔮 차세대 경량", tokens: "저비용 ($0.20 / 1M 토큰)", desc: "Go 경유 OpenAI 차세대 경량 플래그십" },
-    "xai/grok-4.6": { badge: "🛰️ 최신 Grok", tokens: "표준 ($2.00 / 1M 토큰)", desc: "Go 경유 xAI 최신 Grok 리서치" },
-    "moonshotai/kimi-k3": { badge: "📚 장문분석", tokens: "대용량 ($3.00 / 1M 토큰)", desc: "Go 경유 1M 컨텍스트 장문 분석" },
   },
 };
 

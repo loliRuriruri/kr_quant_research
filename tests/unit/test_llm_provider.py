@@ -81,7 +81,15 @@ def test_opencode_zen_provider():
 
 
 def test_opencode_go_provider():
-    from kr_quant.research.providers import fallback_models, list_chat_models, model_fits_provider, normalize_provider, sort_models
+    from kr_quant.research.providers import (
+        coerce_model,
+        extra_headers,
+        fallback_models,
+        list_chat_models,
+        model_fits_provider,
+        normalize_provider,
+        sort_models,
+    )
 
     assert normalize_provider("opencode-go") == "opencode_go"
 
@@ -97,10 +105,18 @@ def test_opencode_go_provider():
     assert ep.configured
     assert model_fits_provider("opencode_go", "deepseek/deepseek-v4.1-flash")
     assert model_fits_provider("opencode_go", "minimax-m3")
-    assert model_fits_provider("opencode_go", "muse-spark-1.3-contributor")
+    # Go serves short ids on the chat surface; prefixed ids are coerced.
+    assert coerce_model("opencode_go", "deepseek/deepseek-v4.1-flash") == "deepseek-v4.1-flash"
+    assert coerce_model("opencode_go", "zhipuai/glm-5.3-flash") == "glm-5.3-flash"
+    assert coerce_model("opencode_go", "deepseek-v4.1-flash") == "deepseek-v4.1-flash"
+    assert coerce_model("opencode_go", "unknown/thing") == "deepseek-v4-pro"
+    headers = extra_headers(ep)
+    assert "x-opencode-session" in headers
+    assert headers["User-Agent"] == "kr-quant-research/1.0"
     curated = list_chat_models(ep)
     assert curated == fallback_models("opencode_go") == sort_models("opencode_go", curated)
     assert len(curated) == 8
+    assert all("/" not in m for m in curated)
 
 
 def test_antigravity_provider():

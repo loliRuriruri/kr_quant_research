@@ -40,13 +40,13 @@ def test_tier1_hops_honor_user_selection_and_stay_fail_closed():
         openrouter_api_key='test-key', xai_api_key='x-test', opencode_go_api_key='go-test',
         deepseek_api_key=None, opencode_api_key=None, xai_base_url=None,
         tier1_routine_provider='opencode_go', tier1_routine_model='deepseek/deepseek-v4.1-flash',
-        tier1_analysis_provider='opencode_go', tier1_analysis_model='minimax-m3',
+        tier1_analysis_provider='opencode_go', tier1_analysis_model='glm-5.3-flash',
     )
     routine = providers.resolve_tier1_endpoint(settings)
-    assert (routine.provider, routine.model) == ('opencode_go', 'deepseek/deepseek-v4.1-flash')
+    assert (routine.provider, routine.model) == ('opencode_go', 'deepseek-v4.1-flash')
     assert routine.configured and routine.label == 'OpenCode Go'
     analysis = providers.resolve_tier1_analysis_endpoint(settings)
-    assert (analysis.provider, analysis.model) == ('opencode_go', 'minimax-m3')
+    assert (analysis.provider, analysis.model) == ('opencode_go', 'glm-5.3-flash')
     assert analysis.configured
     # A selected provider without its own key stays unavailable instead of
     # borrowing another provider's key.
@@ -58,3 +58,8 @@ def test_tier1_hops_honor_user_selection_and_stay_fail_closed():
     weird = SimpleNamespace(**{**vars(settings), 'tier1_routine_provider': 'nope', 'tier1_routine_model': ''})
     ep2 = providers.resolve_tier1_endpoint(weird)
     assert (ep2.provider, ep2.model) == ('openrouter', providers.TIER1_FREE_MODEL)
+    # A Go model outside the chat/completions catalog cannot be called and
+    # resolves to the provider default instead of failing mid-request.
+    odd = SimpleNamespace(**{**vars(settings), 'tier1_routine_model': 'muse-spark-1.3-contributor'})
+    ep3 = providers.resolve_tier1_endpoint(odd)
+    assert (ep3.provider, ep3.model) == ('opencode_go', 'deepseek-v4-pro')

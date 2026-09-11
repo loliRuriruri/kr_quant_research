@@ -35,10 +35,11 @@ test('opencode go catalog matches the go gateway lineup', () => {
     const info = modelTokenInfo('opencode_go', m);
     assert(info && info.badge && info.tokens && info.desc, m);
     assert.match(info.tokens, /\$\d+\.\d{2} \/ 1M/, m);
+    assert(!m.includes('/'), m);
   }
   assert.match(modelTokenInfo('opencode_go', 'deepseek-v4-pro').tokens, /\$0\.66/);
-  assert.match(modelTokenInfo('opencode_go', 'deepseek/deepseek-v4.1-flash').tokens, /\$0\.15/);
-  assert.match(modelTokenInfo('opencode_go', 'minimax-m3').tokens, /\$0\.30/);
-  assert.match(modelTokenInfo('opencode_go', 'muse-spark-1.3-contributor').tokens, /\$0\.10/);
-  assert.match(modelTokenInfo('opencode_go', 'openai/gpt-5.6-luna').tokens, /\$0\.20/);
+  assert.match(modelTokenInfo('opencode_go', 'deepseek-v4.1-flash').tokens, /\$0\.15/);
+  assert.match(modelTokenInfo('opencode_go', 'glm-5.3-flash').tokens, /\$0\.15/);
+  assert.match(modelTokenInfo('opencode_go', 'kimi-k3').tokens, /\$3\.00/);
+  assert.match(modelTokenInfo('opencode_go', 'mimo-v2.5').tokens, /\$0\.14/);
 });
