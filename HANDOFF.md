@@ -1,5 +1,49 @@
 # KR Quant Research — 2026-09-07 신뢰성 감사 인계
 
+## 최신: OpenCode Zen/Go 도입·Tier1 체인 설정화·리포트 뷰 개선 (2026-09-11) — Antigravity 계속 작업용
+
+아래가 9/11 작업 전체 정리. 이 절이 위 기존 기록보다 최신이다. 커밋 기준 `main` 최신 5개: `2ca29ca`(Zen/Go+Tier1), `b1dc98f`, `fe86347`(TOP10 등급), 그리고 9/11 마지막 커밋 "feat(ai): styled report markdown view and working OpenCode Go chat". 사용자 포트폴리오(`data/calendar_momentum_portfolio.json`)만 커밋 제외(개인 데이터).
+
+### 1. 이번에 완료한 기능
+
+- **TOP10 카드 등급 뱃지**: 시즌 모멘텀 TOP10 카드 헤더(순위 뱃지 옆)에 S+/S/A+/A/B/C 등급 뱃지. `seasonGradeBadge()` 헬퍼, 등급 없으면 미표시. 백엔드 변경 없음(pre-entry 응답에 grade 이미 포함).
+- **OpenCode Zen 제공자**: `src/kr_quant/research/providers.py`에 `opencode`(zen/v1, 8종), 키 `OPENCODE_API_KEY`(opencode.ai/auth 발급). 기존 REMOVED_PROVIDERS에 있던 'opencode' 제거.
+- **OpenCode Go 제공자**: `opencode_go`(zen/go/v1), 키 `OPENCODE_GO_API_KEY`. **Go는 짧은 ID만 채팅에서 쓸 수 있음** — `/responses`(grok-4.6, gpt-5.6-luna, muse-spark)·`/messages`(minimax, qwen) 전용 모델은 call_chat(chat/completions)에서 호출 불가라 카탈로그 제외. 채팅 호환 8종: deepseek-v4-pro, deepseek-v4.1-flash, deepseek-v4-flash, deepseek-v4-flash-vision-exp, glm-5.3-flash, kimi-k3, kimi-k2.7-code, mimo-v2.5.
+- **Go 호출 필수 헤더**: `x-opencode-session`(uuid4 접두 krq-) + `User-Agent: kr-quant-research/1.0` — `extra_headers()`에서 자동 첨부. 없으면 400 MissingSessionID.
+- **Go ID 자동 교정**: `OPENCODE_GO_MODEL_ALIASES`(접두어→짧은 ID) + `coerce_model`이 카탈로그 밖 모델은 제공자 기본(deepseek-v4-pro)으로 교정. 사용자 .env의 `LLM_MODEL=deepseek/deepseek-v4.1-flash`는 자동으로 `deepseek-v4.1-flash`로 해석.
+- **Tier1 브리핑 체인 사용자 설정화**: API 설정 → 메뉴 브리핑 카드에 4홉(일상1순위/대체/분석1순위/대체) 제공자+모델 select 8개 + 저장 버튼. `.env`에 `TIER1_{ROUTINE,ROUTINE_PAID,ANALYSIS,ANALYSIS_PRO}_{PROVIDER,MODEL}` 8키. 기본값은 기존 체인과 동일(Nemotron:free→Flash, Grok→Pro). 키 없는 제공자 선택 시 tier1_unavailable(fail-closed), 다른 키 차용 없음. 분석 1순위 하드코딩 xai 제거(설정 가능). 분석 예산(24회/일·90초)은 제공자 무관 적용. `providers.py`의 `_openrouter_named` 삭제, `_tier1_endpoint`로 통합. `resolve_tier1_analysis_endpoint` 신규.
+- **Tier2 카드 통합**: 제공자/모델 선택을 Tier2 카드 안으로 이동(settings-grid의 구 필드 제거), "심층 리포트 모델 저장" 버튼(`saveTier2Config` = saveSettings+loadSettings). ID 그대로 이전이라 기존 JS 바인딩 무변경.
+- **AI 리포트 정통 뷰 UI**: `renderMarkdown` 재작성 — md-h1(그라데이션 헤더)/md-h2(좌측 바)/md-h4, 리스트 그룹화(▸ 마커, 순번 목록 포함), 표(md-table 스트라이프+구분행 `|---|` 제거+가로 스크롤), 인용 콜아웃, hr, 인라인 code. 모달 메타를 칩 바(`report-meta-bar`)로. XSS는 전부 escape 후 장식. styles.css에 md-* 전부 추가, 모바일 미디어쿼리. `tests/js/report_markdown.test.cjs` 신규.
+- **OpenCode 모델 모달**: Zen/Go 버튼 + 8종씩 인기순 + 설명/1M 토큰 단가(모델별 오버라이드 `modelTokenInfo`). Zen과 OpenRouter 겹치는 ID는 제공자별 가격 분리.
+
+### 2. 데이터/운영 조치 (코드 커밋 아님)
+
+- 스마트 수급·타점 비어 있던 원인: 토스 스캔이 9/8에 멈춰 freshness 게이트(기대 종가일 9/10)가 160종목 전부 제외. **POST /api/flow {days:5} 재스캔으로 해결** — 160종목·오류0·to=9/10, 쌍끌이 후보 27건 게이트 통과. 메이저 수급(/api/investor/events)도 107종목·33현재·9/10 복구.
+- 승률/성과검증 "—" 표시는 정상 정책: 5/20일 확정 표본만 집계. 현재 표본은 전부 PENDING(2거래일 경과). 9/15 이후부터 5일 확정이 채워짐. 과거 신호 이력이 없어 성과는 이번 스캔 이후부터만 쌓임(알려진 한계).
+- 사용자 .env 현재값: OPENCODE_API_KEY/GO 키 설정됨, LLM_PROVIDER=opencode_go, LLM_MODEL=deepseek/deepseek-v4.1-flash(→짧은 ID로 자동 해석), TIER1 4홉 중 일상대체·분석·분석대체가 opencode_go로 설정돼 있었음(구 카탈로그 muse-spark 등은 자동으로 deepseek-v4-pro로 교정 확인).
+
+### 3. 검증 상태
+
+- Python 관련 회귀 59개 통과(providers/web/tier1/approved_season_ai 등). JS `node --test`: opencode_models 2개, tier1_chain 2개, report_markdown 1개, season_listing 1개 통과. 전체 unit은 3개 실패 중 2개는 클린트리 동일(discovery_playbook·highlights 데이터 의존), 1개는 순서 의존 flake — 이번 작업 무관.
+- 실 API: Go `/models` 37종 확인, `deepseek-v4.1-flash` chat 200 + json_object 정상(`{"answer": 2}`). Zen은 키는 있으나 실호출 미검증.
+- 서버 8790 재시작 완료, app.js?v=3.06.8, styles.css?v=2.98.1. `savepoint-before-top10-grade-20260910` 태그가 작업 전 저장점.
+
+### 4. Antigravity가 이어서 할 후보 (사용자 미확인 항목)
+
+- [ ] Go 실사용 한도 확인: $10/월 정액, 모델별 월 한도($15~60). 한도 초과 시 Zen 잔액 fallback은 콘솔 옵션(Use balance)에 따름 — 우리 코드는 무관.
+- [ ] Zen 실제 채팅 호출 검증(키 있음). Zen도 Go와 같은 세션 헤더가 필요한지 확인(공식 문서상 필수 아님, 미검증).
+- [ ] Go 카탈로그에 /responses·/messages 전용 모델을 쓰려면 call_chat 확장 필요(현재 chat/completions 전용). 사용자가 원하면 grok-4.6/luna/minimax 어댑터 추가.
+- [ ] 성과 검증 탭: 9/15 이후 확정 표본 채워지는지, KRX 일봉 수집이 매일 도는지 모니터링.
+- [ ] AI 브리핑 실생성 확인: Nemotron 무료 경로가 여전히 과부하면 flow 브리핑은 DETERMINISTIC_FALLBACK(규칙 요약)으로 떨어짐. Tier1 체인에서 일상대체를 살아있는 경로로 바꾸면 AI 문장 복구.
+- [ ] 리포트 뷰: 스톡 상세 내 `.report` 박스(기존 CSS)와 모달 `.report-render`(신규) 스타일 충돌 여부 시각 확인.
+- [ ] 공개 배포: 이번 패치는 로컬만. 공개 정적판 반영하려면 빌드+배포 필요(기존 시세 지연 가드 상태).
+
+### 5. 관련 문서/근거
+
+- docs/FLOW_EMPTY_GATE_DIAGNOSIS_2026_09_08.md — 수급 게이트 진단(이번 증상 원인과 동일 구조)
+- docs/OPERATIONS_MANUAL_AND_VERIFICATION_2026_09_08.md — 운영 매뉴얼
+- OpenCode Go 공식: https://opencode.ai/docs/go/ (모델 ID·엔드포인트·헤더·한도 표)
+
 ## 최신: 메뉴 브리핑 Nemotron→Flash, 분석 Grok→Pro (2026-09-08)
 
 - 일상: `nvidia/nemotron-3-ultra-550b-a55b:free` 다음 OpenRouter `deepseek/deepseek-v4-flash-0731`. Flash는 분석 한도에 넣지 않는다.
