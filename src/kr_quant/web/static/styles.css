@@ -7110,7 +7110,7 @@ td.nps-empty { text-align: center; padding: 28px 12px; color: #94a3b8; }
 }
 .dash-workflow-section { margin: 0 0 18px; min-width: 0; }
 .dash-workflow-head h2 { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.08em; color: #94a3b8; }
-.dash-workflow-head p, .dash-flow-note, #dash-system-line { margin: 0 0 10px; color: #cbd5e1; }
+.dash-workflow-head p, #dash-system-line { margin: 0 0 10px; color: #cbd5e1; }
 .dash-quick-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .dash-quick-link {
   appearance: none;
@@ -7122,7 +7122,6 @@ td.nps-empty { text-align: center; padding: 28px 12px; color: #94a3b8; }
   font: inherit;
   cursor: pointer;
 }
-.dash-champion-slim { cursor: pointer; min-width: 0; }
 #view-dash .dash-report-wrap { overflow-x: auto; max-width: 100%; }
 
 .dash-flow-grid { display: flex; flex-wrap: wrap; gap: 12px; }

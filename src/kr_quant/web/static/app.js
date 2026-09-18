@@ -2762,7 +2762,6 @@ function renderReportList(target, rows, limit) {
       return;
     }
     body.innerHTML = show.map((r) => {
-      const isDeep = r.kind === 'AI 분석 리포트';
       const timeStr = (r.researched_at || "").slice(0, 16).replace("T", " ");
       return `<article class="dash-report-card clickable" data-ticker="${padTicker(r.ticker)}" data-asof="${r.as_of_date || ""}">
         <b>${escapeHtml(r.company || "")}</b>
@@ -3023,7 +3022,7 @@ function renderChampions(rows) {
     return;
   }
   const top3 = sortedCopy(rows, "dash", "quant_rank", "asc").slice(0, 3);
-  const missing = "현재 데이터로는 reason 없음";
+  const missing = "현재 데이터로는 상세 코멘트가 없습니다.";
   const titles = ["🥇 1위 챔피언", "🥈 2위 루키", "🥉 3위 밸류"];
   container.innerHTML = top3
     .map((r, i) => {
@@ -3316,14 +3315,13 @@ function renderKpis(status, top, eligibleTotal = null) {
   box.innerHTML = `
     <div class="kpi card-cyan">
       <div class="kpi-head">
-        <span class="kpi-title has-tip" data-tip="재무·성장·모멘텀 종합 알고리즘을 최종 통과한 상위 20개 핵심 포트폴리오입니다.">🎯 평균점수</span>
-        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(56,189,248,0.15); color:#38bdf8;">우량주</span>
+        <span class="kpi-title has-tip" data-tip="TOP20 퀀트 평균">🎯 평균점수</span>
       </div>
       <div class="kpi-main">
         <span class="kpi-num">${avgScore}</span>
         <span class="kpi-unit">점</span>
       </div>
-      <div class="kpi-sub-text">평균 퀀트 점수 <b style="color:#38bdf8; font-weight:700;">${avgScore}점</b></div>
+      <div class="kpi-sub-text">TOP20 퀀트 평균</div>
     </div>
 
     <div class="kpi card-emerald">
@@ -10946,17 +10944,6 @@ if ($("#us13f-q")) {
 }
 const refreshDash = $("#refresh-dash");
 if (refreshDash) refreshDash.addEventListener("click", loadDash);
-
-document.querySelectorAll(".dash-topn-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".dash-topn-btn").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    currentDashTopN = parseInt(btn.dataset.n, 10) || 30;
-    renderTop20(dashRows, currentDashTopN);
-    renderDashDna(dashRows, currentDashTopN);
-    requestAnimationFrame(syncDashLeaderboardHeight);
-  });
-});
 
 $("#rank-q").addEventListener("input", (e) => renderRank(e.target.value));
 if ($("#report-q")) {

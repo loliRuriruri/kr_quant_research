@@ -653,7 +653,12 @@ def test_dash_workflow_contract():
     for item in banned:
         assert item not in dash, item
     js = client.get("/static/app.js").text
-    assert '현재 데이터로는 reason 없음' in js
+    assert '현재 데이터로는 reason 없음' not in js
+    assert '현재 데이터로는 상세 코멘트가 없습니다.' in js
+    kpi = js[js.find('function renderKpis'):js.find('function renderExtLinksTop')]
+    assert '상위 20개 핵심 포트폴리오' not in kpi
+    assert '우량주' not in kpi
+    assert 'TOP20 퀀트 평균' in kpi
     assert 'renderReportList("#dash-reports-body", reportRows, 3)' in js
     assert "switchView(target)" in js
     start = js.find("function renderKpis")
