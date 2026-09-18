@@ -201,6 +201,18 @@ def build_bundle(settings, lookback: int = 5) -> dict:
         return copy.deepcopy(bundle)
 
 
+def _schedule_shadow(settings, bundle, lookback: int) -> None:
+    """Never block snapshot completion. Jev is optional and isolated."""
+    if lookback != 5 or not isinstance(bundle, dict):
+        return
+    try:
+        from kr_quant.research.season_jev_shadow import request_shadow_evaluation
+
+        request_shadow_evaluation(settings, bundle)
+    except Exception:
+        logger.exception("Jev shadow schedule failed; season snapshot unchanged")
+
+
 def request_build(settings, lookback: int = 5) -> None:
     """Bounded single-flight refresh; never wait in an HTTP handler."""
     if lookback not in LOOKBACKS:
@@ -214,9 +226,10 @@ def request_build(settings, lookback: int = 5) -> None:
 
     def work():
         try:
-            build_bundle(settings, lookback)
+            bundle = build_bundle(settings, lookback)
             with _LOCK:
                 _ERRORS.pop(key, None)
+            _schedule_shadow(settings, bundle, lookback)
         except Exception as exc:
             logger.exception("Season snapshot preparation failed")
             with _LOCK:

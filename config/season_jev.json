@@ -1,0 +1,15 @@
+{
+  "enabled": false,
+  "evaluator_version": "season-jev-shadow-v1",
+  "model": "jev-latest",
+  "lookback_years": 5,
+  "horizon_days": 90,
+  "concurrency": 4,
+  "candidate_timeout_ms": 8000,
+  "process_timeout_seconds": 180,
+  "process_soft_deadline_seconds": 170,
+  "process_start_cutoff_seconds": 160,
+  "provider": "typesafe_direct",
+  "max_api_calls_per_generation": 300,
+  "max_api_calls_per_day": 300
+}
