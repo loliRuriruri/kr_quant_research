@@ -29,7 +29,7 @@ def browser_page(base_url):
             pytest.skip(f"chromium unavailable: {exc}")
         page = browser.new_page(viewport={"width": 1280, "height": 900})
         page.goto(base_url, wait_until="domcontentloaded")
-        page.wait_for_selector("#top20-body tr.clickable", timeout=15000)
+        page.wait_for_selector("#dash-champions .champ-card", timeout=15000)
         page.wait_for_selector(".glance-pick-name", timeout=15000)
         yield page
         browser.close()
@@ -47,7 +47,7 @@ def test_dashboard_table_does_not_wait_for_status_or_hidden_menus(browser_page, 
     page.route('**/api/status', lambda route: held.append(route))
     try:
         page.goto(base_url, wait_until='domcontentloaded')
-        page.locator('#top20-body tr.clickable').first.wait_for(timeout=8000)
+        page.locator('#dash-champions .champ-card').first.wait_for(timeout=8000)
         assert held, 'Status deliberately remains pending while rows are already visible'
         assert not any(path in url for url in requests for path in ['/api/results/all', '/api/settings', '/api/watchlist', '/api/portfolio', '/api/llm/connections', '/api/seasonality/momentum-portfolio'])
     finally:
@@ -60,7 +60,7 @@ def test_failed_view_can_retry_and_refresh_does_not_reload_dashboard(browser_pag
     page.on('request', lambda req: calls.append(req.url))
     try:
         page.goto(base_url, wait_until='domcontentloaded')
-        page.locator('#top20-body tr.clickable').first.wait_for()
+        page.locator('#dash-champions .champ-card').first.wait_for()
         page.route('**/api/results/all?*', lambda route: route.fulfill(status=503, json={'detail': 'test temporary failure'}))
         _open_view(page, 'rank')
         retry = page.locator('#view-rank > .view-load-state button')
@@ -85,7 +85,7 @@ def test_strategy_navigation_never_starts_a_backtest(browser_page, base_url):
     page.route('**/api/strategy', lambda route: route.fulfill(json={'need_run': True, 'rows': []}))
     try:
         page.goto(base_url, wait_until='domcontentloaded')
-        page.locator('#top20-body tr.clickable').first.wait_for()
+        page.locator('#dash-champions .champ-card').first.wait_for()
         _open_view(page, 'strategy')
         page.wait_for_function("document.querySelector('#strategy-box').textContent.includes('자동 백테스트하지 않습니다')")
         assert not any('/api/strategy' in url for url in mutations)
@@ -116,11 +116,13 @@ def test_momentum_unknown_data_has_no_fabricated_confidence(browser_page):
         _open_view(page, "dash")
 
 
-def test_dashboard_top30_has_real_rows(browser_page):
-    rows = browser_page.locator("#top20-body tr.clickable")
-    assert rows.count() == 30
-    assert "현대차" in rows.nth(0).inner_text()
-    assert "Quant TOP 30" in browser_page.locator("#dash-leaderboard-title").inner_text()
+def test_rank_view_has_real_rows(browser_page):
+    _open_view(browser_page, "rank")
+    browser_page.wait_for_selector("#rank-body tr.clickable", timeout=15000)
+    rows = browser_page.locator("#rank-body tr.clickable")
+    assert rows.count() >= 1
+    assert '퀀트 랭킹' in browser_page.locator("#view-rank h2").first.inner_text()
+    _open_view(browser_page, "dash")
 
 
 def test_glance_top3_matches_seasonality_order(browser_page):
@@ -184,15 +186,17 @@ def test_search_hyundai_name_and_ticker_autocomplete(browser_page):
 
 
 def test_table_click_opens_stock_drawer_with_links(browser_page):
-    _open_view(browser_page, "dash")
-    browser_page.locator("#top20-body tr.clickable").first.click()
+    _open_view(browser_page, "rank")
+    row = browser_page.locator("#rank-body tr.clickable").first
+    row.wait_for(timeout=15000)
+    ticker = row.get_attribute("data-ticker")
+    assert ticker
+    row.click()
     browser_page.wait_for_selector("#drawer:not(.hidden)", timeout=8000)
     browser_page.wait_for_selector("#drawer a[href*='naver.com']", timeout=8000)
-    body = browser_page.locator("#drawer-body").inner_html()
-    assert "finance.naver.com/item/main.naver?code=005380" in body or "finance.naver.com" in body
     hrefs = browser_page.locator("#drawer a[href*='naver.com'], #drawer a[href*='tossinvest']").all()
     joined = " ".join(link.get_attribute("href") or "" for link in hrefs)
-    assert "005380" in joined
+    assert ticker in joined
     assert "naver.com" in joined
     assert "tossinvest.com" in joined or "toss" in joined.lower()
     close_btn = browser_page.locator("#drawer-close")
@@ -267,12 +271,12 @@ def test_long_strategy_and_company_names_are_not_clipped(browser_page):
 
 def test_public_preview_locks_settings_and_run(browser_page, base_url):
     browser_page.goto(base_url + "/?public-preview", wait_until="domcontentloaded")
-    browser_page.wait_for_selector("#top20-body tr.clickable", timeout=15000)
+    browser_page.wait_for_selector("#dash-champions .champ-card", timeout=15000)
     assert browser_page.locator('button.nav-btn[data-view="settings"]').count() == 0
     run_btn = browser_page.locator("#view-run button").first
     if run_btn.count():
         assert run_btn.is_disabled()
-    assert browser_page.locator("#top20-body tr.clickable").count() >= 1
+    assert browser_page.locator("#dash-champions .champ-card").count() >= 1
 
 
 def _overlap_collision(left, right, pad=8) -> bool:
@@ -298,13 +302,10 @@ def _overlap_collision(left, right, pad=8) -> bool:
 def test_mobile_cards_and_tables_do_not_overlap(browser_page, base_url):
     browser_page.set_viewport_size({"width": 390, "height": 844})
     browser_page.goto(base_url, wait_until="domcontentloaded")
-    browser_page.wait_for_selector("#top20-body tr.clickable", timeout=15000)
+    browser_page.wait_for_selector("#dash-champions .champ-card", timeout=15000)
     cards = browser_page.locator("#view-dash .card, #view-dash .glance-pick-card").all()
     boxes = [el.bounding_box() for el in cards if el.bounding_box() and el.bounding_box()["width"] > 0]
     for i, left in enumerate(boxes[:8]):
         for right in boxes[i + 1 : 8]:
             if _overlap_collision(left, right):
                 pytest.fail("mobile cards overlap")
-    table = browser_page.locator("#top20-body").bounding_box()
-    assert table is not None
-    assert table["width"] > 0

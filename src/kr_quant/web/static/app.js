@@ -2956,8 +2956,10 @@ function renderSchedLine(sched) {
 }
 
 function renderQuality(q, guide, fresh) {
+  const qualityBox = $("#quality-box");
+  if (!qualityBox) return;
   if (!q || !q.run_id) {
-    $("#quality-box").innerHTML = "<p>아직 결과가 없습니다. 실행 탭에서 데모를 돌려 보세요.</p>";
+    qualityBox.innerHTML = "<p>아직 결과가 없습니다. 실행 탭에서 데모를 돌려 보세요.</p>";
     return;
   }
   const c = q.counts || {};
@@ -2977,7 +2979,7 @@ function renderQuality(q, guide, fresh) {
        · <span class="${fresh.stale_price || fresh.stale_screen ? "warn" : "ok"}">${escapeHtml(fresh.label || "")}</span>
        ${fresh.stale_screen ? " · 시세를 받은 뒤 재계산이 필요합니다." : ""}</p>`
     : "";
-  $("#quality-box").innerHTML = `
+  qualityBox.innerHTML = `
     ${freshLine}
     <p>상태 <b class="${q.status === "success" ? "ok" : "warn"} has-tip" data-tip="${escapeHtml(STATUS_TIP[q.status] || "")}">${escapeHtml(statusKo(q.status))}</b>
       · 채점 ${c.scored ?? 0} → 조건 통과 ${c.universe_eligible ?? 0} → TOP100 ${c.top100_eligible ?? 0} → TOP20 ${c.top20_eligible ?? 0}</p>
@@ -4876,7 +4878,7 @@ async function loadRankRows() {
 async function loadDash() {
   // Primary table must not wait for status, AI, reports or hidden-menu APIs.
   loadStatusPanel().catch((err) => {
-    $("#quality-box").textContent = `상태 확인 실패: ${err.message}. 랭킹 표는 별도 조회합니다.`;
+    const qualityBox = $("#quality-box"); if (qualityBox) qualityBox.textContent = `상태 확인 실패: ${err.message}. 랭킹 표는 별도 조회합니다.`;
   });
   const top = await api("/api/results/top?n=100");
   dashRows = top.rows || [];
@@ -10919,7 +10921,8 @@ if ($("#us13f-mode")) {
 if ($("#us13f-q")) {
   $("#us13f-q").addEventListener("input", () => { if (us13fCache) renderUs13f(us13fCache); });
 }
-$("#refresh-dash").addEventListener("click", loadDash);
+const refreshDash = $("#refresh-dash");
+if (refreshDash) refreshDash.addEventListener("click", loadDash);
 
 document.querySelectorAll(".dash-topn-btn").forEach((btn) => {
   btn.addEventListener("click", () => {

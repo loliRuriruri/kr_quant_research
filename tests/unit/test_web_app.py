@@ -1,3 +1,4 @@
+import re
 import socket
 
 from fastapi.testclient import TestClient
@@ -424,8 +425,9 @@ def test_research_reports_list_endpoint():
     assert "JSON.stringify(best.params" not in js
     assert "best_params_ko" in js
     assert "best_comment" in js
-    assert "portfolio-box" in html
     assert "strategy-port-box" in html
+    dash_html = _view_section(html, "view-dash")
+    assert 'id="portfolio-box"' not in dash_html
     port = client.get("/api/portfolio").json()
     assert port.get("used_in_quant") is False
     spec = client.get("/api/system/spec").json()
@@ -567,3 +569,37 @@ def test_deploy_status_and_public_block():
     assert blocked_force.status_code == 403
     blocked_code = client.post('/api/deploy/run?code_only=true', headers={'cf-connecting-ip': '203.0.113.10'})
     assert blocked_code.status_code == 403
+
+
+def _view_section(html: str, view_id: str) -> str:
+    pattern = '<section\\b[^>]*\\bid="' + re.escape(view_id) + '"[^>]*>(.*?)</section>'
+    match = re.search(pattern, html, re.S)
+    assert match, view_id
+    return match.group(0)
+
+def test_dash_view_drops_legacy_rank_copy():
+    html = client.get("/").text
+    dash = _view_section(html, "view-dash")
+    assert html.count('id="quality-box"') == 1
+    assert dash.count('id="quality-box"') == 1
+    for banned in (
+        'id="top20-body"',
+        "dash-topn-btn",
+        'id="dash-leaderboard-title"',
+        'id="refresh-dash"',
+        "dash-leaderboard-card",
+        'id="dash-dna-title"',
+        'id="dash-dna-box"',
+        'id="portfolio-box"',
+    ):
+        assert banned not in dash, banned
+    for kept in (
+        'id="kpis"',
+        'id="dash-tier1-briefing"',
+        'id="dash-champions"',
+        'id="dash-seasonality-banner"',
+        'id="dash-reports-body"',
+        'id="quality-box"',
+    ):
+        assert kept in dash, kept
+    assert "strategy-port-box" in html

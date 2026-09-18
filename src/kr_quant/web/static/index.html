@@ -88,61 +88,11 @@
       <!-- Seasonality & Calendar Anomaly Champion Widget -->
       <div id="dash-seasonality-banner" class="dash-seasonality-widget"></div>
 
-      <div class="grid-2">
-        <article class="card dash-leaderboard-card">
-          <div class="card-h" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <h2 id="dash-leaderboard-title" style="margin:0;">🏆 Quant TOP 30 리더보드</h2>
-              <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:700;">5대 팩터 종합 우량주</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <div class="dash-topn-toggle">
-                <button type="button" class="dash-topn-btn" data-n="20">TOP 20</button>
-                <button type="button" class="dash-topn-btn active" data-n="30">TOP 30</button>
-                <button type="button" class="dash-topn-btn" data-n="50">TOP 50</button>
-                <button type="button" class="dash-topn-btn" data-n="100">TOP 100</button>
-              </div>
-              <button class="ghost small" id="refresh-dash">새로고침</button>
-            </div>
-          </div>
-          <p class="hint">시총·거래대금·보통주 조건을 통과한 종목을 가치·품질·성장·모멘텀·안정으로 점수한 조사 후보입니다. 종목을 클릭하면 상세 리서치 창이 열립니다.</p>
-          <div class="table-wrap dash-table-wrap">
-            <table data-scope="dash">
-              <thead>
-                <tr>
-                  <th class="sortable has-tip" data-sort="quant_rank" data-tip="조건 통과 종목 안에서의 점수 순위입니다.">#</th>
-                  <th class="sortable" data-sort="company">종목</th>
-                  <th class="sortable has-tip" data-sort="last_close" data-tip="KRX 최근 종가입니다. 클릭하면 오름/내림으로 바꿉니다.">최근가</th>
-                  <th class="sortable has-tip" data-sort="quant_score" data-tip="Value 30 · Quality 25 · Growth 25 · Momentum 10 · Stability 10에서 리스크 페널티를 뺀 종합 퀀트 점수입니다.">점수</th>
-                  <th class="has-tip" data-tip="가=가치, 품=품질, 성=성장, 모=모멘텀, 안=안정. 막대는 각 항목 만점 대비 비율입니다.">5대 팩터 DNA</th>
-                  <th class="sortable has-tip" data-sort="risk_penalty" data-tip="매출·이익 감소, 레버리지, 희석 같은 리스크를 점수에서 뺀 값입니다. 클수록 감점이 큽니다.">페널티</th>
-                  <th class="sortable has-tip" data-sort="data_confidence" data-tip="커버리지·공시시점·신선도 등으로 만든 게이트입니다. 점수에 곱하지 않고 TOP 통과 기준으로만 씁니다.">신뢰도</th>
-                </tr>
-              </thead>
-              <tbody id="top20-body"></tbody>
-            </table>
-          </div>
-        </article>
-
-        <div id="dash-side-col" class="dash-side-col">
-          <article class="card" style="margin-bottom:14px;">
-            <div class="card-h"><h2 id="dash-dna-title">🧬 TOP 30 팩터 DNA 분석</h2></div>
-            <div id="dash-dna-box" class="dash-dna-box"></div>
-          </article>
-          <article class="card">
-            <div class="card-h"><h2>데이터 품질 · 선정 기준</h2></div>
-            <div id="quality-box" class="quality"></div>
-          </article>
-        </div>
-      </div>
-      <article class="card" style="margin-top:14px">
-        <div class="card-h">
-          <h2>📊 TOP20 포트폴리오 집중도 & 분산 분석</h2>
-        </div>
-        <p class="hint">동일 가중치 기준 포트폴리오 업종 분산 및 상관관계 분석입니다.</p>
-        <div id="portfolio-box" class="quality"></div>
+            <article class="card">
+        <div class="card-h"><h2>데이터 품질 · 선정 기준</h2></div>
+        <div id="quality-box" class="quality"></div>
       </article>
-      <article class="card" style="margin-top:14px">
+<article class="card" style="margin-top:14px">
         <div class="card-h">
           <h2>📑 보관 리포트 (AI 심층 분석)</h2>
           <button class="ghost" id="goto-reports">전체 보기</button>
