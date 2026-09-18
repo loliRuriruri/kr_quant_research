@@ -87,3 +87,100 @@ def test_page_titles_match_sidebar():
     assert rank and rank.group(1) == "퀀트 랭킹"
     assert season and season.group(1) == "시즌·캘린더"
     assert heading and heading.group(1).strip() == "퀀트 랭킹"
+
+
+def _js_object(js, name):
+    match = re.search(rf"const {name} = \{{([\s\S]*?)\n\}};", js)
+    assert match, name
+    return match.group(1)
+
+
+def _sidebar_labels(html):
+    labels = {}
+    for view, label in re.findall(
+        r'<button class="nav-btn(?: nav-admin)?(?: active)?" data-view="([^"]+)"[^>]*>.*?<span>([^<]+)</span>',
+        html,
+        re.S,
+    ):
+        labels[view] = label
+    return labels
+
+
+def _js_titles(js):
+    block = _js_object(js, "titles")
+    return dict(re.findall(r'(\w+): \["([^"]+)"', block))
+
+
+GROUPS = {
+    "dash": "OVERVIEW",
+    "rank": "DISCOVERY",
+    "screens": "DISCOVERY",
+    "seasonality": "DISCOVERY",
+    "market": "MARKET CONTEXT",
+    "sector": "MARKET CONTEXT",
+    "investor": "FLOW & TIMING",
+    "trade": "FLOW & TIMING",
+    "strategy": "RESEARCH LAB",
+    "watch": "RESEARCH LAB",
+    "us13f": "RESEARCH LAB",
+    "sunzi": "RESEARCH LAB",
+    "run": "SYSTEM",
+    "settings": "SYSTEM",
+}
+
+RELATED = {
+    "rank": ["screens", "seasonality", "trade"],
+    "screens": ["rank", "seasonality"],
+    "seasonality": ["rank", "market"],
+    "market": ["sector"],
+    "sector": ["rank", "screens"],
+    "investor": ["trade"],
+    "trade": ["investor", "strategy"],
+    "strategy": ["rank", "watch"],
+    "watch": ["strategy", "sunzi"],
+    "sunzi": ["watch", "strategy"],
+}
+NO_RELATED = ["dash", "us13f", "run", "settings", "reports", "nps", "toss"]
+
+
+def test_all_visible_titles_match_sidebar():
+    html = HTML.read_text(encoding="utf-8")
+    js = (HTML.parent / "app.js").read_text(encoding="utf-8")
+    labels = _sidebar_labels(html)
+    titles = _js_titles(js)
+    assert list(labels) == VISIBLE
+    for name in VISIBLE:
+        assert titles[name] == labels[name], name
+
+
+def test_location_chrome_ids():
+    html = HTML.read_text(encoding="utf-8")
+    assert 'id="page-group"' in html
+    assert 'id="related-views"' in html
+
+
+def test_view_groups_contract():
+    js = (HTML.parent / "app.js").read_text(encoding="utf-8")
+    block = _js_object(js, "viewGroups")
+    found = dict(re.findall(r'(\w+): "([^"]+)"', block))
+    assert found == GROUPS
+    for banned in ("reports", "nps", "toss"):
+        assert banned not in found
+
+
+def test_related_views_contract():
+    js = (HTML.parent / "app.js").read_text(encoding="utf-8")
+    block = _js_object(js, "relatedViews")
+    found = {}
+    for name, body in re.findall(r'(\w+): \[([^\]]*)\]', block):
+        found[name] = re.findall(r'"([^"]+)"', body)
+    assert found == RELATED
+    for name in NO_RELATED:
+        assert name not in found
+    for name, targets in found.items():
+        assert name in VISIBLE
+        assert len(targets) == len(set(targets))
+        assert name not in targets
+        for target in targets:
+            assert target in VISIBLE
+            assert target not in ("reports", "nps", "toss")

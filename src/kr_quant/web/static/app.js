@@ -1122,10 +1122,10 @@ const titles = {
   dash: ["대시보드", "재무 팩터 기반 상위 20종목 요약"],
   rank: ["퀀트 랭킹", "시총·유동성 통과 종목 전체 퀀트 랭킹"],
   screens: ["테마 스크리너", "가치·성장·배당·모멘텀 테마별 정밀 스크리닝"],
-  market: ["글로벌 매크로 & 국면", "거시경제·환율·원자재·공포탐욕 & 역사적 계절성 분석"],
-  sector: ["업종·섹터 분석", "KSIC 업종별 상대강도(RS), 확산도 및 모멘텀 랭킹"],
+  market: ["글로벌 매크로", "거시경제·환율·원자재·공포탐욕 & 역사적 계절성 분석"],
+  sector: ["업종·섹터", "KSIC 업종별 상대강도(RS), 확산도 및 모멘텀 랭킹"],
   toss: ["토스 랭킹", "급상승·급하락·거래대금 실시간 시세"],
-  watch: ["관심종목", "나만의 관심종목 메모 및 빠른 분석"],
+  watch: ["관심종목 & AI리포트", "나만의 관심종목 메모 및 빠른 분석"],
   reports: ["리포트 보관함", "발간된 AI 심층 분석 리포트 및 검증 아카이브"],
   run: ["실행 파이프라인", "실데이터 수집, 시세 갱신 및 퀀트 재계산"],
   settings: ["API 설정", "API 키 및 LLM 모델 환경설정"],
@@ -1134,12 +1134,40 @@ const titles = {
   trade: ["스마트 수급·타점", "외국인·기관·사모 수급, 빈집·복귀, 기술적 타점 및 신호 후 성과 통합 검증"],
   us13f: ["월가 대가 포트폴리오 (13F)", "워런 버핏·마이클 버리 등 글로벌 대가들의 SEC 13F 보유 비중 & 신규 편입 종목"],
   strategy: ["전략·백테스트", "일봉 기반 퀀트 전략 백테스트 및 검증"],
-  investor: ["메이저 수급 & 지분", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
-  sunzi: ["은하퀀트전설 (Legend of Galactic Quant)", "제13함대 기함 히페리온 작전 회의실 · 손자 오사(道天地將法) 기반 실전 전술 참모"],
+  investor: ["메이저 수급", "기관·외국인 일별 순매수 추적 & DART 국민연금 5% 대량보유 공시"],
+  sunzi: ["은하퀀트전설", "제13함대 기함 히페리온 작전 회의실 · 손자 오사(道天地將法) 기반 실전 전술 참모"],
   nps: ["국민연금 5%", "OpenDART 국민연금 5% 이상 대량보유 공시 추적"],
   seasonality: ["시즌·캘린더", "가격 선행형 Discovery · 10개 분야 18개 이벤트 · AI 원인 역추적 스크리너"],
 };
 
+const viewGroups = {
+  dash: "OVERVIEW",
+  rank: "DISCOVERY",
+  screens: "DISCOVERY",
+  seasonality: "DISCOVERY",
+  market: "MARKET CONTEXT",
+  sector: "MARKET CONTEXT",
+  investor: "FLOW & TIMING",
+  trade: "FLOW & TIMING",
+  strategy: "RESEARCH LAB",
+  watch: "RESEARCH LAB",
+  us13f: "RESEARCH LAB",
+  sunzi: "RESEARCH LAB",
+  run: "SYSTEM",
+  settings: "SYSTEM",
+};
+const relatedViews = {
+  rank: ["screens", "seasonality", "trade"],
+  screens: ["rank", "seasonality"],
+  seasonality: ["rank", "market"],
+  market: ["sector"],
+  sector: ["rank", "screens"],
+  investor: ["trade"],
+  trade: ["investor", "strategy"],
+  strategy: ["rank", "watch"],
+  watch: ["strategy", "sunzi"],
+  sunzi: ["watch", "strategy"],
+};
 let rankRows = [];
 let dashRows = [];
 let guideCache = null;
@@ -1775,6 +1803,40 @@ async function loadViewData(name, force) {
   }
 }
 
+function syncPageLocation(name) {
+  const groupEl = $("#page-group");
+  const group = viewGroups[name];
+  if (groupEl) {
+    groupEl.textContent = group || "";
+    groupEl.hidden = !group;
+  }
+  const row = $("#related-views");
+  if (!row) return;
+  const targets = relatedViews[name] || [];
+  row.replaceChildren();
+  if (!targets.length) {
+    row.hidden = true;
+    return;
+  }
+  row.hidden = false;
+  const label = document.createElement("span");
+  label.className = "related-label";
+  label.textContent = "관련 화면";
+  row.appendChild(label);
+  targets.forEach((target) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "related-view-btn";
+    btn.textContent = titles[target] ? titles[target][0] : target;
+    btn.addEventListener("click", () => {
+      switchView(target);
+      const main = document.querySelector("main");
+      if (main) main.scrollTop = 0;
+    });
+    row.appendChild(btn);
+  });
+}
+
 function switchView(name, force = false) {
   if (publicShareMode && name === "settings") name = "dash";
   // Backward compatibility: retired flow/empty routes open their matching
@@ -1804,6 +1866,7 @@ function switchView(name, force = false) {
     $("#page-title").textContent = name;
     $("#page-sub").textContent = "";
   }
+  syncPageLocation(name);
   renderPageEvidence(name);
   const modeBadge = $("#top-mode-badge");
   if (modeBadge) {

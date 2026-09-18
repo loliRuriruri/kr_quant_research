@@ -120,6 +120,52 @@ body.public-mode #view-run button:disabled {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+.page-group {
+  margin: 0 0 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  line-height: 1.2;
+}
+.page-group[hidden],
+.related-views[hidden] { display: none; }
+.related-views {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  max-width: 100%;
+}
+.related-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-right: 2px;
+}
+.related-view-btn {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  white-space: normal;
+}
+.related-view-btn:hover {
+  border-color: var(--accent);
+  color: #fff;
+}
+.related-view-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .nav-icon {
   font-size: 15px;
   display: inline-flex;
