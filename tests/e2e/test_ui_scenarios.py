@@ -309,3 +309,77 @@ def test_mobile_cards_and_tables_do_not_overlap(browser_page, base_url):
         for right in boxes[i + 1 : 8]:
             if _overlap_collision(left, right):
                 pytest.fail("mobile cards overlap")
+
+def test_dashboard_workflow_quick_actions(browser_page, base_url):
+    page = browser_page.context.browser.new_page()
+    try:
+        page.set_viewport_size({"width": 1440, "height": 900})
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.locator("#dash-champions .champ-card").first.wait_for(timeout=15000)
+        targets = ["seasonality", "rank", "screens", "investor", "trade", "watch", "strategy", "run"]
+        for target in targets:
+            page.locator(f'#view-dash [data-dash-target="{target}"]').click()
+            page.wait_for_function(
+                "(name) => { const el = document.querySelector('#view-' + name); return !!el && !el.classList.contains('hidden'); }",
+                arg=target,
+            )
+            active = page.locator(f'button.nav-btn.active[data-view="{target}"] span:not(.nav-icon)')
+            assert active.count() >= 1, target
+            label = " ".join((active.first.text_content() or "").split())
+            title = " ".join((page.locator("#page-title").text_content() or "").split())
+            assert title == label, (target, title, label)
+            page.locator('button.nav-btn[data-view="dash"]').first.click()
+            page.wait_for_function(
+                "() => { const el = document.querySelector('#view-dash'); return !!el && !el.classList.contains('hidden'); }"
+            )
+    finally:
+        page.close()
+
+
+def test_dashboard_kpi_count_waits_for_reports(browser_page, base_url):
+    page = browser_page.context.browser.new_page()
+    held = []
+
+    def hold_reports(route):
+        held.append(route)
+
+    try:
+        page.set_viewport_size({"width": 1440, "height": 900})
+        page.route("**/api/research/reports", hold_reports)
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.locator(".glance-pick-card").first.wait_for(timeout=20000)
+        page.locator("#dash-champions .champ-card").first.wait_for(timeout=20000)
+        page.locator("#kpis .kpi").nth(2).wait_for(timeout=20000)
+        loading = (page.locator("#kpis .card-rose .kpi-num").inner_text() or "").strip()
+        assert loading == "\u2014", loading
+        assert held, "reports request was not intercepted"
+        for route in list(held):
+            route.continue_()
+        held.clear()
+        page.locator("#dash-reports-body .dash-report-card, #dash-reports-body .hint").first.wait_for(timeout=20000)
+        page.wait_for_function(
+            "() => { const num = document.querySelector('#kpis .card-rose .kpi-num');"
+            " const unit = document.querySelector('#kpis .card-rose .kpi-unit');"
+            " return !!num && !!unit && num.textContent.trim() !== '\\u2014' && /^\\d+$/.test(num.textContent.trim()) && unit.textContent.trim() === '\\uac74'; }"
+        )
+        loaded = (page.locator("#kpis .card-rose .kpi-num").inner_text() or "").strip()
+        assert loaded.isdigit(), loaded
+        assert page.locator("#kpis .kpi").count() == 3
+        assert page.locator("#dash-flow .dash-nav-card").count() == 2
+        assert page.locator("#dash-reports-body tr").count() == 0
+        assert page.locator("#dash-reports-body .dash-report-card").count() <= 3
+        assert page.locator("#dash-dna-box").count() == 1
+        wide = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        assert wide <= 1, wide
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.locator("#kpis .kpi").nth(2).wait_for(timeout=5000)
+        narrow = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        assert narrow <= 1, narrow
+        assert page.locator("#kpis .kpi").count() == 3
+    finally:
+        for route in held:
+            try:
+                route.continue_()
+            except Exception:
+                pass
+        page.close()

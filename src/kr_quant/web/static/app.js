@@ -1172,6 +1172,7 @@ let rankRows = [];
 let dashRows = [];
 let guideCache = null;
 let reportRows = [];
+let dashReportsReady = false;
 let currentView = "dash";
 let lastStatus = null;
 let lastStatusExplain = null;
@@ -2754,6 +2755,25 @@ function renderReportList(target, rows, limit) {
   if (!body) return;
   const scoped = target === "#reports-body" ? sortedCopy(rows, "reports", "researched_at", "desc") : rows;
   const show = limit ? scoped.slice(0, limit) : scoped;
+
+  if (target !== "#reports-body") {
+    if (!show.length) {
+      body.innerHTML = `<p class="hint">보관된 리포트가 없습니다.</p>`;
+      return;
+    }
+    body.innerHTML = show.map((r) => {
+      const isDeep = r.kind === 'AI 분석 리포트';
+      const timeStr = (r.researched_at || "").slice(0, 16).replace("T", " ");
+      return `<article class="dash-report-card clickable" data-ticker="${padTicker(r.ticker)}" data-asof="${r.as_of_date || ""}">
+        <b>${escapeHtml(r.company || "")}</b>
+        <span>${escapeHtml(r.kind || "")} ${formatModelBadge(r.model, r.provider)}</span>
+        <span>${escapeHtml(r.as_of_date || timeStr)}</span>
+        <span>${escapeHtml(r.summary || "")}</span>
+      </article>`;
+    }).join("");
+    return;
+  }
+
   const wide = target === "#reports-body";
   if (!show.length) {
     body.innerHTML = `<tr><td colspan="${wide ? 10 : 5}" style="text-align:center; padding:24px; color:#94a3b8;">보관된 리포트가 없습니다.</td></tr>`;
@@ -2829,7 +2849,7 @@ function renderReportArchiveHub() {
 async function loadReportArchive() {
   const data = await api("/api/research/reports");
   reportRows = data.rows || [];
-  renderReportList("#dash-reports-body", reportRows, 6);
+  renderReportList("#dash-reports-body", reportRows, 3);
   renderReportArchiveHub();
   if (currentView === "reports" || currentView === "watch") {
     const latest = reportRows[0]?.researched_at || reportRows[0]?.as_of_date;
@@ -3003,6 +3023,7 @@ function renderChampions(rows) {
     return;
   }
   const top3 = sortedCopy(rows, "dash", "quant_rank", "asc").slice(0, 3);
+  const missing = "현재 데이터로는 reason 없음";
   const titles = ["🥇 1위 챔피언", "🥈 2위 루키", "🥉 3위 밸류"];
   container.innerHTML = top3
     .map((r, i) => {
@@ -3024,6 +3045,7 @@ function renderChampions(rows) {
             <div class="champ-score">${fmt(r.quant_score)} <small>점</small></div>
           </div>
           <h3 class="champ-name">${escapeHtml(r.company || code)}</h3>
+          <p class="champ-reason">${escapeHtml(r.comment_short || r.comment || missing)}</p>
           <div class="champ-sub">${code} · ${escapeHtml(r.market || "")} · ${escapeHtml(r.industry || r.sector || "기타")}</div>
           <div class="champ-stats">
             <div>
@@ -3068,7 +3090,7 @@ function glanceRankBadge(rank) {
 async function loadGlanceTop3() {
   const box = $("#dash-seasonality-banner");
   if (!box) return;
-  box.innerHTML = `<div class="hint" style="margin:0;">오늘의 시즌 모멘텀 Top 3를 불러오는 중…</div>`;
+  box.innerHTML = `<div class="hint" style="margin:0;">시즌·캘린더에서 지금 볼 관측…</div>`;
   try {
     const res = await api("/api/seasonality/highlights");
     const data = res.data || {};
@@ -3083,7 +3105,7 @@ async function loadGlanceTop3() {
     if (!picks.length) {
       box.innerHTML = `
         <div class="seasonality-widget-head">
-          <div class="seasonality-widget-title">⚡ 오늘의 시즌 모멘텀 Top 3</div>
+          <div class="seasonality-widget-title">시즌·캘린더에서 지금 볼 관측</div>
           <button type="button" class="ghost small" id="btn-open-seasonality-from-glance">계절성 화면 →</button>
         </div>
         <p class="hint" style="margin:0;">진입 유효 시즌 모멘텀 종목이 없습니다. 계절성 화면에서 필터를 완화해 보세요.</p>
@@ -3124,7 +3146,7 @@ async function loadGlanceTop3() {
 
     box.innerHTML = `
       <div class="seasonality-widget-head">
-        <div class="seasonality-widget-title">⚡ 오늘의 시즌 모멘텀 Top 3</div>
+        <div class="seasonality-widget-title">시즌·캘린더에서 지금 볼 관측</div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span class="chip" style="background:rgba(56,189,248,0.15); color:#38bdf8;">전종목 스캔 ${scanned.toLocaleString("ko-KR")}/${listed.toLocaleString("ko-KR")}${mktBits ? ` · ${mktBits}` : ""}</span>
           ${asOf ? `<span class="meta">시세 ${escapeHtml(asOf)}</span>` : ""}
@@ -3267,34 +3289,46 @@ function renderDashDna(rows, count = currentDashTopN) {
   `;
 }
 
+function dashAsOf(status) {
+  const source = status || {};
+  const fresh = source.freshness && source.freshness.price_max_date;
+  const qualityDay = source.quality && source.quality.as_of_date;
+  return fresh || qualityDay || rankingAsOf.dash || "";
+}
+
+function renderDashSystem(status) {
+  const line = $("#dash-system-line");
+  if (!line) return;
+  const dayText = dashAsOf(status);
+  line.textContent = "데이터 기준일" + (dayText ? " " + dayText : "");
+}
+
 function renderKpis(status, top, eligibleTotal = null) {
   const q = status.quality || {};
   const c = q.counts || {};
   const topRows = (top || []).slice(0, 20);
   const n = topRows.length || 1;
   const avgScore = (topRows.reduce((acc, r) => acc + (Number(r.quant_score) || 0), 0) / n).toFixed(1);
-  const perList = topRows.map(r => Number(r.per)).filter(v => v > 0);
-  const avgPer = perList.length ? (perList.reduce((a, b) => a + b, 0) / perList.length).toFixed(1) : "—";
-  const roeList = topRows.map(r => r.roe != null ? (Number(r.roe) < 1 ? Number(r.roe) * 100 : Number(r.roe)) : null).filter(v => v != null && !isNaN(v));
-  const avgRoe = roeList.length ? (roeList.reduce((a, b) => a + b, 0) / roeList.length).toFixed(1) : "—";
-  const reportsCount = reportRows.filter((x) => x.kind === "AI 분석 리포트").length;
+    const reportsCount = (reportRows || []).filter((row) => row.kind === 'AI 분석 리포트').length;
 
-  $("#kpis").innerHTML = `
+  const box = $("#kpis");
+  if (!box) return;
+  box.innerHTML = `
     <div class="kpi card-cyan">
       <div class="kpi-head">
-        <span class="kpi-title has-tip" data-tip="재무·성장·모멘텀 종합 알고리즘을 최종 통과한 상위 20개 핵심 포트폴리오입니다.">🎯 TOP20 포트폴리오</span>
+        <span class="kpi-title has-tip" data-tip="재무·성장·모멘텀 종합 알고리즘을 최종 통과한 상위 20개 핵심 포트폴리오입니다.">🎯 평균점수</span>
         <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(56,189,248,0.15); color:#38bdf8;">우량주</span>
       </div>
       <div class="kpi-main">
-        <span class="kpi-num">${topRows.length}</span>
-        <span class="kpi-unit">종목</span>
+        <span class="kpi-num">${avgScore}</span>
+        <span class="kpi-unit">점</span>
       </div>
       <div class="kpi-sub-text">평균 퀀트 점수 <b style="color:#38bdf8; font-weight:700;">${avgScore}점</b></div>
     </div>
 
     <div class="kpi card-emerald">
       <div class="kpi-head">
-        <span class="kpi-title has-tip" data-tip="시총·거래대금·보통주 및 재무제표 스크리닝 요건을 통과한 유효 유니버스 기업 수입니다.">🏢 조건 통과 유니버스</span>
+        <span class="kpi-title has-tip" data-tip="시총·거래대금·보통주 및 재무제표 스크리닝 요건을 통과한 유효 유니버스 기업 수입니다.">🏢 적격종목</span>
         <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(52,211,153,0.15); color:#34d399;">적격 기준 적용</span>
       </div>
       <div class="kpi-main">
@@ -3304,45 +3338,30 @@ function renderKpis(status, top, eligibleTotal = null) {
       <div class="kpi-sub-text">전체 2,700+ 상장사 중 엄선</div>
     </div>
 
-    <div class="kpi card-amber">
+    <div class="kpi card-rose">
       <div class="kpi-head">
-        <span class="kpi-title has-tip" data-tip="TOP20 종목들의 평균 주가수익비율(PER)입니다. 시장 평균 대비 저평가 안전마진을 나타냅니다.">💎 TOP20 평균 PER</span>
-        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(251,191,36,0.15); color:#fbbf24;">저평가</span>
+        <span class="kpi-title has-tip" data-tip="AI 리서치 엔진으로 발간 및 보관된 심층 기업 분석 리포트 건수입니다.">📑 AI 분석 리포트</span>
+        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(251,113,133,0.15); color:#fb7185;">리포트</span>
       </div>
       <div class="kpi-main">
-        <span class="kpi-num">${avgPer}</span>
-        <span class="kpi-unit">배</span>
+        <span class="kpi-num">${dashReportsReady ? reportsCount : "—"}</span>
+        <span class="kpi-unit">${dashReportsReady ? "건" : ""}</span>
       </div>
-      <div class="kpi-sub-text">코스피 평균(13.5배) 대비 저평가</div>
-    </div>
-
-    <div class="kpi card-purple">
-      <div class="kpi-head">
-        <span class="kpi-title has-tip" data-tip="TOP20 종목들의 평균 자기자본이익률(ROE)입니다. 고수익성 자본 효율성을 나타냅니다.">📈 TOP20 평균 ROE</span>
-        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(192,132,252,0.15); color:#c084fc;">고수익</span>
-      </div>
-      <div class="kpi-main">
-        <span class="kpi-num">${avgRoe}</span>
-        <span class="kpi-unit">%</span>
-      </div>
-      <div class="kpi-sub-text">고수익·고성장 펀더멘털</div>
-    </div>
-
-    <div class="kpi card-rose clickable-kpi" id="kpi-goto-reports">
-      <div class="kpi-head">
-        <span class="kpi-title has-tip" data-tip="AI 리서치 엔진으로 발간 및 보관된 심층 기업 분석 리포트 건수입니다. 클릭 시 리포트 보관함으로 이동합니다.">📑 AI 분석 리포트</span>
-        <span class="chip" style="font-size:10px; padding:1px 5px; background:rgba(251,113,133,0.15); color:#fb7185;">리포트 ↗</span>
-      </div>
-      <div class="kpi-main">
-        <span class="kpi-num">${reportsCount}</span>
-        <span class="kpi-unit">건</span>
-      </div>
-      <div class="kpi-sub-text">심층 검증 완료 (클릭 시 이동)</div>
+      <div class="kpi-sub-text">심층 검증 완료</div>
     </div>
   `;
 
-  $("#kpi-goto-reports")?.addEventListener("click", () => switchView("reports"));
+  renderDashSystem(status);
 }
+
+
+document.addEventListener("click", (event) => {
+  const button = event.target && event.target.closest && event.target.closest(".dash-quick-link");
+  if (!button) return;
+  const target = button.getAttribute("data-dash-target");
+  if (!target) return;
+  switchView(target);
+});
 
 function renderExtLinksTop(links) {
   if (!links || !links.length) return "";
@@ -4863,8 +4882,10 @@ async function renderStatusPanel() {
   paintAiArchitectureCard({ label: status.llm_label || llmName, provider: status.llm_provider, model: status.llm_model });
   renderKpis(status, dashRows);
   renderJob(status.job);
-  guideCache = guideCache || await api("/api/guide");
-  renderQuality(status.quality, guideCache, status.freshness);
+  if ($("#quality-box")) {
+    guideCache = guideCache || await api("/api/guide");
+    renderQuality(status.quality, guideCache, status.freshness);
+  }
 }
 
 async function loadRankRows() {
@@ -4892,7 +4913,9 @@ async function loadDash() {
   requestAnimationFrame(syncDashLeaderboardHeight);
   api("/api/research/reports").then((archive) => {
     reportRows = archive.rows || [];
-    renderReportList("#dash-reports-body", reportRows, 6);
+    dashReportsReady = true;
+    renderReportList("#dash-reports-body", reportRows, 3);
+    renderKpis(lastStatus || {}, dashRows);
   }).catch(() => {});
   loadDashTier1Briefing().catch(() => {});
 }
@@ -5007,7 +5030,7 @@ async function loadDashTier1Briefing() {
         <div style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,58,138,0.25)); border:1px solid rgba(56,189,248,0.35); border-radius:12px; padding:12px 16px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,0.35);">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-size:13px; font-weight:800; color:#38bdf8;">⚡ 오늘의 퀀트 시장 종합 브리핑</span>
+              <span style="font-size:13px; font-weight:800; color:#38bdf8;">⚡ 퀀트 후보 해석</span>
               <span class="chip ok" style="font-size:10px; font-weight:700;">${escapeHtml(engineLabel)}</span>
             </div>
             <span style="font-size:11px; color:#86efac; font-weight:600;">${escapeHtml(modelLabel)}</span>
@@ -11266,7 +11289,7 @@ document.addEventListener("click", (e) => {
     return;
   }
   if (e.target.closest("a.ext") || e.target.closest(".btn-ai-mini") || e.target.closest("[data-ai-trigger]")) return;
-  const tr = e.target.closest("tr.clickable");
+  const tr = e.target.closest("tr.clickable, .dash-report-card");
   if (!tr?.dataset.ticker) return;
   const archive = tr.closest("#reports-body, #dash-reports-body");
   if (archive) {

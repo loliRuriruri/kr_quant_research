@@ -7100,3 +7100,69 @@ td.nps-empty { text-align: center; padding: 28px 12px; color: #94a3b8; }
   .report-render .md-h1 { font-size: 18px; }
   .report-render .md-table { font-size: 11px; }
 }
+
+#view-dash .kpis.dash-summary-strip {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 960px;
+}
+@media (max-width: 700px) {
+  #view-dash .kpis.dash-summary-strip { grid-template-columns: minmax(0, 1fr); max-width: none; }
+}
+.dash-workflow-section { margin: 0 0 18px; min-width: 0; }
+.dash-workflow-head h2 { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.08em; color: #94a3b8; }
+.dash-workflow-head p, .dash-flow-note, #dash-system-line { margin: 0 0 10px; color: #cbd5e1; }
+.dash-quick-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.dash-quick-link {
+  appearance: none;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.dash-champion-slim { cursor: pointer; min-width: 0; }
+#view-dash .dash-report-wrap { overflow-x: auto; max-width: 100%; }
+
+.dash-flow-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+.dash-nav-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  flex: 1 1 220px;
+  min-height: 96px;
+  border-radius: 16px;
+  padding: 16px 18px;
+  text-align: left;
+  background: linear-gradient(145deg, rgba(17, 26, 46, 0.95), rgba(12, 20, 36, 0.95));
+}
+.dash-nav-kicker { font-size: 11px; letter-spacing: 0.08em; color: #38bdf8; }
+.dash-nav-card strong { font-size: 16px; }
+.dash-nav-sub { font-size: 12px; color: #94a3b8; }
+.dash-dna-card { margin-top: 14px; padding: 14px 16px; }
+
+#dash-champions.dash-champions-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 900px) {
+  #dash-champions.dash-champions-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.dash-report-list { display: flex; flex-direction: column; gap: 8px; }
+.dash-report-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) auto auto;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.55);
+  cursor: pointer;
+}
+.dash-report-card b { color: #f8fafc; }
+.dash-report-card span:last-child { grid-column: 1 / -1; color: #94a3b8; font-size: 12px; }
+@media (max-width: 700px) {
+  .dash-report-card { grid-template-columns: minmax(0, 1fr); }
+}

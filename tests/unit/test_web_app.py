@@ -580,17 +580,15 @@ def _view_section(html: str, view_id: str) -> str:
 def test_dash_view_drops_legacy_rank_copy():
     html = client.get("/").text
     dash = _view_section(html, "view-dash")
-    assert html.count('id="quality-box"') == 1
-    assert dash.count('id="quality-box"') == 1
+    assert html.count('id="quality-box"') == 0
+    assert dash.count('id="quality-box"') == 0
     for banned in (
         'id="top20-body"',
         "dash-topn-btn",
         'id="dash-leaderboard-title"',
         'id="refresh-dash"',
         "dash-leaderboard-card",
-        'id="dash-dna-title"',
-        'id="dash-dna-box"',
-        'id="portfolio-box"',
+                        'id="portfolio-box"',
     ):
         assert banned not in dash, banned
     for kept in (
@@ -599,7 +597,93 @@ def test_dash_view_drops_legacy_rank_copy():
         'id="dash-champions"',
         'id="dash-seasonality-banner"',
         'id="dash-reports-body"',
-        'id="quality-box"',
     ):
         assert kept in dash, kept
     assert "strategy-port-box" in html
+
+def test_dash_workflow_contract():
+    html = client.get("/").text
+    dash = _view_section(html, "view-dash")
+    order = [
+        "kpis",
+        "dash-today",
+        "dash-discovery",
+        "dash-flow",
+        "dash-research",
+        "dash-system",
+    ]
+    positions = []
+    for view_id in order:
+        token = 'id="' + view_id + '"'
+        assert token in dash, view_id
+        positions.append(dash.find(token))
+    assert positions == sorted(positions)
+    today_at = dash.find('id="dash-today"')
+    discovery_at = dash.find('id="dash-discovery"')
+    research_at = dash.find('id="dash-research"')
+    assert dash.find('id="dash-seasonality-banner"') > today_at
+    briefing_at = dash.find('id="dash-tier1-briefing"')
+    assert briefing_at > discovery_at
+    assert dash.find('id="dash-champions"') > briefing_at
+    assert dash.find('id="dash-reports-body"') > research_at
+    targets = re.findall(r'data-dash-target="([^"]+)"', dash)
+    assert targets == [
+        "seasonality",
+        "rank",
+        "screens",
+        "investor",
+        "trade",
+        "watch",
+        "strategy",
+        "run",
+    ]
+    assert "data-view=" not in dash
+    banned = [
+        'top20-body',
+        'dash-topn-btn',
+        'dash-leaderboard-title',
+        'refresh-dash',
+        'id="portfolio-box"',
+        'id="quality-box"',
+        '코스피 평균(13.5배)',
+        '매수 후보',
+        '오늘 추천 종목',
+        '매수 추천',
+    ]
+    for item in banned:
+        assert item not in dash, item
+    js = client.get("/static/app.js").text
+    assert '현재 데이터로는 reason 없음' in js
+    assert 'renderReportList("#dash-reports-body", reportRows, 3)' in js
+    assert "switchView(target)" in js
+    start = js.find("function renderKpis")
+    assert start >= 0
+    nxt = js.find("\nfunction ", start + 1)
+    body = js[start:nxt if nxt > start else None]
+    assert '코스피 평균' not in body
+
+def test_dash_kpi_density():
+    html = client.get("/").text
+    dash = _view_section(html, "view-dash")
+    for view_id in (
+        "dash-seasonality-banner",
+        "dash-tier1-briefing",
+        "dash-champions",
+        "dash-dna-box",
+        "dash-flow",
+        "dash-research",
+        "dash-system",
+    ):
+        assert 'id="' + view_id + '"' in dash, view_id
+    for banned in ("top20-body", "refresh-dash", 'id="portfolio-box"', 'id="quality-box"'):
+        assert banned not in dash, banned
+    js = client.get("/static/app.js").text
+    start = js.find("function renderKpis")
+    end = js.find("function renderExtLinksTop", start)
+    body = js[start:end]
+    for label in ('평균점수', '적격종목', 'AI 분석 리포트'):
+        assert label in body, label
+    for banned in ('평균PER', '평균ROE', '코스피 평균'):
+        assert banned not in body, banned
+    assert "dashReportsReady" in js
+    assert "dashReportsReady ? " in body
