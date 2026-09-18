@@ -659,6 +659,14 @@ def test_dash_workflow_contract():
     assert '상위 20개 핵심 포트폴리오' not in kpi
     assert '우량주' not in kpi
     assert 'TOP20 퀀트 평균' in kpi
+    assert '전체 2,700+ 상장사 중 엄선' not in kpi
+    assert '전체 상장 종목 중 조건 통과' in kpi
+    assert '심층 검증 완료' not in kpi
+    assert '저장된 AI 심층 리포트' in kpi
+    dna = js[js.find('function renderDashDna'):js.find('function renderKpis')]
+    assert '시장 상위 1% 우량주' not in dna
+    assert '우량주' not in dna
+    assert 'TOP 후보군 팩터 구성' in dna
     assert 'renderReportList("#dash-reports-body", reportRows, 3)' in js
     assert "switchView(target)" in js
     start = js.find("function renderKpis")

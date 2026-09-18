@@ -3283,7 +3283,7 @@ function renderDashDna(rows, count = currentDashTopN) {
       }).join("")}
     </div>
     <div style="background:#0f172a; border-radius:8px; padding:8px 12px; font-size:12px; color:#94a3b8; border:1px solid #1e293b;">
-      💡 TOP20 평균 종합 점수: <b style="color:#38bdf8;">${avgTotal}점</b> (시장 상위 1% 우량주)
+      💡 TOP20 평균 종합 점수: <b style="color:#38bdf8;">${avgTotal}점</b> (TOP 후보군 팩터 구성)
     </div>
   `;
 }
@@ -3333,7 +3333,7 @@ function renderKpis(status, top, eligibleTotal = null) {
         <span class="kpi-num">${eligibleTotal ?? c.universe_eligible ?? "—"}</span>
         <span class="kpi-unit">개사</span>
       </div>
-      <div class="kpi-sub-text">전체 2,700+ 상장사 중 엄선</div>
+      <div class="kpi-sub-text">전체 상장 종목 중 조건 통과</div>
     </div>
 
     <div class="kpi card-rose">
@@ -3345,7 +3345,7 @@ function renderKpis(status, top, eligibleTotal = null) {
         <span class="kpi-num">${dashReportsReady ? reportsCount : "—"}</span>
         <span class="kpi-unit">${dashReportsReady ? "건" : ""}</span>
       </div>
-      <div class="kpi-sub-text">심층 검증 완료</div>
+      <div class="kpi-sub-text">저장된 AI 심층 리포트</div>
     </div>
   `;
 
