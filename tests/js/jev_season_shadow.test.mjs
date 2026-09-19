@@ -242,3 +242,117 @@ test("evaluateCandidates rejects vercel_gateway as unsupported provider", async 
     /UNSUPPORTED_EVAL_PROVIDER:vercel_gateway/,
   );
 });
+
+
+const state = { identity: { ticker: "TEST000" } };
+
+test("evaluateCandidates accepts openrouter with shared noul normalization", async () => {
+  const output = await evaluateCandidates(
+    [{ id: "x", candidate_type: "season_pattern", ticker: "TEST000", state, state_hash: "h" }],
+    evalOpts({
+      provider: "openrouter",
+      evaluateFn: async () => ({
+        model: "typesafe/jev-1.13-20260917",
+        answers: {
+          materialNow: { type: "noul", noul: 0.42 },
+          reviewClass: {
+            type: "choice",
+            choice: "monitor",
+            probabilities: { monitor: 0.7 },
+            confidence: 0.7,
+          },
+        },
+        usage: { input_tokens: 3, output_tokens: 2 },
+      }),
+    }),
+  );
+  assert.equal(output.results[0].provider, "openrouter");
+  assert.equal(output.results[0].answers.materialNow.type, "boolean");
+  assert.equal(output.results[0].answers.materialNow.probability, 0.42);
+  assert.equal(output.results[0].answers.reviewClass.type, "choice");
+  assert.equal(output.results[0].answers.reviewClass.choice, "monitor");
+});
+
+test("evaluateCandidates preserves optional openrouter telemetry", async () => {
+  const output = await evaluateCandidates(
+    [{
+      id: "x",
+      candidate_type: "season_pattern",
+      ticker: "TEST000",
+      state,
+      state_hash: "h",
+    }],
+    {
+      provider: "openrouter",
+      questions: buildTypeSafeQuestions(),
+      evaluateFn: async () => ({
+        model: "typesafe/jev-1.13-20260917",
+        answers: {
+          materialNow: { type: "noul", noul: 0.2 },
+        },
+        usage: { input_tokens: 10, output_tokens: 4 },
+        providerMetadata: {
+          openrouter: {
+            provider: "TypeSafe",
+            cost: 0.0001,
+            requestId: "gen-test",
+          },
+        },
+      }),
+    },
+  );
+  const rec = output.results[0];
+  assert.equal(rec.provider_name, "TypeSafe");
+  assert.equal(rec.cost, 0.0001);
+  assert.equal(rec.request_id, "gen-test");
+});
+
+test("evaluateCandidates missing openrouter telemetry stays null", async () => {
+  const output = await evaluateCandidates(
+    [{
+      id: "x",
+      candidate_type: "season_pattern",
+      ticker: "TEST000",
+      state,
+      state_hash: "h",
+    }],
+    {
+      provider: "openrouter",
+      questions: buildTypeSafeQuestions(),
+      evaluateFn: async () => ({
+        model: "typesafe/jev-1.13-20260917",
+        answers: { materialNow: { type: "noul", noul: 0.1 } },
+        usage: {},
+      }),
+    },
+  );
+  const rec = output.results[0];
+  assert.equal(rec.provider_name, null);
+  assert.equal(rec.cost, null);
+  assert.equal(rec.request_id, null);
+});
+
+test("evaluateCandidates rejects quantReference before evaluateFn for openrouter", async () => {
+  let called = 0;
+  const output = await evaluateCandidates(
+    [{
+      id: "x",
+      candidate_type: "season_pattern",
+      ticker: "TEST000",
+      state,
+      state_hash: "h",
+      quantReference: { grade: "A" },
+    }],
+    {
+      provider: "openrouter",
+      questions: buildTypeSafeQuestions(),
+      evaluateFn: async () => {
+        called += 1;
+        throw new Error("FETCH_MUST_NOT_RUN");
+      },
+    },
+  );
+  assert.equal(called, 0);
+  assert.equal(output.results.length, 0);
+  assert.equal(output.errors[0].error, "QUANT_REFERENCE_IN_EVALUATE_INPUT");
+});

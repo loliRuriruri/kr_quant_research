@@ -174,6 +174,23 @@ function withTimeout(promise, ms) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+
+export function extractProviderTelemetry(result, provider) {
+  if (provider !== "openrouter") {
+    return {
+      providerName: null,
+      cost: null,
+      requestId: null,
+    };
+  }
+  const meta = result?.providerMetadata?.openrouter || {};
+  return {
+    providerName: meta.provider ?? null,
+    cost: typeof meta.cost === "number" ? meta.cost : null,
+    requestId: meta.requestId ?? null,
+  };
+}
+
 export async function evaluateCandidates(candidates, options = {}) {
   const evaluateFn = options.evaluateFn;
   if (typeof evaluateFn !== "function") {
@@ -191,7 +208,7 @@ export async function evaluateCandidates(candidates, options = {}) {
     throw new Error("QUESTIONS_REQUIRED");
   }
   const provider = options.provider;
-  if (provider !== "typesafe_direct") {
+  if (provider !== "typesafe_direct" && provider !== "openrouter") {
     throw new Error(`UNSUPPORTED_EVAL_PROVIDER:${provider}`);
   }
   const maxApiCalls = options.maxApiCalls == null ? Infinity : Number(options.maxApiCalls);
@@ -233,9 +250,10 @@ export async function evaluateCandidates(candidates, options = {}) {
         const meta = extractUsage(result);
         const answers = normalizeAnswers(result?.answers, result?.providerMetadata);
         const provider = options.provider;
-        if (provider !== "typesafe_direct") {
+        if (provider !== "typesafe_direct" && provider !== "openrouter") {
           throw new Error(`UNSUPPORTED_EVAL_PROVIDER:${provider}`);
         }
+        const telemetry = extractProviderTelemetry(result, provider);
         return {
           id: candidate.id,
           candidate_type: candidate.candidate_type,
@@ -250,6 +268,9 @@ export async function evaluateCandidates(candidates, options = {}) {
           },
           requested_model: requestedModel,
           resolved_model: result?.model ?? null,
+          provider_name: telemetry.providerName,
+          cost: telemetry.cost,
+          request_id: telemetry.requestId,
           typesafe_confidence: answers.reviewClass?.confidence ?? null,
           wall_latency_ms: nowFn() - started,
         };
