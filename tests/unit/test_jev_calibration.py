@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -106,3 +107,222 @@ def test_invalid_numeric_threshold_fail_closed(tmp_path, bad):
             cfg, provider="typesafe_direct", requested_model="jev-latest",
             evaluator_version="season-jev-shadow-v1", head="needsDart",
         )
+
+
+# --- Task 2 ---
+
+def test_sample_id_formula():
+    sid = cal.make_sample_id(
+        "typesafe_direct",
+        "jev-latest",
+        "season-jev-shadow-v1",
+        "abc",
+    )
+    raw = b"typesafe_direct\njev-latest\nseason-jev-shadow-v1\nabc"
+    assert sid == hashlib.sha256(raw).hexdigest()
+
+
+def test_ticker_grouped_same_ticker_different_generation_and_state():
+    a = cal.assign_split(ticker="005930", state_hash="h1")
+    b = cal.assign_split(ticker="005930", state_hash="h2")
+
+    assert a == b
+    assert a in {
+        cal.SPLIT_CALIBRATION,
+        cal.SPLIT_HOLDOUT,
+    }
+
+
+def test_missing_ticker_uses_state_hash_deterministic():
+    a = cal.assign_split(ticker="", state_hash="deadbeef")
+    b = cal.assign_split(ticker=None, state_hash="deadbeef")
+
+    assert a == b
+    assert cal.assign_split(
+        ticker=None,
+        state_hash="deadbeef",
+    ) == a
+
+
+def test_split_ticker_conflict_fail_closed():
+    rows = [
+        {
+            "sample_id": "s1",
+            "ticker": "005930",
+            "state_hash": "h1",
+            "split": cal.SPLIT_CALIBRATION,
+            "annotation_version": 1,
+        },
+        {
+            "sample_id": "s2",
+            "ticker": "005930",
+            "state_hash": "h2",
+            "split": cal.SPLIT_HOLDOUT,
+            "annotation_version": 1,
+        },
+    ]
+
+    with pytest.raises(
+        cal.CalibrationError,
+        match="SPLIT_TICKER_CONFLICT",
+    ):
+        cal.ensure_split_consistency(rows)
+
+
+def test_split_state_hash_conflict_fail_closed():
+    rows = [
+        {
+            "sample_id": "s1",
+            "ticker": "",
+            "state_hash": "same-hash",
+            "split": cal.SPLIT_CALIBRATION,
+            "annotation_version": 1,
+        },
+        {
+            "sample_id": "s2",
+            "ticker": "",
+            "state_hash": "same-hash",
+            "split": cal.SPLIT_HOLDOUT,
+            "annotation_version": 1,
+        },
+    ]
+
+    with pytest.raises(
+        cal.CalibrationError,
+        match="SPLIT_STATE_HASH_CONFLICT",
+    ):
+        cal.ensure_split_consistency(rows)
+
+
+def test_split_sample_conflict_fail_closed():
+    rows = [
+        {
+            "sample_id": "same-sample",
+            "ticker": "",
+            "state_hash": "h1",
+            "split": cal.SPLIT_CALIBRATION,
+            "annotation_version": 1,
+        },
+        {
+            "sample_id": "same-sample",
+            "ticker": "",
+            "state_hash": "h1",
+            "split": cal.SPLIT_HOLDOUT,
+            "annotation_version": 2,
+        },
+    ]
+
+    with pytest.raises(
+        cal.CalibrationError,
+        match="SPLIT_SAMPLE_CONFLICT",
+    ):
+        cal.ensure_split_consistency(rows)
+
+
+def test_revision_conflict_same_version_different_content():
+    rows = [
+        {
+            "sample_id": "s",
+            "annotation_version": 2,
+            "labeled_at": "2026-01-01T00:00:00Z",
+            "human_labels": {"needsDart": True},
+        },
+        {
+            "sample_id": "s",
+            "annotation_version": 2,
+            "labeled_at": "2026-01-02T00:00:00Z",
+            "human_labels": {"needsDart": False},
+        },
+    ]
+
+    with pytest.raises(
+        cal.RevisionConflict,
+        match="REVISION_CONFLICT",
+    ):
+        cal.select_active_rows(rows)
+
+
+def test_revision_duplicate_same_content_dedupes():
+    row = {
+        "sample_id": "s",
+        "annotation_version": 1,
+        "labeled_at": "2026-01-01T00:00:00Z",
+        "human_labels": {"needsDart": True},
+    }
+
+    active = cal.select_active_rows([row, dict(row)])
+
+    assert len(active) == 1
+
+
+def test_revision_higher_integer_version_wins():
+    rows = [
+        {
+            "sample_id": "s",
+            "annotation_version": 1,
+            "human_labels": {"needsDart": False},
+        },
+        {
+            "sample_id": "s",
+            "annotation_version": 2,
+            "human_labels": {"needsDart": True},
+        },
+    ]
+
+    active = cal.select_active_rows(rows)
+
+    assert len(active) == 1
+    assert active[0]["annotation_version"] == 2
+    assert active[0]["human_labels"]["needsDart"] is True
+
+
+def test_dataset_hash_row_order_invariant():
+    rows = [
+        {
+            "sample_id": "b",
+            "annotation_version": 1,
+            "x": 1,
+        },
+        {
+            "sample_id": "a",
+            "annotation_version": 1,
+            "x": 2,
+        },
+    ]
+
+    left = cal.dataset_hash_v1(rows)
+    right = cal.dataset_hash_v1(list(reversed(rows)))
+
+    assert left == right
+    assert len(left) == 64
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["v1", "1", 0, -1, 1.5, True, None],
+)
+def test_annotation_version_invalid_fail_closed(bad):
+    with pytest.raises(cal.CalibrationError):
+        cal.select_active_rows([
+            {
+                "sample_id": "s",
+                "annotation_version": bad,
+                "human_labels": {},
+            }
+        ])
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"quantReference": {}},
+        {"quant_reference": {}},
+        {"pre_entry_rank": 1},
+        {"nested": {"grade": "A"}},
+        {"score_breakdown": {}},
+        {"seasonality_score": 1.0},
+    ],
+)
+def test_forbidden_quant_fields_rejected(bad):
+    with pytest.raises(ValueError):
+        cal.assert_calibration_state_clean(bad)
