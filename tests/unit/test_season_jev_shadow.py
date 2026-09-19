@@ -1262,4 +1262,3 @@ def test_openrouter_runner_failure_preserves_quant_bundle(
     assert out["errors"] == [{
         "error": "RUNNER:RuntimeError",
     }]
-
