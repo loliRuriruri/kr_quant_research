@@ -667,6 +667,8 @@ def test_dash_workflow_contract():
     assert '시장 상위 1% 우량주' not in dna
     assert '우량주' not in dna
     assert 'TOP 후보군 팩터 구성' in dna
+    assert 'TOP20 평균 종합 점수' not in dna
+    assert 'TOP ${n} 평균 종합 점수' in dna
     assert 'renderReportList("#dash-reports-body", reportRows, 3)' in js
     assert "switchView(target)" in js
     start = js.find("function renderKpis")

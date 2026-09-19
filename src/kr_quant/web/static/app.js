@@ -3283,7 +3283,7 @@ function renderDashDna(rows, count = currentDashTopN) {
       }).join("")}
     </div>
     <div style="background:#0f172a; border-radius:8px; padding:8px 12px; font-size:12px; color:#94a3b8; border:1px solid #1e293b;">
-      💡 TOP20 평균 종합 점수: <b style="color:#38bdf8;">${avgTotal}점</b> (TOP 후보군 팩터 구성)
+      💡 TOP ${n} 평균 종합 점수: <b style="color:#38bdf8;">${avgTotal}점</b> (TOP 후보군 팩터 구성)
     </div>
   `;
 }
