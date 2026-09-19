@@ -1,43 +1,56 @@
-import { noul, choice } from "@typesafe-ai/sdk";
-
-const BOOL_INSTRUCTIONS = {
-  materialNow:
-    "Based only on the supplied evidence, is this candidate materially relevant for current research attention? This is NOT a prediction of price direction or investment return.",
-  needsCurrentYearCheck:
-    "Does this thesis materially depend on current-year facts such as event timing, product schedules, regulation, policy, business status, index eligibility, conference dates, earnings timing, or other facts that may differ from historical years?",
-  needsNews:
-    "Would checking recent reliable news materially reduce uncertainty about whether the supplied seasonal or event thesis is currently valid?",
-  needsDart:
-    "Would checking current Korean DART filings materially help confirm, invalidate, or update this thesis?",
-  historicalConflict:
-    "Does the supplied current evidence or known failure history materially conflict with the historical seasonal/event thesis?",
-  invalidationCheckNeeded:
-    "Is there enough uncertainty or contrary evidence that the stated invalidation conditions should be checked now?",
-  needsDeepAI:
-    "After deterministic evidence and source verification, is this case complex enough that deeper analytical synthesis by a stronger LLM would likely add material value?",
+export const QUESTION_SPECS = {
+  materialNow: {
+    kind: "boolean",
+    instructions:
+      "Based only on the supplied evidence, is this candidate materially relevant for current research attention? This is NOT a prediction of price direction or investment return.",
+  },
+  needsCurrentYearCheck: {
+    kind: "boolean",
+    instructions:
+      "Does this thesis materially depend on current-year facts such as event timing, product schedules, regulation, policy, business status, index eligibility, conference dates, earnings timing, or other facts that may differ from historical years?",
+  },
+  needsNews: {
+    kind: "boolean",
+    instructions:
+      "Would checking recent reliable news materially reduce uncertainty about whether the supplied seasonal or event thesis is currently valid?",
+  },
+  needsDart: {
+    kind: "boolean",
+    instructions:
+      "Would checking current Korean DART filings materially help confirm, invalidate, or update this thesis?",
+  },
+  historicalConflict: {
+    kind: "boolean",
+    instructions:
+      "Does the supplied current evidence or known failure history materially conflict with the historical seasonal/event thesis?",
+  },
+  invalidationCheckNeeded: {
+    kind: "boolean",
+    instructions:
+      "Is there enough uncertainty or contrary evidence that the stated invalidation conditions should be checked now?",
+  },
+  needsDeepAI: {
+    kind: "boolean",
+    instructions:
+      "After deterministic evidence and source verification, is this case complex enough that deeper analytical synthesis by a stronger LLM would likely add material value?",
+  },
+  reviewClass: {
+    kind: "choice",
+    instructions: "Which research-attention class fits this candidate now?",
+    criteria: {
+      no_action: "The supplied evidence is sufficient and no additional research is currently warranted.",
+      monitor: "The candidate is worth monitoring but does not currently require source verification or deep analysis.",
+      verify_sources: "Fresh news, filings, schedules, or other primary/secondary sources should be checked.",
+      revalidate_thesis:
+        "Current evidence materially conflicts with the historical seasonal or event thesis and the thesis should be revalidated.",
+      deep_review:
+        "Multiple interacting uncertainties make deeper analytical synthesis worthwhile after source verification.",
+    },
+  },
 };
 
-const REVIEW_CRITERIA = {
-  no_action: "The supplied evidence is sufficient and no additional research is currently warranted.",
-  monitor: "The candidate is worth monitoring but does not currently require source verification or deep analysis.",
-  verify_sources: "Fresh news, filings, schedules, or other primary/secondary sources should be checked.",
-  revalidate_thesis:
-    "Current evidence materially conflicts with the historical seasonal or event thesis and the thesis should be revalidated.",
-  deep_review:
-    "Multiple interacting uncertainties make deeper analytical synthesis worthwhile after source verification.",
-};
-
-export function buildTypeSafeQuestions() {
-  const questions = {};
-  for (const [id, instructions] of Object.entries(BOOL_INSTRUCTIONS)) {
-    questions[id] = noul(instructions);
-  }
-  questions.reviewClass = choice("Which research-attention class fits this candidate now?", REVIEW_CRITERIA);
-  return questions;
-}
-
-export const NOUL_HEADS = Object.keys(BOOL_INSTRUCTIONS);
-export const REVIEW_CLASS_OPTIONS = Object.keys(REVIEW_CRITERIA);
+export const NOUL_HEADS = Object.keys(QUESTION_SPECS).filter((id) => QUESTION_SPECS[id].kind === "boolean");
+export const REVIEW_CLASS_OPTIONS = Object.keys(QUESTION_SPECS.reviewClass.criteria);
 
 const FORBIDDEN = new Set(["pre_entry_rank", "grade", "seasonality_score", "score_breakdown"]);
 
@@ -64,8 +77,12 @@ export function extractUsage(result) {
   };
 }
 
-export function normalizeAnswers(answers) {
+export function normalizeAnswers(answers, providerMetadata = null) {
   const out = {};
+  const confMap =
+    providerMetadata && typeof providerMetadata === "object"
+      ? providerMetadata.typesafe?.confidence || providerMetadata.typesafe?.confidences || null
+      : null;
   for (const [key, value] of Object.entries(answers || {})) {
     if (!value || typeof value !== "object") continue;
     if (typeof value.noul === "number" || value.type === "noul") {
@@ -77,13 +94,43 @@ export function normalizeAnswers(answers) {
       };
       continue;
     }
+    if (value.type === "boolean" || typeof value.probability === "number") {
+      const probability = typeof value.probability === "number" ? value.probability : null;
+      out[key] = {
+        type: "boolean",
+        probability,
+        decision: typeof probability === "number" ? probability >= 0.5 : null,
+      };
+      continue;
+    }
+    let confidence = value.confidence ?? null;
+    if (confidence == null && confMap && typeof confMap === "object" && key in confMap) {
+      confidence = confMap[key];
+    }
     out[key] = {
       type: value.type || "choice",
       probability: value.probability ?? null,
       choice: value.choice ?? null,
       probabilities: value.probabilities ?? null,
-      confidence: value.confidence ?? null,
+      confidence,
     };
+  }
+  return out;
+}
+
+export function aggregateUsage(rows) {
+  if (!rows.length) {
+    return { inputTokens: null, outputTokens: null, totalTokens: null };
+  }
+  const fields = ["inputTokens", "outputTokens", "totalTokens"];
+  const out = {};
+  for (const field of fields) {
+    const values = rows.map((row) => row?.usage?.[field]);
+    if (values.some((v) => typeof v !== "number")) {
+      out[field] = null;
+    } else {
+      out[field] = values.reduce((a, b) => a + b, 0);
+    }
   }
   return out;
 }
@@ -139,7 +186,14 @@ export async function evaluateCandidates(candidates, options = {}) {
   const startedAt = nowFn();
   const startCutoffAt = startedAt + Number(options.startCutoffMs ?? 160000);
   const finalizeAt = startedAt + Number(options.softDeadlineMs ?? 170000);
-  const questions = options.questions || buildTypeSafeQuestions();
+  const questions = options.questions;
+  if (!questions || typeof questions !== "object") {
+    throw new Error("QUESTIONS_REQUIRED");
+  }
+  const provider = options.provider;
+  if (provider !== "typesafe_direct" && provider !== "vercel_gateway") {
+    throw new Error(`UNSUPPORTED_EVAL_PROVIDER:${provider}`);
+  }
   const maxApiCalls = options.maxApiCalls == null ? Infinity : Number(options.maxApiCalls);
   let apiStarted = 0;
 
@@ -177,12 +231,17 @@ export async function evaluateCandidates(candidates, options = {}) {
           slice,
         );
         const meta = extractUsage(result);
-        const answers = normalizeAnswers(result?.answers);
+        const answers = normalizeAnswers(result?.answers, result?.providerMetadata);
+        const provider = options.provider;
+        if (provider !== "typesafe_direct" && provider !== "vercel_gateway") {
+          throw new Error(`UNSUPPORTED_EVAL_PROVIDER:${provider}`);
+        }
         return {
           id: candidate.id,
           candidate_type: candidate.candidate_type,
           ticker: candidate.ticker,
           state_hash: candidate.state_hash,
+          provider,
           answers,
           usage: {
             inputTokens: meta.inputTokens,
@@ -190,7 +249,7 @@ export async function evaluateCandidates(candidates, options = {}) {
             totalTokens: meta.totalTokens,
           },
           requested_model: requestedModel,
-          resolved_model: result?.model || null,
+          resolved_model: result?.model ?? null,
           typesafe_confidence: answers.reviewClass?.confidence ?? null,
           wall_latency_ms: nowFn() - started,
         };
@@ -203,23 +262,18 @@ export async function evaluateCandidates(candidates, options = {}) {
 
   const results = [];
   const errors = [];
-  let totalIn = 0;
-  let totalOut = 0;
-  let totalTok = 0;
   for (const item of pooled) {
     if (item.ok) {
       results.push(item.value);
-      totalIn += Number(item.value.usage?.inputTokens) || 0;
-      totalOut += Number(item.value.usage?.outputTokens) || 0;
-      totalTok += Number(item.value.usage?.totalTokens) || 0;
     } else {
       errors.push({ id: item.id, error: item.error });
     }
   }
   return {
+    provider,
     results,
     errors,
-    total_usage: { inputTokens: totalIn, outputTokens: totalOut, totalTokens: totalTok },
+    total_usage: aggregateUsage(results),
     requested_model: requestedModel,
   };
 }

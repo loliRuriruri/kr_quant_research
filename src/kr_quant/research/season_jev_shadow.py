@@ -595,6 +595,7 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
             "quant_reference": source.get("quant_reference") or {},
             "status": "GENERATED" if answers_complete(item.get("answers")) else "ERROR",
             "answers": item.get("answers") or {},
+            "provider": item.get("provider") or provider,
             "usage": item.get("usage") or {},
             "requested_model": item.get("requested_model") or requested_model,
             "resolved_model": item.get("resolved_model"),
@@ -679,6 +680,13 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
         "provider": provider,
         "model": cfg["model"],
         "requested_model": requested_model,
+        "resolved_models": sorted(
+            {
+                str(r.get("resolved_model"))
+                for r in (generated + reused)
+                if r.get("resolved_model") not in (None, "")
+            }
+        ),
         "status": bundle_status,
         "candidate_count": len(candidates),
         "evaluated_count": len(generated),
@@ -699,6 +707,7 @@ def _store_error(settings, bundle, cfg, reason: str, *, started=None, candidate_
     started = started or datetime.now(timezone.utc)
     finished = datetime.now(timezone.utc)
     identity = bundle.get("identity") or {}
+    requested_model = str(cfg.get("model") or "jev-latest")
     payload = {
         "schema_version": 1,
         "evaluator_version": cfg["evaluator_version"],
@@ -706,7 +715,10 @@ def _store_error(settings, bundle, cfg, reason: str, *, started=None, candidate_
         "selection_date": identity.get("day"),
         "lookback_years": identity.get("lookback"),
         "horizon_days": cfg["horizon_days"],
+        "provider": provider_name(cfg),
         "model": cfg["model"],
+        "requested_model": requested_model,
+        "resolved_models": [],
         "status": status,
         "candidate_count": candidate_count,
         "evaluated_count": 0,

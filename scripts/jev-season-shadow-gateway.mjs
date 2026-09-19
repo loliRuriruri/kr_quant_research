@@ -1,6 +1,7 @@
-import { TypeSafeClient } from "@typesafe-ai/sdk";
+import { gateway } from "@ai-sdk/gateway";
+import { experimental_evaluate as evaluate } from "ai";
 import { evaluateCandidates } from "./jev/season-shadow-core.mjs";
-import { buildTypeSafeQuestions } from "./jev/season-shadow-typesafe-adapter.mjs";
+import { buildGatewayQuestions } from "./jev/season-shadow-gateway-adapter.mjs";
 
 async function readStdin() {
   const chunks = [];
@@ -9,7 +10,7 @@ async function readStdin() {
 }
 
 function logErr(message) {
-  process.stderr.write(`${message}\n`);
+  process.stderr.write(`${message}` + "\n");
 }
 
 const raw = await readStdin();
@@ -21,23 +22,33 @@ try {
   process.exit(2);
 }
 
-if ((payload.provider || "typesafe_direct") !== "typesafe_direct") {
+if (payload.provider !== "vercel_gateway") {
   logErr("UNSUPPORTED_PROVIDER");
   process.exit(2);
 }
 
 const requestedModel = payload.requested_model || payload.model || "jev-latest";
-const client = new TypeSafeClient({ defaultModel: requestedModel, retry: { maxRetries: 0 } });
-const questions = buildTypeSafeQuestions();
+const model = gateway.evaluationModel("typesafe-ai/jev-latest");
+const questions = buildGatewayQuestions();
 
 try {
   const output = await evaluateCandidates(payload.candidates || [], {
-    provider: "typesafe_direct",
-    evaluateFn: ({ state, questions: qs, signal, timeout, retry, model }) =>
-      client.systemOne(
-        { state, questions: qs, model },
-        { signal, timeout, retry },
-      ),
+    provider: "vercel_gateway",
+    evaluateFn: async ({ state, questions: qs, signal }) => {
+      const result = await evaluate({
+        model,
+        state,
+        questions: qs,
+        maxRetries: 0,
+        abortSignal: signal,
+      });
+      return {
+        model: result.response?.modelId ?? null,
+        answers: result.answers,
+        usage: result.usage,
+        providerMetadata: result.providerMetadata,
+      };
+    },
     questions,
     concurrency: payload.concurrency,
     candidateTimeoutMs: payload.candidate_timeout_ms,
@@ -46,7 +57,7 @@ try {
     requestedModel,
     maxApiCalls: payload.max_api_calls_per_generation,
   });
-  process.stdout.write(`${JSON.stringify(output)}\n`);
+  process.stdout.write(`${JSON.stringify(output)}` + "\n");
 } catch (error) {
   logErr(error instanceof Error ? error.message : String(error));
   process.exit(1);

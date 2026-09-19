@@ -776,3 +776,96 @@ def test_missing_gateway_key_does_not_fallback_to_direct(tmp_path, monkeypatch):
 
     assert out is None
     assert ran == []
+
+
+
+def test_generated_record_stores_provider(tmp_path, monkeypatch, env_key):
+    s = _settings(tmp_path)
+    monkeypatch.setattr(shadow, "source_identity", lambda *a, **k: _bundle()["identity"])
+    monkeypatch.setattr(shadow, "collect_candidates", lambda *a, **k: [_cand(0)])
+    calls = []
+
+    def runner(settings, payload, timeout):
+        calls.append(payload["provider"])
+        item = payload["candidates"][0]
+        return {
+            "provider": "typesafe_direct",
+            "requested_model": "jev-latest",
+            "results": [{
+                "id": item["id"],
+                "candidate_type": item["candidate_type"],
+                "ticker": item["ticker"],
+                "state_hash": item["state_hash"],
+                "provider": "typesafe_direct",
+                "answers": _complete_answers(),
+                "usage": {"inputTokens": 1, "outputTokens": 1, "totalTokens": 2},
+                "requested_model": "jev-latest",
+                "resolved_model": "jev-1.13.0",
+                "wall_latency_ms": 12,
+            }],
+            "errors": [],
+            "total_usage": {"inputTokens": 1, "outputTokens": 1, "totalTokens": 2},
+        }
+
+    out = shadow.evaluate_generation(s, _bundle(), runner=runner)
+    assert calls == ["typesafe_direct"]
+    assert out["requested_model"] == "jev-latest"
+    assert out["resolved_models"] == ["jev-1.13.0"]
+    rec = out["results"][0]
+    assert rec["provider"] == "typesafe_direct"
+    assert rec["requested_model"] == "jev-latest"
+    assert rec["resolved_model"] == "jev-1.13.0"
+    assert rec["wall_latency_ms"] == 12
+
+
+def test_gateway_generated_record_stores_provider(tmp_path, monkeypatch, env_key):
+    s = _settings(tmp_path)
+    monkeypatch.setenv("AI_GATEWAY_API_KEY", "gw")
+    cfg_path = Path(s.root / "config" / "season_jev.json")
+    cfg_path.write_text(json.dumps({
+        **json.loads(cfg_path.read_text(encoding="utf-8")),
+        "provider": "vercel_gateway",
+    }), encoding="utf-8")
+    monkeypatch.setattr(shadow, "source_identity", lambda *a, **k: _bundle()["identity"])
+    monkeypatch.setattr(shadow, "collect_candidates", lambda *a, **k: [_cand(0)])
+
+    def runner(settings, payload, timeout):
+        assert payload["provider"] == "vercel_gateway"
+        item = payload["candidates"][0]
+        return {
+            "provider": "vercel_gateway",
+            "requested_model": "jev-latest",
+            "results": [{
+                "id": item["id"],
+                "candidate_type": item["candidate_type"],
+                "ticker": item["ticker"],
+                "state_hash": item["state_hash"],
+                "provider": "vercel_gateway",
+                "answers": _complete_answers(),
+                "usage": {"inputTokens": 2, "outputTokens": 2, "totalTokens": 4},
+                "requested_model": "jev-latest",
+                "resolved_model": "typesafe-ai/jev-1",
+                "wall_latency_ms": 9,
+            }],
+            "errors": [],
+            "total_usage": {"inputTokens": 2, "outputTokens": 2, "totalTokens": 4},
+        }
+
+    out = shadow.evaluate_generation(s, _bundle(), runner=runner)
+    assert out["provider"] == "vercel_gateway"
+    assert out["resolved_models"] == ["typesafe-ai/jev-1"]
+    assert out["results"][0]["provider"] == "vercel_gateway"
+
+
+def test_store_error_preserves_provider_metadata(tmp_path):
+    s = _settings(tmp_path)
+    cfg = shadow.load_config(s)
+    bundle = _bundle()
+    out = shadow._store_error(s, bundle, cfg, "PROCESS_TIMEOUT", candidate_count=3)
+    assert out["provider"] == "typesafe_direct"
+    assert out["requested_model"] == "jev-latest"
+    assert out["resolved_models"] == []
+    assert out["evaluator_version"] == cfg["evaluator_version"]
+    assert out["selection_date"] == bundle["identity"]["day"]
+    assert out["started_at"]
+    assert out["finished_at"]
