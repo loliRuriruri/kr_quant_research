@@ -312,7 +312,12 @@ Encoding: UTF-8 string concatenation with literal newline separators as shown; h
 ### Dedup / revision
 
 - A dataset must not contain two active rows with the same `sample_id` and conflicting labels without an explicit revision record.
-- Label revisions **keep** the same `sample_id` and advance `annotation_version` (and revision metadata). Silent overwrite of committed labels is forbidden.
+- Label revisions **keep** the same `sample_id` and advance `annotation_version` (integer `>= 1`) plus revision metadata. Silent overwrite of committed labels is forbidden.
+- `annotation_version` type is fixed: **integer `>= 1`** (examples: `1`, `2`, `3`). String forms such as `"v1"` / `"v2"` are forbidden.
+- Higher integer `annotation_version` wins when selecting the active revision.
+- Same `sample_id` + same `annotation_version` + **different** canonical content → `REVISION_CONFLICT` (fail closed). Do **not** silently pick a winner via `labeled_at` or canonical JSON tie-breakers.
+- Same `sample_id` + same `annotation_version` + **exact** duplicate content → dedupe to one row.
+- `labeled_at` remains provenance / debugging metadata only; it does not resolve same-version content conflicts.
 - Conflicting concurrent commits for the same `sample_id` must fail closed with a deterministic conflict error.
 
 ---
@@ -378,8 +383,8 @@ As of base `dcaa92b`, `.gitignore` ignores `data/research_snapshots/` (and other
 ### Hard rules
 
 - Threshold **selection** uses the `calibration` split only.
-- Holdout is **never** used to choose a threshold.
-- Final published performance for a candidate threshold must report **holdout** metrics (and may also show calibration metrics as non-selection diagnostics).
+- Holdout is **never** used to choose a threshold, and holdout metrics must **not** be shown before a selection is locked (see §15).
+- After selection lock, **only the locked threshold** receives a holdout evaluation report (acceptance/rejection). Calibration diagnostics may still be shown alongside that locked evaluation.
 - The same non-empty `ticker` must never appear in both `calibration` and `holdout` within a dataset (primary split is ticker-grouped).
 - The same `state_hash` must always map to the same `split` within a dataset.
 - Duplicate/revision rows for the same `sample_id` inherit the same `split`.
@@ -516,8 +521,8 @@ candidates = sort_unique( {0.0, 1.0} ∪ observed_probabilities )
 probability >= t
 ```
 
-4. Compute the full metrics table on calibration samples.
-5. For each candidate (or for a shortlist), also compute **holdout** metrics **without** using holdout to pick `t`.
+4. Compute the full metrics table on **calibration** samples only.
+5. Do **not** compute or publish holdout metrics during the open sweep. Holdout evaluation happens only after a human locks one candidate per head (§15).
 
 ### Why observed boundaries (not a fixed fine grid)
 
@@ -537,22 +542,82 @@ The normalizeAnswers `probability >= 0.5` display decision may appear as one row
 
 The calibration engine **produces**:
 
-- full sweep tables
-- candidate thresholds
-- metrics (calibration + holdout)
-- Pareto-style shortlists
+- full threshold sweep tables on the **calibration** split
+- calibration metrics only (while selection is open)
+- Pareto-style shortlists for human review
 
 The engine **must not**:
 
 - auto-commit a production threshold into `config/jev_thresholds.json`
 - auto-enable JEV
 - auto-start production routing
+- reveal holdout metrics before selection lock
+- auto-pick an alternative threshold from a holdout table after reveal
 
-Final numeric threshold adoption is a **separate human approval gate** after J2 tooling exists.
+Final numeric threshold adoption into tracked config remains a **separate human approval gate** after J2 tooling exists. Holdout acceptance is necessary evidence for that gate; it is not automatic deployment.
+
+### Selection flow (holdout-peeking prevention)
+
+Human-visible threshold choice must not be informed by holdout numbers. Formal states:
+
+```text
+CALIBRATION_OPEN
+SELECTION_LOCKED
+HOLDOUT_REVEALED
+```
+
+Ordered flow:
+
+1. Use the **calibration** split only.
+2. Run `observed-boundaries-v1` threshold sweep.
+3. Publish **calibration metrics only** (full sweep + shortlist). Holdout metrics stay hidden.
+4. Human reviewer selects **one** threshold candidate **per head**.
+5. Persist a **selection manifest** and **LOCK** that choice (`SELECTION_LOCKED`).
+6. Only then evaluate holdout metrics for the **locked** candidate (`HOLDOUT_REVEALED`).
+7. Holdout results drive `ACCEPT` / `REJECT` / `COLLECT_MORE_LABELS` only.
+8. If the threshold is changed after holdout has been revealed, the prior holdout is **no longer a pristine holdout** for selection. Re-selection after peeking is not pristine holdout validation.
+
+### Selection manifest (future runtime artifact; not created by this spec commit)
+
+Conceptual shape:
+
+```json
+{
+  "dataset_id": "...",
+  "dataset_hash": "...",
+  "bucket": {
+    "provider": "...",
+    "requested_model": "...",
+    "evaluator_version": "..."
+  },
+  "head": "needsDart",
+  "selected_threshold": 0.73,
+  "selection_basis": "calibration_only",
+  "calibration_metrics_hash": "...",
+  "selected_at": "...",
+  "holdout_revealed": false
+}
+```
+
+Exact on-disk path/format is an implementation detail. Hard rules:
+
+- `selected_threshold` is locked **before** holdout reveal.
+- `selection_basis` must be `calibration_only`.
+- Pristine selection requires `holdout_revealed=false` at lock time.
+- After holdout reveal, changing the threshold forbids using the already-observed holdout as the selection basis for the new value.
+
+`selection_manifest_hash` is SHA-256 (lowercase hex) over the canonical JSON serialization of the locked manifest (recursively sorted keys, compact separators, UTF-8, `ensure_ascii=false`).
+
+### Shortlist vs holdout evaluation candidate
+
+- **Calibration shortlist:** multiple candidates per head are allowed (including FN-sensitive Pareto low-FNR options).
+- **Holdout evaluation candidate:** exactly **one** locked threshold per head before any holdout metrics are shown.
+
+Do not publish holdout metrics for an entire shortlist before lock. That would enable human holdout-peeking.
 
 ### High false-negative cost heads
 
-Treat as FN-sensitive for reporting and shortlisting (not for invented numeric quotas):
+Treat as FN-sensitive for **calibration** reporting and shortlisting (not for invented numeric quotas):
 
 ```text
 needsDart
@@ -563,31 +628,60 @@ invalidationCheckNeeded
 For these heads:
 
 - Do **not** auto-pick “max accuracy” as the implied production choice.
-- Report Pareto frontier tradeoffs among recall / FNR / precision / FPR.
+- On the calibration report, show Pareto frontier tradeoffs among recall / FNR / precision / FPR.
 - Prefer shortlists that surface low-FNR candidates alongside precision cost.
+- Before holdout reveal, a human still locks **exactly one** candidate from that shortlist.
 
 This design intentionally **does not** invent fixed targets such as “recall ≥ 0.9”.
 
+### Holdout failure semantics
+
+If the locked candidate underperforms on holdout:
+
+- Do **not** automatically scan the holdout table (or any other thresholds’ holdout metrics) for a replacement winner.
+- Allowed outcomes: `ACCEPT`, `REJECT`, `COLLECT_MORE_LABELS`.
+- After `REJECT`, reviewing a different threshold requires marking the prior holdout as already observed and using a **new validation dataset** and/or a future fresh temporal holdout.
+
+**Hard statement:** re-selection after holdout-peeking is **not** pristine holdout validation.
+
 ### Other heads
 
-Still no automatic production commit. Sweep + human review apply to all seven heads.
+Still no automatic production commit. Sweep + human calibration review + one lock + holdout acceptance apply to all seven heads.
 
 ---
 
-## 16. Calibration Report
+## 16. Reports (Calibration vs Holdout)
 
-Future report artifacts (`reports/<dataset_id>.{json,md}`) must include at least:
+Reports are logically separated. Do **not** attach holdout metrics beside every row of a threshold-selection sweep table.
+
+### Calibration report (`CALIBRATION_OPEN`)
+
+Future artifacts such as `reports/<dataset_id>.calibration.{json,md}` must include at least:
 
 - Bucket identity: `provider`, `requested_model`, `evaluator_version`
-- `dataset_id`, `dataset_hash`, `dataset_hash_method_version`, `annotation_version`, `created_at`
+- `dataset_id`, `dataset_hash`, `dataset_hash_method_version`, `created_at`
 - `split_method_version`, `sweep_method_version`
-- Per head: valid labels, positive, negative, unknown, `INSUFFICIENT_CLASS_SUPPORT` flag when applicable
-- Threshold sweep table
-- Confusion metrics for each candidate
-- Explicit candidate shortlist(s) with rationale tags (e.g. `fn_sensitive_pareto`) — still non-binding
-- Holdout metrics for reported candidates
+- Per head (calibration split): valid labels, positive, negative, unknown, `INSUFFICIENT_CLASS_SUPPORT` when applicable
+- Full threshold sweep with **calibration-only** confusion metrics
+- Explicit candidate shortlist(s) with rationale tags (e.g. `fn_sensitive_pareto`) — non-binding
 - `resolved_model` distribution observed in the dataset
 - Optional: provider telemetry summary (latency, cost)
+
+**Must omit:** holdout metrics, holdout confusion matrices, holdout-based rankings.
+
+### Holdout evaluation report (after `SELECTION_LOCKED` → `HOLDOUT_REVEALED`)
+
+Future artifacts such as `reports/<dataset_id>.holdout.<head>.{json,md}` cover **one locked threshold per head** and include at least:
+
+- Locked `selected_threshold` and `selection_manifest_hash`
+- `selection_locked_at`, `holdout_revealed_at`
+- `selection_basis` = `calibration_only`
+- Holdout confusion matrix: TP / FP / TN / FN
+- precision / recall / FPR / FNR (null-safe)
+- support_positive / support_negative / unknown_count on holdout
+- acceptance status: `ACCEPT` | `REJECT` | `COLLECT_MORE_LABELS`
+
+Holdout evaluation must not emit an “alternative winner” threshold. It evaluates the locked choice only.
 
 ### Budget note in reports
 
@@ -604,9 +698,9 @@ Calibration collection must not bypass those caps.
 
 ## 17. Reproducibility
 
-A report is reproducible when the same inputs yield the same outputs:
+A report is reproducible when the same inputs yield the same outputs.
 
-Required provenance fields:
+### Calibration report provenance
 
 ```text
 dataset_id
@@ -615,11 +709,30 @@ dataset_hash_method_version   # canonical-jsonl-v1
 provider
 requested_model
 evaluator_version
-annotation_version
 split_method_version          # ticker-grouped-v1
 sweep_method_version          # observed-boundaries-v1
 prediction_rule               # probability >= threshold
 ```
+
+### Holdout evaluation provenance (additional)
+
+```text
+selection_manifest_hash
+selection_locked_at
+holdout_revealed_at
+selected_threshold
+selection_basis               # calibration_only
+```
+
+The same dataset + config + selection manifest must reproduce the same holdout evaluation.
+
+### `annotation_version` (integer)
+
+- Type: integer `>= 1`
+- Not a string label (`"v1"` forbidden)
+- Active revision = highest `annotation_version` per `sample_id`
+- Same max version with conflicting content → `REVISION_CONFLICT`
+- Exact duplicates at the same version → dedupe
 
 ### `dataset_hash` canonicalization (`dataset_hash_method_version`: `canonical-jsonl-v1`)
 
@@ -627,17 +740,18 @@ prediction_rule               # probability >= threshold
 
 Steps:
 
-1. Select **active revision** rows only (one active row per `sample_id`).
-2. Within each `sample_id`, choose the active revision deterministically by `annotation_version` rules (higher `annotation_version` wins; ties broken by lexicographically greater `labeled_at` ISO-8601 string, then by stable canonical JSON of the row).
-3. Sort the selected active rows by `sample_id` ascending (UTF-8 lexicographic).
-4. Serialize each row as one JSON object with:
-   - UTF-8 encoding
-   - JSON object keys sorted recursively
-   - compact separators: `","` and `":"` (no spaces)
-   - `ensure_ascii=false`
-5. Append a single `"\n"` after each serialized object (including the last row).
-6. SHA-256 over the entire UTF-8 byte stream.
-7. Emit the digest as a lowercase hex string.
+1. Group rows by `sample_id`.
+2. Require `annotation_version` to be an integer `>= 1` (else reject).
+3. Select the row(s) with the highest `annotation_version`.
+4. If two or more distinct canonical contents share that highest version → raise `REVISION_CONFLICT`.
+5. If exact-content duplicates share that version → dedupe to one.
+6. Sort active rows by `sample_id` ascending (UTF-8 lexicographic).
+7. Serialize each row as one JSON object with recursively sorted keys.
+8. Compact separators: `","` and `":"` (no spaces).
+9. `ensure_ascii=false`.
+10. UTF-8 encoding.
+11. Append a single `"\n"` after each serialized object (including the last row).
+12. SHA-256 over the entire UTF-8 byte stream; emit lowercase hex.
 
 Therefore the same logical active dataset yields the same `dataset_hash` even if the source JSONL file's physical row order changes.
 
@@ -672,6 +786,9 @@ Do **not** expose J2 calibration controls on the general investor dashboard. Kee
 | `unknown` human label | Exclude from binary confusion; count in unknown stats |
 | Duplicate `sample_id` with conflict | Deterministic conflict error; no silent overwrite |
 | Conflicting label revisions without version bump | Reject |
+| Same `annotation_version` + conflicting content | `REVISION_CONFLICT` (fail closed) |
+| Holdout metrics requested before selection lock | Reject / unavailable |
+| Threshold change after `HOLDOUT_REVEALED` | Prior holdout marked non-pristine; not valid reselection basis |
 | `SPLIT_*_CONFLICT` | Fail closed |
 | Unsupported / unknown provider-model-evaluator for a write path expecting a known bucket | Fail closed |
 | Forbidden Quant fields in `state` | Reject sample |
@@ -732,6 +849,15 @@ Minimum automated checks:
 22. No provider fallback on missing key/threshold
 23. Changing input JSONL physical row order does not change `dataset_hash`
 24. `canonical-jsonl-v1` fixture hash is deterministic (sorted keys, compact separators, UTF-8, trailing `\n` per row)
+25. Holdout metrics unavailable before selection lock (`CALIBRATION_OPEN`)
+26. Selection manifest records `selection_basis=calibration_only` and locks before reveal
+27. Exactly one locked threshold per head is evaluated on holdout
+28. Changing threshold after holdout reveal invalidates pristine holdout status
+29. Holdout report cannot propose an alternative winner threshold
+30. `annotation_version` accepts integers `>= 1` only
+31. Same version + conflicting content → `REVISION_CONFLICT`
+32. Same version + exact duplicate content → dedupe
+33. Canonical hash remains row-order invariant under the updated active-revision rules
 
 ---
 
@@ -822,8 +948,12 @@ This specification explicitly defines:
 - Metrics + null-safe rates
 - Threshold sweep method + `>=` prediction rule
 - Selection gate (no auto production threshold)
-- FN-sensitive heads (report policy, no invented quotas)
-- Report provenance (including `dataset_hash_method_version` / `canonical-jsonl-v1`)
+- Calibration-only selection + selection lock before holdout reveal
+- Selection manifest + pristine holdout semantics
+- Separated calibration vs holdout reports
+- FN-sensitive heads (calibration shortlist policy, no invented quotas)
+- Report provenance (including `dataset_hash_method_version` / `canonical-jsonl-v1` / selection manifest hashes)
+- Integer `annotation_version` + `REVISION_CONFLICT` rules
 - Error handling
 - Provider / model / evaluator / alias isolation
 - Quant isolation
@@ -844,7 +974,7 @@ No placeholder sections remain.
 | `enabled` | Stays `false` unless a later explicit task changes it |
 | `0.5` | Display/normalize only; never auto production threshold |
 | Null thresholds | `SHADOW_ONLY`; no routing |
-| Holdout | Evaluation only; never threshold selection |
+| Holdout | Hidden until selection lock; evaluates locked threshold only; never used to choose/replace threshold |
 | Providers/models | Isolated buckets; no shared thresholds |
 | Alias | Observation only; not production calibration |
 | `unknown` | Not coerced to `false` |
