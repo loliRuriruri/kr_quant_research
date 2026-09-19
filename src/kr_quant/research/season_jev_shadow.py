@@ -46,10 +46,9 @@ DEFAULTS = {
 _PENDING: set[str] = set()
 _LOCK = threading.Lock()
 
-SUPPORTED_PROVIDERS = frozenset({"typesafe_direct", "vercel_gateway"})
+SUPPORTED_PROVIDERS = frozenset({"typesafe_direct"})
 PROVIDER_RUNNERS = {
     "typesafe_direct": "scripts/jev-season-shadow.mjs",
-    "vercel_gateway": "scripts/jev-season-shadow-gateway.mjs",
 }
 
 
@@ -413,9 +412,8 @@ def provider_runner_path(settings, cfg: dict[str, Any] | None = None) -> Path:
 
 
 def provider_key(cfg: dict[str, Any] | None = None) -> str | None:
-    name = provider_name(cfg)
-    env_name = "AI_GATEWAY_API_KEY" if name == "vercel_gateway" else "TYPESAFE_API_KEY"
-    value = (os.environ.get(env_name) or "").strip()
+    provider_name(cfg)
+    value = (os.environ.get("TYPESAFE_API_KEY") or "").strip()
     return value or None
 
 
@@ -444,11 +442,8 @@ def request_shadow_evaluation(settings, bundle: dict[str, Any] | None) -> None:
     except ValueError as exc:
         _skip(str(exc))
         return
-    if provider != "vercel_gateway" and not provider_key(cfg):
+    if not provider_key(cfg):
         _skip("TYPESAFE_API_KEY missing")
-        return
-    if provider == "vercel_gateway" and not provider_key(cfg):
-        _skip("AI_GATEWAY_API_KEY missing")
         return
     generation = str(bundle["generation_id"])
     if has_shadow(settings, generation, cfg):
@@ -485,11 +480,8 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
     if not cfg.get("enabled"):
         _skip("disabled")
         return None
-    if provider != "vercel_gateway" and not provider_key(cfg):
+    if not provider_key(cfg):
         _skip("TYPESAFE_API_KEY missing")
-        return None
-    if provider == "vercel_gateway" and not provider_key(cfg):
-        _skip("AI_GATEWAY_API_KEY missing")
         return None
     identity = bundle.get("identity") or {}
     lookback = identity.get("lookback")

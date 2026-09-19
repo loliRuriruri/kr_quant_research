@@ -231,3 +231,14 @@ test("choice with numeric probability stays choice", () => {
   assert.equal(answers.reviewClass.choice, "monitor");
   assert.equal(answers.reviewClass.probability, 0.81);
 });
+
+test("evaluateCandidates rejects vercel_gateway as unsupported provider", async () => {
+  await assert.rejects(
+    () =>
+      evaluateCandidates(
+        [{ id: "x", candidate_type: "season_pattern", ticker: "TEST000", state: {}, state_hash: "h" }],
+        evalOpts({ provider: "vercel_gateway", evaluateFn: async () => ({ answers: {} }) }),
+      ),
+    /UNSUPPORTED_EVAL_PROVIDER:vercel_gateway/,
+  );
+});

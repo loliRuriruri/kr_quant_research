@@ -191,7 +191,7 @@ export async function evaluateCandidates(candidates, options = {}) {
     throw new Error("QUESTIONS_REQUIRED");
   }
   const provider = options.provider;
-  if (provider !== "typesafe_direct" && provider !== "vercel_gateway") {
+  if (provider !== "typesafe_direct") {
     throw new Error(`UNSUPPORTED_EVAL_PROVIDER:${provider}`);
   }
   const maxApiCalls = options.maxApiCalls == null ? Infinity : Number(options.maxApiCalls);
@@ -233,7 +233,7 @@ export async function evaluateCandidates(candidates, options = {}) {
         const meta = extractUsage(result);
         const answers = normalizeAnswers(result?.answers, result?.providerMetadata);
         const provider = options.provider;
-        if (provider !== "typesafe_direct" && provider !== "vercel_gateway") {
+        if (provider !== "typesafe_direct") {
           throw new Error(`UNSUPPORTED_EVAL_PROVIDER:${provider}`);
         }
         return {

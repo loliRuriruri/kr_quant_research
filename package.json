@@ -7,8 +7,6 @@
     "deploy:public": "node scripts/build-public.mjs && npx --yes wrangler pages deploy dist-public --project-name korea-quant-research --branch main"
   },
   "dependencies": {
-    "@ai-sdk/gateway": "4.0.87",
-    "@typesafe-ai/sdk": "0.6.0",
-    "ai": "7.0.107"
+    "@typesafe-ai/sdk": "0.6.0"
   }
 }
