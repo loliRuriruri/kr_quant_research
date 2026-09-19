@@ -25,4 +25,3 @@ export function gatewayModelId(requestedModel) {
   const logical = String(requestedModel || "jev-latest").trim();
   return `typesafe-ai/${logical}`;
 }
-
