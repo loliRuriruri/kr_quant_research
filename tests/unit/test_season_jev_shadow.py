@@ -656,6 +656,101 @@ def test_provider_name_accepts_supported_values():
     assert shadow.provider_name({"provider": "typesafe_direct"}) == "typesafe_direct"
 
 
+def test_provider_name_accepts_openrouter():
+    assert shadow.provider_name({"provider": "openrouter"}) == "openrouter"
+
+
+def test_provider_runner_path_selects_openrouter_script(tmp_path):
+    s = _settings(tmp_path)
+    path = shadow.provider_runner_path(s, {"provider": "openrouter"})
+    assert path == Path(s.root) / "scripts" / "jev-season-shadow-openrouter.mjs"
+
+
+def test_provider_key_routes_selected_provider_only(monkeypatch):
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-only")
+    assert shadow.provider_key({"provider": "openrouter"}) == "or-only"
+    assert shadow.provider_key({"provider": "typesafe_direct"}) is None
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "ts-only")
+    assert shadow.provider_key({"provider": "typesafe_direct"}) == "ts-only"
+    assert shadow.provider_key({"provider": "openrouter"}) is None
+
+
+def test_openrouter_missing_key_does_not_fallback_to_typesafe(tmp_path, monkeypatch):
+    s = _settings(tmp_path)
+    cfg_path = Path(s.root) / "config" / "season_jev.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["provider"] = "openrouter"
+    cfg["model"] = "typesafe/jev-1.13"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "direct-must-not-run")
+    ran = []
+    monkeypatch.setattr(shadow, "run_node", lambda *a, **k: ran.append(1) or {})
+    out = shadow.evaluate_generation(s, _bundle())
+    assert out is None
+    assert ran == []
+
+
+def test_typesafe_missing_key_does_not_fallback_to_openrouter(tmp_path, monkeypatch):
+    s = _settings(tmp_path)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-must-not-run")
+    ran = []
+    monkeypatch.setattr(shadow, "run_node", lambda *a, **k: ran.append(1) or {})
+    out = shadow.evaluate_generation(s, _bundle())
+    assert out is None
+    assert ran == []
+
+
+def test_openrouter_requires_pinned_production_model():
+    with pytest.raises(
+        ValueError,
+        match=r"UNSUPPORTED_JEV_MODEL:openrouter:jev-latest",
+    ):
+        shadow.requested_model({
+            "provider": "openrouter",
+            "model": "jev-latest",
+        })
+
+
+def test_openrouter_rejects_upgrade_alias_on_production_path():
+    with pytest.raises(
+        ValueError,
+        match=r"UNSUPPORTED_JEV_MODEL:openrouter:~typesafe/jev-latest",
+    ):
+        shadow.requested_model({
+            "provider": "openrouter",
+            "model": "~typesafe/jev-latest",
+        })
+
+
+def test_openrouter_accepts_pinned_production_model():
+    assert shadow.requested_model({
+        "provider": "openrouter",
+        "model": "typesafe/jev-1.13",
+    }) == "typesafe/jev-1.13"
+
+
+def test_invalid_openrouter_model_never_runs_node(tmp_path, monkeypatch):
+    s = _settings(tmp_path)
+    cfg_path = Path(s.root) / "config" / "season_jev.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["provider"] = "openrouter"
+    cfg["model"] = "jev-latest"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or")
+    ran = []
+    monkeypatch.setattr(shadow, "run_node", lambda *a, **k: ran.append(1) or {})
+    out = shadow.evaluate_generation(s, _bundle())
+    assert out is None
+    assert ran == []
+
+
 def test_provider_name_rejects_vercel_gateway():
     with pytest.raises(ValueError, match=r"UNSUPPORTED_JEV_PROVIDER:vercel_gateway"):
         shadow.provider_name({"provider": "vercel_gateway"})

@@ -46,9 +46,10 @@ DEFAULTS = {
 _PENDING: set[str] = set()
 _LOCK = threading.Lock()
 
-SUPPORTED_PROVIDERS = frozenset({"typesafe_direct"})
+SUPPORTED_PROVIDERS = frozenset({"typesafe_direct", "openrouter"})
 PROVIDER_RUNNERS = {
     "typesafe_direct": "scripts/jev-season-shadow.mjs",
+    "openrouter": "scripts/jev-season-shadow-openrouter.mjs",
 }
 
 
@@ -86,7 +87,7 @@ def has_shadow(settings, generation_id: str, cfg: dict[str, Any] | None = None) 
     cfg = cfg or {}
     return (
         payload.get("provider") == provider_name(cfg)
-        and payload.get("requested_model") == (cfg.get("model") or "jev-latest")
+        and payload.get("requested_model") == requested_model(cfg)
         and payload.get("evaluator_version") == (cfg.get("evaluator_version") or DEFAULTS["evaluator_version"])
     )
 
@@ -171,7 +172,7 @@ def load_reuse_index(settings, cfg: dict[str, Any]) -> dict[tuple[str, str, str,
     if not folder.exists():
         return {}
     provider = provider_name(cfg)
-    requested_model = str(cfg.get("model") or "jev-latest")
+    model = requested_model(cfg)
     evaluator_version = str(cfg.get("evaluator_version") or DEFAULTS["evaluator_version"])
     index: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     for path in folder.glob("*.json"):
@@ -185,7 +186,7 @@ def load_reuse_index(settings, cfg: dict[str, Any]) -> dict[tuple[str, str, str,
             continue
         if payload.get("provider") != provider:
             continue
-        if payload.get("requested_model") != requested_model:
+        if payload.get("requested_model") != model:
             continue
         if payload.get("evaluator_version") != evaluator_version:
             continue
@@ -202,7 +203,7 @@ def load_reuse_index(settings, cfg: dict[str, Any]) -> dict[tuple[str, str, str,
             digest = rec.get("state_hash")
             if not digest:
                 continue
-            key = reuse_key(evaluator_version, provider, requested_model, digest)
+            key = reuse_key(evaluator_version, provider, model, digest)
             original = rec.get("reused_from_generation_id") or origin_generation
             current = index.get(key)
             if current is None or finished >= str(current.get("finished_at") or ""):
@@ -365,8 +366,8 @@ def collect_candidates(settings, bundle: dict[str, Any], *, config: dict[str, An
     cfg = config or load_config(settings)
     horizon = int(cfg.get("horizon_days") or 90)
     evaluator_version = str(cfg.get("evaluator_version") or DEFAULTS["evaluator_version"])
-    provider = str(cfg.get("provider") or "typesafe_direct")
-    requested_model = str(cfg.get("model") or "jev-latest")
+    provider = provider_name(cfg)
+    model = requested_model(cfg)
     season_rows = select_rows(bundle, horizon_days=horizon, exclude_expired=True)
     out: list[dict[str, Any]] = []
     for row in season_rows:
@@ -378,7 +379,7 @@ def collect_candidates(settings, bundle: dict[str, Any], *, config: dict[str, An
             "candidate_type": "season_pattern",
             "ticker": row.get("ticker"),
             "state": state,
-            "state_hash": state_hash(state, evaluator_version, provider=provider, requested_model=requested_model),
+            "state_hash": state_hash(state, evaluator_version, provider=provider, requested_model=model),
             "quant_reference": quant_reference_season(row),
         })
     from kr_quant.strategy.seasonality import rank_institutional_events
@@ -393,7 +394,7 @@ def collect_candidates(settings, bundle: dict[str, Any], *, config: dict[str, An
             "candidate_type": "calendar_event_stock",
             "ticker": row.get("ticker"),
             "state": state,
-            "state_hash": state_hash(state, evaluator_version, provider=provider, requested_model=requested_model),
+            "state_hash": state_hash(state, evaluator_version, provider=provider, requested_model=model),
             "quant_reference": quant_reference_calendar(row),
         })
     return out
@@ -412,9 +413,21 @@ def provider_runner_path(settings, cfg: dict[str, Any] | None = None) -> Path:
 
 
 def provider_key(cfg: dict[str, Any] | None = None) -> str | None:
-    provider_name(cfg)
-    value = (os.environ.get("TYPESAFE_API_KEY") or "").strip()
+    name = provider_name(cfg)
+    env_name = "OPENROUTER_API_KEY" if name == "openrouter" else "TYPESAFE_API_KEY"
+    value = (os.environ.get(env_name) or "").strip()
     return value or None
+
+
+def requested_model(cfg: dict[str, Any] | None = None) -> str:
+    cfg = cfg or {}
+    provider = provider_name(cfg)
+    model = str(cfg.get("model") or DEFAULTS["model"]).strip()
+    if provider == "openrouter":
+        if model != "typesafe/jev-1.13":
+            raise ValueError(f"UNSUPPORTED_JEV_MODEL:{provider}:{model}")
+        return model
+    return model or "jev-latest"
 
 
 def gateway_key() -> str | None:
@@ -439,11 +452,12 @@ def request_shadow_evaluation(settings, bundle: dict[str, Any] | None) -> None:
         return
     try:
         provider = provider_name(cfg)
+        requested_model(cfg)
     except ValueError as exc:
         _skip(str(exc))
         return
     if not provider_key(cfg):
-        _skip("TYPESAFE_API_KEY missing")
+        _skip("OPENROUTER_API_KEY missing" if provider == "openrouter" else "TYPESAFE_API_KEY missing")
         return
     generation = str(bundle["generation_id"])
     if has_shadow(settings, generation, cfg):
@@ -472,6 +486,7 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
         return None
     try:
         provider = provider_name(cfg)
+        model = requested_model(cfg)
     except ValueError as exc:
         _skip(str(exc))
         return None
@@ -481,7 +496,7 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
         _skip("disabled")
         return None
     if not provider_key(cfg):
-        _skip("TYPESAFE_API_KEY missing")
+        _skip("OPENROUTER_API_KEY missing" if provider == "openrouter" else "TYPESAFE_API_KEY missing")
         return None
     identity = bundle.get("identity") or {}
     lookback = identity.get("lookback")
@@ -499,7 +514,7 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
     candidates = collect_candidates(settings, bundle, config=cfg)
     reuse_index = load_reuse_index(settings, cfg)
     provider = provider_name(cfg)
-    requested_model = str(cfg.get("model") or "jev-latest")
+    model = requested_model(cfg)
     evaluator_version = str(cfg.get("evaluator_version") or DEFAULTS["evaluator_version"])
     gen_cap = int(cfg.get("max_api_calls_per_generation") or 300)
     day_cap = int(cfg.get("max_api_calls_per_day") or 300)
@@ -507,7 +522,7 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
     outcome_by_id: dict[str, dict[str, Any]] = {}
     need_api: list[dict[str, Any]] = []
     for item in candidates:
-        key = reuse_key(evaluator_version, provider, requested_model, item["state_hash"])
+        key = reuse_key(evaluator_version, provider, model, item["state_hash"])
         source = reuse_index.get(key)
         if source:
             outcome_by_id[str(item["id"])] = _reused(item, source)
@@ -537,8 +552,8 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
     if pending_items:
         node_payload = {
             "provider": provider,
-            "requested_model": requested_model,
-            "model": requested_model,
+            "requested_model": model,
+            "model": model,
             "concurrency": int(cfg["concurrency"]),
             "candidate_timeout_ms": int(cfg["candidate_timeout_ms"]),
             "process_soft_deadline_ms": int(cfg.get("process_soft_deadline_seconds") or 170) * 1000,
@@ -589,7 +604,7 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
             "answers": item.get("answers") or {},
             "provider": item.get("provider") or provider,
             "usage": item.get("usage") or {},
-            "requested_model": item.get("requested_model") or requested_model,
+            "requested_model": item.get("requested_model") or model,
             "resolved_model": item.get("resolved_model"),
             "wall_latency_ms": item.get("wall_latency_ms"),
         }
@@ -671,7 +686,7 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
         "horizon_days": cfg["horizon_days"],
         "provider": provider,
         "model": cfg["model"],
-        "requested_model": requested_model,
+        "requested_model": model,
         "resolved_models": sorted(
             {
                 str(r.get("resolved_model"))
@@ -699,7 +714,7 @@ def _store_error(settings, bundle, cfg, reason: str, *, started=None, candidate_
     started = started or datetime.now(timezone.utc)
     finished = datetime.now(timezone.utc)
     identity = bundle.get("identity") or {}
-    requested_model = str(cfg.get("model") or "jev-latest")
+    model = requested_model(cfg)
     payload = {
         "schema_version": 1,
         "evaluator_version": cfg["evaluator_version"],
@@ -709,7 +724,7 @@ def _store_error(settings, bundle, cfg, reason: str, *, started=None, candidate_
         "horizon_days": cfg["horizon_days"],
         "provider": provider_name(cfg),
         "model": cfg["model"],
-        "requested_model": requested_model,
+        "requested_model": model,
         "resolved_models": [],
         "status": status,
         "candidate_count": candidate_count,
