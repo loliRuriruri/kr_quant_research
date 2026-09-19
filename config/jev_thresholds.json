@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "buckets": [
+    {
+      "provider": "typesafe_direct",
+      "requested_model": "jev-latest",
+      "evaluator_version": "season-jev-shadow-v1",
+      "thresholds": {
+        "materialNow": null,
+        "needsCurrentYearCheck": null,
+        "needsNews": null,
+        "needsDart": null,
+        "historicalConflict": null,
+        "invalidationCheckNeeded": null,
+        "needsDeepAI": null
+      }
+    },
+    {
+      "provider": "openrouter",
+      "requested_model": "typesafe/jev-1.13",
+      "evaluator_version": "season-jev-shadow-v1",
+      "thresholds": {
+        "materialNow": null,
+        "needsCurrentYearCheck": null,
+        "needsNews": null,
+        "needsDart": null,
+        "historicalConflict": null,
+        "invalidationCheckNeeded": null,
+        "needsDeepAI": null
+      }
+    }
+  ]
+}
