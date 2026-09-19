@@ -888,3 +888,378 @@ def test_generated_record_stores_provider(tmp_path, monkeypatch, env_key):
     assert rec["requested_model"] == "jev-latest"
     assert rec["resolved_model"] == "jev-1.13.0"
     assert rec["wall_latency_ms"] == 12
+
+
+def test_openrouter_generated_record_stores_provider_and_telemetry(tmp_path, monkeypatch):
+    s = _settings(tmp_path)
+
+    cfg_path = Path(s.root) / "config" / "season_jev.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["provider"] = "openrouter"
+    cfg["model"] = "typesafe/jev-1.13"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or")
+    monkeypatch.setattr(
+        shadow,
+        "source_identity",
+        lambda *a, **k: _bundle()["identity"],
+    )
+    monkeypatch.setattr(
+        shadow,
+        "collect_candidates",
+        lambda *a, **k: [_cand(0)],
+    )
+
+    def runner(settings, payload, timeout):
+        assert payload["provider"] == "openrouter"
+        assert payload["requested_model"] == "typesafe/jev-1.13"
+        assert payload["model"] == "typesafe/jev-1.13"
+
+        item = payload["candidates"][0]
+
+        return {
+            "provider": "openrouter",
+            "requested_model": "typesafe/jev-1.13",
+            "results": [{
+                "id": item["id"],
+                "candidate_type": item["candidate_type"],
+                "ticker": item["ticker"],
+                "state_hash": item["state_hash"],
+                "provider": "openrouter",
+                "answers": _complete_answers(),
+                "usage": {
+                    "inputTokens": 2,
+                    "outputTokens": 2,
+                    "totalTokens": 4,
+                },
+                "requested_model": "typesafe/jev-1.13",
+                "resolved_model": "typesafe/jev-1.13-20260917",
+                "wall_latency_ms": 9,
+                "provider_name": "TypeSafe",
+                "cost": 0.0001,
+                "request_id": "gen-test",
+            }],
+            "errors": [],
+            "total_usage": {
+                "inputTokens": 2,
+                "outputTokens": 2,
+                "totalTokens": 4,
+            },
+        }
+
+    out = shadow.evaluate_generation(
+        s,
+        _bundle(),
+        runner=runner,
+    )
+
+    assert out["provider"] == "openrouter"
+    assert out["requested_model"] == "typesafe/jev-1.13"
+    assert out["resolved_models"] == [
+        "typesafe/jev-1.13-20260917",
+    ]
+
+    rec = out["results"][0]
+
+    assert rec["status"] == "GENERATED"
+    assert rec["provider"] == "openrouter"
+    assert rec["requested_model"] == "typesafe/jev-1.13"
+    assert rec["resolved_model"] == "typesafe/jev-1.13-20260917"
+    assert rec["provider_name"] == "TypeSafe"
+    assert rec["cost"] == 0.0001
+    assert rec["request_id"] == "gen-test"
+
+
+def test_openrouter_missing_optional_telemetry_persists_null(tmp_path, monkeypatch):
+    s = _settings(tmp_path)
+
+    cfg_path = Path(s.root) / "config" / "season_jev.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["provider"] = "openrouter"
+    cfg["model"] = "typesafe/jev-1.13"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or")
+    monkeypatch.setattr(
+        shadow,
+        "source_identity",
+        lambda *a, **k: _bundle()["identity"],
+    )
+    monkeypatch.setattr(
+        shadow,
+        "collect_candidates",
+        lambda *a, **k: [_cand(0)],
+    )
+
+    def runner(settings, payload, timeout):
+        item = payload["candidates"][0]
+
+        return {
+            "provider": "openrouter",
+            "requested_model": "typesafe/jev-1.13",
+            "results": [{
+                "id": item["id"],
+                "candidate_type": item["candidate_type"],
+                "ticker": item["ticker"],
+                "state_hash": item["state_hash"],
+                "provider": "openrouter",
+                "answers": _complete_answers(),
+                "usage": {
+                    "inputTokens": None,
+                    "outputTokens": None,
+                    "totalTokens": None,
+                },
+                "requested_model": "typesafe/jev-1.13",
+                "resolved_model": "typesafe/jev-1.13-20260917",
+                "wall_latency_ms": 9,
+                "provider_name": None,
+                "cost": None,
+                "request_id": None,
+            }],
+            "errors": [],
+            "total_usage": {
+                "inputTokens": None,
+                "outputTokens": None,
+                "totalTokens": None,
+            },
+        }
+
+    out = shadow.evaluate_generation(
+        s,
+        _bundle(),
+        runner=runner,
+    )
+
+    rec = out["results"][0]
+
+    assert rec["provider_name"] is None
+    assert rec["cost"] is None
+    assert rec["request_id"] is None
+    assert rec["usage"]["inputTokens"] is None
+    assert rec["usage"]["outputTokens"] is None
+    assert rec["usage"]["totalTokens"] is None
+
+
+def test_direct_generated_record_does_not_invent_openrouter_telemetry(
+    tmp_path,
+    monkeypatch,
+    env_key,
+):
+    s = _settings(tmp_path)
+
+    monkeypatch.setattr(
+        shadow,
+        "source_identity",
+        lambda *a, **k: _bundle()["identity"],
+    )
+    monkeypatch.setattr(
+        shadow,
+        "collect_candidates",
+        lambda *a, **k: [_cand(0)],
+    )
+
+    out = shadow.evaluate_generation(
+        s,
+        _bundle(),
+        runner=_ok_runner([]),
+    )
+
+    rec = out["results"][0]
+
+    assert "provider_name" not in rec
+    assert "cost" not in rec
+    assert "request_id" not in rec
+
+
+def test_state_hash_differs_by_provider_and_requested_model():
+    state = {
+        "identity": {
+            "ticker": "TEST000",
+        },
+    }
+
+    shadow.assert_state_clean(state)
+
+    h_direct = shadow.state_hash(
+        state,
+        "season-jev-shadow-v1",
+        provider="typesafe_direct",
+        requested_model="jev-latest",
+    )
+
+    h_openrouter = shadow.state_hash(
+        state,
+        "season-jev-shadow-v1",
+        provider="openrouter",
+        requested_model="typesafe/jev-1.13",
+    )
+
+    h_openrouter_latest = shadow.state_hash(
+        state,
+        "season-jev-shadow-v1",
+        provider="openrouter",
+        requested_model="~typesafe/jev-latest",
+    )
+
+    assert h_direct != h_openrouter
+    assert h_openrouter != h_openrouter_latest
+
+
+def test_reuse_index_never_crosses_provider(tmp_path):
+    s = _settings(tmp_path)
+
+    folder = shadow.shadow_dir(s)
+    folder.mkdir(parents=True, exist_ok=True)
+
+    (folder / "gen-openrouter__openrouter.json").write_text(
+        json.dumps({
+            "generation_id": "gen-openrouter",
+            "provider": "openrouter",
+            "requested_model": "typesafe/jev-1.13",
+            "evaluator_version": "season-jev-shadow-v1",
+            "finished_at": "2026-09-19T00:00:00+00:00",
+            "results": [{
+                "status": "GENERATED",
+                "state_hash": "same-state",
+                "answers": _complete_answers(),
+                "requested_model": "typesafe/jev-1.13",
+                "resolved_model": "typesafe/jev-1.13-20260917",
+            }],
+        }),
+        encoding="utf-8",
+    )
+
+    direct_cfg = {
+        "provider": "typesafe_direct",
+        "model": "jev-latest",
+        "evaluator_version": "season-jev-shadow-v1",
+    }
+
+    openrouter_cfg = {
+        "provider": "openrouter",
+        "model": "typesafe/jev-1.13",
+        "evaluator_version": "season-jev-shadow-v1",
+    }
+
+    assert shadow.load_reuse_index(s, direct_cfg) == {}
+
+    openrouter_index = shadow.load_reuse_index(
+        s,
+        openrouter_cfg,
+    )
+
+    key = shadow.reuse_key(
+        "season-jev-shadow-v1",
+        "openrouter",
+        "typesafe/jev-1.13",
+        "same-state",
+    )
+
+    assert key in openrouter_index
+
+
+def test_run_node_nonzero_exit_is_failure_even_with_valid_stdout(
+    tmp_path,
+    monkeypatch,
+):
+    s = _settings(tmp_path)
+
+    scripts = Path(s.root) / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+
+    (
+        scripts / "jev-season-shadow-openrouter.mjs"
+    ).write_text(
+        "",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        shadow.shutil,
+        "which",
+        lambda name: "node",
+    )
+
+    class Completed:
+        returncode = 1
+        stdout = json.dumps({
+            "provider": "openrouter",
+            "results": [{
+                "id": "x",
+            }],
+            "errors": [],
+        })
+        stderr = "UV_HANDLE_CLOSING"
+
+    monkeypatch.setattr(
+        shadow.subprocess,
+        "run",
+        lambda *a, **k: Completed(),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"NODE_EXIT_1",
+    ):
+        shadow.run_node(
+            s,
+            {
+                "provider": "openrouter",
+                "candidates": [],
+            },
+            timeout=5,
+        )
+
+
+def test_openrouter_runner_failure_preserves_quant_bundle(
+    tmp_path,
+    monkeypatch,
+):
+    s = _settings(tmp_path)
+
+    cfg_path = Path(s.root) / "config" / "season_jev.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["provider"] = "openrouter"
+    cfg["model"] = "typesafe/jev-1.13"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or")
+
+    monkeypatch.setattr(
+        shadow,
+        "source_identity",
+        lambda *a, **k: _bundle()["identity"],
+    )
+    monkeypatch.setattr(
+        shadow,
+        "collect_candidates",
+        lambda *a, **k: [_cand(0)],
+    )
+
+    monkeypatch.setattr(
+        shadow,
+        "run_node",
+        lambda *a, **k: (
+            _ for _ in ()
+        ).throw(
+            RuntimeError("NODE_EXIT_1")
+        ),
+    )
+
+    bundle = _bundle()
+    before = copy.deepcopy(bundle)
+
+    out = shadow.evaluate_generation(
+        s,
+        bundle,
+    )
+
+    assert bundle == before
+    assert out["status"] == "ERROR"
+    assert out["provider"] == "openrouter"
+    assert out["requested_model"] == "typesafe/jev-1.13"
+    assert out["errors"] == [{
+        "error": "RUNNER:RuntimeError",
+    }]
+

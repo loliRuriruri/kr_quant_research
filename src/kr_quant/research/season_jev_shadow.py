@@ -593,7 +593,7 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
         cid = str(item.get("id") or "")
         started_ids.add(cid)
         source = by_id.get(item.get("id")) or {}
-        generated_by_id[cid] = {
+        record = {
             "candidate_type": item.get("candidate_type") or source.get("candidate_type"),
             "candidate_id": item.get("id") or source.get("id"),
             "signal_id": source.get("id") if source.get("candidate_type") == "season_pattern" else None,
@@ -608,6 +608,11 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
             "resolved_model": item.get("resolved_model"),
             "wall_latency_ms": item.get("wall_latency_ms"),
         }
+        if record["provider"] == "openrouter":
+            record["provider_name"] = item.get("provider_name")
+            record["cost"] = item.get("cost")
+            record["request_id"] = item.get("request_id")
+        generated_by_id[cid] = record
     error_by_id: dict[str, dict[str, Any]] = {}
     for err in raw.get("errors") or []:
         if not isinstance(err, dict):
