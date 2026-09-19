@@ -6,7 +6,7 @@
 
 **Architecture:** Keep calibration logic in a pure, deterministic Python module (`jev_calibration.py`). Treat existing season JEV shadow JSON under `data/research_snapshots/season_jev_shadow/` as read-only inputs. Store runtime labels/reports under `data/research/jev_calibration/` (gitignored). Ship tracked `config/jev_thresholds.json` with all-null heads. Separate calibration-only selection from locked holdout evaluation. CLI scripts orchestrate only; no UI in the first slice.
 
-**Tech Stack:** Python 3.11+, pytest, stdlib `json` / `hashlib` / `argparse` / `pathlib`, existing `kr_quant.atomic_io.write_json_atomic`. No new dependencies (no pandas/sklearn for calibration).
+**Tech Stack:** Python 3.11+, pytest, stdlib `json` / `hashlib` / `argparse` / `pathlib`, existing `kr_quant.atomic_io.write_json_atomic` for JSON object/list reports; stdlib `read_jsonl` / `write_jsonl_atomic` in `jev_calibration.py` for JSONL. No new dependencies (no pandas/sklearn for calibration). Do not change `atomic_io.py`.
 
 **Spec:** `docs/superpowers/specs/2026-09-19-jev-calibration-design.md` (commit `92be125ca8a9738814eb7a7cfff55d9486d07565`)
 
@@ -32,7 +32,7 @@ Work in an isolated worktree. Do not use a dirty primary checkout. Do not `git a
 - No automatic provider fallback.
 - No automatic threshold deployment into production routing.
 - Seeded thresholds start as `null` → `UNCALIBRATED` / `SHADOW_ONLY`.
-- Missing threshold file / bucket / head → `SHADOW_ONLY` / `UNCALIBRATED` (never invent `0.5`).
+- Missing threshold file / bucket / head / null threshold → `status=SHADOW_ONLY`, `reason=UNCALIBRATED`, `threshold=None` (never invent `0.5`).
 - `0.5` remains display/normalize-only (`normalizeAnswers`); never a production default.
 - Calibration identity: `provider + requested_model + evaluator_version`.
 - OpenRouter alias `~typesafe/jev-latest` is not a production calibration bucket.
@@ -130,9 +130,17 @@ def lookup_threshold(
     evaluator_version: str,
     head: str,
 ) -> dict:
-    """Return {"status": STATUS_SHADOW_ONLY|STATUS_UNCALIBRATED|..., "threshold": float|None}.
-    Missing bucket/head or null threshold => threshold None + SHADOW_ONLY/UNCALIBRATED.
-    Never returns 0.5 as a fallback.
+    """Exact return shape:
+    {
+      "status": STATUS_SHADOW_ONLY,          # routing behavior (J2 never production-routes)
+      "reason": STATUS_UNCALIBRATED | None,  # calibration reason
+      "threshold": float | None,
+    }
+    Missing bucket/head or null threshold =>
+      status=SHADOW_ONLY, reason=UNCALIBRATED, threshold=None
+    Valid numeric threshold still =>
+      status=SHADOW_ONLY, reason=None, threshold=<number>
+    Never invents 0.5. Invalid numbers (<0, >1, bool, NaN, Inf, non-number) => CalibrationError.
     """
 
 def threshold_status_from_path(
@@ -143,7 +151,7 @@ def threshold_status_from_path(
     evaluator_version: str,
     head: str,
 ) -> dict:
-    """Missing file maps to SHADOW_ONLY/UNCALIBRATED with threshold None (no raise required)."""
+    """Missing file => status=SHADOW_ONLY, reason=UNCALIBRATED, threshold=None."""
 
 def make_sample_id(provider: str, requested_model: str, evaluator_version: str, state_hash: str) -> str: ...
 def assign_split(*, ticker: str | None, state_hash: str) -> str: ...
@@ -191,6 +199,24 @@ def attach_review_status(holdout_report: dict, status: str) -> dict: ...
 def mark_holdout_non_pristine(selection: dict) -> dict: ...
 
 def calibration_root(settings) -> Path: ...
+
+def read_jsonl(path: Path) -> list[dict]: ...
+def write_jsonl_atomic(path: Path, rows: list[dict]) -> None:
+    """Stdlib JSONL writer (NOT write_json_atomic).
+    mkdir parent; write sibling temp; each row = one compact UTF-8 JSON object + "\n"
+    (including trailing newline after last row); re-validate line-by-line json.loads + row count;
+    os.replace; cleanup temp on failure. No new dependencies. Does not emit a JSON array file.
+    """
+
+# Storage roles:
+#   labels/*.jsonl   = blind human annotation source (JSONL only; never JSON array)
+#   exports/*.jsonl  = internal joined dataset (state + jev_answers + human_labels)
+#   reports/*        = calibration/holdout JSON (write_json_atomic) and/or Markdown
+#   selections/*     = selection manifest JSON (write_json_atomic)
+#
+# dataset_hash_v1 remains a LOGICAL canonicalization (active revisions + sample_id sort + ...).
+# write_jsonl_atomic is physical I/O only; exporters may pass already-canonical rows when desired.
+
 def export_candidates_from_shadow(
     shadow_payload: dict,
     *,
@@ -252,7 +278,7 @@ Consumes:
 Produces:
 
 - `config/jev_thresholds.json`
-- `load_thresholds`, `lookup_threshold`, `threshold_status_from_path`, status constants, `BOOLEAN_HEADS`
+- `load_thresholds`, `lookup_threshold`, `threshold_status_from_path`, status/reason contract, `BOOLEAN_HEADS`
 - unit tests proving no `0.5` fallback and full isolation (Review Focus #4)
 
 Files:
@@ -311,9 +337,9 @@ def test_null_threshold_is_shadow_only(tmp_path):
         cfg, provider="typesafe_direct", requested_model="jev-latest",
         evaluator_version="season-jev-shadow-v1", head="needsDart",
     )
+    assert got["status"] == cal.STATUS_SHADOW_ONLY
+    assert got["reason"] == cal.STATUS_UNCALIBRATED
     assert got["threshold"] is None
-    assert got["status"] in {cal.STATUS_SHADOW_ONLY, cal.STATUS_UNCALIBRATED}
-    assert got["threshold"] != 0.5
 
 def test_threshold_status_from_missing_path(tmp_path):
     got = cal.threshold_status_from_path(
@@ -321,8 +347,9 @@ def test_threshold_status_from_missing_path(tmp_path):
         provider="typesafe_direct", requested_model="jev-latest",
         evaluator_version="season-jev-shadow-v1", head="needsNews",
     )
+    assert got["status"] == cal.STATUS_SHADOW_ONLY
+    assert got["reason"] == cal.STATUS_UNCALIBRATED
     assert got["threshold"] is None
-    assert got["status"] in {cal.STATUS_SHADOW_ONLY, cal.STATUS_UNCALIBRATED}
 
 def test_missing_bucket_head_and_mismatches(tmp_path):
     cfg = cal.load_thresholds(_seed(tmp_path))
@@ -338,8 +365,32 @@ def test_missing_bucket_head_and_mismatches(tmp_path):
     ]
     for kwargs in cases:
         got = cal.lookup_threshold(cfg, **kwargs)
+        assert got["status"] == cal.STATUS_SHADOW_ONLY
+        assert got["reason"] == cal.STATUS_UNCALIBRATED
         assert got["threshold"] is None
-        assert got["status"] in {cal.STATUS_SHADOW_ONLY, cal.STATUS_UNCALIBRATED}
+
+def test_numeric_threshold_still_shadow_only_no_production_routing(tmp_path):
+    path = _seed(tmp_path)
+    cfg = cal.load_thresholds(path)
+    cfg["buckets"][0]["thresholds"]["needsDart"] = 0.73
+    got = cal.lookup_threshold(
+        cfg, provider="typesafe_direct", requested_model="jev-latest",
+        evaluator_version="season-jev-shadow-v1", head="needsDart",
+    )
+    assert got["status"] == cal.STATUS_SHADOW_ONLY
+    assert got["reason"] is None
+    assert got["threshold"] == 0.73
+
+@pytest.mark.parametrize("bad", [-0.1, 1.1, True, float("nan"), float("inf"), "0.5"])
+def test_invalid_numeric_threshold_fail_closed(tmp_path, bad):
+    path = _seed(tmp_path)
+    cfg = cal.load_thresholds(path)
+    cfg["buckets"][0]["thresholds"]["needsDart"] = bad
+    with pytest.raises(cal.CalibrationError):
+        cal.lookup_threshold(
+            cfg, provider="typesafe_direct", requested_model="jev-latest",
+            evaluator_version="season-jev-shadow-v1", head="needsDart",
+        )
 ```
 
 Seeded tracked file content (exact buckets; all seven heads `null`):
@@ -383,7 +434,7 @@ Seeded tracked file content (exact buckets; all seven heads `null`):
 - [ ] **Step 2: Run RED**
 
 ```text
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_calibration.py -q --tb=line -k "boolean_heads or null_threshold or missing or mismatches"
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_calibration.py -q --tb=line -k "boolean_heads or null_threshold or missing or mismatches or numeric_threshold or invalid_numeric"
 ```
 
 Expected: FAIL (module/config missing).
@@ -779,6 +830,14 @@ def test_support_status_insufficient_class_support():
     st = cal.support_status(rows, head="needsDart", split=cal.SPLIT_CALIBRATION)
     assert st["valid_count"] == 50
     assert st["insufficient_class_support"] is True
+
+def test_attach_review_status_allows_only_known_values():
+    report = {"selected_threshold": 0.73, "state": cal.STATE_HOLDOUT_REVEALED}
+    ok = cal.attach_review_status(report, cal.REVIEW_ACCEPT)
+    assert ok["review_status"] == cal.REVIEW_ACCEPT
+    for bad in ("AUTO_ACCEPT", "WINNER", "best", ""):
+        with pytest.raises(cal.CalibrationError):
+            cal.attach_review_status(report, bad)
 ```
 
 Notes:
@@ -790,7 +849,7 @@ Notes:
 - [ ] **Step 2: RED**
 
 ```text
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_calibration.py -q --tb=line -k "calibration_report or holdout_before or lock_selection or holdout_eval or non_pristine or support_status"
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_calibration.py -q --tb=line -k "calibration_report or holdout_before or lock_selection or holdout_eval or non_pristine or support_status or attach_review"
 ```
 
 - [ ] **Step 3: Implement** report/lock/holdout only.
@@ -813,14 +872,16 @@ STOP for review.
 
 **Interfaces:**
 
-Consumes: existing shadow JSON (`candidate_id`, `state_hash`, `answers`, `quant_reference`, …); Task 2–4 functions; `write_json_atomic`
+Consumes: existing shadow JSON (`candidate_id`, `state_hash`, `answers`, `quant_reference`, …); Task 2–4 functions; `write_json_atomic` for JSON reports/manifests; **new** `read_jsonl` / `write_jsonl_atomic` for JSONL labels/exports
 
 Produces:
 
 - Minimal `season_jev_shadow.py` change: persist exact safe evaluated `state` on GENERATED / REUSED records
-- `calibration_root`, `export_candidates_from_shadow`, `build_blind_label_template`, `ingest_blind_labels`
+- `calibration_root`, `read_jsonl`, `write_jsonl_atomic`, `export_candidates_from_shadow`, `build_blind_label_template`, `ingest_blind_labels`
 - CLI `scripts/jev_calibration_export.py` with subcommands listed in Fixed interfaces
 - `.gitignore` entry `data/research/jev_calibration/`
+
+REUSED provenance: persist **current** `candidate["state"]` (safe, assert_state_clean). Reuse identity already requires matching `state_hash`, so current candidate state is the correct evaluation identity. Do not require old source records to carry `state`. Calibration export of historical artifacts that still lack `state` remains `SHADOW_STATE_MISSING` (no snapshot reconstruction).
 
 ### Shadow persistence contract (actual repo today)
 
@@ -971,33 +1032,99 @@ def test_cli_help_lists_required_subcommands():
         assert name in help_text
 ```
 
-Also extend `tests/unit/test_season_jev_shadow.py` (RED first) with:
+Also extend `tests/unit/test_season_jev_shadow.py` (RED first) using existing helpers `_settings`, `_bundle`, `_cand`, `_ok_runner`, `_complete_answers`, fixture `env_key`:
 
 ```python
 def test_generated_record_persists_clean_state(tmp_path, monkeypatch, env_key):
-    # After evaluate_generation, persisted GENERATED result contains `state`
-    # that passes shadow.assert_state_clean, and quant_reference remains a sibling key.
+    s = _settings(tmp_path)
+    monkeypatch.setattr(shadow, "source_identity", lambda *a, **k: _bundle()["identity"])
+    cand = _cand(0)
+    monkeypatch.setattr(shadow, "collect_candidates", lambda *a, **k: [cand])
+    calls = []
+    out = shadow.evaluate_generation(s, _bundle(), runner=_ok_runner(calls))
+    assert calls  # generated path hits runner
+    rec = out["results"][0]
+    assert rec["status"] == "GENERATED"
+    assert "state" in rec
+    assert rec["state"] == cand["state"]
+    shadow.assert_state_clean(rec["state"])
+    assert "quant_reference" in rec
+    assert "grade" not in rec["state"]
+    assert "seasonality_score" not in rec["state"]
+    assert "pre_entry_rank" not in rec["state"]
 
-def test_reused_record_persists_clean_state(tmp_path, monkeypatch, env_key):
-    # REUSED path likewise persists `state` beside answers; no Quant fields inside state.
+def test_reused_record_persists_current_candidate_safe_state(tmp_path, monkeypatch, env_key):
+    s = _settings(tmp_path)
+    monkeypatch.setattr(shadow, "source_identity", lambda *a, **k: _bundle()["identity"])
+    cand = _cand(0, state_hash="sem")
+    monkeypatch.setattr(shadow, "collect_candidates", lambda *a, **k: [cand])
+    path = shadow.shadow_path(s, "gen-A", "typesafe_direct")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "generation_id": "gen-A",
+        "provider": "typesafe_direct",
+        "requested_model": "jev-latest",
+        "evaluator_version": "season-jev-shadow-v1",
+        "finished_at": "z",
+        "results": [{"status": "GENERATED", "state_hash": "sem", "answers": _complete_answers()}],
+    }), encoding="utf-8")
+    calls = []
+    out = shadow.evaluate_generation(s, _bundle(), runner=_ok_runner(calls))
+    assert calls == []
+    rec = out["results"][0]
+    assert rec["status"] == "REUSED"
+    assert "state" in rec
+    assert rec["state"] == cand["state"]  # current candidate safe state
+    shadow.assert_state_clean(rec["state"])
+    assert "quant_reference" in rec
+    assert "grade" not in rec["state"]
 ```
 
-(Implement these against the existing shadow test harness patterns in that file.)
+JSONL I/O tests (in `tests/unit/test_jev_calibration.py`):
+
+```python
+import json
+
+def test_write_jsonl_atomic_round_trip(tmp_path):
+    path = tmp_path / "rows.jsonl"
+    rows = [{"sample_id": "a", "한글": "테스트"}, {"sample_id": "b", "x": 2}]
+    cal.write_jsonl_atomic(path, rows)
+    raw = path.read_bytes()
+    assert raw.endswith(b"\n")
+    assert cal.read_jsonl(path) == rows
+
+def test_jsonl_is_one_object_per_line(tmp_path):
+    path = tmp_path / "rows.jsonl"
+    rows = [{"a": 1}, {"b": 2}]
+    cal.write_jsonl_atomic(path, rows)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[0]) == {"a": 1}
+    assert json.loads(lines[1]) == {"b": 2}
+
+def test_jsonl_writer_does_not_emit_json_array(tmp_path):
+    path = tmp_path / "rows.jsonl"
+    cal.write_jsonl_atomic(path, [{"a": 1}, {"b": 2}])
+    text = path.read_text(encoding="utf-8")
+    assert not text.lstrip().startswith("[")
+```
 
 - [ ] **Step 2: RED**
 
 ```text
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_calibration.py -q --tb=line -k "calibration_root or export_ or blind_ or ingest_ or cli_help"
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_season_jev_shadow.py -q --tb=line -k "persists_clean_state"
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_calibration.py -q --tb=line -k "calibration_root or export_ or blind_ or ingest_ or cli_help or jsonl"
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_season_jev_shadow.py -q --tb=line -k "persists_clean_state or persists_current_candidate"
 ```
 
 - [ ] **Step 3: Implement**
 
-1. Minimal `season_jev_shadow.py` persistence of safe `state` for GENERATED/REUSED
-2. Calibration export / blind-template / ingest core
-3. Thin CLI (`build_parser` + subcommands)
-4. `.gitignore` → `data/research/jev_calibration/`
-5. Use `write_json_atomic` for outputs; **no live JEV API calls**; no historical state reconstruction
+1. Minimal `season_jev_shadow.py` persistence of safe `state` for GENERATED/REUSED (REUSED uses current candidate state)
+2. `read_jsonl` / `write_jsonl_atomic` in `jev_calibration.py` (do **not** modify `atomic_io.py`)
+3. Calibration export / blind-template / ingest core
+4. Thin CLI (`build_parser` + subcommands)
+5. `.gitignore` → `data/research/jev_calibration/`
+6. Persist JSONL via `write_jsonl_atomic` for `labels/` and `exports/`; persist JSON reports/manifests via existing `write_json_atomic`
+7. **No live JEV API calls**; no historical state reconstruction from current snapshots
 
 - [ ] **Step 4: GREEN** + verify ignore:
 
@@ -1017,13 +1144,26 @@ STOP for review.
 
 ---
 
-## Task 6: Integration / Regression / Invariance
+## Task 6: Integration / Regression / Invariance (verification-only)
 
 **Interfaces:**
 
 Consumes: Tasks 1–5 artifacts
 
-Produces: evidence that J2 tooling is green without live API calls and without mutating JEV enablement/Quant
+Produces: PASS/FAIL evidence only. **No code edits. No test edits. No commits.**
+
+### Hard rule
+
+If targeted, adjacent, or full pytest **FAIL**s:
+
+1. Capture failure evidence
+2. Optionally compare against a known baseline for diagnosis
+3. **STOP**
+4. Do not claim J2 complete
+5. Do not edit tests or source in Task 6
+6. Wait for GPT/user review / a separate approved fix cycle
+
+A broken baseline may be reported, but Task 6 is still **not** a PASS.
 
 ### Steps
 
@@ -1033,15 +1173,15 @@ Produces: evidence that J2 tooling is green without live API calls and without m
 C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_calibration.py -q --tb=line
 ```
 
-Expected: PASS
+Expected: PASS. On FAIL → STOP (no Task 6 fixes).
 
-- [ ] **Step 2: Adjacent JEV regression (unchanged modules)**
+- [ ] **Step 2: Adjacent JEV regression**
 
 ```text
 C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_season_jev_shadow.py tests/unit/test_season_jev_budget.py -q --tb=line
 ```
 
-Expected: PASS
+Expected: PASS. On FAIL → STOP.
 
 - [ ] **Step 3: Full pytest**
 
@@ -1049,7 +1189,7 @@ Expected: PASS
 C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest -q --tb=short
 ```
 
-Expected: PASS. If pre-existing failures exist unrelated to J2, document them with evidence and do not expand J2 scope to fix unrelated issues.
+Expected: PASS. On FAIL → capture evidence, STOP, do not mark Task 6 complete, do not edit tests in Task 6.
 
 - [ ] **Step 4: Static invariance checks**
 
@@ -1058,6 +1198,7 @@ git diff --check
 git show HEAD:config/season_jev.json
 git show HEAD:config/jev_thresholds.json
 git grep -n "data/research/jev_calibration/" .gitignore
+git status --short
 ```
 
 Assert:
@@ -1066,19 +1207,14 @@ Assert:
 - `jev_thresholds.json`: both seeded buckets; seven heads all `null`
 - `.gitignore` contains `data/research/jev_calibration/`
 - `season_jev_budget.py` unchanged vs plan base
-- `season_jev_shadow.py` diff is limited to safe `state` persistence for GENERATED/REUSED (no Quant mutation, no enablement changes)
+- `season_jev_shadow.py` diff limited to safe `state` persistence for GENERATED/REUSED (no Quant mutation, no enablement changes)
 - no J3 implementation files added
 - `tests/unit/test_jev_calibration.py` contains no live network / Node runner invocation helpers
+- working tree matches expected Task 1–5 commits only (Task 6 itself creates **no** commit)
 
-- [ ] **Step 5: Commit only if a test-only fix was required**
+- [ ] **Step 5: Report evidence and STOP**
 
-```text
-git add tests/unit/test_jev_calibration.py
-git diff --cached --check
-git commit -m "test(jev): validate calibration integration"
-```
-
-If Steps 1–4 already PASS with no diff, do **not** create an empty commit; report evidence and STOP.
+Report all command outputs, SHAs, and `git status --short`. **Do not create a Task 6 commit.**
 
 STOP for review.
 
