@@ -1,7 +1,7 @@
 import { gateway } from "@ai-sdk/gateway";
 import { experimental_evaluate as evaluate } from "ai";
 import { evaluateCandidates } from "./jev/season-shadow-core.mjs";
-import { buildGatewayQuestions } from "./jev/season-shadow-gateway-adapter.mjs";
+import { buildGatewayQuestions, gatewayModelId } from "./jev/season-shadow-gateway-adapter.mjs";
 
 async function readStdin() {
   const chunks = [];
@@ -28,7 +28,8 @@ if (payload.provider !== "vercel_gateway") {
 }
 
 const requestedModel = payload.requested_model || payload.model || "jev-latest";
-const model = gateway.evaluationModel("typesafe-ai/jev-latest");
+const gatewayRequestedModel = gatewayModelId(requestedModel);
+const model = gateway.evaluationModel(gatewayRequestedModel);
 const questions = buildGatewayQuestions();
 
 try {

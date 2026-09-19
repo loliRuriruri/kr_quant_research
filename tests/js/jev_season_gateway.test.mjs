@@ -6,7 +6,7 @@ import {
   REVIEW_CLASS_OPTIONS,
   normalizeAnswers,
 } from "../../scripts/jev/season-shadow-core.mjs";
-import { buildGatewayQuestions } from "../../scripts/jev/season-shadow-gateway-adapter.mjs";
+import { buildGatewayQuestions, gatewayModelId } from "../../scripts/jev/season-shadow-gateway-adapter.mjs";
 
 test("gateway questions share QUESTION_SPECS identities", () => {
   const qs = buildGatewayQuestions();
@@ -33,4 +33,10 @@ test("gateway raw boolean normalizes to unified schema", () => {
     probability: 0.72,
     decision: true,
   });
+});
+
+
+test("gatewayModelId maps logical requested model to typesafe-ai gateway id", () => {
+  assert.equal(gatewayModelId("jev-latest"), "typesafe-ai/jev-latest");
+  assert.equal(gatewayModelId("jev-1.13.0"), "typesafe-ai/jev-1.13.0");
 });

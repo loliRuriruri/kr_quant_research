@@ -215,3 +215,19 @@ test("missing usage stays null and totals become null when any row misses", asyn
   assert.equal(output.total_usage.outputTokens, null);
   assert.equal(output.total_usage.totalTokens, null);
 });
+
+
+test("choice with numeric probability stays choice", () => {
+  const answers = normalizeAnswers({
+    reviewClass: {
+      type: "choice",
+      choice: "monitor",
+      probability: 0.81,
+      probabilities: { monitor: 0.81 },
+      confidence: 0.81,
+    },
+  });
+  assert.equal(answers.reviewClass.type, "choice");
+  assert.equal(answers.reviewClass.choice, "monitor");
+  assert.equal(answers.reviewClass.probability, 0.81);
+});

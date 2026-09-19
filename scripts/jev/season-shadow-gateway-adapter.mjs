@@ -20,3 +20,9 @@ export function buildGatewayQuestions() {
   }
   return out;
 }
+
+export function gatewayModelId(requestedModel) {
+  const logical = String(requestedModel || "jev-latest").trim();
+  return `typesafe-ai/${logical}`;
+}
+

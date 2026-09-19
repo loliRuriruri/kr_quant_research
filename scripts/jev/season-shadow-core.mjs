@@ -94,7 +94,7 @@ export function normalizeAnswers(answers, providerMetadata = null) {
       };
       continue;
     }
-    if (value.type === "boolean" || typeof value.probability === "number") {
+    if (value.type === "boolean") {
       const probability = typeof value.probability === "number" ? value.probability : null;
       out[key] = {
         type: "boolean",
