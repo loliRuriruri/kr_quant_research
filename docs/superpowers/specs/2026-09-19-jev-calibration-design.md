@@ -380,46 +380,76 @@ As of base `dcaa92b`, `.gitignore` ignores `data/research_snapshots/` (and other
 - Threshold **selection** uses the `calibration` split only.
 - Holdout is **never** used to choose a threshold.
 - Final published performance for a candidate threshold must report **holdout** metrics (and may also show calibration metrics as non-selection diagnostics).
+- The same non-empty `ticker` must never appear in both `calibration` and `holdout` within a dataset (primary split is ticker-grouped).
 - The same `state_hash` must always map to the same `split` within a dataset.
 - Duplicate/revision rows for the same `sample_id` inherit the same `split`.
+- Independent per-row random splits are forbidden.
 
-### Deterministic grouped split algorithm (`split_method_version`: `grouped-v1`)
+### Deterministic primary split (`split_method_version`: `ticker-grouped-v1`)
 
-Do **not** use independent per-row random splits.
+Primary J2 split is **ticker-grouped**, not generation-grouped.
 
-1. Define group key:
+**Why not `ticker + generation_id`:** `state_hash` is derived from `provider + requested_model + evaluator_version + state` and does **not** include `generation_id`. The same logical state (same `state_hash`) can recur across generations. Grouping by `ticker + generation_id` could assign that repeated `state_hash` to different splits and trigger `SPLIT_STATE_HASH_CONFLICT`, and it also allows the same ticker into both calibration and holdout across generations (ticker leakage).
 
-```text
-group_key = sha256_hex(ticker + "\n" + generation_id)
-```
+Algorithm:
 
-(`ticker` and `generation_id` UTF-8; missing `generation_id` uses empty string, but exporters should prefer always populating it.)
-
-2. Map to bucket:
+1. Choose group identity:
 
 ```text
-split_bucket = int(group_key[0:8], 16) % 100   // 0..99
+if ticker is non-empty (after strip):
+    group_identity = ticker
+else:
+    group_identity = state_hash
 ```
 
-3. Assign:
+2. Hash:
 
 ```text
-if split_bucket < 70:  split = "calibration"
-else:                  split = "holdout"
+group_hash = sha256_hex(group_identity)   // UTF-8 bytes of the identity string
 ```
 
-(70/30 grouped split.)
+3. Bucket:
 
-4. Consistency checks (fail closed):
+```text
+split_bucket = int(group_hash[0:8], 16) % 100   // 0..99
+```
+
+4. Assign (70/30):
+
+```text
+if split_bucket < 70:
+    split = "calibration"
+else:
+    split = "holdout"
+```
+
+Hard properties of `ticker-grouped-v1`:
+
+- The same non-empty ticker never appears in both splits.
+- The same `state_hash` stays in one split (because all rows with that hash share provider/model/evaluator/state content; when ticker is present they share the ticker group; when ticker is missing they group by `state_hash` itself).
+- The same `sample_id` stays in one split.
+- No per-row randomness.
+
+Defense-in-depth consistency checks (fail closed; the algorithm itself must not create these conflicts under valid inputs):
 
 - All rows sharing `state_hash` must share the same assigned `split`; otherwise raise `SPLIT_STATE_HASH_CONFLICT`.
 - All rows sharing `sample_id` must share the same `split`; otherwise raise `SPLIT_SAMPLE_CONFLICT`.
+- All rows sharing the same non-empty `ticker` must share the same assigned `split`; otherwise raise `SPLIT_TICKER_CONFLICT`.
 
-### Future optional validation
+`generation_id` and `selection_date` remain sample metadata. They are **not** inputs to the primary split.
 
-After sufficient volume, a **time-ordered** holdout (by `selection_date` / generation) may be added as an additional validation report. It does not replace `grouped-v1` for J2’s primary design and must still forbid using that holdout for threshold selection.
+### Future optional validation (separate role)
 
----
+After sufficient volume, a **time-ordered holdout** (by `selection_date` / generation) may be added as an **additional temporal validation report**.
+
+Role separation:
+
+```text
+primary split                 = ticker-grouped-v1
+future additional validation  = time-ordered holdout
+```
+
+Time-ordered validation must **not** replace `ticker-grouped-v1` for threshold selection, and must still forbid using that temporal holdout to choose thresholds.
 
 ## 12. Minimum Support
 
@@ -549,7 +579,7 @@ Still no automatic production commit. Sweep + human review apply to all seven he
 Future report artifacts (`reports/<dataset_id>.{json,md}`) must include at least:
 
 - Bucket identity: `provider`, `requested_model`, `evaluator_version`
-- `dataset_id`, `dataset_hash`, `annotation_version`, `created_at`
+- `dataset_id`, `dataset_hash`, `dataset_hash_method_version`, `annotation_version`, `created_at`
 - `split_method_version`, `sweep_method_version`
 - Per head: valid labels, positive, negative, unknown, `INSUFFICIENT_CLASS_SUPPORT` flag when applicable
 - Threshold sweep table
@@ -581,16 +611,35 @@ Required provenance fields:
 ```text
 dataset_id
 dataset_hash
+dataset_hash_method_version   # canonical-jsonl-v1
 provider
 requested_model
 evaluator_version
 annotation_version
-split_method_version          # grouped-v1
+split_method_version          # ticker-grouped-v1
 sweep_method_version          # observed-boundaries-v1
 prediction_rule               # probability >= threshold
 ```
 
-`dataset_hash`: SHA-256 over the canonical JSONL export bytes used for the run (or equivalent canonical serialization documented by the exporter).
+### `dataset_hash` canonicalization (`dataset_hash_method_version`: `canonical-jsonl-v1`)
+
+`dataset_hash` must be fully deterministic for the same logical **active** dataset, independent of physical input row order.
+
+Steps:
+
+1. Select **active revision** rows only (one active row per `sample_id`).
+2. Within each `sample_id`, choose the active revision deterministically by `annotation_version` rules (higher `annotation_version` wins; ties broken by lexicographically greater `labeled_at` ISO-8601 string, then by stable canonical JSON of the row).
+3. Sort the selected active rows by `sample_id` ascending (UTF-8 lexicographic).
+4. Serialize each row as one JSON object with:
+   - UTF-8 encoding
+   - JSON object keys sorted recursively
+   - compact separators: `","` and `":"` (no spaces)
+   - `ensure_ascii=false`
+5. Append a single `"\n"` after each serialized object (including the last row).
+6. SHA-256 over the entire UTF-8 byte stream.
+7. Emit the digest as a lowercase hex string.
+
+Therefore the same logical active dataset yields the same `dataset_hash` even if the source JSONL file's physical row order changes.
 
 ---
 
@@ -668,16 +717,21 @@ Minimum automated checks:
 7. `unknown` excluded from TP/FP/TN/FN
 8. Zero denominators → `null` rates
 9. Duplicate `sample_id` detection
-10. Calibration/holdout non-overlap of `state_hash` / `sample_id`
+10. Calibration/holdout non-overlap of `state_hash` / `sample_id` / non-empty `ticker`
 11. Same `state_hash` cannot cross splits
-12. Sweep candidate set deterministic for a fixture dataset
-13. Prediction rule `probability >= threshold` exact
-14. Confusion matrix exact on fixtures
-15. FN-sensitive heads: no auto production threshold writer
-16. Forbidden Quant fields rejected from `state`
-17. Quant bundle unchanged by calibration APIs
-18. Loading thresholds never flips `season_jev.json` `enabled` to `true`
-19. No provider fallback on missing key/threshold
+12. Same non-empty ticker + different `generation_id` → same split
+13. Same non-empty ticker + different `state_hash` → same split
+14. Missing/empty ticker → fallback `group_identity = state_hash` is deterministic
+15. Sweep candidate set deterministic for a fixture dataset
+16. Prediction rule `probability >= threshold` exact
+17. Confusion matrix exact on fixtures
+18. FN-sensitive heads: no auto production threshold writer
+19. Forbidden Quant fields rejected from `state`
+20. Quant bundle unchanged by calibration APIs
+21. Loading thresholds never flips `season_jev.json` `enabled` to `true`
+22. No provider fallback on missing key/threshold
+23. Changing input JSONL physical row order does not change `dataset_hash`
+24. `canonical-jsonl-v1` fixture hash is deterministic (sorted keys, compact separators, UTF-8, trailing `\n` per row)
 
 ---
 
@@ -762,14 +816,14 @@ This specification explicitly defines:
 - Blind labeling protocol
 - Sample identity
 - Storage layout + git policy
-- Deterministic grouped split + holdout isolation
+- Deterministic `ticker-grouped-v1` split + holdout isolation
 - Leakage prevention rules
 - Minimum support + class support
 - Metrics + null-safe rates
 - Threshold sweep method + `>=` prediction rule
 - Selection gate (no auto production threshold)
 - FN-sensitive heads (report policy, no invented quotas)
-- Report provenance
+- Report provenance (including `dataset_hash_method_version` / `canonical-jsonl-v1`)
 - Error handling
 - Provider / model / evaluator / alias isolation
 - Quant isolation
