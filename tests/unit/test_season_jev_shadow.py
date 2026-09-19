@@ -650,3 +650,129 @@ def test_deadline_before_start_refunds_cap(tmp_path, monkeypatch, env_key):
         return {"results": [], "errors": [{"id": payload["candidates"][0]["id"], "error": "SOFT_DEADLINE_NOT_STARTED"}], "total_usage": {}}
     shadow.evaluate_generation(s, _bundle(), runner=runner)
     assert read_ledger(s)["attempted_calls"] == 0
+
+
+def test_provider_name_accepts_supported_values():
+    assert shadow.provider_name({"provider": "typesafe_direct"}) == "typesafe_direct"
+    assert shadow.provider_name({"provider": "vercel_gateway"}) == "vercel_gateway"
+
+
+def test_provider_name_defaults_to_typesafe_direct():
+    assert shadow.provider_name({}) == "typesafe_direct"
+    assert shadow.provider_name(None) == "typesafe_direct"
+
+
+def test_provider_name_rejects_unknown_provider():
+    with pytest.raises(ValueError, match=r"UNSUPPORTED_JEV_PROVIDER:bogus"):
+        shadow.provider_name({"provider": "bogus"})
+
+
+def test_provider_runner_path_selects_direct_script(tmp_path):
+    s = _settings(tmp_path)
+    path = shadow.provider_runner_path(s, {"provider": "typesafe_direct"})
+    assert path == Path(s.root) / "scripts" / "jev-season-shadow.mjs"
+
+
+def test_provider_runner_path_selects_gateway_script(tmp_path):
+    s = _settings(tmp_path)
+    path = shadow.provider_runner_path(s, {"provider": "vercel_gateway"})
+    assert path == Path(s.root) / "scripts" / "jev-season-shadow-gateway.mjs"
+
+
+def test_provider_runner_path_rejects_unknown_provider(tmp_path):
+    s = _settings(tmp_path)
+    with pytest.raises(ValueError, match=r"UNSUPPORTED_JEV_PROVIDER:bogus"):
+        shadow.provider_runner_path(s, {"provider": "bogus"})
+
+
+def test_run_node_routes_direct_provider_to_direct_script(tmp_path, monkeypatch):
+    s = _settings(tmp_path)
+    scripts = Path(s.root) / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    (scripts / "jev-season-shadow.mjs").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(shadow.shutil, "which", lambda name: "node")
+    captured = {}
+
+    class Completed:
+        returncode = 0
+        stdout = '{"results":[],"errors":[],"total_usage":{}}'
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return Completed()
+
+    monkeypatch.setattr(shadow.subprocess, "run", fake_run)
+
+    shadow.run_node(
+        s,
+        {"provider": "typesafe_direct", "candidates": []},
+        timeout=5,
+    )
+
+    assert captured["cmd"][1] == str(scripts / "jev-season-shadow.mjs")
+
+
+def test_run_node_routes_gateway_provider_to_gateway_script(tmp_path, monkeypatch):
+    s = _settings(tmp_path)
+    scripts = Path(s.root) / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    (scripts / "jev-season-shadow-gateway.mjs").write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(shadow.shutil, "which", lambda name: "node")
+    captured = {}
+
+    class Completed:
+        returncode = 0
+        stdout = '{"results":[],"errors":[],"total_usage":{}}'
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return Completed()
+
+    monkeypatch.setattr(shadow.subprocess, "run", fake_run)
+
+    shadow.run_node(
+        s,
+        {"provider": "vercel_gateway", "candidates": []},
+        timeout=5,
+    )
+
+    assert captured["cmd"][1] == str(scripts / "jev-season-shadow-gateway.mjs")
+
+
+def test_invalid_provider_is_contained_by_shadow_request(tmp_path, monkeypatch):
+    s = _settings(tmp_path)
+    cfg_path = Path(s.root) / "config" / "season_jev.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["enabled"] = True
+    cfg["provider"] = "bogus"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    before = copy.deepcopy(_bundle())
+    bundle = _bundle()
+
+    shadow.request_shadow_evaluation(s, bundle)
+
+    assert bundle == before
+
+
+def test_missing_gateway_key_does_not_fallback_to_direct(tmp_path, monkeypatch):
+    s = _settings(tmp_path)
+    cfg_path = Path(s.root) / "config" / "season_jev.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["provider"] = "vercel_gateway"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    monkeypatch.delenv("AI_GATEWAY_API_KEY", raising=False)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "direct-must-not-fallback")
+
+    ran = []
+    monkeypatch.setattr(shadow, "run_node", lambda *a, **k: ran.append(1) or {})
+
+    out = shadow.evaluate_generation(s, _bundle())
+
+    assert out is None
+    assert ran == []
