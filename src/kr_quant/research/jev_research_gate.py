@@ -718,9 +718,12 @@ def load_reuse_index(path: Path) -> dict:
         if gate_obj.get("side_effects_executed") is not False:
             continue
 
+        gate_schema = gate_obj.get("schema_version")
+        if not _is_supported_schema_version(gate_schema):
+            return {}
         # gate identity must agree with artifact
         if (
-            gate_obj.get("schema_version") != schema_version
+            gate_schema != schema_version
             or gate_obj.get("generation_id") != generation_id
             or gate_obj.get("provider") != provider
             or gate_obj.get("requested_model") != requested_model

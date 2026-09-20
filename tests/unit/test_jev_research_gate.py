@@ -1432,3 +1432,39 @@ def test_persisted_valid_positive_control_still_indexed(tmp_path):
     key = next(iter(index))
     assert key[5] == "cand-A"
     assert key[7] == "a" * 64
+
+
+# ===========================================================================
+# J3 Task 4 — candidate gate schema_version strictness
+# ===========================================================================
+
+
+def test_persisted_gate_schema_bool_true_not_indexed(tmp_path):
+    art = _minimal_valid_artifact()
+    art["results"][0]["gate"]["schema_version"] = True
+    assert gate.load_reuse_index(_write_art(tmp_path, art)) == {}
+
+
+def test_persisted_gate_schema_float_not_indexed(tmp_path):
+    art = _minimal_valid_artifact()
+    art["results"][0]["gate"]["schema_version"] = 1.0
+    assert gate.load_reuse_index(_write_art(tmp_path, art)) == {}
+
+
+def test_persisted_gate_schema_string_not_indexed(tmp_path):
+    art = _minimal_valid_artifact()
+    art["results"][0]["gate"]["schema_version"] = "1"
+    assert gate.load_reuse_index(_write_art(tmp_path, art)) == {}
+
+
+def test_persisted_gate_schema_wrong_int_not_indexed(tmp_path):
+    art = _minimal_valid_artifact()
+    art["results"][0]["gate"]["schema_version"] = 99
+    assert gate.load_reuse_index(_write_art(tmp_path, art)) == {}
+
+
+def test_persisted_gate_schema_int_one_still_indexed(tmp_path):
+    art = _minimal_valid_artifact()
+    assert art["results"][0]["gate"]["schema_version"] == 1
+    index = gate.load_reuse_index(_write_art(tmp_path, art))
+    assert len(index) == 1
