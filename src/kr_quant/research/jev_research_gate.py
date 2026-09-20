@@ -9,7 +9,14 @@ import math
 from pathlib import Path
 from typing import Any, Mapping
 
-from kr_quant.research.jev_calibration import CalibrationError, load_thresholds
+from kr_quant.research.jev_calibration import (
+    BOOLEAN_HEADS,
+    STATUS_SHADOW_ONLY,
+    STATUS_UNCALIBRATED,
+    CalibrationError,
+    load_thresholds,
+    lookup_threshold,
+)
 
 GATE_SCHEMA_VERSION = 1
 GATE_ARTIFACT_TYPE = "season_jev_research_gate"
@@ -186,3 +193,259 @@ def _load_threshold_cfg(path: Path) -> dict[str, Any]:
     except ResearchGateError:
         raise
     return dict(data)
+
+
+SUPPORTED_PROVIDERS = frozenset({"typesafe_direct", "openrouter"})
+
+_REQUIREMENT_MAP = {
+    "needsCurrentYearCheck": "current_year_check",
+    "needsNews": "news",
+    "needsDart": "dart",
+    "needsDeepAI": "deep_ai",
+    "invalidationCheckNeeded": "invalidation_check",
+}
+
+
+def _error_gate(
+    code: str,
+    message: str,
+    *,
+    provider: Any = None,
+    requested_model: Any = None,
+    evaluator_version: Any = None,
+    generation_id: Any = None,
+    candidate_id: Any = None,
+    state_hash: Any = None,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "schema_version": GATE_SCHEMA_VERSION,
+        "mode": MODE_ERROR,
+        "error": {"code": code, "message": message},
+        "side_effects_executed": False,
+    }
+    for key, value in (
+        ("provider", provider),
+        ("requested_model", requested_model),
+        ("evaluator_version", evaluator_version),
+        ("generation_id", generation_id),
+        ("candidate_id", candidate_id),
+        ("state_hash", state_hash),
+    ):
+        if isinstance(value, str) and value.strip():
+            out[key] = value
+    return out
+
+
+def _require_identity_str(value: Any, field: str) -> str | dict[str, Any]:
+    if not isinstance(value, str) or not value.strip():
+        return _error_gate("INVALID_IDENTITY", f"{field} must be a non-empty string")
+    return value
+
+
+def _validate_probability(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    f = float(value)
+    if not math.isfinite(f) or f < 0.0 or f > 1.0:
+        return None
+    return f
+
+
+def evaluate_research_gate(
+    *,
+    answers: Mapping[str, Any],
+    threshold_cfg: Mapping[str, Any],
+    provider: str,
+    requested_model: str,
+    evaluator_version: str,
+    generation_id: str,
+    candidate_id: str,
+    state_hash: str,
+    review_class: Any = None,
+    resolved_model: Any = None,
+) -> dict[str, Any]:
+    """Pure single-candidate Research Gate Shadow decision (Task 2)."""
+    # 1) identity
+    for field, value in (
+        ("provider", provider),
+        ("requested_model", requested_model),
+        ("evaluator_version", evaluator_version),
+        ("generation_id", generation_id),
+        ("candidate_id", candidate_id),
+        ("state_hash", state_hash),
+    ):
+        checked = _require_identity_str(value, field)
+        if isinstance(checked, dict):
+            return checked
+
+    # 2) supported provider
+    if provider not in SUPPORTED_PROVIDERS:
+        return _error_gate(
+            "UNSUPPORTED_PROVIDER",
+            f"unsupported provider: {provider!r}",
+            provider=provider,
+            requested_model=requested_model,
+            evaluator_version=evaluator_version,
+            generation_id=generation_id,
+            candidate_id=candidate_id,
+            state_hash=state_hash,
+        )
+
+    # 3) answers mapping
+    if not isinstance(answers, Mapping):
+        return _error_gate(
+            "MISSING_ANSWERS",
+            "answers must be a mapping",
+            provider=provider,
+            requested_model=requested_model,
+            evaluator_version=evaluator_version,
+            generation_id=generation_id,
+            candidate_id=candidate_id,
+            state_hash=state_hash,
+        )
+
+    # 4–5) BOOLEAN_HEADS + probabilities
+    probs: dict[str, float] = {}
+    for head in BOOLEAN_HEADS:
+        if head not in answers:
+            return _error_gate(
+                "MISSING_HEAD",
+                f"missing required BOOLEAN_HEAD: {head}",
+                provider=provider,
+                requested_model=requested_model,
+                evaluator_version=evaluator_version,
+                generation_id=generation_id,
+                candidate_id=candidate_id,
+                state_hash=state_hash,
+            )
+        node = answers[head]
+        if not isinstance(node, Mapping) or "probability" not in node:
+            return _error_gate(
+                "INVALID_PROBABILITY",
+                f"invalid probability node for head {head}",
+                provider=provider,
+                requested_model=requested_model,
+                evaluator_version=evaluator_version,
+                generation_id=generation_id,
+                candidate_id=candidate_id,
+                state_hash=state_hash,
+            )
+        validated = _validate_probability(node.get("probability"))
+        if validated is None:
+            return _error_gate(
+                "INVALID_PROBABILITY",
+                f"invalid probability for head {head}: {node.get('probability')!r}",
+                provider=provider,
+                requested_model=requested_model,
+                evaluator_version=evaluator_version,
+                generation_id=generation_id,
+                candidate_id=candidate_id,
+                state_hash=state_hash,
+            )
+        probs[head] = validated
+
+    # 6) threshold config hash
+    try:
+        cfg_hash = threshold_config_hash(
+            threshold_cfg,
+            provider=provider,
+            requested_model=requested_model,
+            evaluator_version=evaluator_version,
+        )
+    except ResearchGateError as exc:
+        msg = str(exc)
+        code = "THRESHOLD_CONFIG_UNREADABLE"
+        if "INVALID_THRESHOLD" in msg:
+            code = "INVALID_THRESHOLD"
+        elif "INVALID_IDENTITY" in msg:
+            code = "INVALID_IDENTITY"
+        elif "THRESHOLD_CONFIG_UNREADABLE" in msg:
+            code = "THRESHOLD_CONFIG_UNREADABLE"
+        return _error_gate(
+            code,
+            msg,
+            provider=provider,
+            requested_model=requested_model,
+            evaluator_version=evaluator_version,
+            generation_id=generation_id,
+            candidate_id=candidate_id,
+            state_hash=state_hash,
+        )
+
+    # 7–8) per-head lookup + build output
+    heads: dict[str, Any] = {}
+    calibrated_heads: list[str] = []
+    uncalibrated_heads: list[str] = []
+    research_requirements: dict[str, Any] = {
+        "current_year_check": None,
+        "news": None,
+        "dart": None,
+        "deep_ai": None,
+        "invalidation_check": None,
+    }
+
+    for head in BOOLEAN_HEADS:
+        try:
+            looked = lookup_threshold(
+                threshold_cfg,
+                provider=provider,
+                requested_model=requested_model,
+                evaluator_version=evaluator_version,
+                head=head,
+            )
+        except CalibrationError as exc:
+            return _error_gate(
+                "INVALID_THRESHOLD",
+                str(exc),
+                provider=provider,
+                requested_model=requested_model,
+                evaluator_version=evaluator_version,
+                generation_id=generation_id,
+                candidate_id=candidate_id,
+                state_hash=state_hash,
+            )
+
+        threshold = looked.get("threshold")
+        probability = probs[head]
+        if threshold is None:
+            decision = None
+            reason = STATUS_UNCALIBRATED
+            uncalibrated_heads.append(head)
+        else:
+            decision = bool(probability >= threshold)
+            reason = None
+            calibrated_heads.append(head)
+
+        heads[head] = {
+            "probability": probability,
+            "threshold": threshold,
+            "decision": decision,
+            "reason": reason,
+        }
+        req_key = _REQUIREMENT_MAP.get(head)
+        if req_key is not None:
+            research_requirements[req_key] = decision
+
+    return {
+        "schema_version": GATE_SCHEMA_VERSION,
+        "mode": MODE_SHADOW_ONLY,
+        "provider": provider,
+        "requested_model": requested_model,
+        "evaluator_version": evaluator_version,
+        "generation_id": generation_id,
+        "candidate_id": candidate_id,
+        "state_hash": state_hash,
+        "threshold_config_hash": cfg_hash,
+        "heads": heads,
+        "research_requirements": research_requirements,
+        "material_now": heads["materialNow"]["decision"],
+        "historical_conflict": heads["historicalConflict"]["decision"],
+        "calibrated_heads": calibrated_heads,
+        "uncalibrated_heads": uncalibrated_heads,
+        "all_heads_calibrated": len(calibrated_heads) == len(BOOLEAN_HEADS),
+        "diagnostics": {
+            "review_class": review_class,
+            "resolved_model": resolved_model,
+        },
+        "side_effects_executed": False,
+    }
