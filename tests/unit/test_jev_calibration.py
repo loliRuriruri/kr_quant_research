@@ -326,3 +326,214 @@ def test_annotation_version_invalid_fail_closed(bad):
 def test_forbidden_quant_fields_rejected(bad):
     with pytest.raises(ValueError):
         cal.assert_calibration_state_clean(bad)
+
+
+# --- Task 3 ---
+
+def _samples():
+    def row(sid, split, lab, p):
+        return {
+            "sample_id": sid,
+            "split": split,
+            "human_labels": {
+                "needsNews": lab,
+            },
+            "jev_answers": {
+                "needsNews": {
+                    "probability": p,
+                }
+            },
+        }
+
+    return [
+        row("c1", cal.SPLIT_CALIBRATION, True, 0.80),
+        row("c2", cal.SPLIT_CALIBRATION, True, 0.40),
+        row("c3", cal.SPLIT_CALIBRATION, False, 0.70),
+        row("c4", cal.SPLIT_CALIBRATION, "unknown", 0.90),
+        row("h1", cal.SPLIT_HOLDOUT, True, 0.10),
+    ]
+
+
+def test_confusion_and_rates_with_fpr_one():
+    m = cal.evaluate_head_at_threshold(
+        _samples(),
+        head="needsNews",
+        threshold=0.5,
+    )
+
+    assert (
+        m["TP"],
+        m["FP"],
+        m["TN"],
+        m["FN"],
+    ) == (1, 1, 0, 1)
+
+    assert m["precision"] == 0.5
+    assert m["recall"] == 0.5
+    assert m["FPR"] == 1.0
+    assert m["FNR"] == 0.5
+    assert m["unknown_count"] == 1
+
+
+def test_fpr_none_when_no_human_negatives():
+    rows = [
+        {
+            "sample_id": "a",
+            "split": cal.SPLIT_CALIBRATION,
+            "human_labels": {
+                "needsNews": True,
+            },
+            "jev_answers": {
+                "needsNews": {
+                    "probability": 0.9,
+                }
+            },
+        },
+        {
+            "sample_id": "b",
+            "split": cal.SPLIT_CALIBRATION,
+            "human_labels": {
+                "needsNews": True,
+            },
+            "jev_answers": {
+                "needsNews": {
+                    "probability": 0.1,
+                }
+            },
+        },
+    ]
+
+    m = cal.evaluate_head_at_threshold(
+        rows,
+        head="needsNews",
+        threshold=0.5,
+    )
+
+    assert m["FP"] == 0
+    assert m["TN"] == 0
+    assert m["FPR"] is None
+
+
+def test_invalid_probability_excluded_and_counted():
+    rows = _samples() + [{
+        "sample_id": "c5",
+        "split": cal.SPLIT_CALIBRATION,
+        "human_labels": {
+            "needsNews": True,
+        },
+        "jev_answers": {
+            "needsNews": {
+                "probability": 1.5,
+            }
+        },
+    }]
+
+    m = cal.evaluate_head_at_threshold(
+        rows,
+        head="needsNews",
+        threshold=0.5,
+    )
+
+    assert m["invalid_probability_count"] == 1
+
+
+def test_sweep_uses_observed_boundaries_and_calibration_only():
+    table = cal.sweep_head_thresholds(
+        _samples(),
+        head="needsNews",
+    )
+
+    thresholds = [
+        row["threshold"]
+        for row in table
+    ]
+
+    assert thresholds == sorted({
+        0.0,
+        1.0,
+        0.80,
+        0.40,
+        0.70,
+    })
+
+    assert 0.90 not in thresholds
+    assert 0.10 not in thresholds
+
+    assert all(
+        "holdout_metrics" not in row
+        for row in table
+    )
+
+    assert cal.predict_positive(
+        0.5,
+        0.5,
+    ) is True
+
+    assert cal.predict_positive(
+        0.49,
+        0.5,
+    ) is False
+
+
+def test_fn_sensitive_heads_listed_no_auto_winner_api():
+    assert cal.FN_SENSITIVE_HEADS == frozenset({
+        "needsDart",
+        "historicalConflict",
+        "invalidationCheckNeeded",
+    })
+
+    assert not hasattr(
+        cal,
+        "auto_select_production_threshold",
+    )
+
+
+def test_rates_from_counts_none_on_zero_denominator():
+    assert cal.rates_from_counts({"TP": 0, "FP": 0, "TN": 1, "FN": 1})["precision"] is None
+    assert cal.rates_from_counts({"TP": 0, "FP": 1, "TN": 1, "FN": 0})["recall"] is None
+    assert cal.rates_from_counts({"TP": 1, "FP": 0, "TN": 0, "FN": 0})["FPR"] is None
+    assert cal.rates_from_counts({"TP": 0, "FP": 1, "TN": 1, "FN": 0})["FNR"] is None
+
+
+def test_invalid_probability_boundaries_excluded_from_sweep():
+    rows = [
+        {
+            "sample_id": "ok",
+            "split": cal.SPLIT_CALIBRATION,
+            "human_labels": {"needsNews": True},
+            "jev_answers": {"needsNews": {"probability": 0.25}},
+        },
+        {
+            "sample_id": "nan",
+            "split": cal.SPLIT_CALIBRATION,
+            "human_labels": {"needsNews": False},
+            "jev_answers": {"needsNews": {"probability": float("nan")}},
+        },
+        {
+            "sample_id": "inf",
+            "split": cal.SPLIT_CALIBRATION,
+            "human_labels": {"needsNews": False},
+            "jev_answers": {"needsNews": {"probability": float("inf")}},
+        },
+        {
+            "sample_id": "neg",
+            "split": cal.SPLIT_CALIBRATION,
+            "human_labels": {"needsNews": False},
+            "jev_answers": {"needsNews": {"probability": -0.1}},
+        },
+        {
+            "sample_id": "hi",
+            "split": cal.SPLIT_CALIBRATION,
+            "human_labels": {"needsNews": False},
+            "jev_answers": {"needsNews": {"probability": 1.1}},
+        },
+        {
+            "sample_id": "boolp",
+            "split": cal.SPLIT_CALIBRATION,
+            "human_labels": {"needsNews": False},
+            "jev_answers": {"needsNews": {"probability": True}},
+        },
+    ]
+    table = cal.sweep_head_thresholds(rows, head="needsNews")
+    thresholds = [r["threshold"] for r in table]
+    assert thresholds == sorted({0.0, 1.0, 0.25})

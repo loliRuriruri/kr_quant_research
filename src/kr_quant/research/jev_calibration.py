@@ -302,3 +302,146 @@ def ensure_split_consistency(rows: list[dict]) -> None:
                 f"SPLIT_STATE_HASH_CONFLICT state_hash={state_hash!r} "
                 f"splits={sorted(splits)}"
             )
+
+
+FN_SENSITIVE_HEADS = frozenset({
+    "needsDart",
+    "historicalConflict",
+    "invalidationCheckNeeded",
+})
+
+SWEEP_METHOD_VERSION = "observed-boundaries-v1"
+
+
+def confusion_counts(
+    *,
+    y_true: list[bool],
+    y_pred: list[bool],
+) -> dict:
+    if len(y_true) != len(y_pred):
+        raise CalibrationError("y_true and y_pred length mismatch")
+    tp = fp = tn = fn = 0
+    for t, p in zip(y_true, y_pred):
+        if t and p:
+            tp += 1
+        elif (not t) and p:
+            fp += 1
+        elif (not t) and (not p):
+            tn += 1
+        else:
+            fn += 1
+    return {"TP": tp, "FP": fp, "TN": tn, "FN": fn}
+
+
+def rates_from_counts(counts: dict) -> dict:
+    tp = int(counts.get("TP", 0))
+    fp = int(counts.get("FP", 0))
+    tn = int(counts.get("TN", 0))
+    fn = int(counts.get("FN", 0))
+    precision = (tp / (tp + fp)) if (tp + fp) else None
+    recall = (tp / (tp + fn)) if (tp + fn) else None
+    fpr = (fp / (fp + tn)) if (fp + tn) else None
+    fnr = (fn / (fn + tp)) if (fn + tp) else None
+    return {
+        "precision": precision,
+        "recall": recall,
+        "FPR": fpr,
+        "FNR": fnr,
+    }
+
+
+def predict_positive(
+    probability: float,
+    threshold: float,
+) -> bool:
+    return float(probability) >= float(threshold)
+
+
+def _is_valid_probability(value: object) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    f = float(value)
+    return math.isfinite(f) and 0.0 <= f <= 1.0
+
+
+def _extract_probability(sample: dict, head: str) -> object:
+    answers = sample.get("jev_answers")
+    if not isinstance(answers, Mapping):
+        return None
+    node = answers.get(head)
+    if not isinstance(node, Mapping):
+        return None
+    return node.get("probability")
+
+
+def _extract_label(sample: dict, head: str) -> object:
+    labels = sample.get("human_labels")
+    if not isinstance(labels, Mapping):
+        return None
+    return labels.get(head)
+
+
+def evaluate_head_at_threshold(
+    samples: list[dict],
+    *,
+    head: str,
+    threshold: float,
+) -> dict:
+    y_true: list[bool] = []
+    y_pred: list[bool] = []
+    unknown_count = 0
+    invalid_probability_count = 0
+
+    for sample in samples:
+        if not isinstance(sample, dict):
+            continue
+        if sample.get("split") != SPLIT_CALIBRATION:
+            continue
+        label = _extract_label(sample, head)
+        if label == "unknown":
+            unknown_count += 1
+            continue
+        if label is not True and label is not False:
+            continue
+        prob = _extract_probability(sample, head)
+        if not _is_valid_probability(prob):
+            invalid_probability_count += 1
+            continue
+        y_true.append(bool(label))
+        y_pred.append(predict_positive(float(prob), threshold))
+
+    counts = confusion_counts(y_true=y_true, y_pred=y_pred)
+    rates = rates_from_counts(counts)
+    return {
+        **counts,
+        **rates,
+        "unknown_count": unknown_count,
+        "invalid_probability_count": invalid_probability_count,
+        "threshold": float(threshold),
+        "head": head,
+    }
+
+
+def sweep_head_thresholds(
+    samples: list[dict],
+    *,
+    head: str,
+) -> list[dict]:
+    observed: set[float] = set()
+    for sample in samples:
+        if not isinstance(sample, dict):
+            continue
+        if sample.get("split") != SPLIT_CALIBRATION:
+            continue
+        label = _extract_label(sample, head)
+        if label is not True and label is not False:
+            continue
+        prob = _extract_probability(sample, head)
+        if not _is_valid_probability(prob):
+            continue
+        observed.add(float(prob))
+    candidates = sorted(observed | {0.0, 1.0})
+    return [
+        evaluate_head_at_threshold(samples, head=head, threshold=t)
+        for t in candidates
+    ]
