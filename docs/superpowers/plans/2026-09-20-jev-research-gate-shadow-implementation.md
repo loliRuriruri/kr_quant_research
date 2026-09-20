@@ -259,7 +259,8 @@ diagnostics, side_effects_executed=false
 Decision rules:
 
 - numeric threshold → `decision = (probability >= threshold)`, `reason = null`
-- null / missing threshold or head → `decision = null`, `reason = UNCALIBRATED` (`STATUS_UNCALIBRATED`)
+- missing **required answer** BOOLEAN_HEAD → candidate structural failure: `mode=ERROR`, `error.code=MISSING_HEAD`, `side_effects_executed=false` (do **not** convert to UNCALIBRATED)
+- valid answer probability present, but exact threshold lookup yields missing/null (including missing exact threshold entry, explicit null threshold, or valid config with missing exact bucket) → `mode=SHADOW_ONLY`, `decision=null`, `reason=UNCALIBRATED` (`STATUS_UNCALIBRATED`)
 - never false-fallback / 0.5 / cross-bucket fallback
 
 Candidate ERROR object:
@@ -447,9 +448,10 @@ Implement `threshold_config_hash`, MATCHED/MISSING payload construction, canonic
 
 ### Steps
 
-- [ ] RED: write failing tests for hash contracts (design tests **33–39** primary; isolation prerequisites **5, 6, 7, 8, 12** as hash-facing fixtures).
-- [ ] GREEN: implement constants + `threshold_config_hash` (+ small helpers for locating exact bucket / validating identity fields as needed).
-- [ ] Prove: MISSING → deterministic valid 64-hex; all-null MATCHED ≠ MISSING; absent head ≠ explicit null; unrelated provider edit unchanged; effective edit changes hash; malformed cfg fails closed (no fabricated MISSING hash).
+- [ ] RED: write failing tests for hash contracts — **primary** design tests **33, 34, 36, 37, 38, 39**.
+- [ ] Optional SECONDARY / prerequisite hash-facing fixtures for **5, 6, 7, 8, 12, 35** (hash identity / transition only). These do **not** complete those design contracts; primary ownership remains Task 2 (5–8,12) or Task 4 (35).
+- [ ] GREEN: implement constants + `threshold_config_hash` (+ small helpers for locating exact bucket / validating identity fields as needed). No full candidate gate. No persistence/reuse.
+- [ ] Prove (primary): MISSING → deterministic valid 64-hex; all-null MATCHED ≠ MISSING; absent head ≠ explicit null; unrelated provider edit unchanged; effective edit changes hash; malformed cfg fails closed (no fabricated MISSING hash).
 - [ ] Targeted tests: `pytest tests/unit/test_jev_research_gate.py -q --tb=short` (Task-1 subset / whole file as tests grow).
 - [ ] Invariants: no config writes; no network imports introduced; `enabled=false` untouched.
 - [ ] Stage exact paths only → `git diff --cached --check` → commit → push → STOP.
@@ -486,9 +488,9 @@ Implement `evaluate_research_gate(...)` end-to-end for one candidate.
 
 ### Steps
 
-- [ ] RED: failing tests for design cases **1–19**.
+- [ ] RED: failing tests for design cases **1–19** (primary).
 - [ ] GREEN: implement per-head decisions via `lookup_threshold`, aggregates (`research_requirements`, calibrated/uncalibrated lists), ERROR objects, diagnostics (`review_class` non-routing, `resolved_model` diagnostic).
-- [ ] Prove: all-null → all `decision=null`; one calibrated head; mixed; exact `>=` boundary; bad probability/threshold → ERROR; `reviewClass` non-routing; `materialNow` / `historicalConflict` advisory only; `side_effects_executed=false`; Quant not consumed.
+- [ ] Prove: all-null → all `decision=null`; one calibrated head; mixed; exact `>=` boundary; provider / requested_model / evaluator_version isolation; missing bucket → UNCALIBRATED heads; no provider fallback; bad probability/threshold → ERROR; **missing required BOOLEAN_HEAD → `MISSING_HEAD` ERROR** (not UNCALIBRATED); `reviewClass` non-routing; `materialNow` / `historicalConflict` advisory only; `side_effects_executed=false`; Quant not consumed.
 - [ ] No persistence. No generation wrapper.
 - [ ] Targeted tests + invariants (no research calls; no config mutation).
 - [ ] Stage exact paths → check → commit → push → STOP.
@@ -560,10 +562,11 @@ Implement `research_gate_dir`, `research_gate_path`, atomic artifact persistence
 
 ### Steps
 
-- [ ] RED: failing tests for **20, 21, 27, 28, 29, 30**.
+- [ ] RED: failing tests for **20, 21, 27, 28, 29, 30, 35** (primary).
 - [ ] GREEN: path helpers + `write_research_gate_artifact` via `write_json_atomic`; `load_reuse_index` (or equivalent); reuse key enforcement.
 - [ ] Tests use **`tmp_path` only** — never create production runtime directories.
 - [ ] Prove: atomic write; correct path; reuse on identity match; `state_hash` change invalidates one candidate; threshold hash change invalidates; unrelated provider edit does not; byte-stable identical inputs; malformed artifacts never reused.
+- [ ] Prove design **35**: MISSING hash → exact bucket added → MATCHED hash → hashes differ → persisted candidate reuse rejected.
 - [ ] Disk load path (if any) uses `load_thresholds` + J3 fail-closed — **not** `threshold_status_from_path`.
 - [ ] Targeted tests + invariants → commit → push → STOP.
 
@@ -653,14 +656,14 @@ Every design test **1–39** has exactly one primary Task owner.
 | 2 | 2 | one calibrated head true/false; others null |
 | 3 | 2 | mixed calibrated/null + aggregate lists |
 | 4 | 2 | exact `>=` boundary |
-| 5 | 1 | provider isolation (hash / bucket identity) |
-| 6 | 1 | requested-model isolation |
-| 7 | 1 | evaluator-version isolation |
-| 8 | 1 | missing bucket → UNCALIBRATED (hash MISSING) |
+| 5 | 2 | provider threshold isolation (gate) |
+| 6 | 2 | requested-model threshold isolation (gate) |
+| 7 | 2 | evaluator-version threshold isolation (gate) |
+| 8 | 2 | missing bucket → UNCALIBRATED gate heads |
 | 9 | 2 | malformed probability → ERROR |
 | 10 | 2 | malformed threshold → ERROR |
 | 11 | 2 | no 0.5 fallback |
-| 12 | 1 | no provider fallback (hash layer) |
+| 12 | 2 | no provider fallback (gate) |
 | 13 | 2 | reviewClass cannot route / override |
 | 14 | 2 | materialNow advisory only |
 | 15 | 2 | historicalConflict advisory only |
@@ -683,7 +686,7 @@ Every design test **1–39** has exactly one primary Task owner.
 | 32 | 3 | envelope identity corruption fails entire evaluation |
 | 33 | 1 | missing bucket still yields deterministic threshold_config_hash |
 | 34 | 1 | missing bucket hash differs by provider/model/evaluator |
-| 35 | 1 | adding formerly-missing bucket changes hash / invalidates reuse (hash layer) |
+| 35 | 4 | MISSING→MATCHED hash change invalidates persisted candidate reuse |
 | 36 | 1 | explicit all-null MATCHED hash ≠ MISSING hash |
 | 37 | 1 | absent head vs explicit-null head different MATCHED hashes |
 | 38 | 1 | unrelated provider bucket edit does not change effective hash |
@@ -691,7 +694,7 @@ Every design test **1–39** has exactly one primary Task owner.
 
 Secondary coverage may appear elsewhere; primary ownership above is authoritative for Task STOP gates.
 
-Primary ownership counts: Task1=12, Task2=14, Task3=5, Task4=6, Task5=2. Total=39.
+Primary ownership counts: Task1=6, Task2=19, Task3=5, Task4=7, Task5=2. Total=39.
 
 ---
 
