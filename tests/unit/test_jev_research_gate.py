@@ -1251,3 +1251,184 @@ def test_malformed_artifacts_yield_no_reuse(tmp_path):
 
 def test_load_reuse_index_missing_path_empty(tmp_path):
     assert gate.load_reuse_index(tmp_path / "missing__gate.json") == {}
+
+
+# ===========================================================================
+# J3 Task 4 correction — persisted artifact fail-closed hardening
+# ===========================================================================
+
+
+def _minimal_valid_artifact(**overrides):
+    """Build a structurally valid persisted artifact; override fields as needed."""
+    thr = "a" * 64
+    gate_obj = {
+        "schema_version": 1,
+        "mode": gate.MODE_SHADOW_ONLY,
+        "provider": DIRECT[0],
+        "requested_model": DIRECT[1],
+        "evaluator_version": DIRECT[2],
+        "generation_id": "gen-A",
+        "candidate_id": "cand-A",
+        "state_hash": "state-A",
+        "threshold_config_hash": thr,
+        "heads": {},
+        "side_effects_executed": False,
+    }
+    art = {
+        "schema_version": 1,
+        "artifact_type": gate.GATE_ARTIFACT_TYPE,
+        "mode": gate.MODE_SHADOW_ONLY,
+        "generation_id": "gen-A",
+        "provider": DIRECT[0],
+        "requested_model": DIRECT[1],
+        "evaluator_version": DIRECT[2],
+        "threshold_config_hash": thr,
+        "results": [{"candidate_id": "cand-A", "gate": gate_obj}],
+        "side_effects_executed": False,
+    }
+    art.update(overrides)
+    return art
+
+
+def _write_art(tmp_path, art, name="art.json"):
+    path = tmp_path / name
+    path.write_text(json.dumps(art), encoding="utf-8")
+    return path
+
+
+def test_persisted_schema_bool_true_unsupported(tmp_path):
+    art = _minimal_valid_artifact(schema_version=True)
+    with pytest.raises(ResearchGateError) as ei:
+        gate.load_reuse_index(_write_art(tmp_path, art))
+    assert "UNSUPPORTED_SCHEMA" in str(ei.value)
+
+
+def test_persisted_schema_bool_false_unsupported(tmp_path):
+    art = _minimal_valid_artifact(schema_version=False)
+    with pytest.raises(ResearchGateError) as ei:
+        gate.load_reuse_index(_write_art(tmp_path, art))
+    assert "UNSUPPORTED_SCHEMA" in str(ei.value)
+
+
+def test_persisted_schema_string_one_unsupported(tmp_path):
+    art = _minimal_valid_artifact(schema_version="1")
+    with pytest.raises(ResearchGateError) as ei:
+        gate.load_reuse_index(_write_art(tmp_path, art))
+    assert "UNSUPPORTED_SCHEMA" in str(ei.value)
+
+
+def test_persisted_schema_float_one_unsupported(tmp_path):
+    art = _minimal_valid_artifact(schema_version=1.0)
+    with pytest.raises(ResearchGateError) as ei:
+        gate.load_reuse_index(_write_art(tmp_path, art))
+    assert "UNSUPPORTED_SCHEMA" in str(ei.value)
+
+
+def test_persisted_whitespace_generation_id_empty_index(tmp_path):
+    art = _minimal_valid_artifact(generation_id="   ")
+    art["results"][0]["gate"]["generation_id"] = "   "
+    assert gate.load_reuse_index(_write_art(tmp_path, art)) == {}
+
+
+def test_persisted_whitespace_candidate_id_not_indexed(tmp_path):
+    thr = "b" * 64
+    good_gate = {
+        "schema_version": 1,
+        "mode": gate.MODE_SHADOW_ONLY,
+        "provider": DIRECT[0],
+        "requested_model": DIRECT[1],
+        "evaluator_version": DIRECT[2],
+        "generation_id": "gen-A",
+        "candidate_id": "cand-A",
+        "state_hash": "state-A",
+        "threshold_config_hash": thr,
+        "side_effects_executed": False,
+    }
+    bad_gate = dict(good_gate)
+    bad_gate["candidate_id"] = "   "
+    art = {
+        "schema_version": 1,
+        "artifact_type": gate.GATE_ARTIFACT_TYPE,
+        "mode": gate.MODE_SHADOW_ONLY,
+        "generation_id": "gen-A",
+        "provider": DIRECT[0],
+        "requested_model": DIRECT[1],
+        "evaluator_version": DIRECT[2],
+        "threshold_config_hash": thr,
+        "results": [
+            {"candidate_id": "   ", "gate": bad_gate},
+            {"candidate_id": "cand-A", "gate": good_gate},
+        ],
+        "side_effects_executed": False,
+    }
+    index = gate.load_reuse_index(_write_art(tmp_path, art))
+    assert len(index) == 1
+    assert next(iter(index))[5] == "cand-A"
+
+
+def test_persisted_whitespace_state_hash_not_reused(tmp_path):
+    art = _minimal_valid_artifact()
+    art["results"][0]["gate"]["state_hash"] = "   "
+    assert gate.load_reuse_index(_write_art(tmp_path, art)) == {}
+
+
+def test_persisted_short_threshold_hash_empty(tmp_path):
+    art = _minimal_valid_artifact(threshold_config_hash="x")
+    art["results"][0]["gate"]["threshold_config_hash"] = "x"
+    assert gate.load_reuse_index(_write_art(tmp_path, art)) == {}
+
+
+def test_persisted_uppercase_threshold_hash_empty(tmp_path):
+    h = "A" * 64
+    art = _minimal_valid_artifact(threshold_config_hash=h)
+    art["results"][0]["gate"]["threshold_config_hash"] = h
+    assert gate.load_reuse_index(_write_art(tmp_path, art)) == {}
+
+
+def test_persisted_duplicate_candidate_id_empty(tmp_path):
+    thr = "c" * 64
+    g1 = {
+        "schema_version": 1,
+        "mode": gate.MODE_SHADOW_ONLY,
+        "provider": DIRECT[0],
+        "requested_model": DIRECT[1],
+        "evaluator_version": DIRECT[2],
+        "generation_id": "gen-A",
+        "candidate_id": "cand-A",
+        "state_hash": "state-1",
+        "threshold_config_hash": thr,
+        "side_effects_executed": False,
+    }
+    g2 = dict(g1)
+    g2["state_hash"] = "state-2"
+    art = {
+        "schema_version": 1,
+        "artifact_type": gate.GATE_ARTIFACT_TYPE,
+        "mode": gate.MODE_SHADOW_ONLY,
+        "generation_id": "gen-A",
+        "provider": DIRECT[0],
+        "requested_model": DIRECT[1],
+        "evaluator_version": DIRECT[2],
+        "threshold_config_hash": thr,
+        "results": [
+            {"candidate_id": "cand-A", "gate": g1},
+            {"candidate_id": "cand-A", "gate": g2},
+        ],
+        "side_effects_executed": False,
+    }
+    assert gate.load_reuse_index(_write_art(tmp_path, art)) == {}
+
+
+def test_persisted_unsupported_provider_empty(tmp_path):
+    art = _minimal_valid_artifact(provider="other")
+    art["results"][0]["gate"]["provider"] = "other"
+    assert gate.load_reuse_index(_write_art(tmp_path, art)) == {}
+
+
+def test_persisted_valid_positive_control_still_indexed(tmp_path):
+    art = _minimal_valid_artifact()
+    index = gate.load_reuse_index(_write_art(tmp_path, art))
+    assert len(index) == 1
+    key = next(iter(index))
+    assert key[5] == "cand-A"
+    assert key[7] == "a" * 64

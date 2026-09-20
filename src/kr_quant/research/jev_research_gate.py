@@ -629,6 +629,19 @@ def _is_non_empty_str(value: Any) -> bool:
     return isinstance(value, str) and bool(value)
 
 
+def _is_persisted_non_empty_str(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _is_sha256_hex(value: Any) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    return all(ch in "0123456789abcdef" for ch in value)
+
+
+def _is_supported_schema_version(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value == GATE_SCHEMA_VERSION
+
 def load_reuse_index(path: Path) -> dict:
     """Load exact 8-field reuse index from one J3 generation artifact.
 
@@ -650,12 +663,16 @@ def load_reuse_index(path: Path) -> dict:
         return {}
 
     schema_version = data.get("schema_version")
-    if schema_version != GATE_SCHEMA_VERSION:
+    if not _is_supported_schema_version(schema_version):
         raise ResearchGateError(
             f"UNSUPPORTED_SCHEMA: schema_version={schema_version!r}"
         )
 
     if data.get("artifact_type") != GATE_ARTIFACT_TYPE:
+        return {}
+    if data.get("mode") != MODE_SHADOW_ONLY:
+        return {}
+    if data.get("side_effects_executed") is not False:
         return {}
 
     generation_id = data.get("generation_id")
@@ -666,16 +683,20 @@ def load_reuse_index(path: Path) -> dict:
     results = data.get("results")
 
     if not (
-        _is_non_empty_str(generation_id)
-        and _is_non_empty_str(provider)
-        and _is_non_empty_str(requested_model)
-        and _is_non_empty_str(evaluator_version)
-        and _is_non_empty_str(threshold_config_hash)
+        _is_persisted_non_empty_str(generation_id)
+        and _is_persisted_non_empty_str(provider)
+        and _is_persisted_non_empty_str(requested_model)
+        and _is_persisted_non_empty_str(evaluator_version)
+        and _is_sha256_hex(threshold_config_hash)
         and isinstance(results, list)
     ):
         return {}
 
+    if provider not in SUPPORTED_PROVIDERS:
+        return {}
+
     index: dict = {}
+    seen_ids: set[str] = set()
     for item in results:
         if not isinstance(item, Mapping):
             return {}
@@ -683,11 +704,18 @@ def load_reuse_index(path: Path) -> dict:
         gate_obj = item.get("gate")
         if not isinstance(gate_obj, Mapping):
             return {}
-        if not _is_non_empty_str(candidate_id):
-            # malformed candidate identity — skip indexing this candidate only
-            # but do not trust partial corruption of sibling structure beyond this
+
+        # Malformed / whitespace-only candidate_id: skip indexing only
+        if not _is_persisted_non_empty_str(candidate_id):
             continue
+
+        if candidate_id in seen_ids:
+            return {}
+        seen_ids.add(candidate_id)
+
         if gate_obj.get("mode") != MODE_SHADOW_ONLY:
+            continue
+        if gate_obj.get("side_effects_executed") is not False:
             continue
 
         # gate identity must agree with artifact
@@ -703,7 +731,9 @@ def load_reuse_index(path: Path) -> dict:
             return {}
 
         state_hash = gate_obj.get("state_hash")
-        if not _is_non_empty_str(state_hash):
+        if not _is_persisted_non_empty_str(state_hash):
+            return {}
+        if not _is_sha256_hex(gate_obj.get("threshold_config_hash")):
             return {}
 
         key = _reuse_key(
