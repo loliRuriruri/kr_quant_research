@@ -225,6 +225,26 @@ def test_models_for_xai_do_not_keep_openrouter_id():
 
 
 def test_tier1_chain_settings_roundtrip(monkeypatch):
+    from dataclasses import replace
+
+    from kr_quant.settings import load_settings
+
+    # Isolate from ambient .env / machine Tier1 overrides so this asserts the
+    # default Tier1 contract rather than the user's local configuration.
+    settings = load_settings()
+    isolated = replace(
+        settings,
+        tier1_routine_provider=None,
+        tier1_routine_model=None,
+        tier1_routine_paid_provider=None,
+        tier1_routine_paid_model=None,
+        tier1_analysis_provider=None,
+        tier1_analysis_model=None,
+        tier1_analysis_pro_provider=None,
+        tier1_analysis_pro_model=None,
+    )
+    monkeypatch.setattr("kr_quant.web.app.load_settings", lambda: isolated)
+
     data = client.get("/api/settings").json()
     assert set(data["tier1"]) == {"routine", "routine_paid", "analysis", "analysis_pro"}
     for hop in data["tier1"].values():
