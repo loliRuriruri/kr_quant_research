@@ -9,6 +9,8 @@ import math
 from pathlib import Path
 from typing import Any, Mapping
 
+from kr_quant.atomic_io import write_json_atomic
+
 from kr_quant.research.jev_calibration import (
     BOOLEAN_HEADS,
     STATUS_SHADOW_ONLY,
@@ -567,3 +569,153 @@ def evaluate_research_gate_generation(
         "results": out_results,
         "side_effects_executed": False,
     }
+
+
+
+def _provider_safe(provider: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in provider)
+
+
+def research_gate_dir(settings) -> Path:
+    return Path(settings.data_dir) / "research_snapshots" / "season_jev_research_gate"
+
+
+def research_gate_path(settings, generation_id: str, provider: str) -> Path:
+    safe = _provider_safe(provider)
+    return research_gate_dir(settings) / f"{generation_id}__{safe}__gate.json"
+
+
+def write_research_gate_artifact(path: Path, payload: Mapping[str, Any]) -> None:
+    write_json_atomic(Path(path), dict(payload), encoding="utf-8", compact=True)
+
+
+def _reuse_key(
+    *,
+    schema_version: int,
+    generation_id: str,
+    provider: str,
+    requested_model: str,
+    evaluator_version: str,
+    candidate_id: str,
+    state_hash: str,
+    threshold_config_hash: str,
+) -> tuple:
+    return (
+        schema_version,
+        generation_id,
+        provider,
+        requested_model,
+        evaluator_version,
+        candidate_id,
+        state_hash,
+        threshold_config_hash,
+    )
+
+
+def _assert_persisted_state_identity(
+    persisted_gate: Mapping[str, Any],
+    *,
+    state_hash: str,
+) -> None:
+    """Strict claim check: stored state_hash must match requested state_hash."""
+    stored = persisted_gate.get("state_hash") if isinstance(persisted_gate, Mapping) else None
+    if stored != state_hash:
+        raise ResearchGateError(
+            f"STATE_HASH_MISMATCH: stored={stored!r} requested={state_hash!r}"
+        )
+
+
+def _is_non_empty_str(value: Any) -> bool:
+    return isinstance(value, str) and bool(value)
+
+
+def load_reuse_index(path: Path) -> dict:
+    """Load exact 8-field reuse index from one J3 generation artifact.
+
+    Missing/unreadable/malformed (non-schema) artifacts yield {}.
+    Unsupported schema_version raises ResearchGateError(UNSUPPORTED_SCHEMA).
+    Only SHADOW_ONLY gates with consistent identity enter the index.
+    """
+    path = Path(path)
+    if not path.exists():
+        return {}
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        return {}
+
+    if not isinstance(data, Mapping):
+        return {}
+
+    schema_version = data.get("schema_version")
+    if schema_version != GATE_SCHEMA_VERSION:
+        raise ResearchGateError(
+            f"UNSUPPORTED_SCHEMA: schema_version={schema_version!r}"
+        )
+
+    if data.get("artifact_type") != GATE_ARTIFACT_TYPE:
+        return {}
+
+    generation_id = data.get("generation_id")
+    provider = data.get("provider")
+    requested_model = data.get("requested_model")
+    evaluator_version = data.get("evaluator_version")
+    threshold_config_hash = data.get("threshold_config_hash")
+    results = data.get("results")
+
+    if not (
+        _is_non_empty_str(generation_id)
+        and _is_non_empty_str(provider)
+        and _is_non_empty_str(requested_model)
+        and _is_non_empty_str(evaluator_version)
+        and _is_non_empty_str(threshold_config_hash)
+        and isinstance(results, list)
+    ):
+        return {}
+
+    index: dict = {}
+    for item in results:
+        if not isinstance(item, Mapping):
+            return {}
+        candidate_id = item.get("candidate_id")
+        gate_obj = item.get("gate")
+        if not isinstance(gate_obj, Mapping):
+            return {}
+        if not _is_non_empty_str(candidate_id):
+            # malformed candidate identity — skip indexing this candidate only
+            # but do not trust partial corruption of sibling structure beyond this
+            continue
+        if gate_obj.get("mode") != MODE_SHADOW_ONLY:
+            continue
+
+        # gate identity must agree with artifact
+        if (
+            gate_obj.get("schema_version") != schema_version
+            or gate_obj.get("generation_id") != generation_id
+            or gate_obj.get("provider") != provider
+            or gate_obj.get("requested_model") != requested_model
+            or gate_obj.get("evaluator_version") != evaluator_version
+            or gate_obj.get("threshold_config_hash") != threshold_config_hash
+            or gate_obj.get("candidate_id") != candidate_id
+        ):
+            return {}
+
+        state_hash = gate_obj.get("state_hash")
+        if not _is_non_empty_str(state_hash):
+            return {}
+
+        key = _reuse_key(
+            schema_version=int(schema_version),
+            generation_id=generation_id,
+            provider=provider,
+            requested_model=requested_model,
+            evaluator_version=evaluator_version,
+            candidate_id=candidate_id,
+            state_hash=state_hash,
+            threshold_config_hash=threshold_config_hash,
+        )
+        index[key] = dict(gate_obj)
+
+    return index

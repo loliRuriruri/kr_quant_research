@@ -911,3 +911,343 @@ def test_duplicate_valid_string_candidate_id_still_rejects():
             ),
             threshold_cfg=cfg,
         )
+
+
+# ===========================================================================
+# J3 Task 4 — Persistence and Reuse (Design 20/21/27/28/29/30/35)
+# ===========================================================================
+
+import types
+from kr_quant.atomic_io import write_json_atomic as _real_write_json_atomic
+
+
+def _settings(tmp_path: Path):
+    return types.SimpleNamespace(data_dir=tmp_path)
+
+
+def _direct_cfg(thresholds=None):
+    thr = thresholds if thresholds is not None else _null_thresholds()
+    return _cfg(_bucket(*DIRECT, thr))
+
+
+def _build_env(cfg, results=None, generation_id="gen-A"):
+    if results is None:
+        results = [_cand("cand-A", "state-A")]
+    return gate.evaluate_research_gate_generation(
+        _shadow_payload(results=results, generation_id=generation_id),
+        threshold_cfg=cfg,
+    )
+
+
+def _persist(tmp_path, env, generation_id=None, provider=None):
+    settings = _settings(tmp_path)
+    gid = generation_id or env["generation_id"]
+    prov = provider or env["provider"]
+    path = gate.research_gate_path(settings, gid, prov)
+    gate.write_research_gate_artifact(path, env)
+    return path
+
+
+def test_research_gate_paths(tmp_path):
+    settings = _settings(tmp_path)
+    d = gate.research_gate_dir(settings)
+    assert d == tmp_path / "research_snapshots" / "season_jev_research_gate"
+    p = gate.research_gate_path(settings, "gen-A", "typesafe_direct")
+    assert p == d / "gen-A__typesafe_direct__gate.json"
+    assert not d.exists()
+    unsafe = gate.research_gate_path(settings, "gen-B", "foo/bar:baz")
+    assert unsafe.name == "gen-B__foo_bar_baz__gate.json"
+
+
+def test_write_uses_atomic_compact(tmp_path, monkeypatch):
+    calls = []
+
+    def spy(path, payload, *, encoding="utf-8", compact=False):
+        calls.append({"path": Path(path), "compact": compact})
+        return _real_write_json_atomic(path, payload, encoding=encoding, compact=compact)
+
+    monkeypatch.setattr(gate, "write_json_atomic", spy)
+    cfg = _direct_cfg()
+    env = _build_env(cfg)
+    path = _persist(tmp_path, env)
+    assert path.exists()
+    assert len(calls) == 1
+    assert calls[0]["compact"] is True
+    assert calls[0]["path"] == path
+
+
+def test_design_24_secondary_persisted_two_candidate_envelope(tmp_path):
+    cfg = _direct_cfg()
+    env = _build_env(
+        cfg,
+        results=[_cand("cand-B", "state-B"), _cand("cand-A", "state-A")],
+    )
+    path = _persist(tmp_path, env)
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    assert len(loaded["results"]) == 2
+    assert [r["candidate_id"] for r in loaded["results"]] == ["cand-A", "cand-B"]
+    assert all("gate" in r for r in loaded["results"])
+    assert "state_hash" not in loaded
+    art_dir = gate.research_gate_dir(_settings(tmp_path))
+    files = list(art_dir.glob("*.json"))
+    assert len(files) == 1
+
+
+def test_design_21_deterministic_envelope_and_bytes(tmp_path):
+    cfg = _direct_cfg()
+    results = [_cand("cand-C", "sC"), _cand("cand-A", "sA"), _cand("cand-B", "sB")]
+    env1 = _build_env(cfg, results=results)
+    env2 = _build_env(cfg, results=list(reversed(results)))
+    assert env1 == env2
+    assert "timestamp" not in env1
+    p1 = tmp_path / "a.json"
+    p2 = tmp_path / "b.json"
+    gate.write_research_gate_artifact(p1, env1)
+    gate.write_research_gate_artifact(p2, env2)
+    assert p1.read_bytes() == p2.read_bytes()
+
+
+def test_design_30_persisted_order_abc(tmp_path):
+    cfg = _direct_cfg()
+    env = _build_env(
+        cfg,
+        results=[_cand("cand-C", "sC"), _cand("cand-A", "sA"), _cand("cand-B", "sB")],
+    )
+    path = _persist(tmp_path, env)
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    assert [r["candidate_id"] for r in loaded["results"]] == ["cand-A", "cand-B", "cand-C"]
+
+
+def test_reuse_positive_exact_eight_field_match(tmp_path):
+    cfg = _direct_cfg()
+    env = _build_env(cfg, results=[_cand("cand-A", "state-A")])
+    path = _persist(tmp_path, env)
+    index = gate.load_reuse_index(path)
+    g = env["results"][0]["gate"]
+    key = gate._reuse_key(
+        schema_version=env["schema_version"],
+        generation_id=env["generation_id"],
+        provider=env["provider"],
+        requested_model=env["requested_model"],
+        evaluator_version=env["evaluator_version"],
+        candidate_id="cand-A",
+        state_hash="state-A",
+        threshold_config_hash=env["threshold_config_hash"],
+    )
+    assert key in index
+    assert index[key] == g
+    assert len(key) == 8
+
+
+def test_design_20_matching_threshold_change_invalidates(tmp_path):
+    thr_a = _null_thresholds()
+    thr_b = _null_thresholds()
+    thr_b["needsNews"] = 0.5
+    cfg_a = _direct_cfg(thr_a)
+    cfg_b = _direct_cfg(thr_b)
+    h_a = threshold_config_hash(cfg_a, provider=DIRECT[0], requested_model=DIRECT[1], evaluator_version=DIRECT[2])
+    h_b = threshold_config_hash(cfg_b, provider=DIRECT[0], requested_model=DIRECT[1], evaluator_version=DIRECT[2])
+    assert h_a != h_b
+    env = _build_env(cfg_a, results=[_cand("cand-A", "state-A")])
+    path = _persist(tmp_path, env)
+    index = gate.load_reuse_index(path)
+    key_b = gate._reuse_key(
+        schema_version=1,
+        generation_id=env["generation_id"],
+        provider=DIRECT[0],
+        requested_model=DIRECT[1],
+        evaluator_version=DIRECT[2],
+        candidate_id="cand-A",
+        state_hash="state-A",
+        threshold_config_hash=h_b,
+    )
+    assert key_b not in index
+
+
+def test_design_28_no_fallback_to_old_threshold_hash(tmp_path):
+    thr1 = _null_thresholds()
+    thr2 = dict(thr1)
+    thr2["needsDart"] = 0.4
+    cfg1 = _direct_cfg(thr1)
+    cfg2 = _direct_cfg(thr2)
+    h1 = threshold_config_hash(cfg1, provider=DIRECT[0], requested_model=DIRECT[1], evaluator_version=DIRECT[2])
+    h2 = threshold_config_hash(cfg2, provider=DIRECT[0], requested_model=DIRECT[1], evaluator_version=DIRECT[2])
+    assert h1 != h2
+    env = _build_env(cfg1)
+    path = _persist(tmp_path, env)
+    index = gate.load_reuse_index(path)
+    key2 = gate._reuse_key(
+        schema_version=1,
+        generation_id=env["generation_id"],
+        provider=DIRECT[0],
+        requested_model=DIRECT[1],
+        evaluator_version=DIRECT[2],
+        candidate_id="cand-A",
+        state_hash="state-A",
+        threshold_config_hash=h2,
+    )
+    assert key2 not in index
+    key1 = gate._reuse_key(
+        schema_version=1,
+        generation_id=env["generation_id"],
+        provider=DIRECT[0],
+        requested_model=DIRECT[1],
+        evaluator_version=DIRECT[2],
+        candidate_id="cand-A",
+        state_hash="state-A",
+        threshold_config_hash=h1,
+    )
+    assert key1 in index
+
+
+def test_design_29_unrelated_provider_bucket_edit_preserves_reuse(tmp_path):
+    thr = _null_thresholds()
+    cfg_a = _cfg(_bucket(*DIRECT, thr), _bucket(*OPENROUTER, thr))
+    thr_or = dict(thr)
+    thr_or["needsNews"] = 0.9
+    cfg_b = _cfg(_bucket(*DIRECT, thr), _bucket(*OPENROUTER, thr_or))
+    h_a = threshold_config_hash(cfg_a, provider=DIRECT[0], requested_model=DIRECT[1], evaluator_version=DIRECT[2])
+    h_b = threshold_config_hash(cfg_b, provider=DIRECT[0], requested_model=DIRECT[1], evaluator_version=DIRECT[2])
+    assert h_a == h_b
+    env = gate.evaluate_research_gate_generation(
+        _shadow_payload(results=[_cand("cand-A", "state-A")]),
+        threshold_cfg=cfg_a,
+    )
+    path = _persist(tmp_path, env)
+    index = gate.load_reuse_index(path)
+    key = gate._reuse_key(
+        schema_version=1,
+        generation_id=env["generation_id"],
+        provider=DIRECT[0],
+        requested_model=DIRECT[1],
+        evaluator_version=DIRECT[2],
+        candidate_id="cand-A",
+        state_hash="state-A",
+        threshold_config_hash=h_b,
+    )
+    assert key in index
+
+
+def test_design_35_missing_to_matched_invalidates(tmp_path):
+    missing_cfg = _cfg()
+    matched_cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    h_missing = threshold_config_hash(
+        missing_cfg, provider=DIRECT[0], requested_model=DIRECT[1], evaluator_version=DIRECT[2]
+    )
+    h_matched = threshold_config_hash(
+        matched_cfg, provider=DIRECT[0], requested_model=DIRECT[1], evaluator_version=DIRECT[2]
+    )
+    assert h_missing != h_matched
+    env = _build_env(missing_cfg, results=[_cand("cand-A", "state-A")])
+    assert env["threshold_config_hash"] == h_missing
+    path = _persist(tmp_path, env)
+    index = gate.load_reuse_index(path)
+    key_matched = gate._reuse_key(
+        schema_version=1,
+        generation_id=env["generation_id"],
+        provider=DIRECT[0],
+        requested_model=DIRECT[1],
+        evaluator_version=DIRECT[2],
+        candidate_id="cand-A",
+        state_hash="state-A",
+        threshold_config_hash=h_matched,
+    )
+    assert key_matched not in index
+
+
+def test_design_27_state_hash_invalidates_only_that_candidate(tmp_path):
+    cfg = _direct_cfg()
+    env = _build_env(
+        cfg,
+        results=[_cand("cand-A", "state-A"), _cand("cand-B", "state-B")],
+    )
+    path = _persist(tmp_path, env)
+    index = gate.load_reuse_index(path)
+    common = dict(
+        schema_version=1,
+        generation_id=env["generation_id"],
+        provider=DIRECT[0],
+        requested_model=DIRECT[1],
+        evaluator_version=DIRECT[2],
+        threshold_config_hash=env["threshold_config_hash"],
+    )
+    key_a2 = gate._reuse_key(candidate_id="cand-A", state_hash="state-A2", **common)
+    key_b = gate._reuse_key(candidate_id="cand-B", state_hash="state-B", **common)
+    key_a = gate._reuse_key(candidate_id="cand-A", state_hash="state-A", **common)
+    assert key_a2 not in index
+    assert key_b in index
+    assert key_a in index
+    with pytest.raises(ResearchGateError) as ei:
+        gate._assert_persisted_state_identity(index[key_a], state_hash="state-A2")
+    assert "STATE_HASH_MISMATCH" in str(ei.value)
+    gate._assert_persisted_state_identity(index[key_b], state_hash="state-B")
+
+
+def test_unsupported_schema_raises(tmp_path):
+    path = tmp_path / "bad_schema.json"
+    path.write_text(
+        json.dumps({"schema_version": 99, "artifact_type": gate.GATE_ARTIFACT_TYPE, "results": []}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ResearchGateError) as ei:
+        gate.load_reuse_index(path)
+    assert "UNSUPPORTED_SCHEMA" in str(ei.value)
+
+
+def test_error_gates_not_indexed(tmp_path):
+    cfg = _direct_cfg()
+    bad_answers = _complete_answers(0.5)
+    del bad_answers["needsNews"]
+    env = _build_env(
+        cfg,
+        results=[
+            _cand("cand-A", "state-A"),
+            _cand("cand-B", "state-B", answers=bad_answers),
+        ],
+    )
+    path = _persist(tmp_path, env)
+    index = gate.load_reuse_index(path)
+    assert len(index) == 1
+    only_key = next(iter(index))
+    assert only_key[5] == "cand-A"
+
+
+def test_malformed_candidate_id_not_indexed(tmp_path):
+    cfg = _direct_cfg()
+    bad = _cand("cand-X", "state-X")
+    bad["candidate_id"] = []
+    good = _cand("cand-A", "state-A")
+    env = _build_env(cfg, results=[bad, good])
+    path = _persist(tmp_path, env)
+    index = gate.load_reuse_index(path)
+    assert len(index) == 1
+    assert next(iter(index))[5] == "cand-A"
+
+
+def test_malformed_artifacts_yield_no_reuse(tmp_path):
+    assert gate.load_reuse_index(tmp_path / "nope.json") == {}
+    bad_json = tmp_path / "bad.json"
+    bad_json.write_text("{not-json", encoding="utf-8")
+    assert gate.load_reuse_index(bad_json) == {}
+    bad_root = tmp_path / "root.json"
+    bad_root.write_text(json.dumps([1, 2]), encoding="utf-8")
+    assert gate.load_reuse_index(bad_root) == {}
+    bad_type = tmp_path / "type.json"
+    bad_type.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "artifact_type": "other",
+            "generation_id": "g",
+            "provider": "typesafe_direct",
+            "requested_model": "jev-latest",
+            "evaluator_version": "v",
+            "threshold_config_hash": "a" * 64,
+            "results": [],
+        }),
+        encoding="utf-8",
+    )
+    assert gate.load_reuse_index(bad_type) == {}
+
+
+def test_load_reuse_index_missing_path_empty(tmp_path):
+    assert gate.load_reuse_index(tmp_path / "missing__gate.json") == {}
