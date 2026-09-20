@@ -1,10 +1,11 @@
-"""JEV calibration threshold contract (Task 1).
+"""JEV calibration tooling.
 
-Fail-closed lookup for boolean-head thresholds. Production routing is NOT
-enabled here: every successful lookup still returns SHADOW_ONLY.
+Fail-closed threshold lookup, dataset identity, metrics/sweep, and
+selection/holdout review helpers. Production routing stays shadow-only.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import hashlib
 import json
 import math
@@ -538,6 +539,7 @@ def build_calibration_report(
         heads[head] = {
             "support": support,
             "sweep": sweep,
+            "shortlist": _pareto_shortlist(sweep, head=head),
             "fn_sensitive": head in FN_SENSITIVE_HEADS,
         }
     return {
@@ -549,6 +551,8 @@ def build_calibration_report(
         "prediction_rule": "probability >= threshold",
         "bucket": dict(bucket),
         "state": STATE_CALIBRATION_OPEN,
+        "created_at": _utc_now_iso(),
+        "resolved_model_distribution": _resolved_model_distribution(samples),
         "heads": heads,
     }
 
@@ -586,6 +590,11 @@ def lock_selection(manifest: dict) -> dict:
     locked["state"] = STATE_SELECTION_LOCKED
     locked["holdout_revealed"] = False
     locked["selection_basis"] = "calibration_only"
+    existing_at = manifest.get("selected_at")
+    if isinstance(existing_at, str) and existing_at.strip() != "":
+        locked["selected_at"] = existing_at
+    else:
+        locked["selected_at"] = _utc_now_iso()
     locked["selection_manifest_hash"] = selection_manifest_hash(locked)
     return locked
 
@@ -608,6 +617,11 @@ def evaluate_holdout_locked(
     threshold = selection.get("selected_threshold")
     if not _is_valid_probability(threshold):
         raise CalibrationError(f"invalid selected_threshold: {threshold!r}")
+    locked_at = selection.get("selected_at")
+    if not isinstance(locked_at, str) or locked_at.strip() == "":
+        raise CalibrationError(
+            "selection_locked_at requires non-empty selected_at"
+        )
 
     metrics = _evaluate_split_at_threshold(
         samples,
@@ -621,6 +635,8 @@ def evaluate_holdout_locked(
         "selected_threshold": float(threshold),
         "selection_manifest_hash": selection.get("selection_manifest_hash"),
         "selection_basis": "calibration_only",
+        "selection_locked_at": locked_at,
+        "holdout_revealed_at": _utc_now_iso(),
         "TP": metrics["TP"],
         "FP": metrics["FP"],
         "TN": metrics["TN"],
@@ -649,3 +665,83 @@ def mark_holdout_non_pristine(selection: dict) -> dict:
     out = dict(selection)
     out["pristine_holdout"] = False
     return out
+
+
+def _utc_now_iso() -> str:
+    return (
+        datetime.now(timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def calibration_metrics_hash(report: dict) -> str:
+    if not isinstance(report, dict):
+        raise CalibrationError("report must be a dict")
+    payload = {
+        k: v
+        for k, v in report.items()
+        if k not in {"created_at", "calibration_metrics_hash"}
+    }
+    raw = _canonical_json(payload).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _metric_complete(row: Mapping[str, Any]) -> bool:
+    return all(
+        row.get(k) is not None
+        for k in ("recall", "precision", "FPR", "FNR")
+    )
+
+
+def _dominates(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    if not (_metric_complete(a) and _metric_complete(b)):
+        return False
+    ge = (
+        a["recall"] >= b["recall"]
+        and a["precision"] >= b["precision"]
+        and a["FPR"] <= b["FPR"]
+        and a["FNR"] <= b["FNR"]
+    )
+    if not ge:
+        return False
+    return (
+        a["recall"] > b["recall"]
+        or a["precision"] > b["precision"]
+        or a["FPR"] < b["FPR"]
+        or a["FNR"] < b["FNR"]
+    )
+
+
+def _pareto_shortlist(sweep: list[dict], *, head: str) -> list[dict]:
+    rationale = (
+        "fn_sensitive_pareto" if head in FN_SENSITIVE_HEADS else "pareto"
+    )
+    shortlist: list[dict] = []
+    for cand in sweep:
+        dominated = False
+        for other in sweep:
+            if other is cand:
+                continue
+            if _dominates(other, cand):
+                dominated = True
+                break
+        if not dominated:
+            row = dict(cand)
+            row["rationale"] = rationale
+            shortlist.append(row)
+    shortlist.sort(key=lambda r: float(r.get("threshold", 0.0)))
+    return shortlist
+
+
+def _resolved_model_distribution(samples: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for sample in samples:
+        if not isinstance(sample, dict):
+            continue
+        if sample.get("split") != SPLIT_CALIBRATION:
+            continue
+        model = sample.get("resolved_model")
+        if isinstance(model, str) and model.strip() != "":
+            counts[model] = counts.get(model, 0) + 1
+    return {k: counts[k] for k in sorted(counts.keys())}

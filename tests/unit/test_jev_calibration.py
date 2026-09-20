@@ -592,6 +592,8 @@ def test_calibration_report_omits_holdout_metrics():
     assert report["state"] == cal.STATE_CALIBRATION_OPEN
     assert "holdout_metrics" not in report
     assert "needsDart" in report["heads"]
+    assert isinstance(report["created_at"], str)
+    assert report["created_at"]
     assert report["dataset_hash_method_version"] == cal.HASH_METHOD_VERSION
     assert report["split_method_version"] == cal.SPLIT_METHOD_VERSION
     assert report["sweep_method_version"] == cal.SWEEP_METHOD_VERSION
@@ -790,3 +792,157 @@ def test_selection_manifest_hash_key_order_invariant():
     a = {"z": 1, "a": {"y": 2, "x": 3}, "m": True}
     b = {"m": True, "a": {"x": 3, "y": 2}, "z": 1}
     assert cal.selection_manifest_hash(a) == cal.selection_manifest_hash(b)
+
+
+# --- Task 4 fix round 1 ---
+
+def test_calibration_metrics_hash_ignores_created_at():
+    a = {
+        "dataset_id": "d1",
+        "created_at": "2026-09-20T00:00:00Z",
+        "heads": {
+            "needsDart": {
+                "support": {
+                    "valid_count": 50,
+                }
+            }
+        },
+    }
+    b = {
+        "heads": {
+            "needsDart": {
+                "support": {
+                    "valid_count": 50,
+                }
+            }
+        },
+        "created_at": "2026-09-20T01:00:00Z",
+        "dataset_id": "d1",
+    }
+    assert cal.calibration_metrics_hash(a) == cal.calibration_metrics_hash(b)
+    assert len(cal.calibration_metrics_hash(a)) == 64
+    with_self = dict(a)
+    with_self["calibration_metrics_hash"] = "0" * 64
+    assert cal.calibration_metrics_hash(with_self) == cal.calibration_metrics_hash(a)
+
+
+def test_calibration_report_has_nonbinding_shortlists():
+    samples = [
+        {
+            "sample_id": "p1",
+            "split": cal.SPLIT_CALIBRATION,
+            "human_labels": {"needsDart": True},
+            "jev_answers": {"needsDart": {"probability": 0.9}},
+        },
+        {
+            "sample_id": "n1",
+            "split": cal.SPLIT_CALIBRATION,
+            "human_labels": {"needsDart": False},
+            "jev_answers": {"needsDart": {"probability": 0.2}},
+        },
+    ]
+    report = cal.build_calibration_report(
+        dataset_id="d1",
+        dataset_hash="a" * 64,
+        bucket={
+            "provider": "typesafe_direct",
+            "requested_model": "jev-latest",
+            "evaluator_version": "season-jev-shadow-v1",
+        },
+        samples=samples,
+    )
+    shortlist = report["heads"]["needsDart"]["shortlist"]
+    assert isinstance(shortlist, list)
+    assert shortlist
+    assert all(row["rationale"] == "fn_sensitive_pareto" for row in shortlist)
+    assert all(
+        "winner" not in row
+        and "best_threshold" not in row
+        and "recommended_threshold" not in row
+        and "production_threshold" not in row
+        for row in shortlist
+    )
+
+
+def test_calibration_report_resolved_model_distribution_is_calibration_only():
+    samples = [
+        {
+            "sample_id": "c1",
+            "split": cal.SPLIT_CALIBRATION,
+            "resolved_model": "jev-a",
+            "human_labels": {},
+            "jev_answers": {},
+        },
+        {
+            "sample_id": "c2",
+            "split": cal.SPLIT_CALIBRATION,
+            "resolved_model": "jev-a",
+            "human_labels": {},
+            "jev_answers": {},
+        },
+        {
+            "sample_id": "c3",
+            "split": cal.SPLIT_CALIBRATION,
+            "resolved_model": "jev-b",
+            "human_labels": {},
+            "jev_answers": {},
+        },
+        {
+            "sample_id": "h1",
+            "split": cal.SPLIT_HOLDOUT,
+            "resolved_model": "holdout-model",
+            "human_labels": {},
+            "jev_answers": {},
+        },
+    ]
+    report = cal.build_calibration_report(
+        dataset_id="d1",
+        dataset_hash="a" * 64,
+        bucket={
+            "provider": "typesafe_direct",
+            "requested_model": "jev-latest",
+            "evaluator_version": "season-jev-shadow-v1",
+        },
+        samples=samples,
+    )
+    assert report["resolved_model_distribution"] == {"jev-a": 2, "jev-b": 1}
+    assert "holdout-model" not in report["resolved_model_distribution"]
+
+
+def test_lock_selection_sets_selected_at_before_hash():
+    locked = cal.lock_selection(_manifest())
+    assert isinstance(locked["selected_at"], str)
+    assert locked["selected_at"]
+    assert locked["selection_manifest_hash"] == cal.selection_manifest_hash(locked)
+    locked2 = cal.lock_selection(_manifest(selected_at="2026-09-20T00:00:00Z"))
+    assert locked2["selected_at"] == "2026-09-20T00:00:00Z"
+
+
+def test_holdout_report_has_lock_and_reveal_provenance():
+    selection = cal.lock_selection(
+        _manifest(selected_at="2026-09-20T00:00:00Z")
+    )
+    samples = [
+        {
+            "sample_id": "h1",
+            "split": cal.SPLIT_HOLDOUT,
+            "human_labels": {"needsDart": True},
+            "jev_answers": {"needsDart": {"probability": 0.9}},
+        }
+    ]
+    report = cal.evaluate_holdout_locked(samples=samples, selection=selection)
+    assert report["selection_locked_at"] == "2026-09-20T00:00:00Z"
+    assert isinstance(report["holdout_revealed_at"], str)
+    assert report["holdout_revealed_at"]
+
+
+def test_holdout_locked_requires_selection_timestamp():
+    selection = {
+        "state": cal.STATE_SELECTION_LOCKED,
+        "head": "needsDart",
+        "selected_threshold": 0.5,
+        "selection_basis": "calibration_only",
+        "holdout_revealed": False,
+    }
+    with pytest.raises(cal.CalibrationError, match="selected_at|selection_locked"):
+        cal.evaluate_holdout_locked(samples=[], selection=selection)
