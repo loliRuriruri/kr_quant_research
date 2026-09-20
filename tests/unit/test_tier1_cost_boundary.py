@@ -58,8 +58,7 @@ def test_tier1_hops_honor_user_selection_and_stay_fail_closed():
     weird = SimpleNamespace(**{**vars(settings), 'tier1_routine_provider': 'nope', 'tier1_routine_model': ''})
     ep2 = providers.resolve_tier1_endpoint(weird)
     assert (ep2.provider, ep2.model) == ('openrouter', providers.TIER1_FREE_MODEL)
-    # A Go model outside the chat/completions catalog cannot be called and
-    # resolves to the provider default instead of failing mid-request.
+    # Muse Spark is served through the /responses adapter, so it stays callable.
     odd = SimpleNamespace(**{**vars(settings), 'tier1_routine_model': 'muse-spark-1.3-contributor'})
     ep3 = providers.resolve_tier1_endpoint(odd)
-    assert (ep3.provider, ep3.model) == ('opencode_go', 'deepseek-v4-pro')
+    assert (ep3.provider, ep3.model) == ('opencode_go', 'muse-spark-1.3-contributor')

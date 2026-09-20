@@ -60,10 +60,13 @@ PROVIDERS = {
             "deepseek/deepseek-v4-pro-0813",
             "deepseek/deepseek-v4-flash-vision-exp",
             "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "anthropic/claude-sonnet-5",
             "openai/gpt-5.6-luna",
             "google/gemini-3.7-flash",
             "z-ai/glm-5.2",
             "upstage/solar-pro4",
+            "meta-llama/llama-3.3-70b-instruct",
+            "qwen/qwen-2.5-72b-instruct",
         ],
     },
     "opencode": {
@@ -89,10 +92,9 @@ PROVIDERS = {
         "model": "deepseek-v4-pro",
         "env_key": "OPENCODE_GO_API_KEY",
         "help": "https://opencode.ai/auth",
-        # Go serves short model ids on the chat/completions surface only.
-        # /responses (grok-4.6, gpt-5.6-luna, muse-spark) and /messages
-        # (minimax, qwen) models are excluded because call_chat speaks
-        # chat/completions.
+        # Go short model ids. Muse/Spark uses /responses via call_chat;
+        # other /responses (grok-4.6, gpt-5.6-luna) and /messages (minimax, qwen)
+        # models remain excluded from this chat-oriented catalog.
         "fallback_models": [
             "deepseek-v4-pro",
             "deepseek-v4.1-flash",
@@ -102,6 +104,7 @@ PROVIDERS = {
             "kimi-k3",
             "kimi-k2.7-code",
             "mimo-v2.5",
+            "muse-spark-1.3-contributor",
         ],
     },
 }
@@ -118,6 +121,11 @@ OPENCODE_GO_MODEL_ALIASES: dict[str, str] = {
     "zhipuai/glm-5.2": "glm-5.2",
     "moonshotai/kimi-k3": "kimi-k3",
     "moonshotai/kimi-k2.7-code": "kimi-k2.7-code",
+    "muse-spark-1.3": "muse-spark-1.3-contributor",
+    "muse-spark": "muse-spark-1.3-contributor",
+    "muse-spark-1.3-contributor": "muse-spark-1.3-contributor",
+    "muse-spark-1.2": "muse-spark-1.2-contributor",
+    "muse-spark-1.2-contributor": "muse-spark-1.2-contributor",
 }
 
 OPENROUTER_MODEL_ALIASES: dict[str, str] = {
@@ -348,6 +356,7 @@ def sort_models(provider: str, models: list[str]) -> list[str]:
             "kimi-k3",
             "kimi-k2.7-code",
             "mimo-v2.5",
+            "muse-spark-1.3-contributor",
         ]
         head = [m for m in pinned if m in uniq]
         tail = [m for m in uniq if m not in head]

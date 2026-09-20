@@ -30,7 +30,7 @@ test('opencode catalog is complete and zen-priced', () => {
 });
 test('opencode go catalog matches the go gateway lineup', () => {
   assert.equal(PROVIDER_LABELS.opencode_go, 'OpenCode Go');
-  assert.equal(PROVIDER_MODELS.opencode_go.length, 8);
+  assert.equal(PROVIDER_MODELS.opencode_go.length, 9);
   for (const m of PROVIDER_MODELS.opencode_go) {
     const info = modelTokenInfo('opencode_go', m);
     assert(info && info.badge && info.tokens && info.desc, m);
@@ -42,4 +42,5 @@ test('opencode go catalog matches the go gateway lineup', () => {
   assert.match(modelTokenInfo('opencode_go', 'glm-5.3-flash').tokens, /\$0\.15/);
   assert.match(modelTokenInfo('opencode_go', 'kimi-k3').tokens, /\$3\.00/);
   assert.match(modelTokenInfo('opencode_go', 'mimo-v2.5').tokens, /\$0\.14/);
+  assert.match(modelTokenInfo('opencode_go', 'muse-spark-1.3-contributor').tokens, /\$0\.10/);
 });

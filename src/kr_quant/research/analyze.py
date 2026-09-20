@@ -172,14 +172,25 @@ def call_chat(
         raise RuntimeError(f"{endpoint.label} 연결이 없습니다. Grok/Antigravity 연결 또는 API 키를 설정하세요.")
     if not endpoint.model:
         raise RuntimeError("모델을 선택하세요.")
-    url = f"{endpoint.base_url}/chat/completions"
-    payload = {
-        "model": endpoint.model,
-        "messages": messages,
-        "temperature": 0.2,
-    }
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
+    is_responses = endpoint.provider in ("opencode_go", "opencode") and (
+        "spark" in endpoint.model.lower() or "muse" in endpoint.model.lower()
+    )
+    if is_responses:
+        url = f"{endpoint.base_url}/responses"
+        payload = {
+            "model": endpoint.model,
+            "input": messages,
+            "temperature": 0.2,
+        }
+    else:
+        url = f"{endpoint.base_url}/chat/completions"
+        payload = {
+            "model": endpoint.model,
+            "messages": messages,
+            "temperature": 0.2,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
     from kr_quant.research.providers import extra_headers
 
     headers = {"Content-Type": "application/json", **extra_headers(endpoint)}
@@ -225,6 +236,14 @@ def call_chat(
         content = cand.get("content", {})
         parts = content.get("parts", [])
         text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+    elif "output" in body and isinstance(body["output"], list):
+        out_parts = []
+        for item in body["output"]:
+            if isinstance(item, dict) and item.get("type") == "message":
+                for part in item.get("content", []):
+                    if isinstance(part, dict) and part.get("type") == "output_text":
+                        out_parts.append(part.get("text", ""))
+        text = "".join(out_parts)
     else:
         raise RuntimeError(f"{endpoint.label} ({endpoint.model}) 응답에 유효한 결과가 없습니다: {resp.text[:300]}")
 

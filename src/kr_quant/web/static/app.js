@@ -11407,6 +11407,7 @@ const PROVIDER_MODELS = {
     "kimi-k3",
     "kimi-k2.7-code",
     "mimo-v2.5",
+    "muse-spark-1.3-contributor",
   ],
 };
 
@@ -11437,6 +11438,7 @@ const MODEL_TOKEN_INFO = {
   "kimi-k3": { badge: "📚 장문분석", tokens: "대용량 ($3.00 / 1M 토큰)", desc: "Go 경유 1M 컨텍스트 장문 분석" },
   "kimi-k2.7-code": { badge: "🧠 코딩특화", tokens: "고효율 ($0.95 / 1M 토큰)", desc: "Go 경유 Kimi K2.7 Code" },
   "mimo-v2.5": { badge: "✨ 가성비", tokens: "초저비용 ($0.14 / 1M 토큰)", desc: "Go 경유 MiMo V2.5" },
+  "muse-spark-1.3-contributor": { badge: "🎉 이벤트 특가", tokens: "초저비용 ($0.10 / 1M 토큰)", desc: "Meta 최신 Muse Spark 1.3 Contributor · 이벤트 특가 초저비용 · 멀티모달 및 복합 추론" },
 };
 
 // Zen shares some model ids with OpenRouter at different prices.

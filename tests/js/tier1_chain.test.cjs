@@ -50,3 +50,30 @@ test('tier1 save posts tier1_* fields', async () => {
     tier1_analysis_pro_provider: 'openrouter', tier1_analysis_pro_model: 'deepseek/deepseek-v4-pro-0813',
   }));
 });
+
+test('opencode_go tier1 select includes muse-spark-1.3-contributor', () => {
+  const mctx = vm.createContext({
+    document: {
+      createElement: (tag) => ({ tag, value: '', textContent: '', title: '' }),
+    },
+  });
+  vm.runInContext(
+    extract('const PROVIDER_LABELS = {', '\nfunction paintAiArchitectureCard(') +
+    '\nglobalThis.__m = {fillTier1ModelSelect, PROVIDER_MODELS};',
+    mctx
+  );
+  const {fillTier1ModelSelect, PROVIDER_MODELS} = mctx.__m;
+
+  const mockSelect = {
+    children: [],
+    appendChild(opt) { this.children.push(opt); },
+    set innerHTML(val) { this.children = []; },
+    value: '',
+  };
+
+  assert(PROVIDER_MODELS.opencode_go.includes('muse-spark-1.3-contributor'));
+  fillTier1ModelSelect(mockSelect, 'opencode_go', 'muse-spark-1.3-contributor');
+  const goOptions = mockSelect.children.map((o) => o.value);
+  assert(goOptions.includes('muse-spark-1.3-contributor'));
+  assert.equal(mockSelect.value, 'muse-spark-1.3-contributor');
+});

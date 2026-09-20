@@ -110,12 +110,15 @@ def test_opencode_go_provider():
     assert coerce_model("opencode_go", "zhipuai/glm-5.3-flash") == "glm-5.3-flash"
     assert coerce_model("opencode_go", "deepseek-v4.1-flash") == "deepseek-v4.1-flash"
     assert coerce_model("opencode_go", "unknown/thing") == "deepseek-v4-pro"
+    assert coerce_model("opencode_go", "muse-spark") == "muse-spark-1.3-contributor"
+    assert coerce_model("opencode_go", "muse-spark-1.3") == "muse-spark-1.3-contributor"
     headers = extra_headers(ep)
     assert "x-opencode-session" in headers
     assert headers["User-Agent"] == "kr-quant-research/1.0"
     curated = list_chat_models(ep)
     assert curated == fallback_models("opencode_go") == sort_models("opencode_go", curated)
-    assert len(curated) == 8
+    assert len(curated) == 9
+    assert "muse-spark-1.3-contributor" in curated
     assert all("/" not in m for m in curated)
 
 
