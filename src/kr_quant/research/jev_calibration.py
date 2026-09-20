@@ -807,6 +807,86 @@ def write_jsonl_atomic(path: Path, rows: list[dict]) -> None:
                 pass
 
 
+def _require_nonempty_str(value: object, err: str) -> str:
+    if not isinstance(value, str) or value.strip() == "":
+        raise CalibrationError(err)
+    return value
+
+
+def _validate_shadow_bucket_identity(
+    payload: dict,
+    provider: str,
+    requested_model: str,
+    evaluator_version: str,
+) -> tuple[str, str, str]:
+    payload_provider = payload.get("provider")
+    payload_model = payload.get("requested_model")
+    payload_eval = payload.get("evaluator_version")
+    if (
+        not isinstance(payload_provider, str)
+        or payload_provider.strip() == ""
+        or not isinstance(payload_model, str)
+        or payload_model.strip() == ""
+        or not isinstance(payload_eval, str)
+        or payload_eval.strip() == ""
+    ):
+        raise CalibrationError("SHADOW_BUCKET_IDENTITY_MISSING")
+    if (
+        payload_provider != provider
+        or payload_model != requested_model
+        or payload_eval != evaluator_version
+    ):
+        raise CalibrationError("SHADOW_BUCKET_MISMATCH")
+    return payload_provider, payload_model, payload_eval
+
+
+def _require_complete_boolean_probabilities(answers: object) -> dict:
+    if not isinstance(answers, dict):
+        raise CalibrationError("SHADOW_ANSWERS_INCOMPLETE")
+    for head in BOOLEAN_HEADS:
+        node = answers.get(head)
+        if not isinstance(node, Mapping):
+            raise CalibrationError("SHADOW_ANSWERS_INCOMPLETE")
+        if not _is_valid_probability(node.get("probability")):
+            raise CalibrationError("SHADOW_ANSWERS_INCOMPLETE")
+    return answers
+
+
+def dataset_bucket_identity(samples: list[dict]) -> dict:
+    """Uniform provider/requested_model/evaluator_version from dataset rows."""
+    if not samples:
+        raise CalibrationError("CALIBRATION_BUCKET_EMPTY")
+    triples: set[tuple[str, str, str]] = set()
+    for row in samples:
+        if not isinstance(row, dict):
+            raise CalibrationError("CALIBRATION_BUCKET_MIXED")
+        provider = row.get("provider")
+        requested_model = row.get("requested_model")
+        evaluator_version = row.get("evaluator_version")
+        if (
+            not isinstance(provider, str)
+            or provider.strip() == ""
+            or not isinstance(requested_model, str)
+            or requested_model.strip() == ""
+            or not isinstance(evaluator_version, str)
+            or evaluator_version.strip() == ""
+        ):
+            raise CalibrationError("CALIBRATION_BUCKET_MIXED")
+        triples.add((provider, requested_model, evaluator_version))
+    if len(triples) != 1:
+        raise CalibrationError("CALIBRATION_BUCKET_MIXED")
+    provider, requested_model, evaluator_version = next(iter(triples))
+    return {
+        "provider": provider,
+        "requested_model": requested_model,
+        "evaluator_version": evaluator_version,
+    }
+
+
+# Back-compat private alias used in planning notes
+_dataset_bucket_identity = dataset_bucket_identity
+
+
 def export_candidates_from_shadow(
     shadow_payload: dict,
     *,
@@ -816,12 +896,31 @@ def export_candidates_from_shadow(
 ) -> list[dict]:
     if not isinstance(shadow_payload, dict):
         raise CalibrationError("shadow_payload must be a dict")
-    generation_id = shadow_payload.get("generation_id")
+
+    auth_provider, auth_model, auth_eval = _validate_shadow_bucket_identity(
+        shadow_payload,
+        provider,
+        requested_model,
+        evaluator_version,
+    )
+    generation_id = _require_nonempty_str(
+        shadow_payload.get("generation_id"),
+        "SHADOW_GENERATION_ID_MISSING",
+    )
+    selection_date = _require_nonempty_str(
+        shadow_payload.get("selection_date"),
+        "SHADOW_SELECTION_DATE_MISSING",
+    )
+
     results = shadow_payload.get("results") or []
     out: list[dict] = []
     for rec in results:
         if not isinstance(rec, dict):
             raise CalibrationError("shadow result must be a dict")
+        status = rec.get("status")
+        if status not in {"GENERATED", "REUSED"}:
+            continue
+
         candidate_id = rec.get("candidate_id")
         if not isinstance(candidate_id, str) or not candidate_id.strip():
             raise CalibrationError("candidate_id required")
@@ -832,13 +931,16 @@ def export_candidates_from_shadow(
         if state is None:
             raise CalibrationError("SHADOW_STATE_MISSING")
         assert_calibration_state_clean(state)
+
+        answers = _require_complete_boolean_probabilities(rec.get("answers"))
+
         ticker = rec.get("ticker")
         split = assign_split(
             ticker=ticker if isinstance(ticker, str) else None,
             state_hash=state_hash,
         )
         sample_id = make_sample_id(
-            provider, requested_model, evaluator_version, state_hash
+            auth_provider, auth_model, auth_eval, state_hash
         )
         row = {
             "sample_id": sample_id,
@@ -846,12 +948,13 @@ def export_candidates_from_shadow(
             "candidate_type": rec.get("candidate_type"),
             "ticker": ticker,
             "generation_id": generation_id,
+            "selection_date": selection_date,
             "state_hash": state_hash,
             "state": state,
-            "jev_answers": rec.get("answers") or {},
-            "provider": provider,
-            "requested_model": requested_model,
-            "evaluator_version": evaluator_version,
+            "jev_answers": answers,
+            "provider": auth_provider,
+            "requested_model": auth_model,
+            "evaluator_version": auth_eval,
             "resolved_model": rec.get("resolved_model"),
             "split": split,
             "annotation_version": 1,
@@ -882,11 +985,27 @@ def build_blind_label_template(rows: list[dict]) -> list[dict]:
             "state_hash": row.get("state_hash"),
             "state": row.get("state"),
             "blind": True,
+            "labeled_at": None,
             "annotation_version": row.get("annotation_version", 1),
             "human_labels": {h: None for h in BOOLEAN_HEADS},
         }
         template.append(blind)
     return template
+
+
+def _require_human_labels_exact(human: object) -> dict:
+    if not isinstance(human, dict):
+        raise CalibrationError("INVALID_HUMAN_LABELS")
+    if set(human.keys()) != set(BOOLEAN_HEADS):
+        raise CalibrationError("INVALID_HUMAN_LABELS")
+    cleaned: dict = {}
+    for head in BOOLEAN_HEADS:
+        value = human[head]
+        if value is True or value is False or value == "unknown":
+            cleaned[head] = value
+        else:
+            raise CalibrationError("INVALID_HUMAN_LABELS")
+    return cleaned
 
 
 def ingest_blind_labels(
@@ -910,11 +1029,22 @@ def ingest_blind_labels(
         if not isinstance(sid, str) or sid not in by_id:
             raise CalibrationError(f"unknown sample_id: {sid!r}")
         _require_annotation_version(lab.get("annotation_version"))
-        human = lab.get("human_labels")
-        if not isinstance(human, dict):
-            raise CalibrationError("human_labels must be a dict")
+
+        blind = lab.get("blind")
+        if blind is not True and blind is not False:
+            raise CalibrationError("BLIND_FLAG_REQUIRED")
+        labeled_at = lab.get("labeled_at")
+        if not isinstance(labeled_at, str) or labeled_at.strip() == "":
+            raise CalibrationError("LABELED_AT_REQUIRED")
+        human = _require_human_labels_exact(lab.get("human_labels"))
+
         merged = dict(by_id[sid])
-        merged["human_labels"] = dict(human)
+        merged["human_labels"] = human
         merged["annotation_version"] = int(lab["annotation_version"])
+        merged["blind"] = blind
+        merged["labeled_at"] = labeled_at
+        # Never take jev_answers from the label row (internal remains authoritative).
+        validate_sample(merged)
         out.append(merged)
+    ensure_split_consistency(out)
     return out

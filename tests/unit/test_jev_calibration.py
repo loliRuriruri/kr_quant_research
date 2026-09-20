@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -951,34 +952,86 @@ def test_holdout_locked_requires_selection_timestamp():
 
 # --- Task 5 ---
 
+def _complete_calibration_answers() -> dict:
+    """Complete 7 boolean-head answers (+ optional reviewClass) for export fixtures."""
+    return {
+        "materialNow": {"probability": 0.5},
+        "needsCurrentYearCheck": {"probability": 0.1},
+        "needsNews": {"probability": 0.2},
+        "needsDart": {"probability": 0.6},
+        "historicalConflict": {"probability": 0.1},
+        "invalidationCheckNeeded": {"probability": 0.1},
+        "needsDeepAI": {"probability": 0.1},
+        "reviewClass": {"choice": "monitor"},
+    }
+
+
+def _valid_export_result(
+    *,
+    candidate_id: str = "sig-1",
+    status: str = "GENERATED",
+    state_hash: str = "h1",
+    ticker: str = "005930",
+    state: dict | None = None,
+    answers: dict | None = None,
+    **extra,
+) -> dict:
+    rec = {
+        "candidate_id": candidate_id,
+        "candidate_type": "season_pattern",
+        "ticker": ticker,
+        "state_hash": state_hash,
+        "status": status,
+        "state": {"identity": {"ticker": ticker}} if state is None else state,
+        "answers": _complete_calibration_answers() if answers is None else answers,
+        "resolved_model": "jev-1.13.0",
+    }
+    rec.update(extra)
+    return rec
+
+
+def _valid_shadow_payload(
+    *,
+    generation_id: str = "g1",
+    selection_date: str = "2026-09-01",
+    provider: str = "typesafe_direct",
+    requested_model: str = "jev-latest",
+    evaluator_version: str = "season-jev-shadow-v1",
+    results: list | None = None,
+) -> dict:
+    return {
+        "generation_id": generation_id,
+        "selection_date": selection_date,
+        "provider": provider,
+        "requested_model": requested_model,
+        "evaluator_version": evaluator_version,
+        "results": [_valid_export_result()] if results is None else results,
+    }
+
+
+def _load_calibration_cli():
+    import importlib.util
+    from pathlib import Path as P
+
+    script = P(__file__).resolve().parents[2] / "scripts" / "jev_calibration_export.py"
+    spec = importlib.util.spec_from_file_location("jev_calibration_export", script)
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    return cli
+
+
 def test_calibration_root_under_data_research(tmp_path):
     settings = SimpleNamespace(data_dir=tmp_path / "data")
     assert cal.calibration_root(settings) == tmp_path / "data" / "research" / "jev_calibration"
 
 
 def test_export_candidates_requires_persisted_state_and_candidate_id():
-    shadow_payload = {
-        "generation_id": "g1",
-        "results": [{
-            "candidate_id": "sig-1",
-            "candidate_type": "season_pattern",
-            "ticker": "005930",
-            "state_hash": "h1",
-            "state": {"identity": {"ticker": "005930"}},
-            "answers": {
-                "needsDart": {"probability": 0.6},
-                "materialNow": {"probability": 0.5},
-                "needsCurrentYearCheck": {"probability": 0.1},
-                "needsNews": {"probability": 0.2},
-                "historicalConflict": {"probability": 0.1},
-                "invalidationCheckNeeded": {"probability": 0.1},
-                "needsDeepAI": {"probability": 0.1},
-                "reviewClass": {"choice": "monitor"},
-            },
-            "quant_reference": {"grade": "A"},
-            "resolved_model": "jev-1.13.0",
-        }],
-    }
+    shadow_payload = _valid_shadow_payload(
+        results=[_valid_export_result(
+            status="GENERATED",
+            quant_reference={"grade": "A"},
+        )],
+    )
     rows = cal.export_candidates_from_shadow(
         shadow_payload,
         provider="typesafe_direct",
@@ -993,13 +1046,20 @@ def test_export_candidates_requires_persisted_state_and_candidate_id():
     assert "quant_reference" not in rows[0]["state"]
     cal.assert_calibration_state_clean(rows[0]["state"])
     assert "jev_answers" in rows[0]
+    assert rows[0]["selection_date"] == "2026-09-01"
+    assert rows[0]["generation_id"] == "g1"
 
 
 def test_export_missing_state_fail_closed():
-    payload = {"results": [{
-        "candidate_id": "sig-1", "ticker": "005930", "state_hash": "h1",
-        "answers": {},
-    }]}
+    payload = _valid_shadow_payload(
+        results=[{
+            "candidate_id": "sig-1",
+            "ticker": "005930",
+            "state_hash": "h1",
+            "status": "GENERATED",
+            "answers": _complete_calibration_answers(),
+        }],
+    )
     with pytest.raises(cal.CalibrationError, match="SHADOW_STATE_MISSING"):
         cal.export_candidates_from_shadow(
             payload, provider="typesafe_direct", requested_model="jev-latest",
@@ -1010,11 +1070,117 @@ def test_export_missing_state_fail_closed():
 def test_export_rejects_quant_inside_state():
     with pytest.raises(ValueError):
         cal.export_candidates_from_shadow(
-            {"results": [{"candidate_id": "x", "ticker": "1", "state_hash": "h",
-                          "state": {"grade": "A"}, "answers": {}}]},
+            _valid_shadow_payload(
+                results=[_valid_export_result(
+                    status="GENERATED",
+                    state={"grade": "A"},
+                    answers=_complete_calibration_answers(),
+                )],
+            ),
             provider="typesafe_direct", requested_model="jev-latest",
             evaluator_version="season-jev-shadow-v1",
         )
+
+
+@pytest.mark.parametrize(
+    "field,bad_value",
+    [
+        ("provider", "openrouter"),
+        ("requested_model", "typesafe/jev-1.13"),
+        ("evaluator_version", "other-eval"),
+    ],
+)
+def test_export_rejects_shadow_bucket_mismatch(field, bad_value):
+    payload = _valid_shadow_payload()
+    payload[field] = bad_value
+    with pytest.raises(cal.CalibrationError, match="SHADOW_BUCKET_MISMATCH"):
+        cal.export_candidates_from_shadow(
+            payload,
+            provider="typesafe_direct",
+            requested_model="jev-latest",
+            evaluator_version="season-jev-shadow-v1",
+        )
+
+
+@pytest.mark.parametrize("field", ["provider", "requested_model", "evaluator_version"])
+def test_export_requires_shadow_bucket_identity(field):
+    payload = _valid_shadow_payload()
+    payload.pop(field)
+    with pytest.raises(cal.CalibrationError, match="SHADOW_BUCKET_IDENTITY_MISSING"):
+        cal.export_candidates_from_shadow(
+            payload,
+            provider="typesafe_direct",
+            requested_model="jev-latest",
+            evaluator_version="season-jev-shadow-v1",
+        )
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        "missing_needsDart",
+        "probability_bool",
+        "probability_nan",
+        "probability_out_of_range",
+    ],
+)
+def test_export_rejects_incomplete_success_answers(mutate):
+    answers = _complete_calibration_answers()
+    if mutate == "missing_needsDart":
+        del answers["needsDart"]
+    elif mutate == "probability_bool":
+        answers["needsDart"] = {"probability": True}
+    elif mutate == "probability_nan":
+        answers["needsDart"] = {"probability": math.nan}
+    elif mutate == "probability_out_of_range":
+        answers["needsDart"] = {"probability": 1.1}
+    payload = _valid_shadow_payload(
+        results=[_valid_export_result(status="GENERATED", answers=answers)],
+    )
+    with pytest.raises(cal.CalibrationError, match="SHADOW_ANSWERS_INCOMPLETE"):
+        cal.export_candidates_from_shadow(
+            payload,
+            provider="typesafe_direct",
+            requested_model="jev-latest",
+            evaluator_version="season-jev-shadow-v1",
+        )
+
+
+def test_export_skips_error_and_skipped_records_without_breaking_valid_rows():
+    payload = _valid_shadow_payload(
+        results=[
+            _valid_export_result(
+                candidate_id="generated",
+                status="GENERATED",
+                state_hash="hg",
+            ),
+            _valid_export_result(
+                candidate_id="reused",
+                status="REUSED",
+                state_hash="hr",
+            ),
+            {
+                "candidate_id": "skipped",
+                "status": "SKIPPED",
+                "ticker": "005930",
+            },
+            {
+                "candidate_id": "error",
+                "status": "ERROR",
+                "ticker": "005930",
+                "state_hash": "he",
+                "state": {"identity": {"ticker": "005930"}},
+                "answers": {},
+            },
+        ],
+    )
+    rows = cal.export_candidates_from_shadow(
+        payload,
+        provider="typesafe_direct",
+        requested_model="jev-latest",
+        evaluator_version="season-jev-shadow-v1",
+    )
+    assert {r["candidate_id"] for r in rows} == {"generated", "reused"}
 
 
 def test_blind_template_hides_probabilities_and_predictions():
@@ -1028,6 +1194,7 @@ def test_blind_template_hides_probabilities_and_predictions():
     template = cal.build_blind_label_template(internal)
     row = template[0]
     assert row["blind"] is True
+    assert row["labeled_at"] is None
     assert "jev_answers" not in row
     assert "threshold" not in row
     assert "prediction" not in row
@@ -1035,6 +1202,19 @@ def test_blind_template_hides_probabilities_and_predictions():
     for head in cal.BOOLEAN_HEADS:
         assert head in row["human_labels"]
     assert set(row["human_labels"].values()) <= {None, "unknown"}
+
+
+def test_blind_template_includes_labeled_at_placeholder():
+    internal = [{
+        "sample_id": "s1", "candidate_id": "sig-1", "candidate_type": "season_pattern",
+        "ticker": "005930", "generation_id": "g1", "selection_date": "2026-09-01",
+        "state": {"identity": {"ticker": "005930"}},
+        "jev_answers": {"needsDart": {"probability": 0.9, "decision": True}},
+        "annotation_version": 1,
+    }]
+    template = cal.build_blind_label_template(internal)
+    assert "labeled_at" in template[0]
+    assert template[0]["labeled_at"] is None
 
 
 def test_ingest_joins_by_sample_id_and_preserves_jev_answers():
@@ -1046,44 +1226,167 @@ def test_ingest_joins_by_sample_id_and_preserves_jev_answers():
         "annotation_version": 1,
     }]
     labeled = [{
-        "sample_id": "s1", "blind": True, "annotation_version": 1,
+        "sample_id": "s1", "blind": True,
+        "labeled_at": "2026-09-20T01:00:00Z",
+        "annotation_version": 1,
         "human_labels": {h: False for h in cal.BOOLEAN_HEADS},
         "jev_answers": {"needsDart": {"probability": 0.01}},
     }]
+    assert set(labeled[0]["human_labels"]) == set(cal.BOOLEAN_HEADS)
     out = cal.ingest_blind_labels(template_rows=labeled, internal_rows=internal)
     assert out[0]["jev_answers"]["needsDart"]["probability"] == 0.9
     assert out[0]["human_labels"]["needsDart"] is False
 
 
+def test_ingest_preserves_blind_and_label_provenance():
+    internal = [{
+        "sample_id": "s1",
+        "candidate_id": "sig-1",
+        "candidate_type": "season_pattern",
+        "ticker": "005930",
+        "generation_id": "g1",
+        "selection_date": "2026-09-01",
+        "state": {"identity": {"ticker": "005930"}},
+        "state_hash": "h1",
+        "split": cal.SPLIT_CALIBRATION,
+        "jev_answers": {"needsDart": {"probability": 0.9}},
+        "human_labels": {},
+        "annotation_version": 1,
+        "provider": "typesafe_direct",
+        "requested_model": "jev-latest",
+        "evaluator_version": "season-jev-shadow-v1",
+    }]
+    labels = [{
+        "sample_id": "s1",
+        "blind": True,
+        "labeled_at": "2026-09-20T01:00:00Z",
+        "annotation_version": 1,
+        "human_labels": {h: "unknown" for h in cal.BOOLEAN_HEADS},
+    }]
+    out = cal.ingest_blind_labels(template_rows=labels, internal_rows=internal)
+    assert out[0]["blind"] is True
+    assert out[0]["labeled_at"] == "2026-09-20T01:00:00Z"
+    assert out[0]["human_labels"] == {h: "unknown" for h in cal.BOOLEAN_HEADS}
+    assert out[0]["jev_answers"]["needsDart"]["probability"] == 0.9
+
+
 def test_ingest_rejects_unknown_sample_id_and_bad_annotation_version():
-    internal = [{"sample_id": "s1", "jev_answers": {}, "state": {}, "state_hash": "h", "split": cal.SPLIT_CALIBRATION, "annotation_version": 1}]
+    internal = [{
+        "sample_id": "s1", "jev_answers": {}, "state": {},
+        "state_hash": "h", "split": cal.SPLIT_CALIBRATION, "annotation_version": 1,
+    }]
     with pytest.raises(cal.CalibrationError):
         cal.ingest_blind_labels(
-            template_rows=[{"sample_id": "nope", "annotation_version": 1,
-                            "human_labels": {h: "unknown" for h in cal.BOOLEAN_HEADS}}],
+            template_rows=[{
+                "sample_id": "nope", "annotation_version": 1,
+                "blind": True, "labeled_at": "2026-09-20T01:00:00Z",
+                "human_labels": {h: "unknown" for h in cal.BOOLEAN_HEADS},
+            }],
             internal_rows=internal,
         )
     with pytest.raises(cal.CalibrationError):
         cal.ingest_blind_labels(
-            template_rows=[{"sample_id": "s1", "annotation_version": "v1",
-                            "human_labels": {h: "unknown" for h in cal.BOOLEAN_HEADS}}],
+            template_rows=[{
+                "sample_id": "s1", "annotation_version": "v1",
+                "blind": True, "labeled_at": "2026-09-20T01:00:00Z",
+                "human_labels": {h: "unknown" for h in cal.BOOLEAN_HEADS},
+            }],
+            internal_rows=internal,
+        )
+
+
+@pytest.mark.parametrize("bad_value", [None, 0, 1, "true", "false", "yes", ""])
+def test_ingest_rejects_invalid_human_label_values(bad_value):
+    internal = [{
+        "sample_id": "s1", "state": {"identity": {"ticker": "005930"}},
+        "state_hash": "h1", "split": cal.SPLIT_CALIBRATION,
+        "jev_answers": {"needsDart": {"probability": 0.9}},
+        "annotation_version": 1,
+    }]
+    human_labels = {h: False for h in cal.BOOLEAN_HEADS}
+    human_labels["needsDart"] = bad_value
+    with pytest.raises(cal.CalibrationError, match="INVALID_HUMAN_LABELS"):
+        cal.ingest_blind_labels(
+            template_rows=[{
+                "sample_id": "s1",
+                "blind": True,
+                "labeled_at": "2026-09-20T01:00:00Z",
+                "annotation_version": 1,
+                "human_labels": human_labels,
+            }],
+            internal_rows=internal,
+        )
+
+
+def test_ingest_requires_exact_seven_boolean_heads():
+    internal = [{
+        "sample_id": "s1", "state": {"identity": {"ticker": "005930"}},
+        "state_hash": "h1", "split": cal.SPLIT_CALIBRATION,
+        "jev_answers": {"needsDart": {"probability": 0.9}},
+        "annotation_version": 1,
+    }]
+    missing = {h: False for h in cal.BOOLEAN_HEADS}
+    del missing["needsDart"]
+    with pytest.raises(cal.CalibrationError, match="INVALID_HUMAN_LABELS"):
+        cal.ingest_blind_labels(
+            template_rows=[{
+                "sample_id": "s1", "blind": True,
+                "labeled_at": "2026-09-20T01:00:00Z",
+                "annotation_version": 1,
+                "human_labels": missing,
+            }],
+            internal_rows=internal,
+        )
+    extra = {h: False for h in cal.BOOLEAN_HEADS}
+    extra["reviewClass"] = False
+    with pytest.raises(cal.CalibrationError, match="INVALID_HUMAN_LABELS"):
+        cal.ingest_blind_labels(
+            template_rows=[{
+                "sample_id": "s1", "blind": True,
+                "labeled_at": "2026-09-20T01:00:00Z",
+                "annotation_version": 1,
+                "human_labels": extra,
+            }],
             internal_rows=internal,
         )
 
 
 def test_cli_help_lists_required_subcommands():
-    import importlib.util
-    from pathlib import Path as P
-    script = P(__file__).resolve().parents[2] / "scripts" / "jev_calibration_export.py"
-    spec = importlib.util.spec_from_file_location("jev_calibration_export", script)
-    cli = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(cli)
-    help_text = cli.build_parser().format_help()
+    cli = _load_calibration_cli()
+    parser = cli.build_parser()
+    help_text = parser.format_help()
     for name in (
         "export-candidates", "blind-template", "ingest-labels",
         "calibration-report", "lock-selection", "holdout-eval",
     ):
         assert name in help_text
+
+    # Fixed interface: blind-template uses --dataset, not required --internal
+    blind_help = None
+    for action in parser._subparsers._group_actions:
+        for choice, sub in action.choices.items():
+            if choice == "blind-template":
+                blind_help = sub.format_help()
+    assert blind_help is not None
+    assert "--dataset" in blind_help
+    # Fixed interface: --internal must not appear for blind-template
+    assert "--internal" not in blind_help
+
+
+def test_cli_fixed_interface_accepts_canonical_args():
+    cli = _load_calibration_cli()
+    parser = cli.build_parser()
+    cases = [
+        ["export-candidates", "--shadow", "s.json", "--out", "o.jsonl"],
+        ["blind-template", "--dataset", "d.jsonl", "--out", "b.jsonl"],
+        ["ingest-labels", "--labels", "l.jsonl", "--dataset", "d.jsonl", "--out", "o.jsonl"],
+        ["calibration-report", "--dataset", "d.jsonl", "--out", "r.json"],
+        ["lock-selection", "--manifest", "m.json", "--out", "locked.json"],
+        ["holdout-eval", "--dataset", "d.jsonl", "--selection", "sel.json", "--out", "h.json"],
+    ]
+    for argv in cases:
+        args = parser.parse_args(argv)
+        assert args.command == argv[0]
 
 
 def test_write_jsonl_atomic_round_trip(tmp_path):

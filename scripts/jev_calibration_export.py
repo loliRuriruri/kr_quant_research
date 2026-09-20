@@ -18,26 +18,19 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("export-candidates", help="Export internal rows from shadow JSON")
     p.add_argument("--shadow", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
-    p.add_argument("--provider", required=True)
-    p.add_argument("--requested-model", required=True)
-    p.add_argument("--evaluator-version", required=True)
 
     p = sub.add_parser("blind-template", help="Build blind human-label template JSONL")
-    p.add_argument("--internal", type=Path, required=True)
+    p.add_argument("--dataset", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
 
     p = sub.add_parser("ingest-labels", help="Join blind labels onto internal rows")
     p.add_argument("--labels", type=Path, required=True)
-    p.add_argument("--internal", type=Path, required=True)
+    p.add_argument("--dataset", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
 
     p = sub.add_parser("calibration-report", help="Build calibration-open report JSON")
     p.add_argument("--dataset", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
-    p.add_argument("--dataset-id", required=True)
-    p.add_argument("--provider", required=True)
-    p.add_argument("--requested-model", required=True)
-    p.add_argument("--evaluator-version", required=True)
 
     p = sub.add_parser("lock-selection", help="Lock a calibration-only selection manifest")
     p.add_argument("--manifest", type=Path, required=True)
@@ -56,33 +49,33 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "export-candidates":
         payload = json.loads(Path(args.shadow).read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise SystemExit("shadow payload must be a JSON object")
         rows = cal.export_candidates_from_shadow(
             payload,
-            provider=args.provider,
-            requested_model=args.requested_model,
-            evaluator_version=args.evaluator_version,
+            provider=payload.get("provider"),
+            requested_model=payload.get("requested_model"),
+            evaluator_version=payload.get("evaluator_version"),
         )
         cal.write_jsonl_atomic(Path(args.out), rows)
     elif args.command == "blind-template":
-        internal = cal.read_jsonl(Path(args.internal))
-        template = cal.build_blind_label_template(internal)
+        dataset = cal.read_jsonl(Path(args.dataset))
+        template = cal.build_blind_label_template(dataset)
         cal.write_jsonl_atomic(Path(args.out), template)
     elif args.command == "ingest-labels":
         labels = cal.read_jsonl(Path(args.labels))
-        internal = cal.read_jsonl(Path(args.internal))
-        joined = cal.ingest_blind_labels(template_rows=labels, internal_rows=internal)
+        dataset = cal.read_jsonl(Path(args.dataset))
+        joined = cal.ingest_blind_labels(template_rows=labels, internal_rows=dataset)
         cal.write_jsonl_atomic(Path(args.out), joined)
     elif args.command == "calibration-report":
-        samples = cal.read_jsonl(Path(args.dataset))
+        dataset_path = Path(args.dataset)
+        samples = cal.read_jsonl(dataset_path)
         dataset_hash = cal.dataset_hash_v1(samples)
+        bucket = cal.dataset_bucket_identity(samples)
         report = cal.build_calibration_report(
-            dataset_id=args.dataset_id,
+            dataset_id=dataset_path.stem,
             dataset_hash=dataset_hash,
-            bucket={
-                "provider": args.provider,
-                "requested_model": args.requested_model,
-                "evaluator_version": args.evaluator_version,
-            },
+            bucket=bucket,
             samples=samples,
         )
         write_json_atomic(Path(args.out), report)
