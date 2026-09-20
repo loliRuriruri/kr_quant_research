@@ -310,8 +310,29 @@ generation_id, provider, requested_model, evaluator_version, results[]
 Per candidate from `results[]`:
 
 ```text
-candidate_id, state_hash, answers, resolved_model, reviewClass (diagnostic only)
+candidate_id
+state_hash
+answers
+resolved_model
 ```
+
+Upstream does **not** persist a top-level `reviewClass` on the candidate record.
+`reviewClass` lives inside `answers` (see `season_jev_shadow.py`):
+
+```python
+answers = record.get("answers")
+review_node = answers.get("reviewClass") if isinstance(answers, Mapping) else None
+review_class = (
+    review_node.get("choice")
+    if isinstance(review_node, Mapping) and isinstance(review_node.get("choice"), str)
+    else None
+)
+```
+
+Pass only that diagnostic string into `evaluate_research_gate(..., review_class=review_class)`.
+
+`reviewClass` remains diagnostic only: non-routing, non-threshold, non-override.
+Do **not** use `reviewClass.probabilities`, `reviewClass.confidence`, or `reviewClass.choice` for any decision/routing behavior (the extracted `choice` string is diagnostics only).
 
 No JEV calls. No network.
 
@@ -399,13 +420,23 @@ threshold_cfg already supplied and structurally valid
 → lookup_threshold(...)
 ```
 
-**Disk / future wrapper** (persistence Task and any loader helpers):
+**Disk / J3 internal loader boundary** (required so "unreadable" is executable/testable):
+
+```python
+def _load_threshold_cfg(path: Path) -> dict[str, Any]:
+    ...
+```
+
+Exact public name is **not** required (may remain private). Behavior:
 
 ```text
-load_thresholds(path)
-→ on unreadable / structurally invalid cfg: J3 operation failure (ResearchGateError / ERROR path)
-→ never hide malformed configs
+call J2 load_thresholds(path)
+catch OSError / json.JSONDecodeError / CalibrationError / equivalent malformed-load errors
+→ convert to J3 operation failure identified as THRESHOLD_CONFIG_UNREADABLE
+→ MUST NOT call threshold_config_hash with a fabricated empty/MISSING cfg
 ```
+
+In-memory pure evaluation may still accept a pre-validated `threshold_cfg: Mapping`.
 
 **Do NOT** use:
 
@@ -452,6 +483,12 @@ Implement `threshold_config_hash`, MATCHED/MISSING payload construction, canonic
 - [ ] Optional SECONDARY / prerequisite hash-facing fixtures for **5, 6, 7, 8, 12, 35** (hash identity / transition only). These do **not** complete those design contracts; primary ownership remains Task 2 (5–8,12) or Task 4 (35).
 - [ ] GREEN: implement constants + `threshold_config_hash` (+ small helpers for locating exact bucket / validating identity fields as needed). No full candidate gate. No persistence/reuse.
 - [ ] Prove (primary): MISSING → deterministic valid 64-hex; all-null MATCHED ≠ MISSING; absent head ≠ explicit null; unrelated provider edit unchanged; effective edit changes hash; malformed cfg fails closed (no fabricated MISSING hash).
+- [ ] For design **39** RED→GREEN explicitly (tmp_path only; no production config path):
+  - A. malformed in-memory threshold config
+  - B. nonexistent/unreadable threshold config path
+  - C. invalid JSON threshold file
+  - D. structurally invalid loaded threshold config
+  - Required outcome: no valid MISSING-bucket hash fabricated; path-based cases → `THRESHOLD_CONFIG_UNREADABLE` / J3 operation failure via `_load_threshold_cfg` (or equivalent).
 - [ ] Targeted tests: `pytest tests/unit/test_jev_research_gate.py -q --tb=short` (Task-1 subset / whole file as tests grow).
 - [ ] Invariants: no config writes; no network imports introduced; `enabled=false` untouched.
 - [ ] Stage exact paths only → `git diff --cached --check` → commit → push → STOP.
@@ -491,6 +528,7 @@ Implement `evaluate_research_gate(...)` end-to-end for one candidate.
 - [ ] RED: failing tests for design cases **1–19** (primary).
 - [ ] GREEN: implement per-head decisions via `lookup_threshold`, aggregates (`research_requirements`, calibrated/uncalibrated lists), ERROR objects, diagnostics (`review_class` non-routing, `resolved_model` diagnostic).
 - [ ] Prove: all-null → all `decision=null`; one calibrated head; mixed; exact `>=` boundary; provider / requested_model / evaluator_version isolation; missing bucket → UNCALIBRATED heads; no provider fallback; bad probability/threshold → ERROR; **missing required BOOLEAN_HEAD → `MISSING_HEAD` ERROR** (not UNCALIBRATED); `reviewClass` non-routing; `materialNow` / `historicalConflict` advisory only; `side_effects_executed=false`; Quant not consumed.
+- [ ] Explicit candidate-level error-code regressions (not new design numbers): `MISSING_ANSWERS`, `MISSING_HEAD`, `INVALID_PROBABILITY`, `INVALID_IDENTITY`, `UNSUPPORTED_PROVIDER`, `INVALID_THRESHOLD`.
 - [ ] No persistence. No generation wrapper.
 - [ ] Targeted tests + invariants (no research calls; no config mutation).
 - [ ] Stage exact paths → check → commit → push → STOP.
@@ -528,6 +566,7 @@ Implement `evaluate_research_gate_generation(...)` and envelope failure policy.
 
 - [ ] RED: failing tests for **24, 25, 26, 31, 32** (+ deterministic aspects of **21, 30**).
 - [ ] GREEN: generation orchestration; `ResearchGateError` for envelope failures; candidate ERROR isolation; `candidate_id` ascending; duplicate rejection; single SoT for `state_hash`.
+- [ ] Upstream-shaped regression: candidate record has `reviewClass` **only** under `answers`; assert `diagnostics.review_class == answers["reviewClass"]["choice"]`; no top-level `reviewClass` required; no routing from probabilities/confidence/choice.
 - [ ] No disk persistence yet.
 - [ ] Targeted tests + invariants → commit → push → STOP.
 
@@ -567,7 +606,9 @@ Implement `research_gate_dir`, `research_gate_path`, atomic artifact persistence
 - [ ] Tests use **`tmp_path` only** — never create production runtime directories.
 - [ ] Prove: atomic write; correct path; reuse on identity match; `state_hash` change invalidates one candidate; threshold hash change invalidates; unrelated provider edit does not; byte-stable identical inputs; malformed artifacts never reused.
 - [ ] Prove design **35**: MISSING hash → exact bucket added → MATCHED hash → hashes differ → persisted candidate reuse rejected.
-- [ ] Disk load path (if any) uses `load_thresholds` + J3 fail-closed — **not** `threshold_status_from_path`.
+- [ ] SECONDARY persistence regression (design **24** primary owner remains Task 3): build generation envelope with two valid candidates → write artifact atomically under `tmp_path` → read back → both candidate results remain in one envelope.
+- [ ] Explicit persisted/reuse error-code regressions (not new design numbers): `STATE_HASH_MISMATCH`, `UNSUPPORTED_SCHEMA`.
+- [ ] Disk load path (if any) uses `_load_threshold_cfg` / `load_thresholds` + J3 fail-closed — **not** `threshold_status_from_path`.
 - [ ] Targeted tests + invariants → commit → push → STOP.
 
 ### Commit subject
@@ -643,6 +684,26 @@ Final verification packet; J3 implementation complete pending GPT accept of Task
 IDENTITY, 39-case coverage matrix, import/safety checks, pytest commands+results,
 enabled=false, thresholds 2×7 null, commit SHA or NO COMMIT, STOP
 ```
+
+---
+
+## Locked Error-Code Coverage
+
+Without adding design test numbers, require regression coverage for every locked error code:
+
+| Error code | Primary Task |
+| --- | --- |
+| `MISSING_ANSWERS` | 2 |
+| `MISSING_HEAD` | 2 |
+| `INVALID_PROBABILITY` | 2 |
+| `INVALID_IDENTITY` | 2 |
+| `UNSUPPORTED_PROVIDER` | 2 |
+| `INVALID_THRESHOLD` | 2 |
+| `THRESHOLD_CONFIG_UNREADABLE` | 1 (config-loading boundary) |
+| `STATE_HASH_MISMATCH` | 4 |
+| `UNSUPPORTED_SCHEMA` | 4 |
+
+Primary mapping for design tests **1–39** is unchanged.
 
 ---
 
