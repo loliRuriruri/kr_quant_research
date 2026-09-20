@@ -606,3 +606,245 @@ def test_resolved_model_diagnostic_only():
     assert a["heads"] == b["heads"]
     assert a["diagnostics"]["resolved_model"] == "x"
     assert b["diagnostics"]["resolved_model"] == "y"
+
+
+# ===========================================================================
+# J3 Task 3 — evaluate_research_gate_generation (Design 24/25/26/31/32)
+# ===========================================================================
+
+
+def _shadow_payload(*, results, generation_id="gen-A", provider=None, requested_model=None, evaluator_version=None):
+    return {
+        "schema_version": 1,
+        "evaluator_version": evaluator_version if evaluator_version is not None else DIRECT[2],
+        "generation_id": generation_id,
+        "provider": provider if provider is not None else DIRECT[0],
+        "requested_model": requested_model if requested_model is not None else DIRECT[1],
+        "results": results,
+    }
+
+
+def _cand(cid: str, state: str, *, answers=None, resolved_model="jev-1.13.0", extra=None, review_choice=None):
+    ans = answers if answers is not None else _complete_answers(0.5)
+    if review_choice is not None:
+        ans = dict(ans)
+        ans["reviewClass"] = {
+            "type": "choice",
+            "choice": review_choice,
+            "probabilities": {review_choice: 1.0},
+            "confidence": 0.8,
+        }
+    rec = {
+        "candidate_id": cid,
+        "state_hash": state,
+        "answers": ans,
+        "resolved_model": resolved_model,
+        "candidate_type": "ticker",
+        "ticker": "005930",
+    }
+    if extra:
+        rec.update(extra)
+    return rec
+
+
+def test_design_24_two_candidates_one_envelope():
+    payload = _shadow_payload(
+        results=[
+            _cand("cand-B", "state-B"),
+            _cand("cand-A", "state-A"),
+        ]
+    )
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    env = gate.evaluate_research_gate_generation(payload, threshold_cfg=cfg)
+    assert env["artifact_type"] == gate.GATE_ARTIFACT_TYPE
+    assert env["mode"] == gate.MODE_SHADOW_ONLY
+    assert env["side_effects_executed"] is False
+    assert len(env["results"]) == 2
+    ids = [r["candidate_id"] for r in env["results"]]
+    assert ids == ["cand-A", "cand-B"]
+    assert all("gate" in r and "state_hash" not in r for r in env["results"])
+    assert "state_hash" not in env
+
+
+def test_design_25_duplicate_candidate_id_rejects():
+    payload = _shadow_payload(
+        results=[
+            _cand("cand-A", "state-1"),
+            _cand("cand-A", "state-2"),
+        ]
+    )
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    with pytest.raises(ResearchGateError):
+        gate.evaluate_research_gate_generation(payload, threshold_cfg=cfg)
+
+
+def test_design_26_distinct_state_hashes_valid():
+    payload = _shadow_payload(
+        results=[
+            _cand("cand-A", "state-A"),
+            _cand("cand-B", "state-B"),
+        ]
+    )
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    env = gate.evaluate_research_gate_generation(payload, threshold_cfg=cfg)
+    by_id = {r["candidate_id"]: r["gate"] for r in env["results"]}
+    assert by_id["cand-A"]["state_hash"] == "state-A"
+    assert by_id["cand-B"]["state_hash"] == "state-B"
+    assert "state_hash" not in env
+
+
+def test_design_31_candidate_error_isolates_sibling():
+    bad_answers = _complete_answers(0.5)
+    del bad_answers["needsNews"]
+    payload = _shadow_payload(
+        results=[
+            _cand("cand-A", "state-A"),
+            _cand("cand-B", "state-B", answers=bad_answers),
+        ]
+    )
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    env = gate.evaluate_research_gate_generation(payload, threshold_cfg=cfg)
+    by_id = {r["candidate_id"]: r["gate"] for r in env["results"]}
+    assert by_id["cand-A"]["mode"] == gate.MODE_SHADOW_ONLY
+    assert by_id["cand-B"]["mode"] == gate.MODE_ERROR
+    assert by_id["cand-B"]["error"]["code"] == "MISSING_HEAD"
+    assert env["mode"] == gate.MODE_SHADOW_ONLY
+
+
+def test_design_32_envelope_corruption_raises():
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    good = [_cand("cand-A", "state-A")]
+    with pytest.raises(ResearchGateError):
+        gate.evaluate_research_gate_generation(
+            _shadow_payload(results=good, generation_id=""),
+            threshold_cfg=cfg,
+        )
+    with pytest.raises(ResearchGateError):
+        gate.evaluate_research_gate_generation(
+            _shadow_payload(results=good, provider="unknown"),
+            threshold_cfg=cfg,
+        )
+    with pytest.raises(ResearchGateError):
+        gate.evaluate_research_gate_generation(
+            _shadow_payload(results=good, requested_model=""),
+            threshold_cfg=cfg,
+        )
+    with pytest.raises(ResearchGateError):
+        gate.evaluate_research_gate_generation(
+            _shadow_payload(results=good, evaluator_version=""),
+            threshold_cfg=cfg,
+        )
+    bad_payload = _shadow_payload(results=good)
+    bad_payload["results"] = "nope"
+    with pytest.raises(ResearchGateError):
+        gate.evaluate_research_gate_generation(bad_payload, threshold_cfg=cfg)
+    with pytest.raises(ResearchGateError):
+        gate.evaluate_research_gate_generation(
+            _shadow_payload(results=good),
+            threshold_cfg={"buckets": []},
+        )
+
+
+def test_design_21_30_order_and_determinism():
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    results_a = [
+        _cand("cand-C", "sC"),
+        _cand("cand-A", "sA"),
+        _cand("cand-B", "sB"),
+    ]
+    results_b = [
+        _cand("cand-B", "sB"),
+        _cand("cand-C", "sC"),
+        _cand("cand-A", "sA"),
+    ]
+    env1 = gate.evaluate_research_gate_generation(_shadow_payload(results=results_a), threshold_cfg=cfg)
+    env2 = gate.evaluate_research_gate_generation(_shadow_payload(results=results_b), threshold_cfg=cfg)
+    assert [r["candidate_id"] for r in env1["results"]] == ["cand-A", "cand-B", "cand-C"]
+    assert env1 == env2
+    assert "timestamp" not in env1
+
+
+def test_upstream_reviewclass_under_answers_only():
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    payload = _shadow_payload(
+        results=[_cand("cand-A", "state-A", review_choice="monitor")]
+    )
+    assert "reviewClass" not in payload["results"][0]
+    env = gate.evaluate_research_gate_generation(payload, threshold_cfg=cfg)
+    gate_obj = env["results"][0]["gate"]
+    assert gate_obj["diagnostics"]["review_class"] == "monitor"
+    assert gate_obj["diagnostics"]["resolved_model"] == "jev-1.13.0"
+    # decision invariance when only review choice changes
+    payload2 = _shadow_payload(
+        results=[_cand("cand-A", "state-A", review_choice="escalate")]
+    )
+    env2 = gate.evaluate_research_gate_generation(payload2, threshold_cfg=cfg)
+    g2 = env2["results"][0]["gate"]
+    assert g2["heads"] == gate_obj["heads"]
+    assert g2["diagnostics"]["review_class"] == "escalate"
+
+
+def test_top_level_identity_overrides_candidate_copies():
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    payload = _shadow_payload(
+        results=[
+            _cand(
+                "cand-A",
+                "state-A",
+                extra={
+                    "provider": "openrouter",
+                    "requested_model": "typesafe/jev-1.13",
+                    "evaluator_version": "other",
+                },
+            )
+        ]
+    )
+    env = gate.evaluate_research_gate_generation(payload, threshold_cfg=cfg)
+    g = env["results"][0]["gate"]
+    assert g["provider"] == DIRECT[0]
+    assert g["requested_model"] == DIRECT[1]
+    assert g["evaluator_version"] == DIRECT[2]
+
+
+def test_quant_metadata_ignored():
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    a = _cand(
+        "cand-A",
+        "state-A",
+        extra={
+            "quant_reference": {"x": 1},
+            "grade": "A",
+            "pre_entry_rank": 1,
+            "seasonality_score": 9,
+            "score_breakdown": {"a": 1},
+        },
+    )
+    b = _cand(
+        "cand-A",
+        "state-A",
+        extra={
+            "quant_reference": {"x": 99},
+            "grade": "Z",
+            "pre_entry_rank": 999,
+            "seasonality_score": -1,
+            "score_breakdown": {"a": 0},
+        },
+    )
+    env1 = gate.evaluate_research_gate_generation(_shadow_payload(results=[a]), threshold_cfg=cfg)
+    env2 = gate.evaluate_research_gate_generation(_shadow_payload(results=[b]), threshold_cfg=cfg)
+    assert env1["results"][0]["gate"]["heads"] == env2["results"][0]["gate"]["heads"]
+
+
+def test_empty_results_valid_envelope():
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    env = gate.evaluate_research_gate_generation(_shadow_payload(results=[]), threshold_cfg=cfg)
+    assert env["mode"] == gate.MODE_SHADOW_ONLY
+    assert env["results"] == []
+    assert HEX64.match(env["threshold_config_hash"])
+
+
+def test_malformed_result_element_raises():
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    payload = _shadow_payload(results=["bad"])
+    with pytest.raises(ResearchGateError):
+        gate.evaluate_research_gate_generation(payload, threshold_cfg=cfg)

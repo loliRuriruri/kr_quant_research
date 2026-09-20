@@ -449,3 +449,117 @@ def evaluate_research_gate(
         },
         "side_effects_executed": False,
     }
+
+
+
+def _extract_review_class(answers: Any) -> Any:
+    if not isinstance(answers, Mapping):
+        return None
+    review_node = answers.get("reviewClass")
+    if isinstance(review_node, Mapping) and isinstance(review_node.get("choice"), str):
+        return review_node.get("choice")
+    return None
+
+
+def evaluate_research_gate_generation(
+    shadow_payload: Mapping[str, Any],
+    *,
+    threshold_cfg: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Orchestrate one upstream shadow generation into an in-memory gate envelope."""
+    if not isinstance(shadow_payload, Mapping):
+        raise ResearchGateError("invalid shadow_payload: must be a mapping")
+
+    generation_id = shadow_payload.get("generation_id")
+    provider = shadow_payload.get("provider")
+    requested_model = shadow_payload.get("requested_model")
+    evaluator_version = shadow_payload.get("evaluator_version")
+    results = shadow_payload.get("results")
+
+    for field, value in (
+        ("generation_id", generation_id),
+        ("provider", provider),
+        ("requested_model", requested_model),
+        ("evaluator_version", evaluator_version),
+    ):
+        if not isinstance(value, str) or not value.strip():
+            raise ResearchGateError(f"invalid generation identity: {field}")
+
+    if provider not in SUPPORTED_PROVIDERS:
+        raise ResearchGateError(f"unsupported provider: {provider!r}")
+
+    if not isinstance(results, list):
+        raise ResearchGateError("invalid generation results: must be a list")
+
+    # Generation-scope threshold prevalidation + envelope hash
+    try:
+        envelope_hash = threshold_config_hash(
+            threshold_cfg,
+            provider=provider,
+            requested_model=requested_model,
+            evaluator_version=evaluator_version,
+        )
+    except ResearchGateError:
+        raise
+
+    # Validate all result elements / uniqueness first (before evaluating)
+    seen: set[Any] = set()
+    validated_records: list[Mapping[str, Any]] = []
+    for idx, record in enumerate(results):
+        if not isinstance(record, Mapping):
+            raise ResearchGateError(f"invalid generation results[{idx}]: must be a mapping")
+        cid = record.get("candidate_id")
+        if cid in seen:
+            raise ResearchGateError(f"duplicate candidate_id: {cid!r}")
+        seen.add(cid)
+        validated_records.append(record)
+
+    out_results: list[dict[str, Any]] = []
+    for record in validated_records:
+        candidate_id = record.get("candidate_id")
+        state_hash = record.get("state_hash")
+        answers = record.get("answers")
+        resolved_model = record.get("resolved_model")
+        review_class = _extract_review_class(answers)
+
+        gate_obj = evaluate_research_gate(
+            answers=answers,  # type: ignore[arg-type]
+            threshold_cfg=threshold_cfg,
+            provider=provider,
+            requested_model=requested_model,
+            evaluator_version=evaluator_version,
+            generation_id=generation_id,
+            candidate_id=candidate_id,  # type: ignore[arg-type]
+            state_hash=state_hash,  # type: ignore[arg-type]
+            review_class=review_class,
+            resolved_model=resolved_model,
+        )
+
+        if gate_obj.get("mode") == MODE_SHADOW_ONLY:
+            candidate_hash = gate_obj.get("threshold_config_hash")
+            if candidate_hash != envelope_hash:
+                raise ResearchGateError(
+                    "inconsistent threshold_config_hash between envelope and candidate gate"
+                )
+
+        out_results.append(
+            {
+                "candidate_id": candidate_id,
+                "gate": gate_obj,
+            }
+        )
+
+    out_results.sort(key=lambda row: str(row.get("candidate_id")))
+
+    return {
+        "schema_version": GATE_SCHEMA_VERSION,
+        "artifact_type": GATE_ARTIFACT_TYPE,
+        "mode": MODE_SHADOW_ONLY,
+        "generation_id": generation_id,
+        "provider": provider,
+        "requested_model": requested_model,
+        "evaluator_version": evaluator_version,
+        "threshold_config_hash": envelope_hash,
+        "results": out_results,
+        "side_effects_executed": False,
+    }
