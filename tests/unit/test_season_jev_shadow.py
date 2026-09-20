@@ -1262,3 +1262,49 @@ def test_openrouter_runner_failure_preserves_quant_bundle(
     assert out["errors"] == [{
         "error": "RUNNER:RuntimeError",
     }]
+
+
+def test_generated_record_persists_clean_state(tmp_path, monkeypatch, env_key):
+    s = _settings(tmp_path)
+    monkeypatch.setattr(shadow, "source_identity", lambda *a, **k: _bundle()["identity"])
+    cand = _cand(0)
+    monkeypatch.setattr(shadow, "collect_candidates", lambda *a, **k: [cand])
+    calls = []
+    out = shadow.evaluate_generation(s, _bundle(), runner=_ok_runner(calls))
+    assert calls  # generated path hits runner
+    rec = out["results"][0]
+    assert rec["status"] == "GENERATED"
+    assert "state" in rec
+    assert rec["state"] == cand["state"]
+    shadow.assert_state_clean(rec["state"])
+    assert "quant_reference" in rec
+    assert "grade" not in rec["state"]
+    assert "seasonality_score" not in rec["state"]
+    assert "pre_entry_rank" not in rec["state"]
+
+
+def test_reused_record_persists_current_candidate_safe_state(tmp_path, monkeypatch, env_key):
+    s = _settings(tmp_path)
+    monkeypatch.setattr(shadow, "source_identity", lambda *a, **k: _bundle()["identity"])
+    cand = _cand(0, state_hash="sem")
+    monkeypatch.setattr(shadow, "collect_candidates", lambda *a, **k: [cand])
+    path = shadow.shadow_path(s, "gen-A", "typesafe_direct")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "generation_id": "gen-A",
+        "provider": "typesafe_direct",
+        "requested_model": "jev-latest",
+        "evaluator_version": "season-jev-shadow-v1",
+        "finished_at": "z",
+        "results": [{"status": "GENERATED", "state_hash": "sem", "answers": _complete_answers()}],
+    }), encoding="utf-8")
+    calls = []
+    out = shadow.evaluate_generation(s, _bundle(), runner=_ok_runner(calls))
+    assert calls == []
+    rec = out["results"][0]
+    assert rec["status"] == "REUSED"
+    assert "state" in rec
+    assert rec["state"] == cand["state"]
+    shadow.assert_state_clean(rec["state"])
+    assert "quant_reference" in rec
+    assert "grade" not in rec["state"]

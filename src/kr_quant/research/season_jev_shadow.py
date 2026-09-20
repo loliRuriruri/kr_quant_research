@@ -231,12 +231,15 @@ def _skipped(candidate: dict[str, Any], reason: str) -> dict[str, Any]:
 
 def _reused(candidate: dict[str, Any], source: dict[str, Any]) -> dict[str, Any]:
     rec = source["record"]
+    state = candidate.get("state")
+    assert_state_clean(state)
     return {
         "candidate_type": candidate.get("candidate_type"),
         "candidate_id": candidate.get("id"),
         "signal_id": candidate.get("id") if candidate.get("candidate_type") == "season_pattern" else None,
         "ticker": candidate.get("ticker"),
         "state_hash": candidate.get("state_hash"),
+        "state": state,
         "quant_reference": candidate.get("quant_reference") or {},
         "status": "REUSED",
         "reused_from_generation_id": source["original_generation"],
@@ -593,12 +596,16 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
         cid = str(item.get("id") or "")
         started_ids.add(cid)
         source = by_id.get(item.get("id")) or {}
+        state = source.get("state")
+        if state is not None:
+            assert_state_clean(state)
         record = {
             "candidate_type": item.get("candidate_type") or source.get("candidate_type"),
             "candidate_id": item.get("id") or source.get("id"),
             "signal_id": source.get("id") if source.get("candidate_type") == "season_pattern" else None,
             "ticker": item.get("ticker") or source.get("ticker"),
             "state_hash": item.get("state_hash") or source.get("state_hash"),
+            "state": state,
             "quant_reference": source.get("quant_reference") or {},
             "status": "GENERATED" if answers_complete(item.get("answers")) else "ERROR",
             "answers": item.get("answers") or {},

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import os
+import tempfile
 import json
 import math
 from pathlib import Path
@@ -745,3 +747,174 @@ def _resolved_model_distribution(samples: list[dict]) -> dict[str, int]:
         if isinstance(model, str) and model.strip() != "":
             counts[model] = counts.get(model, 0) + 1
     return {k: counts[k] for k in sorted(counts.keys())}
+
+
+def calibration_root(settings) -> Path:
+    return Path(settings.data_dir) / "research" / "jev_calibration"
+
+
+def read_jsonl(path: Path) -> list[dict]:
+    p = Path(path)
+    if not p.is_file():
+        return []
+    rows: list[dict] = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        obj = json.loads(line)
+        if not isinstance(obj, dict):
+            raise CalibrationError("JSONL row must be an object")
+        rows.append(obj)
+    return rows
+
+
+def write_jsonl_atomic(path: Path, rows: list[dict]) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+        dir=str(target.parent),
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            for row in rows:
+                if not isinstance(row, dict):
+                    raise CalibrationError("JSONL row must be a dict")
+                fh.write(_canonical_json(row))
+                fh.write("\n")
+        text = tmp_path.read_text(encoding="utf-8")
+        if text.lstrip().startswith("["):
+            raise CalibrationError("JSONL must not be a JSON array")
+        parsed: list[dict] = []
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            obj = json.loads(line)
+            if not isinstance(obj, dict):
+                raise CalibrationError("JSONL validation failed: non-object row")
+            parsed.append(obj)
+        if len(parsed) != len(rows):
+            raise CalibrationError("JSONL validation failed: row count mismatch")
+        os.replace(tmp_path, target)
+        tmp_path = None  # type: ignore[assignment]
+    finally:
+        if tmp_path is not None and Path(tmp_path).exists():
+            try:
+                Path(tmp_path).unlink()
+            except OSError:
+                pass
+
+
+def export_candidates_from_shadow(
+    shadow_payload: dict,
+    *,
+    provider: str,
+    requested_model: str,
+    evaluator_version: str,
+) -> list[dict]:
+    if not isinstance(shadow_payload, dict):
+        raise CalibrationError("shadow_payload must be a dict")
+    generation_id = shadow_payload.get("generation_id")
+    results = shadow_payload.get("results") or []
+    out: list[dict] = []
+    for rec in results:
+        if not isinstance(rec, dict):
+            raise CalibrationError("shadow result must be a dict")
+        candidate_id = rec.get("candidate_id")
+        if not isinstance(candidate_id, str) or not candidate_id.strip():
+            raise CalibrationError("candidate_id required")
+        state_hash = rec.get("state_hash")
+        if not isinstance(state_hash, str) or not state_hash.strip():
+            raise CalibrationError("state_hash required")
+        state = rec.get("state")
+        if state is None:
+            raise CalibrationError("SHADOW_STATE_MISSING")
+        assert_calibration_state_clean(state)
+        ticker = rec.get("ticker")
+        split = assign_split(
+            ticker=ticker if isinstance(ticker, str) else None,
+            state_hash=state_hash,
+        )
+        sample_id = make_sample_id(
+            provider, requested_model, evaluator_version, state_hash
+        )
+        row = {
+            "sample_id": sample_id,
+            "candidate_id": candidate_id,
+            "candidate_type": rec.get("candidate_type"),
+            "ticker": ticker,
+            "generation_id": generation_id,
+            "state_hash": state_hash,
+            "state": state,
+            "jev_answers": rec.get("answers") or {},
+            "provider": provider,
+            "requested_model": requested_model,
+            "evaluator_version": evaluator_version,
+            "resolved_model": rec.get("resolved_model"),
+            "split": split,
+            "annotation_version": 1,
+        }
+        if "quant_reference" in rec:
+            row["quant_reference"] = rec.get("quant_reference")
+        validate_sample(row)
+        out.append(row)
+    ensure_split_consistency(out)
+    return out
+
+
+def build_blind_label_template(rows: list[dict]) -> list[dict]:
+    template: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise CalibrationError("row must be a dict")
+        sample_id = row.get("sample_id")
+        if not isinstance(sample_id, str) or not sample_id.strip():
+            raise CalibrationError("sample_id required")
+        blind = {
+            "sample_id": sample_id,
+            "candidate_id": row.get("candidate_id"),
+            "candidate_type": row.get("candidate_type"),
+            "ticker": row.get("ticker"),
+            "generation_id": row.get("generation_id"),
+            "selection_date": row.get("selection_date"),
+            "state_hash": row.get("state_hash"),
+            "state": row.get("state"),
+            "blind": True,
+            "annotation_version": row.get("annotation_version", 1),
+            "human_labels": {h: None for h in BOOLEAN_HEADS},
+        }
+        template.append(blind)
+    return template
+
+
+def ingest_blind_labels(
+    *,
+    template_rows: list[dict],
+    internal_rows: list[dict],
+) -> list[dict]:
+    by_id: dict[str, dict] = {}
+    for row in internal_rows:
+        if not isinstance(row, dict):
+            raise CalibrationError("internal row must be a dict")
+        sid = row.get("sample_id")
+        if not isinstance(sid, str) or not sid.strip():
+            raise CalibrationError("internal sample_id required")
+        by_id[sid] = row
+    out: list[dict] = []
+    for lab in template_rows:
+        if not isinstance(lab, dict):
+            raise CalibrationError("label row must be a dict")
+        sid = lab.get("sample_id")
+        if not isinstance(sid, str) or sid not in by_id:
+            raise CalibrationError(f"unknown sample_id: {sid!r}")
+        _require_annotation_version(lab.get("annotation_version"))
+        human = lab.get("human_labels")
+        if not isinstance(human, dict):
+            raise CalibrationError("human_labels must be a dict")
+        merged = dict(by_id[sid])
+        merged["human_labels"] = dict(human)
+        merged["annotation_version"] = int(lab["annotation_version"])
+        out.append(merged)
+    return out

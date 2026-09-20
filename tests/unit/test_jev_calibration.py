@@ -1,6 +1,7 @@
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -946,3 +947,165 @@ def test_holdout_locked_requires_selection_timestamp():
     }
     with pytest.raises(cal.CalibrationError, match="selected_at|selection_locked"):
         cal.evaluate_holdout_locked(samples=[], selection=selection)
+
+
+# --- Task 5 ---
+
+def test_calibration_root_under_data_research(tmp_path):
+    settings = SimpleNamespace(data_dir=tmp_path / "data")
+    assert cal.calibration_root(settings) == tmp_path / "data" / "research" / "jev_calibration"
+
+
+def test_export_candidates_requires_persisted_state_and_candidate_id():
+    shadow_payload = {
+        "generation_id": "g1",
+        "results": [{
+            "candidate_id": "sig-1",
+            "candidate_type": "season_pattern",
+            "ticker": "005930",
+            "state_hash": "h1",
+            "state": {"identity": {"ticker": "005930"}},
+            "answers": {
+                "needsDart": {"probability": 0.6},
+                "materialNow": {"probability": 0.5},
+                "needsCurrentYearCheck": {"probability": 0.1},
+                "needsNews": {"probability": 0.2},
+                "historicalConflict": {"probability": 0.1},
+                "invalidationCheckNeeded": {"probability": 0.1},
+                "needsDeepAI": {"probability": 0.1},
+                "reviewClass": {"choice": "monitor"},
+            },
+            "quant_reference": {"grade": "A"},
+            "resolved_model": "jev-1.13.0",
+        }],
+    }
+    rows = cal.export_candidates_from_shadow(
+        shadow_payload,
+        provider="typesafe_direct",
+        requested_model="jev-latest",
+        evaluator_version="season-jev-shadow-v1",
+    )
+    assert rows[0]["candidate_id"] == "sig-1"
+    assert rows[0]["sample_id"] == cal.make_sample_id(
+        "typesafe_direct", "jev-latest", "season-jev-shadow-v1", "h1",
+    )
+    assert rows[0]["split"] in {cal.SPLIT_CALIBRATION, cal.SPLIT_HOLDOUT}
+    assert "quant_reference" not in rows[0]["state"]
+    cal.assert_calibration_state_clean(rows[0]["state"])
+    assert "jev_answers" in rows[0]
+
+
+def test_export_missing_state_fail_closed():
+    payload = {"results": [{
+        "candidate_id": "sig-1", "ticker": "005930", "state_hash": "h1",
+        "answers": {},
+    }]}
+    with pytest.raises(cal.CalibrationError, match="SHADOW_STATE_MISSING"):
+        cal.export_candidates_from_shadow(
+            payload, provider="typesafe_direct", requested_model="jev-latest",
+            evaluator_version="season-jev-shadow-v1",
+        )
+
+
+def test_export_rejects_quant_inside_state():
+    with pytest.raises(ValueError):
+        cal.export_candidates_from_shadow(
+            {"results": [{"candidate_id": "x", "ticker": "1", "state_hash": "h",
+                          "state": {"grade": "A"}, "answers": {}}]},
+            provider="typesafe_direct", requested_model="jev-latest",
+            evaluator_version="season-jev-shadow-v1",
+        )
+
+
+def test_blind_template_hides_probabilities_and_predictions():
+    internal = [{
+        "sample_id": "s1", "candidate_id": "sig-1", "candidate_type": "season_pattern",
+        "ticker": "005930", "generation_id": "g1", "selection_date": "2026-09-01",
+        "state": {"identity": {"ticker": "005930"}},
+        "jev_answers": {"needsDart": {"probability": 0.9, "decision": True}},
+        "annotation_version": 1,
+    }]
+    template = cal.build_blind_label_template(internal)
+    row = template[0]
+    assert row["blind"] is True
+    assert "jev_answers" not in row
+    assert "threshold" not in row
+    assert "prediction" not in row
+    assert "decision" not in row
+    for head in cal.BOOLEAN_HEADS:
+        assert head in row["human_labels"]
+    assert set(row["human_labels"].values()) <= {None, "unknown"}
+
+
+def test_ingest_joins_by_sample_id_and_preserves_jev_answers():
+    internal = [{
+        "sample_id": "s1", "state": {"identity": {"ticker": "005930"}},
+        "state_hash": "h1", "split": cal.SPLIT_CALIBRATION,
+        "jev_answers": {"needsDart": {"probability": 0.9}},
+        "human_labels": {},
+        "annotation_version": 1,
+    }]
+    labeled = [{
+        "sample_id": "s1", "blind": True, "annotation_version": 1,
+        "human_labels": {h: False for h in cal.BOOLEAN_HEADS},
+        "jev_answers": {"needsDart": {"probability": 0.01}},
+    }]
+    out = cal.ingest_blind_labels(template_rows=labeled, internal_rows=internal)
+    assert out[0]["jev_answers"]["needsDart"]["probability"] == 0.9
+    assert out[0]["human_labels"]["needsDart"] is False
+
+
+def test_ingest_rejects_unknown_sample_id_and_bad_annotation_version():
+    internal = [{"sample_id": "s1", "jev_answers": {}, "state": {}, "state_hash": "h", "split": cal.SPLIT_CALIBRATION, "annotation_version": 1}]
+    with pytest.raises(cal.CalibrationError):
+        cal.ingest_blind_labels(
+            template_rows=[{"sample_id": "nope", "annotation_version": 1,
+                            "human_labels": {h: "unknown" for h in cal.BOOLEAN_HEADS}}],
+            internal_rows=internal,
+        )
+    with pytest.raises(cal.CalibrationError):
+        cal.ingest_blind_labels(
+            template_rows=[{"sample_id": "s1", "annotation_version": "v1",
+                            "human_labels": {h: "unknown" for h in cal.BOOLEAN_HEADS}}],
+            internal_rows=internal,
+        )
+
+
+def test_cli_help_lists_required_subcommands():
+    import importlib.util
+    from pathlib import Path as P
+    script = P(__file__).resolve().parents[2] / "scripts" / "jev_calibration_export.py"
+    spec = importlib.util.spec_from_file_location("jev_calibration_export", script)
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    help_text = cli.build_parser().format_help()
+    for name in (
+        "export-candidates", "blind-template", "ingest-labels",
+        "calibration-report", "lock-selection", "holdout-eval",
+    ):
+        assert name in help_text
+
+
+def test_write_jsonl_atomic_round_trip(tmp_path):
+    path = tmp_path / "rows.jsonl"
+    rows = [{"이름": "한글", "n": 1}, {"이름": "둘", "n": 2}]
+    cal.write_jsonl_atomic(path, rows)
+    assert path.read_bytes().endswith(b"\n")
+    assert cal.read_jsonl(path) == rows
+
+
+def test_jsonl_is_one_object_per_line(tmp_path):
+    path = tmp_path / "rows.jsonl"
+    rows = [{"a": 1}, {"b": 2}]
+    cal.write_jsonl_atomic(path, rows)
+    lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(lines) == 2
+    for ln in lines:
+        json.loads(ln)
+
+
+def test_jsonl_writer_does_not_emit_json_array(tmp_path):
+    path = tmp_path / "rows.jsonl"
+    cal.write_jsonl_atomic(path, [{"a": 1}, {"b": 2}])
+    text = path.read_text(encoding="utf-8")
+    assert not text.lstrip().startswith("[")
