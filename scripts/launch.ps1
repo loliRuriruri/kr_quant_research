@@ -64,6 +64,7 @@ if (-not (Test-QuantServer)) {
             'chcp 65001 >nul'
             "cd /d `"$ProjectRoot`""
             "set `"PYTHONPATH=$ProjectRoot\src;%PYTHONPATH%`""
+            'set "KR_QUANT_NO_BROWSER=1"'
             "`"$PythonExe`" -m kr_quant.web.app >> `"$stdout`" 2>> `"$stderr`""
         )
         Set-Content -LiteralPath $launcher -Value $lines -Encoding ASCII

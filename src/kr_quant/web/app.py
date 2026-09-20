@@ -4174,6 +4174,10 @@ def serve(host: str = "127.0.0.1", port: int = 8790, open_browser: bool = True) 
 
     import uvicorn
 
+    # Launchers that open the browser themselves set KR_QUANT_NO_BROWSER=1.
+    if str(os.environ.get("KR_QUANT_NO_BROWSER", "")).strip().lower() in {"1", "true", "yes"}:
+        open_browser = False
+
     _console_setup()
     print("")
     print("  ============================================================")
