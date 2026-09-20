@@ -479,6 +479,7 @@ Any such behavior requires a separately approved later phase.
 | `schema_version` | integer `1` for this design |
 | `mode` | always `"SHADOW_ONLY"` for successful gate objects |
 | `candidate_id` | required non-empty string (upstream audit identity) |
+| `threshold_config_hash` | always 64-char lowercase SHA-256 hex on successful SHADOW_ONLY (MATCHED or MISSING; §16.2) |
 | `side_effects_executed` | always `false` for J3 core |
 | per-head `decision` | `true` \| `false` \| `null` only |
 | per-head `reason` | `null` on numeric decision; `"UNCALIBRATED"` on null threshold; error reasons only on ERROR objects |
@@ -536,9 +537,9 @@ Per-candidate structural corruption includes:
 
 Clarification:
 
-- **Missing bucket / null threshold** → per-head UNCALIBRATED (`decision=null`), object remains SHADOW_ONLY.
+- **Missing bucket / null threshold** → per-head UNCALIBRATED (`decision=null`), object remains SHADOW_ONLY, with a deterministic MISSING- or MATCHED-bucket `threshold_config_hash` (§16.2).
 - **Malformed probability or malformed claimed numeric threshold** → that candidate's gate is ERROR (fail closed; no silent coercion). Sibling candidates in the same generation remain independently evaluable.
-- **Envelope-level corruption** (missing `generation_id` / `provider` / `requested_model` / `evaluator_version`, or invalid/unreadable threshold config for the generation operation) → fail the **entire** generation evaluation/persistence; do not write a partial envelope silently.
+- **Envelope-level corruption** (missing `generation_id` / `provider` / `requested_model` / `evaluator_version`, or invalid/unreadable threshold config for the generation operation) → fail the **entire** generation evaluation/persistence; do not write a partial envelope silently; do **not** fabricate a MISSING-bucket `threshold_config_hash` for unreadable/invalid config.
 - Duplicate `candidate_id` inside one envelope → ERROR / reject persistence.
 
 ### 11.2 Forbidden fallbacks
@@ -764,29 +765,130 @@ threshold_config_hash
 
 Same `candidate_id` with a different `state_hash` MUST NOT reuse the old result.
 
-### 16.2 `threshold_config_hash` (effective-bucket scoped)
+### 16.2 `threshold_config_hash` (effective-bucket scoped; MATCHED | MISSING)
 
-Implementation MUST compute a stable hash over:
+`threshold_config_hash` is a **64-character lowercase SHA-256 hex** of a canonical UTF-8 JSON payload.
+
+#### Canonical JSON rules
+
+- recursive sorted keys
+- compact separators (no insignificant whitespace)
+- `ensure_ascii=false`
+- UTF-8 bytes hashed
+- no timestamps
+- **no unrelated** provider / requested_model / evaluator buckets
+
+#### Canonical payload fields (locked)
 
 ```text
 schema_version
-+ exact matching bucket thresholds
+provider
+requested_model
+evaluator_version
+bucket_status
+thresholds
 ```
 
-for the identity:
+#### MATCHED bucket (`bucket_status = "MATCHED"`)
+
+When an exact `provider` + `requested_model` + `evaluator_version` bucket exists:
+
+```json
+{
+  "schema_version": 1,
+  "provider": "typesafe_direct",
+  "requested_model": "jev-latest",
+  "evaluator_version": "season-jev-shadow-v1",
+  "bucket_status": "MATCHED",
+  "thresholds": {
+    "...": "exact raw threshold mapping from that matching bucket"
+  }
+}
+```
+
+Exact raw threshold mapping means:
+
+- `null` remains `null`
+- numeric remains numeric
+- an **absent** head remains **absent**
+
+Do **NOT** normalize an absent head into `null` merely for hashing.
+
+Missing vs explicit-null configurations MUST remain distinguishable artifacts for hash identity, even though lookup semantics may treat both as UNCALIBRATED for that head.
+
+#### MISSING bucket (`bucket_status = "MISSING"`)
+
+When no exact bucket exists:
+
+Lookup behavior is unchanged:
 
 ```text
-provider + requested_model + evaluator_version
+status / mode path → SHADOW_ONLY
+threshold → null
+decision → null
+reason → UNCALIBRATED
 ```
 
-Do **NOT** hash unrelated provider buckets into this identity.
+But `threshold_config_hash` MUST still be a deterministic valid SHA-256 hex of:
 
-Therefore:
+```json
+{
+  "schema_version": 1,
+  "provider": "<requested provider>",
+  "requested_model": "<requested model>",
+  "evaluator_version": "<requested evaluator>",
+  "bucket_status": "MISSING",
+  "thresholds": null
+}
+```
 
-- changing another provider's thresholds does **NOT** invalidate this provider's J3 candidate reuse
-- changing any threshold in the effective matching bucket **MUST** invalidate reuse
+Do **NOT**:
 
-Do not reuse an output created under a different effective threshold set.
+- hash the entire thresholds config file
+- hash another provider's bucket
+- invent seven `null` thresholds as if a bucket existed
+- return `threshold_config_hash=null`
+- invent `0.5`
+
+Therefore missing bucket A ≠ missing bucket B when provider / model / evaluator identity differs.
+
+#### Invalid / unreadable threshold config
+
+Distinguish:
+
+| Case | Gate outcome | `threshold_config_hash` |
+| --- | --- | --- |
+| Valid config + exact bucket missing | SHADOW_ONLY / UNCALIBRATED | deterministic MISSING-bucket hash |
+| Unreadable / structurally invalid threshold config | ERROR / generation failure (§11) | do **not** fabricate a MISSING-bucket hash |
+
+Examples of invalid config: unreadable JSON/path; malformed top-level schema; duplicate/ambiguous exact bucket if the loader treats that as invalid; invalid numeric threshold.
+
+Do not change existing J2 `lookup_threshold` behavior unless an implementation plan later proves a deficiency.
+
+#### Successful SHADOW_ONLY objects
+
+Successful SHADOW_ONLY gate objects **ALWAYS** contain:
+
+```text
+threshold_config_hash = 64-char lowercase SHA-256 hex
+```
+
+including:
+
+- all-null matching bucket
+- partially populated matching bucket
+- missing exact bucket
+
+ERROR objects need not pretend a valid `threshold_config_hash` exists when threshold-config parsing itself failed.
+
+#### Reuse consequences
+
+- **MISSING → MATCHED** (exact bucket later added): `bucket_status` changes → hash changes → prior candidate reuse invalidated
+- **Matching bucket threshold edit**: hash changes → reuse invalidated
+- **Unrelated provider bucket edit**: effective canonical payload unchanged → hash unchanged → current provider candidate reuse remains valid
+- **Different requested model/evaluator while still MISSING**: identity fields differ → hash differs
+
+Do not reuse an output created under a different effective threshold set / bucket_status payload.
 
 ### 16.3 Determinism
 
@@ -890,6 +992,13 @@ Future unit tests (offline fixtures) MUST cover at least:
 30. deterministic candidate ordering (`candidate_id` ascending)
 31. candidate ERROR does not erase valid sibling results
 32. envelope identity corruption fails the entire evaluation
+33. missing exact bucket still yields deterministic `threshold_config_hash`
+34. missing bucket hash differs by provider/model/evaluator identity
+35. adding formerly-missing exact bucket changes `threshold_config_hash` and invalidates reuse
+36. explicit all-null matching bucket hash differs from missing-bucket hash
+37. missing head vs explicit-null head produces different matching-bucket hash while both remain UNCALIBRATED for that head
+38. unrelated provider bucket edit does not change effective hash
+39. malformed/unreadable config never receives fabricated MISSING-bucket hash
 
 ### Five critical review-focus risks → tests
 
@@ -899,7 +1008,7 @@ Future unit tests (offline fixtures) MUST cover at least:
 | 2 | Threshold bucket crossing provider/model/evaluator | 5, 6, 7, 8, 12 |
 | 3 | Shadow decision accidentally executing research | 16, 17, 18, assert `side_effects_executed=false` |
 | 4 | J3 leaking into Quant ranking/scoring | 19 + static import/forbid checks |
-| 5 | Threshold/reuse identity stale after calibration changes | 20, 21, 27, 28, 29 |
+| 5 | Threshold/reuse identity stale after calibration changes | 20, 21, 27, 28, 29, 33, 34, 35, 36, 37, 38, 39 |
 
 ---
 
