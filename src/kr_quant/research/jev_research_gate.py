@@ -502,16 +502,20 @@ def evaluate_research_gate_generation(
     except ResearchGateError:
         raise
 
-    # Validate all result elements / uniqueness first (before evaluating)
-    seen: set[Any] = set()
+    # Validate result elements. Uniqueness applies only to valid non-empty
+    # string candidate_ids (hashable set). Malformed IDs must reach
+    # evaluate_research_gate so Task-2 can return INVALID_IDENTITY without
+    # an incidental TypeError from set membership.
+    seen_valid: set[str] = set()
     validated_records: list[Mapping[str, Any]] = []
     for idx, record in enumerate(results):
         if not isinstance(record, Mapping):
             raise ResearchGateError(f"invalid generation results[{idx}]: must be a mapping")
         cid = record.get("candidate_id")
-        if cid in seen:
-            raise ResearchGateError(f"duplicate candidate_id: {cid!r}")
-        seen.add(cid)
+        if isinstance(cid, str) and cid:
+            if cid in seen_valid:
+                raise ResearchGateError(f"duplicate candidate_id: {cid!r}")
+            seen_valid.add(cid)
         validated_records.append(record)
 
     out_results: list[dict[str, Any]] = []

@@ -848,3 +848,66 @@ def test_malformed_result_element_raises():
     payload = _shadow_payload(results=["bad"])
     with pytest.raises(ResearchGateError):
         gate.evaluate_research_gate_generation(payload, threshold_cfg=cfg)
+
+
+def test_malformed_candidate_id_list_isolates():
+    """Unhashable list candidate_id must become INVALID_IDENTITY, not TypeError."""
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    rec = _cand("cand-A", "state-A")
+    rec["candidate_id"] = []
+    env = gate.evaluate_research_gate_generation(
+        _shadow_payload(results=[rec]),
+        threshold_cfg=cfg,
+    )
+    assert len(env["results"]) == 1
+    g = env["results"][0]["gate"]
+    assert g["mode"] == gate.MODE_ERROR
+    assert g["error"]["code"] == "INVALID_IDENTITY"
+
+
+def test_malformed_candidate_id_dict_isolates():
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    rec = _cand("cand-A", "state-A")
+    rec["candidate_id"] = {}
+    env = gate.evaluate_research_gate_generation(
+        _shadow_payload(results=[rec]),
+        threshold_cfg=cfg,
+    )
+    assert len(env["results"]) == 1
+    g = env["results"][0]["gate"]
+    assert g["mode"] == gate.MODE_ERROR
+    assert g["error"]["code"] == "INVALID_IDENTITY"
+
+
+def test_malformed_candidate_id_preserves_valid_sibling():
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    good = _cand("cand-A", "state-A")
+    bad = _cand("cand-B", "state-B")
+    bad["candidate_id"] = []
+    env = gate.evaluate_research_gate_generation(
+        _shadow_payload(results=[bad, good]),
+        threshold_cfg=cfg,
+    )
+    by_outer = {r["candidate_id"] if isinstance(r["candidate_id"], str) else "MALFORMED": r["gate"] for r in env["results"]}
+    # Find by gate identity fields / modes
+    modes = sorted(r["gate"]["mode"] for r in env["results"])
+    assert modes == [gate.MODE_ERROR, gate.MODE_SHADOW_ONLY]
+    shadow = next(r for r in env["results"] if r["gate"]["mode"] == gate.MODE_SHADOW_ONLY)
+    err = next(r for r in env["results"] if r["gate"]["mode"] == gate.MODE_ERROR)
+    assert shadow["candidate_id"] == "cand-A"
+    assert shadow["gate"]["mode"] == gate.MODE_SHADOW_ONLY
+    assert err["gate"]["error"]["code"] == "INVALID_IDENTITY"
+
+
+def test_duplicate_valid_string_candidate_id_still_rejects():
+    cfg = _cfg(_bucket(*DIRECT, _null_thresholds()))
+    with pytest.raises(ResearchGateError):
+        gate.evaluate_research_gate_generation(
+            _shadow_payload(
+                results=[
+                    _cand("cand-A", "state-1"),
+                    _cand("cand-A", "state-2"),
+                ]
+            ),
+            threshold_cfg=cfg,
+        )
