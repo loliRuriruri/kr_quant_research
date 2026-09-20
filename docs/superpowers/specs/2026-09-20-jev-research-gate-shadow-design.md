@@ -208,8 +208,16 @@ The J3 core MUST NOT:
 | `provider` | string | Exact bucket key (`typesafe_direct` or `openrouter`) |
 | `requested_model` | string | Exact bucket key (`jev-latest` or `typesafe/jev-1.13` today) |
 | `evaluator_version` | string | Exact bucket key (`season-jev-shadow-v1`) |
-| `state_hash` | string | From upstream shadow / `state_hash(...)` contract |
+| `state_hash` | string | Per-candidate identity from upstream shadow / `state_hash(...)` |
 | `generation_id` | string | Shadow generation identity (required for persistence/reuse) |
+| `candidate_id` | non-empty string | Upstream shadow `candidate_id` / record id (required audit identity) |
+
+Optional diagnostic identity (MUST NOT affect gate decisions):
+
+| Field | Notes |
+| --- | --- |
+| `candidate_type` | Upstream type label if present |
+| `ticker` | Upstream ticker if present |
 
 ### 7.2 Required boolean-head probabilities
 
@@ -392,6 +400,7 @@ Any such behavior requires a separately approved later phase.
   "evaluator_version": "season-jev-shadow-v1",
   "state_hash": "<hex>",
   "generation_id": "<id>",
+  "candidate_id": "candidate-1",
   "threshold_config_hash": "<hex>",
   "heads": {
     "materialNow": {
@@ -469,6 +478,7 @@ Any such behavior requires a separately approved later phase.
 | --- | --- |
 | `schema_version` | integer `1` for this design |
 | `mode` | always `"SHADOW_ONLY"` for successful gate objects |
+| `candidate_id` | required non-empty string (upstream audit identity) |
 | `side_effects_executed` | always `false` for J3 core |
 | per-head `decision` | `true` \| `false` \| `null` only |
 | per-head `reason` | `null` on numeric decision; `"UNCALIBRATED"` on null threshold; error reasons only on ERROR objects |
@@ -491,6 +501,14 @@ When structural/input corruption occurs (see §11), emit:
 
 Do not invent default research requirements on ERROR.
 
+### 10.4 Per-candidate vs generation envelope
+
+Section 10 defines the **per-candidate** Research Gate Shadow object.
+
+One upstream shadow generation may contain many candidates, each with its own `candidate_id` and `state_hash`. Persistence of many candidates in one file is defined in §15 (generation envelope). `state_hash` is **not** an artifact-level singleton identity.
+
+ERROR objects for a single candidate SHOULD still carry `candidate_id` and identity fields when known, so sibling candidates in a generation envelope remain independently auditable.
+
 ---
 
 ## 11. Failure Semantics
@@ -499,11 +517,12 @@ Do not invent default research requirements on ERROR.
 
 | Class | Behavior |
 | --- | --- |
-| Structural / input corruption | **Entire gate → ERROR** |
+| Per-candidate structural / input corruption | That candidate's gate object → `mode=ERROR` |
 | Valid input + null threshold for a head | Valid SHADOW_ONLY object; that head `decision=null` |
 | Valid input + numeric threshold | That head `decision=true|false` |
+| Envelope-level identity / threshold-config corruption | **Entire generation evaluation / persistence FAILS** |
 
-Structural corruption includes:
+Per-candidate structural corruption includes:
 
 - missing answers object
 - missing required boolean head
@@ -518,7 +537,9 @@ Structural corruption includes:
 Clarification:
 
 - **Missing bucket / null threshold** → per-head UNCALIBRATED (`decision=null`), object remains SHADOW_ONLY.
-- **Malformed probability or malformed claimed numeric threshold** → entire gate ERROR (fail closed; no silent coercion).
+- **Malformed probability or malformed claimed numeric threshold** → that candidate's gate is ERROR (fail closed; no silent coercion). Sibling candidates in the same generation remain independently evaluable.
+- **Envelope-level corruption** (missing `generation_id` / `provider` / `requested_model` / `evaluator_version`, or invalid/unreadable threshold config for the generation operation) → fail the **entire** generation evaluation/persistence; do not write a partial envelope silently.
+- Duplicate `candidate_id` inside one envelope → ERROR / reject persistence.
 
 ### 11.2 Forbidden fallbacks
 
@@ -633,22 +654,90 @@ If persisted, artifacts MUST be separate from:
   {generation_id}__{provider_safe}__gate.json
 ```
 
-Mirrors existing shadow naming under `research_snapshots/season_jev_shadow/` (`{generation_id}__{provider}.json`) with an explicit `__gate` suffix and dedicated directory.
+Mirrors the upstream shadow convention (`season_jev_shadow/{generation_id}__{provider}.json` containing `results[]`) with an explicit `__gate` suffix and dedicated directory.
 
-### 15.3 Artifact identity (required fields on disk)
+One file represents:
+
+```text
+one generation
++ one provider
++ one requested_model
++ one evaluator_version
++ one threshold_config_hash
+```
+
+and contains `results[]` for all evaluated candidates.
+
+### 15.3 Generation persistence envelope (locked)
+
+Preferred minimal envelope (single source of truth for `state_hash` inside each gate object):
+
+```json
+{
+  "schema_version": 1,
+  "artifact_type": "season_jev_research_gate",
+  "mode": "SHADOW_ONLY",
+  "generation_id": "gen-A",
+  "provider": "typesafe_direct",
+  "requested_model": "jev-latest",
+  "evaluator_version": "season-jev-shadow-v1",
+  "threshold_config_hash": "<hex>",
+  "results": [
+    {
+      "candidate_id": "candidate-1",
+      "gate": {
+        "schema_version": 1,
+        "mode": "SHADOW_ONLY",
+        "candidate_id": "candidate-1",
+        "state_hash": "<hex>",
+        "generation_id": "gen-A",
+        "provider": "typesafe_direct",
+        "requested_model": "jev-latest",
+        "evaluator_version": "season-jev-shadow-v1",
+        "threshold_config_hash": "<hex>",
+        "heads": {},
+        "research_requirements": {},
+        "side_effects_executed": false
+      }
+    }
+  ],
+  "side_effects_executed": false
+}
+```
+
+Rules:
+
+- Do **not** keep a second independently authoritative `state_hash` beside `gate.state_hash`.
+- `results[]` may contain N candidate gate objects.
+- Each `candidate_id` MUST be unique within the envelope; duplicates reject persistence.
+- Different candidates MAY have different `state_hash` and different gate decisions in the same generation artifact.
+- Persist `results[]` in **`candidate_id` ascending** order (byte-stability).
+- A candidate with structural invalid input stores `gate.mode=ERROR` for that candidate only; valid siblings remain.
+
+### 15.4 Artifact-level identity (envelope)
+
+Artifact-level identity fields:
 
 ```text
 schema_version
-mode
+artifact_type
+generation_id
 provider
 requested_model
 evaluator_version
-state_hash
-generation_id
 threshold_config_hash
 ```
 
-### 15.4 Overwrite / reuse policy
+There is **no** artifact-level singleton `state_hash`.
+
+Per-candidate identity:
+
+```text
+candidate_id
+state_hash
+```
+
+### 15.5 Overwrite / reuse policy
 
 See §16. Persistence writes MUST be atomic (follow existing `write_json_atomic` convention when implemented).
 
@@ -656,29 +745,68 @@ See §16. Persistence writes MUST be atomic (follow existing `write_json_atomic`
 
 ## 16. Reuse / Identity
 
-### 16.1 Reuse key
+### 16.1 Candidate-level reuse key
 
-Identical reuse is allowed only when all match:
+Reuse is defined at the **candidate result** level (not merely whole-file level).
+
+A prior candidate gate result may be reused only when all eight match:
+
+```text
+schema_version
+generation_id
+provider
+requested_model
+evaluator_version
+candidate_id
+state_hash
+threshold_config_hash
+```
+
+Same `candidate_id` with a different `state_hash` MUST NOT reuse the old result.
+
+### 16.2 `threshold_config_hash` (effective-bucket scoped)
+
+Implementation MUST compute a stable hash over:
+
+```text
+schema_version
++ exact matching bucket thresholds
+```
+
+for the identity:
+
+```text
+provider + requested_model + evaluator_version
+```
+
+Do **NOT** hash unrelated provider buckets into this identity.
+
+Therefore:
+
+- changing another provider's thresholds does **NOT** invalidate this provider's J3 candidate reuse
+- changing any threshold in the effective matching bucket **MUST** invalidate reuse
+
+Do not reuse an output created under a different effective threshold set.
+
+### 16.3 Determinism
+
+For identical:
 
 ```text
 generation_id
 provider
 requested_model
 evaluator_version
+effective threshold bucket
+candidate set
+candidate_id
 state_hash
-threshold_config_hash
-schema_version
+answers
 ```
 
-### 16.2 `threshold_config_hash`
+the persisted artifact MUST be byte-stable.
 
-Implementation MUST compute a stable hash over the exact threshold cfg content used for the decision (canonical JSON of matching bucket thresholds + schema_version), so that **any threshold change invalidates reuse**.
-
-Do not reuse an output created under a different threshold set.
-
-### 16.3 Determinism
-
-For identical inputs + identical threshold cfg, output MUST be byte-stable (aside from optional wall-clock fields, which this design forbids on the core object).
+No timestamps in the deterministic core/envelope. `results[]` order is `candidate_id` ascending.
 
 ---
 
@@ -753,6 +881,15 @@ Future unit tests (offline fixtures) MUST cover at least:
 21. output deterministic for identical inputs
 22. `enabled=false` unchanged (config not written)
 23. runtime fixtures require no network
+24. two candidates persist in one generation envelope
+25. candidate_id uniqueness enforced
+26. same generation with distinct state_hash values is valid
+27. one candidate state_hash change invalidates only that candidate reuse
+28. threshold bucket change invalidates candidate reuse
+29. unrelated provider threshold change does not invalidate this provider
+30. deterministic candidate ordering (`candidate_id` ascending)
+31. candidate ERROR does not erase valid sibling results
+32. envelope identity corruption fails the entire evaluation
 
 ### Five critical review-focus risks → tests
 
@@ -762,7 +899,7 @@ Future unit tests (offline fixtures) MUST cover at least:
 | 2 | Threshold bucket crossing provider/model/evaluator | 5, 6, 7, 8, 12 |
 | 3 | Shadow decision accidentally executing research | 16, 17, 18, assert `side_effects_executed=false` |
 | 4 | J3 leaking into Quant ranking/scoring | 19 + static import/forbid checks |
-| 5 | Threshold/reuse identity stale after calibration changes | 20, 21 |
+| 5 | Threshold/reuse identity stale after calibration changes | 20, 21, 27, 28, 29 |
 
 ---
 
@@ -773,6 +910,16 @@ Future unit tests (offline fixtures) MUST cover at least:
 ```text
 src/kr_quant/research/jev_research_gate.py
 tests/unit/test_jev_research_gate.py
+```
+
+Recommended API layers (names illustrative; Implementation Plan locks finals):
+
+```text
+evaluate_research_gate(...)
+  → one per-candidate Research Gate Shadow object (§10)
+
+evaluate_research_gate_generation(...)
+  → one upstream shadow generation → envelope with results[] (§15)
 ```
 
 ### Optional thin CLI (only if justified later)
