@@ -1468,3 +1468,123 @@ def test_persisted_gate_schema_int_one_still_indexed(tmp_path):
     assert art["results"][0]["gate"]["schema_version"] == 1
     index = gate.load_reuse_index(_write_art(tmp_path, art))
     assert len(index) == 1
+
+
+# ===========================================================================
+# J3 Task 5 — Design 22 / 23 final certification
+# ===========================================================================
+
+import ast
+import os
+
+
+def test_design_22_j3_does_not_modify_production_config(tmp_path):
+    """Primary Design 22: enabled=false unchanged; config bytes invariant under J3."""
+    season_path = Path("config/season_jev.json")
+    thr_path = Path("config/jev_thresholds.json")
+    before_season = season_path.read_bytes()
+    before_thr = thr_path.read_bytes()
+
+    season = json.loads(before_season.decode("utf-8"))
+    thr_cfg = json.loads(before_thr.decode("utf-8"))
+
+    assert season["enabled"] is False
+    assert season["provider"] == "typesafe_direct"
+    assert season["model"] == "jev-latest"
+
+    assert thr_cfg["schema_version"] == 1
+    assert len(thr_cfg["buckets"]) == 2
+    for bucket in thr_cfg["buckets"]:
+        assert set(bucket["thresholds"].keys()) == set(BOOLEAN_HEADS)
+        assert all(v is None for v in bucket["thresholds"].values())
+
+    # Representative offline J3 operations
+    cfg = _direct_cfg()
+    single = gate.evaluate_research_gate(
+        answers=_complete_answers(0.5),
+        threshold_cfg=cfg,
+        provider=DIRECT[0],
+        requested_model=DIRECT[1],
+        evaluator_version=DIRECT[2],
+        generation_id="gen-A",
+        candidate_id="cand-A",
+        state_hash="state-A",
+    )
+    assert single["mode"] == gate.MODE_SHADOW_ONLY
+    assert single["side_effects_executed"] is False
+
+    env = gate.evaluate_research_gate_generation(
+        _shadow_payload(results=[_cand("cand-A", "state-A"), _cand("cand-B", "state-B")]),
+        threshold_cfg=cfg,
+    )
+    assert env["mode"] == gate.MODE_SHADOW_ONLY
+    assert env["side_effects_executed"] is False
+
+    path = gate.research_gate_path(_settings(tmp_path), env["generation_id"], env["provider"])
+    gate.write_research_gate_artifact(path, env)
+    index = gate.load_reuse_index(path)
+    assert len(index) == 2
+
+    after_season = season_path.read_bytes()
+    after_thr = thr_path.read_bytes()
+    assert before_season == after_season
+    assert before_thr == after_thr
+
+
+def test_design_23_runtime_fixtures_require_no_network(tmp_path, monkeypatch):
+    """Primary Design 23: no network clients; offline fixtures succeed under network denial."""
+    src_path = Path("src/kr_quant/research/jev_research_gate.py")
+    src = src_path.read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imported.add(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                imported.add(node.module.split(".")[0])
+
+    forbidden = {
+        "requests", "httpx", "aiohttp", "urllib", "urllib3", "socket",
+        "subprocess", "selenium", "playwright",
+    }
+    assert imported.isdisjoint(forbidden)
+    assert "os.environ" not in src
+    assert "OPENROUTER_API_KEY" not in src
+    assert "TYPESAFE_API_KEY" not in src
+    # no direct os import for env probing
+    assert "os" not in imported
+
+    def deny_network(*_a, **_k):
+        raise AssertionError("network attempt denied by Design 23 guard")
+
+    # Deny common network entry points if ever imported/used
+    monkeypatch.setattr("socket.socket", deny_network, raising=False)
+    try:
+        import urllib.request as _ur
+        monkeypatch.setattr(_ur, "urlopen", deny_network, raising=False)
+    except Exception:
+        pass
+
+    cfg = _direct_cfg()
+    single = gate.evaluate_research_gate(
+        answers=_complete_answers(0.9, needsNews=0.9, needsDart=0.9, needsDeepAI=0.9),
+        threshold_cfg=cfg,
+        provider=DIRECT[0],
+        requested_model=DIRECT[1],
+        evaluator_version=DIRECT[2],
+        generation_id="gen-A",
+        candidate_id="cand-A",
+        state_hash="state-A",
+    )
+    assert single["side_effects_executed"] is False
+
+    env = gate.evaluate_research_gate_generation(
+        _shadow_payload(results=[_cand("cand-A", "state-A")]),
+        threshold_cfg=cfg,
+    )
+    path = tmp_path / "offline_gate.json"
+    gate.write_research_gate_artifact(path, env)
+    loaded = gate.load_reuse_index(path)
+    assert len(loaded) == 1
