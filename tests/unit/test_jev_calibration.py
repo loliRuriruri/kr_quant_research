@@ -537,3 +537,256 @@ def test_invalid_probability_boundaries_excluded_from_sweep():
     table = cal.sweep_head_thresholds(rows, head="needsNews")
     thresholds = [r["threshold"] for r in table]
     assert thresholds == sorted({0.0, 1.0, 0.25})
+
+
+# --- Task 4 ---
+
+def _manifest(**over):
+    base = {
+        "dataset_id": "d1",
+        "dataset_hash": "a" * 64,
+        "bucket": {
+            "provider": "typesafe_direct",
+            "requested_model": "jev-latest",
+            "evaluator_version": "season-jev-shadow-v1",
+        },
+        "head": "needsDart",
+        "selected_threshold": 0.73,
+        "selection_basis": "calibration_only",
+        "calibration_metrics_hash": "b" * 64,
+        "holdout_revealed": False,
+    }
+    base.update(over)
+    return base
+
+
+def test_calibration_report_omits_holdout_metrics():
+    samples = [
+        {
+            "sample_id": "c1",
+            "split": cal.SPLIT_CALIBRATION,
+            "ticker": "005930",
+            "human_labels": {"needsDart": True},
+            "jev_answers": {"needsDart": {"probability": 0.8}},
+            "annotation_version": 1,
+        },
+        {
+            "sample_id": "h1",
+            "split": cal.SPLIT_HOLDOUT,
+            "ticker": "000660",
+            "human_labels": {"needsDart": False},
+            "jev_answers": {"needsDart": {"probability": 0.2}},
+            "annotation_version": 1,
+        },
+    ]
+    report = cal.build_calibration_report(
+        dataset_id="d1",
+        dataset_hash="a" * 64,
+        bucket={
+            "provider": "typesafe_direct",
+            "requested_model": "jev-latest",
+            "evaluator_version": "season-jev-shadow-v1",
+        },
+        samples=samples,
+    )
+    assert report["state"] == cal.STATE_CALIBRATION_OPEN
+    assert "holdout_metrics" not in report
+    assert "needsDart" in report["heads"]
+    assert report["dataset_hash_method_version"] == cal.HASH_METHOD_VERSION
+    assert report["split_method_version"] == cal.SPLIT_METHOD_VERSION
+    assert report["sweep_method_version"] == cal.SWEEP_METHOD_VERSION
+    assert report["prediction_rule"] == "probability >= threshold"
+
+
+def test_holdout_before_lock_unavailable():
+    with pytest.raises(
+        cal.CalibrationError,
+        match="CALIBRATION_OPEN|SELECTION_LOCKED|holdout",
+    ):
+        cal.evaluate_holdout_locked(
+            samples=[],
+            selection={
+                "state": cal.STATE_CALIBRATION_OPEN,
+                "head": "needsDart",
+                "selected_threshold": 0.7,
+                "holdout_revealed": False,
+            },
+        )
+
+
+def test_lock_selection_rejects_bad_invariants():
+    with pytest.raises(cal.CalibrationError):
+        cal.lock_selection(_manifest(selection_basis="holdout"))
+    with pytest.raises(cal.CalibrationError):
+        cal.lock_selection(_manifest(head="reviewClass"))
+    with pytest.raises(cal.CalibrationError):
+        cal.lock_selection(_manifest(selected_threshold=1.5))
+    with pytest.raises(cal.CalibrationError):
+        cal.lock_selection(_manifest(holdout_revealed=True))
+
+
+def test_lock_selection_hash_excludes_own_field():
+    locked = cal.lock_selection(_manifest())
+    assert locked["state"] == cal.STATE_SELECTION_LOCKED
+    assert locked["selection_basis"] == "calibration_only"
+    assert locked["holdout_revealed"] is False
+    recomputed = cal.selection_manifest_hash(locked)
+    assert locked["selection_manifest_hash"] == recomputed
+    mutated = dict(locked)
+    mutated["selection_manifest_hash"] = "0" * 64
+    assert cal.selection_manifest_hash(mutated) == recomputed
+
+
+def test_holdout_eval_derives_threshold_only_from_selection():
+    samples = [
+        {
+            "sample_id": "h1",
+            "split": cal.SPLIT_HOLDOUT,
+            "human_labels": {"needsDart": True},
+            "jev_answers": {"needsDart": {"probability": 0.9}},
+        },
+        {
+            "sample_id": "h2",
+            "split": cal.SPLIT_HOLDOUT,
+            "human_labels": {"needsDart": False},
+            "jev_answers": {"needsDart": {"probability": 0.1}},
+        },
+    ]
+    selection = cal.lock_selection(_manifest(selected_threshold=0.73))
+    report = cal.evaluate_holdout_locked(samples=samples, selection=selection)
+    assert report["selected_threshold"] == 0.73
+    assert report["head"] == "needsDart"
+    assert "alternative_threshold" not in report
+    assert "best_threshold" not in report
+    assert "winner" not in report
+    assert "recommended_threshold" not in report
+    assert "production_threshold" not in report
+    assert report["state"] == cal.STATE_HOLDOUT_REVEALED
+    reviewed = cal.attach_review_status(report, cal.REVIEW_REJECT)
+    assert reviewed["review_status"] == cal.REVIEW_REJECT
+
+
+def test_threshold_change_after_reveal_marks_non_pristine():
+    selection = {
+        "holdout_revealed": True,
+        "selected_threshold": 0.5,
+        "pristine_holdout": True,
+    }
+    out = cal.mark_holdout_non_pristine(selection)
+    assert out["pristine_holdout"] is False
+
+
+def _label_rows(n_true, n_false, n_unknown=0, split=None):
+    split = split or cal.SPLIT_CALIBRATION
+    rows = []
+    for i in range(n_true):
+        rows.append({
+            "sample_id": f"t{i}",
+            "split": split,
+            "human_labels": {"needsDart": True},
+            "jev_answers": {"needsDart": {"probability": 0.8}},
+        })
+    for i in range(n_false):
+        rows.append({
+            "sample_id": f"f{i}",
+            "split": split,
+            "human_labels": {"needsDart": False},
+            "jev_answers": {"needsDart": {"probability": 0.2}},
+        })
+    for i in range(n_unknown):
+        rows.append({
+            "sample_id": f"u{i}",
+            "split": split,
+            "human_labels": {"needsDart": "unknown"},
+            "jev_answers": {"needsDart": {"probability": 0.5}},
+        })
+    return rows
+
+
+def test_support_status_gates_50_100_and_unknown_excluded():
+    s49 = cal.support_status(
+        _label_rows(25, 24, 10),
+        head="needsDart",
+        split=cal.SPLIT_CALIBRATION,
+    )
+    assert s49["valid_count"] == 49
+    assert s49["unknown_count"] == 10
+    assert s49["analysis_eligible"] is False
+    assert s49["production_review_eligible"] is False
+
+    s50 = cal.support_status(
+        _label_rows(25, 25, 5),
+        head="needsDart",
+        split=cal.SPLIT_CALIBRATION,
+    )
+    assert s50["valid_count"] == 50
+    assert s50["analysis_eligible"] is True
+    assert s50["production_review_eligible"] is False
+
+    s100 = cal.support_status(
+        _label_rows(50, 50, 3),
+        head="needsDart",
+        split=cal.SPLIT_CALIBRATION,
+    )
+    assert s100["valid_count"] == 100
+    assert s100["production_review_eligible"] is True
+
+
+def test_support_status_insufficient_class_support():
+    rows = _label_rows(5, 45)
+    st = cal.support_status(rows, head="needsDart", split=cal.SPLIT_CALIBRATION)
+    assert st["valid_count"] == 50
+    assert st["insufficient_class_support"] is True
+
+
+def test_attach_review_status_allows_only_known_values():
+    report = {
+        "selected_threshold": 0.73,
+        "state": cal.STATE_HOLDOUT_REVEALED,
+    }
+    ok = cal.attach_review_status(report, cal.REVIEW_ACCEPT)
+    assert ok["review_status"] == cal.REVIEW_ACCEPT
+    for bad in ("AUTO_ACCEPT", "WINNER", "best", ""):
+        with pytest.raises(cal.CalibrationError):
+            cal.attach_review_status(report, bad)
+
+
+def test_holdout_eval_ignores_calibration_rows():
+    samples = [
+        {
+            "sample_id": "c_bad",
+            "split": cal.SPLIT_CALIBRATION,
+            "human_labels": {"needsDart": True},
+            "jev_answers": {"needsDart": {"probability": 0.01}},
+        },
+        {
+            "sample_id": "h1",
+            "split": cal.SPLIT_HOLDOUT,
+            "human_labels": {"needsDart": True},
+            "jev_answers": {"needsDart": {"probability": 0.9}},
+        },
+        {
+            "sample_id": "h2",
+            "split": cal.SPLIT_HOLDOUT,
+            "human_labels": {"needsDart": False},
+            "jev_answers": {"needsDart": {"probability": 0.1}},
+        },
+    ]
+    selection = cal.lock_selection(_manifest(selected_threshold=0.5))
+    report = cal.evaluate_holdout_locked(samples=samples, selection=selection)
+    assert (report["TP"], report["FP"], report["TN"], report["FN"]) == (1, 0, 1, 0)
+
+
+def test_support_status_split_isolation():
+    rows = (
+        _label_rows(25, 25, split=cal.SPLIT_CALIBRATION)
+        + _label_rows(10, 10, split=cal.SPLIT_HOLDOUT)
+    )
+    st = cal.support_status(rows, head="needsDart", split=cal.SPLIT_CALIBRATION)
+    assert st["valid_count"] == 50
+
+
+def test_selection_manifest_hash_key_order_invariant():
+    a = {"z": 1, "a": {"y": 2, "x": 3}, "m": True}
+    b = {"m": True, "a": {"x": 3, "y": 2}, "z": 1}
+    assert cal.selection_manifest_hash(a) == cal.selection_manifest_hash(b)

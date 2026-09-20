@@ -381,11 +381,12 @@ def _extract_label(sample: dict, head: str) -> object:
     return labels.get(head)
 
 
-def evaluate_head_at_threshold(
+def _evaluate_split_at_threshold(
     samples: list[dict],
     *,
     head: str,
     threshold: float,
+    split: str,
 ) -> dict:
     y_true: list[bool] = []
     y_pred: list[bool] = []
@@ -395,7 +396,7 @@ def evaluate_head_at_threshold(
     for sample in samples:
         if not isinstance(sample, dict):
             continue
-        if sample.get("split") != SPLIT_CALIBRATION:
+        if sample.get("split") != split:
             continue
         label = _extract_label(sample, head)
         if label == "unknown":
@@ -419,7 +420,24 @@ def evaluate_head_at_threshold(
         "invalid_probability_count": invalid_probability_count,
         "threshold": float(threshold),
         "head": head,
+        "support_positive": sum(1 for t in y_true if t),
+        "support_negative": sum(1 for t in y_true if not t),
     }
+
+
+def evaluate_head_at_threshold(
+    samples: list[dict],
+    *,
+    head: str,
+    threshold: float,
+) -> dict:
+    # Task 3 public contract: calibration split only.
+    return _evaluate_split_at_threshold(
+        samples,
+        head=head,
+        threshold=threshold,
+        split=SPLIT_CALIBRATION,
+    )
 
 
 def sweep_head_thresholds(
@@ -445,3 +463,189 @@ def sweep_head_thresholds(
         evaluate_head_at_threshold(samples, head=head, threshold=t)
         for t in candidates
     ]
+
+
+STATE_CALIBRATION_OPEN = "CALIBRATION_OPEN"
+STATE_SELECTION_LOCKED = "SELECTION_LOCKED"
+STATE_HOLDOUT_REVEALED = "HOLDOUT_REVEALED"
+
+REVIEW_ACCEPT = "ACCEPT"
+REVIEW_REJECT = "REJECT"
+REVIEW_COLLECT_MORE_LABELS = "COLLECT_MORE_LABELS"
+
+_ALLOWED_REVIEW = frozenset({
+    REVIEW_ACCEPT,
+    REVIEW_REJECT,
+    REVIEW_COLLECT_MORE_LABELS,
+})
+
+
+def support_status(
+    samples: list[dict],
+    *,
+    head: str,
+    split: str,
+) -> dict:
+    positive_count = 0
+    negative_count = 0
+    unknown_count = 0
+    for sample in samples:
+        if not isinstance(sample, dict):
+            continue
+        if sample.get("split") != split:
+            continue
+        label = _extract_label(sample, head)
+        if label is True:
+            positive_count += 1
+        elif label is False:
+            negative_count += 1
+        elif label == "unknown":
+            unknown_count += 1
+    valid_count = positive_count + negative_count
+    analysis_eligible = valid_count >= 50
+    production_review_eligible = valid_count >= 100
+    insufficient_class_support = bool(
+        analysis_eligible and (positive_count < 10 or negative_count < 10)
+    )
+    return {
+        "valid_count": valid_count,
+        "positive_count": positive_count,
+        "negative_count": negative_count,
+        "unknown_count": unknown_count,
+        "support_positive": positive_count,
+        "support_negative": negative_count,
+        "analysis_eligible": analysis_eligible,
+        "production_review_eligible": production_review_eligible,
+        "insufficient_class_support": insufficient_class_support,
+        "head": head,
+        "split": split,
+    }
+
+
+def build_calibration_report(
+    *,
+    dataset_id: str,
+    dataset_hash: str,
+    bucket: dict,
+    samples: list[dict],
+) -> dict:
+    heads: dict[str, Any] = {}
+    for head in BOOLEAN_HEADS:
+        support = support_status(
+            samples, head=head, split=SPLIT_CALIBRATION
+        )
+        sweep = sweep_head_thresholds(samples, head=head)
+        heads[head] = {
+            "support": support,
+            "sweep": sweep,
+            "fn_sensitive": head in FN_SENSITIVE_HEADS,
+        }
+    return {
+        "dataset_id": dataset_id,
+        "dataset_hash": dataset_hash,
+        "dataset_hash_method_version": HASH_METHOD_VERSION,
+        "split_method_version": SPLIT_METHOD_VERSION,
+        "sweep_method_version": SWEEP_METHOD_VERSION,
+        "prediction_rule": "probability >= threshold",
+        "bucket": dict(bucket),
+        "state": STATE_CALIBRATION_OPEN,
+        "heads": heads,
+    }
+
+
+def selection_manifest_hash(manifest: dict) -> str:
+    if not isinstance(manifest, dict):
+        raise CalibrationError("manifest must be a dict")
+    payload = {
+        k: v for k, v in manifest.items() if k != "selection_manifest_hash"
+    }
+    raw = _canonical_json(payload).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def lock_selection(manifest: dict) -> dict:
+    if not isinstance(manifest, dict):
+        raise CalibrationError("manifest must be a dict")
+    if manifest.get("selection_basis") != "calibration_only":
+        raise CalibrationError("selection_basis must be calibration_only")
+    head = manifest.get("head")
+    if head not in BOOLEAN_HEADS:
+        raise CalibrationError(f"invalid selection head: {head!r}")
+    if head == "reviewClass":
+        raise CalibrationError("reviewClass cannot be locked")
+    threshold = manifest.get("selected_threshold")
+    if not _is_valid_probability(threshold):
+        raise CalibrationError(f"invalid selected_threshold: {threshold!r}")
+    if manifest.get("holdout_revealed") is True:
+        raise CalibrationError("cannot lock with holdout_revealed=True")
+    if manifest.get("state") == STATE_HOLDOUT_REVEALED:
+        raise CalibrationError("cannot re-lock HOLDOUT_REVEALED as pristine")
+
+    locked = dict(manifest)
+    locked["selected_threshold"] = float(threshold)
+    locked["state"] = STATE_SELECTION_LOCKED
+    locked["holdout_revealed"] = False
+    locked["selection_basis"] = "calibration_only"
+    locked["selection_manifest_hash"] = selection_manifest_hash(locked)
+    return locked
+
+
+def evaluate_holdout_locked(
+    *,
+    samples: list[dict],
+    selection: dict,
+) -> dict:
+    if not isinstance(selection, dict):
+        raise CalibrationError("selection must be a dict")
+    if selection.get("state") != STATE_SELECTION_LOCKED:
+        raise CalibrationError(
+            "holdout requires SELECTION_LOCKED (got "
+            f"{selection.get('state')!r}; CALIBRATION_OPEN forbidden)"
+        )
+    head = selection.get("head")
+    if head not in BOOLEAN_HEADS:
+        raise CalibrationError(f"invalid selection head: {head!r}")
+    threshold = selection.get("selected_threshold")
+    if not _is_valid_probability(threshold):
+        raise CalibrationError(f"invalid selected_threshold: {threshold!r}")
+
+    metrics = _evaluate_split_at_threshold(
+        samples,
+        head=str(head),
+        threshold=float(threshold),
+        split=SPLIT_HOLDOUT,
+    )
+    return {
+        "state": STATE_HOLDOUT_REVEALED,
+        "head": head,
+        "selected_threshold": float(threshold),
+        "selection_manifest_hash": selection.get("selection_manifest_hash"),
+        "selection_basis": "calibration_only",
+        "TP": metrics["TP"],
+        "FP": metrics["FP"],
+        "TN": metrics["TN"],
+        "FN": metrics["FN"],
+        "precision": metrics["precision"],
+        "recall": metrics["recall"],
+        "FPR": metrics["FPR"],
+        "FNR": metrics["FNR"],
+        "support_positive": metrics["support_positive"],
+        "support_negative": metrics["support_negative"],
+        "unknown_count": metrics["unknown_count"],
+        "invalid_probability_count": metrics["invalid_probability_count"],
+        "holdout_revealed": True,
+    }
+
+
+def attach_review_status(report: dict, review_status: str) -> dict:
+    if review_status not in _ALLOWED_REVIEW:
+        raise CalibrationError(f"invalid review_status: {review_status!r}")
+    out = dict(report)
+    out["review_status"] = review_status
+    return out
+
+
+def mark_holdout_non_pristine(selection: dict) -> dict:
+    out = dict(selection)
+    out["pristine_holdout"] = False
+    return out
