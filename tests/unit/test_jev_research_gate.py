@@ -229,6 +229,89 @@ def test_secondary_missing_to_matched_changes_hash():
     assert h_m != h_k
 
 
+
+
+# ---------------------------------------------------------------------------
+# Design 39 fail-closed structural regressions (Task-1 correction)
+# ---------------------------------------------------------------------------
+
+
+def test_design_39_wrong_schema_version_fails():
+    with pytest.raises(ResearchGateError) as ei:
+        threshold_config_hash(
+            {"schema_version": 999, "buckets": []},
+            provider="p",
+            requested_model="m",
+            evaluator_version="e",
+        )
+    assert "THRESHOLD_CONFIG_UNREADABLE" in str(ei.value)
+
+
+def test_design_39_missing_schema_version_fails():
+    with pytest.raises(ResearchGateError) as ei:
+        threshold_config_hash(
+            {"buckets": []},
+            provider="p",
+            requested_model="m",
+            evaluator_version="e",
+        )
+    assert "THRESHOLD_CONFIG_UNREADABLE" in str(ei.value)
+
+
+def test_design_39_non_mapping_bucket_element_fails():
+    with pytest.raises(ResearchGateError) as ei:
+        threshold_config_hash(
+            {"schema_version": 1, "buckets": ["bad-bucket"]},
+            provider=DIRECT[0],
+            requested_model=DIRECT[1],
+            evaluator_version=DIRECT[2],
+        )
+    assert "THRESHOLD_CONFIG_UNREADABLE" in str(ei.value)
+
+
+def test_design_39_incomplete_bucket_mapping_fails():
+    with pytest.raises(ResearchGateError) as ei:
+        threshold_config_hash(
+            {
+                "schema_version": 1,
+                "buckets": [{"provider": "typesafe_direct"}],
+            },
+            provider=DIRECT[0],
+            requested_model=DIRECT[1],
+            evaluator_version=DIRECT[2],
+        )
+    assert "THRESHOLD_CONFIG_UNREADABLE" in str(ei.value)
+
+
+def test_design_39_malformed_unrelated_bucket_fails_globally():
+    cfg = {
+        "schema_version": 1,
+        "buckets": [
+            _bucket(*DIRECT, {"needsNews": None, "needsDeepAI": 0.7}),
+            "broken-unrelated-bucket",
+        ],
+    }
+    with pytest.raises(ResearchGateError) as ei:
+        threshold_config_hash(
+            cfg,
+            provider=DIRECT[0],
+            requested_model=DIRECT[1],
+            evaluator_version=DIRECT[2],
+        )
+    assert "THRESHOLD_CONFIG_UNREADABLE" in str(ei.value)
+
+
+def test_design_39_valid_empty_buckets_still_missing_hash():
+    h = threshold_config_hash(
+        {"schema_version": 1, "buckets": []},
+        provider=DIRECT[0],
+        requested_model=DIRECT[1],
+        evaluator_version=DIRECT[2],
+    )
+    assert HEX64.match(h)
+
+
+
 def test_load_valid_cfg_roundtrip(tmp_path: Path):
     path = tmp_path / "ok.json"
     cfg = _cfg(_bucket(*DIRECT, {"needsNews": None}))

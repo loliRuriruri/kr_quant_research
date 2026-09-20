@@ -47,33 +47,10 @@ def _validate_numeric_threshold(value: Any) -> float:
     return f
 
 
-def _validate_cfg_structure(cfg: Mapping[str, Any]) -> list[Any]:
-    if not isinstance(cfg, Mapping):
-        raise ResearchGateError("THRESHOLD_CONFIG_UNREADABLE: thresholds root must be an object")
-    buckets = cfg.get("buckets")
-    if not isinstance(buckets, list):
-        raise ResearchGateError("THRESHOLD_CONFIG_UNREADABLE: buckets must be a list")
-    return buckets
-
-
-def _find_exact_buckets(
-    buckets: list[Any],
-    *,
-    provider: str,
-    requested_model: str,
-    evaluator_version: str,
-) -> list[Mapping[str, Any]]:
-    matches: list[Mapping[str, Any]] = []
-    for bucket in buckets:
-        if not isinstance(bucket, Mapping):
-            continue
-        if (
-            bucket.get("provider") == provider
-            and bucket.get("requested_model") == requested_model
-            and bucket.get("evaluator_version") == evaluator_version
-        ):
-            matches.append(bucket)
-    return matches
+def _require_non_empty_str(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ResearchGateError(f"THRESHOLD_CONFIG_UNREADABLE: {field} must be a non-empty string")
+    return value
 
 
 def _validate_threshold_mapping(thresholds: Mapping[str, Any]) -> None:
@@ -81,6 +58,61 @@ def _validate_threshold_mapping(thresholds: Mapping[str, Any]) -> None:
         if value is None:
             continue
         _validate_numeric_threshold(value)
+
+
+def _validate_bucket_mapping(bucket: Any, *, index: int) -> Mapping[str, Any]:
+    if not isinstance(bucket, Mapping):
+        raise ResearchGateError(
+            f"THRESHOLD_CONFIG_UNREADABLE: buckets[{index}] must be an object"
+        )
+    _require_non_empty_str(bucket.get("provider"), f"buckets[{index}].provider")
+    _require_non_empty_str(bucket.get("requested_model"), f"buckets[{index}].requested_model")
+    _require_non_empty_str(bucket.get("evaluator_version"), f"buckets[{index}].evaluator_version")
+    thresholds = bucket.get("thresholds")
+    if not isinstance(thresholds, Mapping):
+        raise ResearchGateError(
+            f"THRESHOLD_CONFIG_UNREADABLE: buckets[{index}].thresholds must be an object"
+        )
+    _validate_threshold_mapping(thresholds)
+    return bucket
+
+
+def _validate_cfg_structure(cfg: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Validate entire threshold config before MATCHED/MISSING selection."""
+    if not isinstance(cfg, Mapping):
+        raise ResearchGateError("THRESHOLD_CONFIG_UNREADABLE: thresholds root must be an object")
+    schema_version = cfg.get("schema_version")
+    if schema_version is None:
+        raise ResearchGateError("THRESHOLD_CONFIG_UNREADABLE: schema_version is required")
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
+        raise ResearchGateError("THRESHOLD_CONFIG_UNREADABLE: schema_version must be integer 1")
+    if schema_version != 1:
+        raise ResearchGateError("THRESHOLD_CONFIG_UNREADABLE: schema_version must be 1")
+    buckets = cfg.get("buckets")
+    if not isinstance(buckets, list):
+        raise ResearchGateError("THRESHOLD_CONFIG_UNREADABLE: buckets must be a list")
+    validated: list[Mapping[str, Any]] = []
+    for i, bucket in enumerate(buckets):
+        validated.append(_validate_bucket_mapping(bucket, index=i))
+    return validated
+
+
+def _find_exact_buckets(
+    buckets: list[Mapping[str, Any]],
+    *,
+    provider: str,
+    requested_model: str,
+    evaluator_version: str,
+) -> list[Mapping[str, Any]]:
+    matches: list[Mapping[str, Any]] = []
+    for bucket in buckets:
+        if (
+            bucket.get("provider") == provider
+            and bucket.get("requested_model") == requested_model
+            and bucket.get("evaluator_version") == evaluator_version
+        ):
+            matches.append(bucket)
+    return matches
 
 
 def threshold_config_hash(
@@ -124,7 +156,6 @@ def threshold_config_hash(
     thresholds = bucket.get("thresholds")
     if not isinstance(thresholds, Mapping):
         raise ResearchGateError("THRESHOLD_CONFIG_UNREADABLE: matching bucket thresholds must be an object")
-    _validate_threshold_mapping(thresholds)
 
     # Preserve exact raw mapping (absent stays absent; null stays null). Do not copy/reorder keys.
     payload = {
@@ -150,7 +181,8 @@ def _load_threshold_cfg(path: Path) -> dict[str, Any]:
 
     if not isinstance(data, Mapping):
         raise ResearchGateError("THRESHOLD_CONFIG_UNREADABLE: thresholds root must be an object")
-    buckets = data.get("buckets")
-    if not isinstance(buckets, list):
-        raise ResearchGateError("THRESHOLD_CONFIG_UNREADABLE: buckets must be a list")
+    try:
+        _validate_cfg_structure(data)
+    except ResearchGateError:
+        raise
     return dict(data)
