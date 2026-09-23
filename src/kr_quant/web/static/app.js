@@ -2328,19 +2328,57 @@ function setPipelineBusyUi(job) {
   }
 }
 
-async function loadPipelinePanel() {
+let lastPipelineHealthAt = 0;
+const PIPELINE_HEALTH_MIN_MS = 5000;
+
+async function loadPipelineHealthOnly() {
+  const health = await api("/api/pipeline/health");
+  lastPipelineHealth = health;
+  lastPipelineHealthAt = Date.now();
+  applyPipelineHealthToCards(health);
+  applySchedulerBusySkip(lastStatus);
+  const summaryEl = $("#smart-run-summary");
+  const planEl = $("#smart-run-plan");
+  if (health && health.busy) {
+    const kind = lastStatus?.job?.kind;
+    if (summaryEl) summaryEl.textContent = `현재 실행 중: ${JOB_KINDS[kind] || kind || "작업"}`;
+    if (planEl) planEl.textContent = "완료 후 다시 사용할 수 있습니다.";
+  }
+  return health;
+}
+
+async function loadPipelinePanel(options = {}) {
+  const includePlans = options.includePlans !== false;
+  const force = Boolean(options.force);
   if (pipelinePanelPending) return pipelinePanelPending;
   pipelinePanelPending = (async () => {
     try {
-      const [health, planNormal, planRecover] = await Promise.all([
-        api("/api/pipeline/health"),
-        api("/api/pipeline/plan?mode=normal"),
-        api("/api/pipeline/plan?mode=recover"),
-      ]);
-      lastPipelineHealth = health;
-      lastPipelinePlan = planNormal;
-      applyPipelineHealthToCards(health);
-      applySchedulerBusySkip(lastStatus);
+      let health;
+      let planNormal = lastPipelinePlan;
+      let planRecover = null;
+      if (!includePlans) {
+        // Busy path: never request normal+recover plans (each would rescan health).
+        const now = Date.now();
+        if (!force && lastPipelineHealth && (now - lastPipelineHealthAt) < PIPELINE_HEALTH_MIN_MS) {
+          health = lastPipelineHealth;
+        } else {
+          health = await loadPipelineHealthOnly();
+        }
+      } else {
+        const [h, n, r] = await Promise.all([
+          api("/api/pipeline/health"),
+          api("/api/pipeline/plan?mode=normal"),
+          api("/api/pipeline/plan?mode=recover"),
+        ]);
+        health = h;
+        planNormal = n;
+        planRecover = r;
+        lastPipelineHealth = health;
+        lastPipelinePlan = planNormal;
+        lastPipelineHealthAt = Date.now();
+        applyPipelineHealthToCards(health);
+        applySchedulerBusySkip(lastStatus);
+      }
 
       const summaryEl = $("#smart-run-summary");
       const planEl = $("#smart-run-plan");
@@ -2348,7 +2386,7 @@ async function loadPipelinePanel() {
         const kind = lastStatus?.job?.kind;
         if (summaryEl) summaryEl.textContent = `현재 실행 중: ${JOB_KINDS[kind] || kind || "작업"}`;
         if (planEl) planEl.textContent = "완료 후 다시 사용할 수 있습니다.";
-      } else if (planEl) {
+      } else if (includePlans && planEl) {
         planEl.textContent = formatPipelinePlanLines(planNormal);
         if (summaryEl) {
           summaryEl.textContent = health?.repair_required
@@ -2359,24 +2397,26 @@ async function loadPipelinePanel() {
         }
       }
 
-      const layerB = $("#pipeline-layer-b");
-      const banner = $("#pipeline-repair-banner");
-      const causeEl = $("#pipeline-repair-cause");
-      const repairPlanEl = $("#pipeline-repair-plan");
-      if (health?.repair_required) {
-        if (layerB) layerB.open = true;
-        if (banner) banner.hidden = false;
-        const dartE = health.components?.dart_essential || {};
-        const krx = health.components?.krx || {};
-        const master = health.components?.master || {};
-        const reasons = [];
-        if (dartE.state === "MISSING" || dartE.state === "CORRUPT") reasons.push("OpenDART 필수 재무자료가 없습니다.");
-        if (krx.state === "MISSING" || krx.state === "CORRUPT") reasons.push("KRX 시세 자료에 문제가 있습니다.");
-        if (master.state === "MISSING" || master.state === "CORRUPT") reasons.push("종목 마스터 자료에 문제가 있습니다.");
-        if (causeEl) causeEl.textContent = "원인:\n" + (reasons.join("\n") || "필수 artifact 복구가 필요합니다.");
-        if (repairPlanEl) repairPlanEl.textContent = "복구 계획:\n" + formatPipelinePlanLines(planRecover).replace(/^예정 작업\n/, "");
-      } else {
-        if (banner) banner.hidden = true;
+      if (includePlans) {
+        const layerB = $("#pipeline-layer-b");
+        const banner = $("#pipeline-repair-banner");
+        const causeEl = $("#pipeline-repair-cause");
+        const repairPlanEl = $("#pipeline-repair-plan");
+        if (health?.repair_required) {
+          if (layerB) layerB.open = true;
+          if (banner) banner.hidden = false;
+          const dartE = health.components?.dart_essential || {};
+          const krx = health.components?.krx || {};
+          const master = health.components?.master || {};
+          const reasons = [];
+          if (dartE.state === "MISSING" || dartE.state === "CORRUPT") reasons.push("OpenDART 필수 재무자료가 없습니다.");
+          if (krx.state === "MISSING" || krx.state === "CORRUPT") reasons.push("KRX 시세 자료에 문제가 있습니다.");
+          if (master.state === "MISSING" || master.state === "CORRUPT") reasons.push("종목 마스터 자료에 문제가 있습니다.");
+          if (causeEl) causeEl.textContent = "원인:\n" + (reasons.join("\n") || "필수 artifact 복구가 필요합니다.");
+          if (repairPlanEl) repairPlanEl.textContent = "복구 계획:\n" + formatPipelinePlanLines(planRecover).replace(/^예정 작업\n/, "");
+        } else if (banner) {
+          banner.hidden = true;
+        }
       }
 
       const job = lastStatus?.job;
@@ -2386,6 +2426,14 @@ async function loadPipelinePanel() {
     }
   })().finally(() => { pipelinePanelPending = null; });
   return pipelinePanelPending;
+}
+
+async function refreshPipelineAfterTerminalJob() {
+  await loadStatus();
+  if (currentView === "run") {
+    await loadPipelinePanel({ includePlans: true, force: true });
+  }
+  await reloadActiveView();
 }
 
 
@@ -10765,15 +10813,16 @@ async function pollJob() {
     renderJob(job);
     setPipelineBusyUi(job);
     if (job.status === "running") {
+      // Keep /api/jobs at 1.2s for logs/heartbeat, but do NOT triple-scan health/plans.
       if (currentView === "run") {
-        loadPipelinePanel();
+        loadPipelinePanel({ includePlans: false });
       }
       setTimeout(pollJob, 1200);
     } else {
+      const title = JOB_KINDS[job.kind] || job.kind || "작업";
+      const cancelled = Boolean(job.result?.cancelled) || job.result?.pipeline_status === "interrupted";
       if (["success", "partial"].includes(job.status)) {
-        const title = JOB_KINDS[job.kind] || job.kind || "작업";
         const partial = job.status === "partial";
-        const cancelled = Boolean(job.result?.cancelled) || job.result?.pipeline_status === "interrupted";
         const followup = partial ? escapeHtml(job.result?.next_action || "일부 데이터는 다음 실행에서 이어집니다.") : "";
         const storedPx = job.result?.freshness?.price_max_date || job.result?.as_of || "";
         const krxLine = job.kind === "krx-prices" && storedPx && !partial
@@ -10788,12 +10837,13 @@ async function pollJob() {
           cancelled || partial ? "warning" : "success",
           cancelled || partial ? 7000 : 3500,
         );
-        await loadStatus();
-        if (currentView === "run") await loadPipelinePanel();
-        await reloadActiveView();
+        await refreshPipelineAfterTerminalJob();
       } else if (job.status === "error") {
-        const title = JOB_KINDS[job.kind] || job.kind || "작업";
         showToast(`❌ <b>${title} 실패</b>: ${escapeHtml(job.error || "")}`, "error", 5000);
+        // Failed jobs may still have mutated artifacts before failing.
+        await refreshPipelineAfterTerminalJob();
+      } else if (cancelled || job.result?.pipeline_status === "interrupted") {
+        await refreshPipelineAfterTerminalJob();
       }
     }
   } catch (err) {

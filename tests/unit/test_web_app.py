@@ -767,7 +767,13 @@ def test_pipeline_health_api_sanitized(tmp_path, monkeypatch):
     from kr_quant.web import app as app_mod
     from kr_quant.web import smart_ledger
 
-    # Ensure ledger load does not mutate unexpectedly: snapshot before/after
+    started = []
+
+    def _forbid_start(*args, **kwargs):
+        started.append((args, kwargs))
+        raise AssertionError("RUNNER.start must not be called by pipeline GET APIs")
+
+    monkeypatch.setattr(app_mod.RUNNER, "start", _forbid_start)
     before = smart_ledger.load_ledger()
     res = client.get("/api/pipeline/health")
     after = smart_ledger.load_ledger()
@@ -779,13 +785,19 @@ def test_pipeline_health_api_sanitized(tmp_path, monkeypatch):
     assert "components" in body
     _assert_no_abs_paths(body)
     assert before == after
-    # GET must not start a job
-    assert app_mod.RUNNER.snapshot().get("status") != "running" or True
-    snap = app_mod.RUNNER.snapshot()
-    assert snap.get("status") in {None, "idle", "success", "partial", "error", "running"} or isinstance(snap, dict)
+    assert started == []
 
 
-def test_pipeline_plan_modes_and_invalid():
+def test_pipeline_plan_modes_and_invalid(monkeypatch):
+    from kr_quant.web import app as app_mod
+
+    started = []
+
+    def _forbid_start(*args, **kwargs):
+        started.append(True)
+        raise AssertionError("RUNNER.start must not be called by pipeline plan GET")
+
+    monkeypatch.setattr(app_mod.RUNNER, "start", _forbid_start)
     normal = client.get("/api/pipeline/plan", params={"mode": "normal"})
     assert normal.status_code == 200
     assert normal.json().get("mode") == "normal"
@@ -796,6 +808,7 @@ def test_pipeline_plan_modes_and_invalid():
     assert bad.status_code == 400
     _assert_no_abs_paths(normal.json())
     _assert_no_abs_paths(recover.json())
+    assert started == []
 
 
 def test_pipeline_busy_blocks_plan(monkeypatch):
@@ -893,3 +906,39 @@ def test_a3_sidebar_nav_unchanged_from_baseline():
     # Must still include core views; exact full list may include research items
     for required in ("dash", "rank", "run", "settings"):
         assert required in buttons
+
+
+def test_pipeline_panel_js_terminal_and_busy_contracts():
+    """Busy poll must not triple-scan plans; terminal states refresh full panel."""
+    js = client.get("/static/app.js").text
+    assert "async function loadPipelinePanel(options = {})" in js or "async function loadPipelinePanel(options" in js
+    assert "loadPipelineHealthOnly" in js
+    assert "refreshPipelineAfterTerminalJob" in js
+    assert "includePlans: false" in js
+    assert "includePlans: true" in js or "includePlans !== false" in js
+    # running path uses throttled/no-plan loader (pollJob, not renderJob progress)
+    assert "loadPipelinePanel({ includePlans: false })" in js
+    poll_idx = js.find("async function pollJob")
+    assert poll_idx >= 0
+    poll_snip = js[poll_idx : poll_idx + 2200]
+    assert "loadPipelinePanel({ includePlans: false })" in poll_snip
+    assert "setTimeout(pollJob, 1200)" in poll_snip
+    # busy tick must not request plan endpoints
+    busy_branch = poll_snip[poll_snip.find('job.status === "running"') : poll_snip.find("setTimeout(pollJob, 1200)") + 40]
+    assert "includePlans: false" in busy_branch
+    assert "plan?mode=normal" not in busy_branch
+    assert "plan?mode=recover" not in busy_branch
+    # terminal success/partial/error all refresh
+    assert "await refreshPipelineAfterTerminalJob();" in js
+    err_snip = poll_snip[poll_snip.find('job.status === "error"') : poll_snip.find('job.status === "error"') + 420]
+    assert "refreshPipelineAfterTerminalJob" in err_snip
+    assert "showToast" in err_snip
+    success_snip = poll_snip[poll_snip.find('["success", "partial"]') : poll_snip.find('["success", "partial"]') + 900]
+    assert "refreshPipelineAfterTerminalJob" in success_snip
+    # Layer contracts still present
+    html = client.get("/").text
+    assert "오늘 필요한 작업 스마트 실행" in html
+    assert "데이터 구멍 자동 복구" in html
+    assert "고급 데이터 작업" in html
+    assert "setPipelineBusyUi" in js
+
