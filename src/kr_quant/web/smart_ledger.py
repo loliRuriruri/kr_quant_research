@@ -92,13 +92,14 @@ def empty_step() -> dict[str, Any]:
     }
 
 
-def new_ledger(*, run_date: str, expected_price_date: str, trigger: str, now: datetime | None = None) -> dict[str, Any]:
+def new_ledger(*, run_date: str, expected_price_date: str, trigger: str, mode: str = "normal", now: datetime | None = None) -> dict[str, Any]:
     stamp = now_iso(now)
     return {
         "run_date": run_date,
         "run_id": uuid4().hex[:12],
         "expected_price_date": expected_price_date,
         "trigger": trigger,
+        "mode": mode or "normal",
         "started_at": stamp,
         "heartbeat_at": stamp,
         "finished_at": None,
@@ -153,13 +154,15 @@ def begin_or_resume(
     expected_price_date: str,
     trigger: str,
     runner_running: bool,
+    mode: str = "normal",
     now: datetime | None = None,
 ) -> dict[str, Any]:
     recover_interrupted(settings, runner_running=runner_running, now=now)
     ledger = load_ledger(settings)
     stamp = now_iso(now)
+    mode = mode or "normal"
     if not ledger or ledger.get("run_date") != run_date:
-        ledger = new_ledger(run_date=run_date, expected_price_date=expected_price_date, trigger=trigger, now=now)
+        ledger = new_ledger(run_date=run_date, expected_price_date=expected_price_date, trigger=trigger, mode=mode, now=now)
         return save_ledger(ledger, settings)
     if ledger.get("expected_price_date") != expected_price_date:
         ledger["expected_price_date"] = expected_price_date
@@ -171,6 +174,7 @@ def begin_or_resume(
     ledger["overall_status"] = "running"
     ledger["finished_at"] = None
     ledger["trigger"] = trigger
+    ledger["mode"] = mode or ledger.get("mode") or "normal"
     ledger["heartbeat_at"] = stamp
     if not ledger.get("started_at"):
         ledger["started_at"] = stamp
@@ -314,6 +318,7 @@ def public_snapshot(settings=None, ledger: dict[str, Any] | None = None, now: da
         "expected_price_date": payload.get("expected_price_date"),
         "overall_status": payload.get("overall_status"),
         "trigger": payload.get("trigger"),
+        "mode": payload.get("mode") or "normal",
         "started_at": payload.get("started_at"),
         "heartbeat_at": payload.get("heartbeat_at"),
         "finished_at": payload.get("finished_at"),
@@ -330,7 +335,7 @@ def public_snapshot(settings=None, ledger: dict[str, Any] | None = None, now: da
 def decide_overall(ledger: dict[str, Any], settings=None) -> str:
     steps = ledger.get("steps") or {}
     statuses = [str((steps.get(name) or {}).get("status") or "pending") for name in STEPS]
-    if any(status == "failed" for status in statuses):
+    if any(status in {"failed", "verify_failed", "repair_incomplete"} for status in statuses):
         return "failed"
     krx = (steps.get("krx") or {}).get("status")
     if krx == "source_not_ready":

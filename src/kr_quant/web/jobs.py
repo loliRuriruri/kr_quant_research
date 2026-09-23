@@ -657,24 +657,30 @@ def _publish_progress(settings, ledger: dict[str, Any]) -> None:
     RUNNER.set_progress(snap)
 
 
+ESSENTIAL_REPAIR_MAX_BATCHES = 3
+
+
 def job_smart_sync(
     as_of: str = "auto",
     lookback_days: int = 80,
     max_corps: int = 400,
     dart_batch_size: int = 50,
     trigger: str = "manual",
+    mode: str = "normal",
 ) -> dict[str, Any]:
-    """Run only the maintenance steps the current snapshot still needs.
-
-    KRX source-not-ready is not a day-slot success. The next retry fetches
-    prices only and leaves a same-day DART/KIS success untouched.
-    max_corps is kept for API compatibility; the daily path no longer repeats
-    a 400-name bootstrap on top of the resumable DART batch.
-    """
-    from kr_quant.freshness import freshness_snapshot, wanted_price_date
-    from kr_quant.web import smart_ledger as ledger_mod
-
+    """Artifact-aware self-healing daily sync driven by pipeline health/plan."""
+    from pathlib import Path
     from zoneinfo import ZoneInfo
+
+    from kr_quant.freshness import wanted_price_date
+    from kr_quant.ingest.live import backfill_dart_financials, build_live_master
+    from kr_quant.web import smart_ledger as ledger_mod
+    from kr_quant.web.pipeline_health import pipeline_health
+    from kr_quant.web.pipeline_plan import VALID_MODES, InvalidPipelineMode, action_kinds, plan_pipeline
+
+    mode = mode or "normal"
+    if mode not in VALID_MODES:
+        raise InvalidPipelineMode(f"invalid pipeline mode: {mode!r}")
 
     s = load_settings()
     expected = wanted_price_date() if not as_of or as_of == "auto" else date.fromisoformat(str(as_of)[:10])
@@ -684,14 +690,16 @@ def job_smart_sync(
         run_date=run_date.isoformat(),
         expected_price_date=expected.isoformat(),
         trigger=trigger,
+        mode=mode,
         runner_running=True,
     )
     _publish_progress(s, ledger)
     steps: list[dict[str, Any]] = []
     warnings: list[str] = []
-    before = freshness_snapshot(s)
-    _ = max_corps  # API compatibility; daily DART work is the resumable batch.
+    failure_kind: str | None = None
+    _ = max_corps
     section_t0 = time.monotonic()
+    live_dir = s.staged_dir / "live"
 
     def _lap() -> float:
         nonlocal section_t0
@@ -704,6 +712,37 @@ def job_smart_sync(
         steps.append(row)
         return row
 
+    def _health():
+        # Do not pass busy=True: this job already owns the RUNNER slot.
+        return pipeline_health(s, ledger=ledger)
+
+    def _result(*, pipeline_status: str, next_action: str, cancelled: bool = False, **extra: Any) -> dict[str, Any]:
+        final = _health()
+        facts = ((final.get("components") or {}).get("dart_coverage") or {})
+        out = {
+            "kind": "smart-sync",
+            "as_of": expected.isoformat(),
+            "mode": mode,
+            "trigger": trigger,
+            "steps": steps,
+            "warnings": warnings,
+            "pipeline_status": pipeline_status,
+            "failure_kind": failure_kind,
+            "cancelled": cancelled,
+            "health": final,
+            "ledger": ledger_mod.public_snapshot(s, ledger=ledger),
+            "dart_coverage": {
+                "tickers": facts.get("tickers"),
+                "universe_tickers": facts.get("universe_tickers"),
+                "coverage_pct": facts.get("coverage_pct"),
+                "target_pct": facts.get("target_pct") or 90.0,
+            },
+            "next_action": next_action,
+            "used_in_quant": False,
+        }
+        out.update(extra)
+        return out
+
     def _stop_if_cancelled() -> dict[str, Any] | None:
         if not RUNNER.cancel_requested():
             return None
@@ -715,332 +754,479 @@ def job_smart_sync(
                 ledger_mod.mark_step(ledger, name, "interrupted", s, detail=note)
         ledger_mod.finish(ledger, "interrupted", s)
         _publish_progress(s, ledger)
-        final_now = freshness_snapshot(s)
-        facts = (((final_now.get("sources") or {}).get("financial_facts") or {}).get("coverage") or {})
-        return {
-            "kind": "smart-sync",
-            "as_of": expected.isoformat(),
-            "steps": steps,
-            "warnings": warnings,
-            "pipeline_status": "interrupted",
-            "cancelled": True,
-            "freshness": final_now,
-            "ledger": ledger_mod.public_snapshot(s, ledger=ledger),
-            "dart_coverage": {
-                "tickers": facts.get("tickers"),
-                "universe_tickers": facts.get("universe_tickers"),
-                "coverage_pct": facts.get("coverage_pct"),
-                "target_pct": 90.0,
-            },
-            "next_action": "완료된 단계는 유지됩니다. 다시 누르면 남은 단계부터 이어갑니다.",
-            "used_in_quant": False,
-        }
+        return _result(
+            pipeline_status="interrupted",
+            cancelled=True,
+            next_action="완료된 단계는 유지됩니다. 다시 누르면 남은 단계부터 이어갑니다.",
+        )
 
-    # --- KRX ---
-    stopped = _stop_if_cancelled()
-    if stopped:
-        return stopped
-    price_fresh = not bool(before.get("stale_price"))
-    if price_fresh:
-        ledger_mod.mark_step(ledger, "krx", "skipped_fresh", s, detail="시세 기준일이 이미 기대일과 같습니다.")
-        RUNNER.logs.append("[1/5] KRX 시세가 최신이라 재수집을 건너뜁니다.")
-        _step_out("krx", "KRX 시세", status="skipped_fresh", as_of=before.get("price_max_date") or expected.isoformat())
-    else:
-        ledger_mod.mark_step(ledger, "krx", "running", s, ran_this_pass=True)
-        _publish_progress(s, ledger)
-        RUNNER.logs.append(f"[1/5] KRX {expected.isoformat()} 세션 준비 여부를 확인합니다.")
-        probe = probe_expected_krx(s, expected)
-        if not probe.get("ready"):
-            retryable = probe.get("retryable", True)
-            probe_status = "source_not_ready" if retryable else "failed"
-            retry_at = ledger_mod.schedule_krx_retry(ledger, s) if retryable else None
-            detail = probe.get("error") or f"미준비 시장: {', '.join(probe.get('missing_markets') or []) or '전체'}"
-            ledger_mod.mark_step(
-                ledger,
-                "krx",
-                probe_status,
-                s,
-                retry_at=retry_at,
-                detail=detail,
-                missing_markets=probe.get("missing_markets") or [],
-                failure_kind=probe.get("failure_kind"),
-                market_rows=probe.get("market_rows") or {},
-            )
-            is_unpublished = probe.get("failure_kind") in (None, "not_published")
-            msg = f"KRX {expected.isoformat()} " + ("자료 미준비" if is_unpublished else "인증·응답 오류")
-            if retry_at:
-                msg += f" · {retry_at[11:16]} KST에 시세 단계만 재시도"
-            elif retryable:
-                msg += " · 당일 자동 재시도 한도에 도달"
-            else:
-                msg += " · 자동 반복 중단, API 설정·응답 형식 확인 후 스마트 실행으로 재시도"
-            warnings.append(msg)
-            RUNNER.logs.append(f"[1/5] {msg}")
-            _step_out(
-                "krx",
-                "KRX 시세",
-                status=probe_status,
-                failure_kind=probe.get("failure_kind"),
-                as_of=expected.isoformat(),
-                retry_at=retry_at,
-                attempt=(ledger.get("steps") or {}).get("krx", {}).get("attempt"),
-            )
-        else:
+    def _comp(health: dict[str, Any], name: str) -> dict[str, Any]:
+        row = ((health.get("components") or {}).get(name) or {})
+        return row if isinstance(row, dict) else {}
+
+    def _state(health: dict[str, Any], name: str) -> str:
+        return str(_comp(health, name).get("state") or "")
+
+    def _verify_core(health: dict[str, Any], *names: str) -> bool:
+        return all(_state(health, name) == "HEALTHY" for name in names)
+
+    def _artifact_sig(path: Path) -> tuple[int, int] | None:
+        if not path.exists():
+            return None
+        st = path.stat()
+        return (int(st.st_mtime_ns), int(st.st_size))
+
+    def _ensure_master(health: dict[str, Any]) -> dict[str, Any]:
+        """Restore master.parquet from local KRX prerequisites when possible."""
+        if _state(health, "master") == "HEALTHY":
+            return health
+        krx_master = live_dir / "krx_master.parquet"
+        prices = live_dir / "prices.parquet"
+        if krx_master.exists() and prices.exists():
+            try:
+                RUNNER.logs.append("로컬 KRX 전제로부터 master.parquet을 재구성합니다.")
+                build_live_master(s, expected)
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"master 로컬 복구 실패: {str(exc)[:160]}")
+        return _health()
+
+    def _run_krx(health: dict[str, Any], *, reason: str) -> dict[str, Any]:
+        nonlocal failure_kind
+        stopped = _stop_if_cancelled()
+        if stopped:
+            return {"_cancelled": stopped}
+        needs_price = _state(health, "krx") in {"STALE", "MISSING", "CORRUPT"}
+        needs_master = _state(health, "master") in {"MISSING", "CORRUPT"}
+        if not needs_price and not needs_master:
+            ledger_mod.mark_step(ledger, "krx", "skipped_fresh", s, detail="KRX/master 이미 정상")
+            _step_out("krx", "KRX 시세", status="skipped_fresh", reason=reason)
+            return {"health": health, "ok": True}
+
+        if needs_price:
+            ledger_mod.mark_step(ledger, "krx", "running", s, ran_this_pass=True)
+            _publish_progress(s, ledger)
+            RUNNER.logs.append(f"KRX {expected.isoformat()} 세션 준비 여부를 확인합니다. ({reason})")
+            probe = probe_expected_krx(s, expected)
+            if not probe.get("ready"):
+                retryable = probe.get("retryable", True)
+                probe_status = "source_not_ready" if retryable else "failed"
+                retry_at = ledger_mod.schedule_krx_retry(ledger, s) if retryable else None
+                detail = probe.get("error") or f"미준비 시장: {', '.join(probe.get('missing_markets') or []) or '전체'}"
+                ledger_mod.mark_step(
+                    ledger, "krx", probe_status, s,
+                    retry_at=retry_at, detail=detail,
+                    missing_markets=probe.get("missing_markets") or [],
+                    failure_kind=probe.get("failure_kind"),
+                    market_rows=probe.get("market_rows") or {},
+                )
+                failure_kind = "WAITING_SOURCE" if probe_status == "source_not_ready" else "VERIFY_FAILED"
+                is_unpublished = probe.get("failure_kind") in (None, "not_published")
+                msg = f"KRX {expected.isoformat()} " + ("자료 미준비" if is_unpublished else "인증·응답 오류")
+                if retry_at:
+                    msg += f" · {retry_at[11:16]} KST에 시세 단계만 재시도"
+                elif retryable:
+                    msg += " · 당일 자동 재시도 한도에 도달"
+                else:
+                    msg += " · 자동 반복 중단, API 설정·응답 형식 확인 후 스마트 실행으로 재시도"
+                warnings.append(msg)
+                RUNNER.logs.append(msg)
+                _step_out("krx", "KRX 시세", status=probe_status, failure_kind=probe.get("failure_kind"), retry_at=retry_at)
+                return {"health": _health(), "ok": False, "waiting_source": probe_status == "source_not_ready"}
             try:
                 prices = job_krx_prices(expected.isoformat(), lookback_days)
-                after_prices = freshness_snapshot(s)
-                if after_prices.get("stale_price"):
+                health = _ensure_master(_health())
+                if _state(health, "krx") != "HEALTHY":
                     retry_at = ledger_mod.schedule_krx_retry(ledger, s)
                     ledger_mod.mark_step(
-                        ledger,
-                        "krx",
-                        "source_not_ready",
-                        s,
+                        ledger, "krx", "source_not_ready", s,
                         retry_at=retry_at,
-                        detail="세션 탐지는 됐으나 저장 시세가 기대일에 못 미쳤습니다.",
+                        detail="세션 탐지/저장 후에도 health 기준 시세가 기대일에 못 미쳤습니다.",
                     )
+                    failure_kind = "WAITING_SOURCE"
                     warnings.append(f"KRX {expected.isoformat()} 저장 후에도 시세 지연")
-                    _step_out("krx", "KRX 시세", status="source_not_ready", as_of=expected.isoformat(), retry_at=retry_at)
-                    RUNNER.logs.append("[1/5] KRX 저장 후에도 기대 기준일이 비어 시세 단계만 재시도합니다.")
-                else:
+                    _step_out("krx", "KRX 시세", status="source_not_ready", verify="VERIFY_FAILED", retry_at=retry_at)
+                    return {"health": health, "ok": False, "waiting_source": True}
+                if _state(health, "master") != "HEALTHY":
                     ledger_mod.mark_step(
-                        ledger,
-                        "krx",
-                        "success",
-                        s,
-                        retry_at=None,
-                        detail=f"price_rows={prices.get('price_rows')}",
+                        ledger, "krx", "verify_failed", s,
+                        detail="KRX 작업 후에도 master.parquet이 정상화되지 않았습니다.",
                     )
-                    RUNNER.logs.append(f"[1/5] KRX 시세 {expected.isoformat()} 저장 완료")
-                    _step_out("krx", "KRX 시세", status="success", as_of=expected.isoformat(), price_rows=prices.get("price_rows"))
+                    failure_kind = "VERIFY_FAILED"
+                    _step_out("krx", "KRX 시세", status="verify_failed")
+                    return {"health": health, "ok": False}
+                ledger_mod.mark_step(
+                    ledger, "krx", "success", s, retry_at=None,
+                    detail=f"price_rows={prices.get('price_rows')}",
+                )
+                _step_out("krx", "KRX 시세", status="success", price_rows=prices.get("price_rows"))
+                RUNNER.logs.append(f"KRX 시세 {expected.isoformat()} 저장·검증 완료")
+                return {"health": health, "ok": True}
             except Exception as exc:  # noqa: BLE001
                 ledger_mod.mark_step(ledger, "krx", "failed", s, detail=str(exc)[:240])
                 warnings.append(f"KRX 시세 실패: {str(exc)[:180]}")
-                RUNNER.logs.append(f"[1/5] KRX 시세 실패: {exc}")
                 _step_out("krx", "KRX 시세", status="failed")
-    _publish_progress(s, ledger)
+                failure_kind = "VERIFY_FAILED"
+                return {"health": _health(), "ok": False}
 
-    krx_ok = ledger_mod.step_done((ledger.get("steps") or {}).get("krx"))
+        # prices healthy, master only
+        health = _ensure_master(health)
+        if _state(health, "master") == "HEALTHY":
+            ledger_mod.mark_step(ledger, "krx", "success", s, detail="master 로컬 복구 완료", ran_this_pass=True)
+            _step_out("krx", "KRX/master", status="success", reason="local_master_repair")
+            return {"health": health, "ok": True}
+        # fall through to network KRX refresh
+        ledger_mod.mark_step(ledger, "krx", "running", s, ran_this_pass=True)
+        _publish_progress(s, ledger)
+        try:
+            probe = probe_expected_krx(s, expected)
+            if probe.get("ready"):
+                job_krx_prices(expected.isoformat(), lookback_days)
+            health = _ensure_master(_health())
+            if _state(health, "master") != "HEALTHY" or _state(health, "krx") != "HEALTHY":
+                ledger_mod.mark_step(ledger, "krx", "verify_failed", s, detail="master 복구 실패")
+                failure_kind = "VERIFY_FAILED"
+                _step_out("krx", "KRX/master", status="verify_failed")
+                return {"health": health, "ok": False}
+            ledger_mod.mark_step(ledger, "krx", "success", s, detail="master restored via KRX refresh")
+            _step_out("krx", "KRX/master", status="success")
+            return {"health": health, "ok": True}
+        except Exception as exc:  # noqa: BLE001
+            ledger_mod.mark_step(ledger, "krx", "failed", s, detail=str(exc)[:240])
+            failure_kind = "VERIFY_FAILED"
+            _step_out("krx", "KRX/master", status="failed")
+            return {"health": _health(), "ok": False}
 
-    # --- Quant ---
-    stopped = _stop_if_cancelled()
-    if stopped:
-        return stopped
-    current = freshness_snapshot(s)
-    quant = ((current.get("sources") or {}).get("quant_ranking") or {})
-    recent_changed = False
-    if krx_ok and getattr(s, 'opendart_api_key', None) and (s.staged_dir / 'live' / 'financial_facts.parquet').exists():
+    def _run_dart_essential(health: dict[str, Any]) -> dict[str, Any]:
+        nonlocal failure_kind
+        stopped = _stop_if_cancelled()
+        if stopped:
+            return {"_cancelled": stopped}
+        state = _state(health, "dart_essential")
+        if state == "HEALTHY":
+            ledger_mod.mark_step(ledger, "dart", "skipped_fresh", s, detail="필수 재무 artifact 정상")
+            _step_out("dart", "OpenDART Essential", status="skipped_fresh")
+            return {"health": health, "ok": True}
+        if state == "CORRUPT":
+            # Fail closed: do not delete or feed corrupt facts to Quant.
+            ledger_mod.mark_step(
+                ledger, "dart", "repair_incomplete", s,
+                detail="financial_facts corrupt — reversible quarantine not implemented in A2",
+            )
+            failure_kind = "REPAIR_INCOMPLETE"
+            _step_out("dart", "OpenDART Essential", status="repair_incomplete")
+            warnings.append("재무 artifact가 손상되어 자동 복구하지 않습니다.")
+            return {"health": health, "ok": False}
+        if not getattr(s, "opendart_api_key", None):
+            ledger_mod.mark_step(ledger, "dart", "repair_incomplete", s, detail="OpenDART API key missing")
+            failure_kind = "REPAIR_INCOMPLETE"
+            _step_out("dart", "OpenDART Essential", status="repair_incomplete")
+            warnings.append("OpenDART 키가 없어 필수 재무 복구를 할 수 없습니다.")
+            return {"health": health, "ok": False, "next_action": "OpenDART API 키를 설정한 뒤 자동 복구를 다시 실행하세요."}
+
+        # Ledger/coverage success must not suppress missing-artifact repair.
+        ledger_mod.mark_step(ledger, "dart", "running", s, ran_this_pass=True, detail="essential repair overrides ledger success")
+        _publish_progress(s, ledger)
+        batch_size = max(1, min(int(dart_batch_size or 50), 100))
+        for i in range(ESSENTIAL_REPAIR_MAX_BATCHES):
+            stopped = _stop_if_cancelled()
+            if stopped:
+                return {"_cancelled": stopped}
+            RUNNER.logs.append(f"DART Essential 복구 배치 {i + 1}/{ESSENTIAL_REPAIR_MAX_BATCHES}")
+            try:
+                backfill_dart_financials(s, expected, batch_size=batch_size)
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"DART Essential 배치 실패: {str(exc)[:160]}")
+                ledger_mod.mark_step(ledger, "dart", "repair_incomplete", s, detail=str(exc)[:240])
+                failure_kind = "REPAIR_INCOMPLETE"
+                _step_out("dart", "OpenDART Essential", status="repair_incomplete")
+                return {"health": _health(), "ok": False}
+            health = _health()
+            if _state(health, "dart_essential") == "HEALTHY":
+                ledger_mod.mark_step(ledger, "dart", "success", s, detail=f"essential repaired in {i + 1} batch(es)")
+                _step_out("dart", "OpenDART Essential", status="success", batches=i + 1)
+                RUNNER.logs.append("DART Essential artifact 검증 통과")
+                return {"health": health, "ok": True}
+        ledger_mod.mark_step(ledger, "dart", "repair_incomplete", s, detail="bounded essential repair exhausted")
+        failure_kind = "REPAIR_INCOMPLETE"
+        _step_out("dart", "OpenDART Essential", status="repair_incomplete")
+        return {"health": _health(), "ok": False}
+
+    def _recent_filings_dirty(health: dict[str, Any]) -> bool:
+        if _state(health, "dart_essential") != "HEALTHY":
+            return False
+        if not getattr(s, "opendart_api_key", None):
+            return False
+        if not (live_dir / "financial_facts.parquet").exists():
+            return False
         from kr_quant.ingest.recent_filings import refresh_recent
+
         try:
             recent_check = refresh_recent(s)
-            recent_changed = bool(recent_check['refreshed_tickers']) or bool(recent_check.get('needs_recalculation'))
-            if recent_check['status'] != 'success':
-                raise RuntimeError('최근 정정 공시 재무 대조 미완료')
-        except Exception as exc:
-            # Never let an old same-date score bypass a failed filing check.
-            ledger_mod.mark_step(ledger, 'quant', 'failed', s, detail=type(exc).__name__)
-            raise RuntimeError('DART 최근 공시 대조 실패: 재계산·공개 갱신 보류') from None
-    if not krx_ok:
-        ledger_mod.mark_step(ledger, "quant", "blocked_dependency", s, detail="KRX 시세가 기대일에 도달할 때까지 점수를 다시 계산하지 않습니다.")
-        RUNNER.logs.append("[2/5] 퀀트는 KRX 선행 단계가 막혀 건너뜁니다.")
-        _step_out("quant", "퀀트 재계산", status="blocked_dependency")
-    elif quant.get("state") == "fresh" and not recent_changed:
-        ledger_mod.mark_step(ledger, "quant", "skipped_fresh", s)
-        RUNNER.logs.append("[2/5] 퀀트 기준일이 시세와 같아 재계산을 건너뜁니다.")
-        _step_out("quant", "퀀트 재계산", status="skipped_fresh", as_of=current.get("screen_as_of"))
-    else:
+            if recent_check.get("status") != "success":
+                raise RuntimeError("최근 정정 공시 재무 대조 미완료")
+            return bool(recent_check.get("refreshed_tickers")) or bool(recent_check.get("needs_recalculation"))
+        except Exception:
+            ledger_mod.mark_step(ledger, "quant", "failed", s, detail="recent_filings_failed")
+            raise RuntimeError("DART 최근 공시 대조 실패: 재계산·공개 갱신 보류") from None
+
+    def _run_quant(health: dict[str, Any], *, reason: str) -> dict[str, Any]:
+        nonlocal failure_kind
+        stopped = _stop_if_cancelled()
+        if stopped:
+            return {"_cancelled": stopped}
+        if not _verify_core(health, "krx", "master", "dart_essential"):
+            ledger_mod.mark_step(ledger, "quant", "blocked_dependency", s, detail="upstream not healthy")
+            _step_out("quant", "퀀트 재계산", status="blocked_dependency")
+            return {"health": health, "ok": False}
+
+        try:
+            dirty = _recent_filings_dirty(health)
+        except RuntimeError as exc:
+            failure_kind = "VERIFY_FAILED"
+            warnings.append(str(exc))
+            _step_out("quant", "퀀트 재계산", status="failed")
+            return {"health": _health(), "ok": False}
+
+        if _state(health, "quant") == "HEALTHY" and not dirty and reason != "maintenance_dirty":
+            ledger_mod.mark_step(ledger, "quant", "skipped_fresh", s)
+            _step_out("quant", "퀀트 재계산", status="skipped_fresh")
+            return {"health": health, "ok": True}
+
         ledger_mod.mark_step(ledger, "quant", "running", s, ran_this_pass=True)
         _publish_progress(s, ledger)
-        RUNNER.logs.append("[2/5] 시세 기준일로 퀀트와 파생 캐시를 다시 계산합니다.")
+        RUNNER.logs.append(f"퀀트 재계산 시작 ({reason})")
         try:
             live = job_live(expected.isoformat(), lookback_days, 0, skip_ingest=True)
             status = live.get("pipeline_status") or live.get("status") or "success"
-            ledger_mod.mark_step(ledger, "quant", "success" if status != "error" else "failed", s, as_of=live.get("as_of_date"))
-            _step_out("quant", "퀀트 재계산", status="success" if status != "error" else "failed", as_of=live.get("as_of_date"))
-            RUNNER.logs.append("[2/5] 퀀트 재계산 완료")
+            health = _health()
+            if status == "error" or _state(health, "quant") != "HEALTHY":
+                ledger_mod.mark_step(
+                    ledger, "quant", "verify_failed", s,
+                    detail="job returned success-like but committed quant health unhealthy"
+                    if status != "error" else "job_live error",
+                    as_of=live.get("as_of_date"),
+                )
+                failure_kind = "VERIFY_FAILED"
+                _step_out("quant", "퀀트 재계산", status="verify_failed", job_status=status)
+                return {"health": health, "ok": False}
+            ledger_mod.mark_step(ledger, "quant", "success", s, as_of=live.get("as_of_date"))
+            _step_out("quant", "퀀트 재계산", status="success", as_of=live.get("as_of_date"))
+            RUNNER.logs.append("퀀트 재계산·검증 완료")
+            return {"health": health, "ok": True}
         except Exception as exc:  # noqa: BLE001
             ledger_mod.mark_step(ledger, "quant", "failed", s, detail=str(exc)[:240])
             warnings.append(f"퀀트 재계산 실패: {str(exc)[:180]}")
             _step_out("quant", "퀀트 재계산", status="failed")
-            RUNNER.logs.append(f"[2/5] 퀀트 재계산 실패: {exc}")
-    _publish_progress(s, ledger)
+            failure_kind = "VERIFY_FAILED"
+            return {"health": _health(), "ok": False}
 
-    # --- DART ---
-    stopped = _stop_if_cancelled()
-    if stopped:
-        return stopped
-    current = freshness_snapshot(s)
-    facts = ((current.get("sources") or {}).get("financial_facts") or {})
-    coverage_info = facts.get("coverage") or {}
-    coverage = coverage_info.get("usable_pct")
-    if coverage is None:
-        coverage = coverage_info.get("coverage_pct")
-    dart_state = (ledger.get("steps") or {}).get("dart") or {}
-    from kr_quant.ingest.live import needs_more_dart_backfill
-
-    if ledger_mod.step_done(dart_state) and dart_state.get("status") != "pending":
-        ledger_mod.mark_step(
-            ledger,
-            "dart",
-            "skipped_already_success" if dart_state.get("status") == "success" else dart_state.get("status") or "skipped_already_success",
-            s,
-            detail="같은 날 이미 완료한 DART 단계를 다시 돌리지 않습니다.",
-        )
-        RUNNER.logs.append("[3/5] DART는 오늘 이미 끝나 재실행하지 않습니다.")
-        _step_out(
-            "dart",
-            "OpenDART 백필",
-            status="skipped_already_success" if dart_state.get("status") == "success" else dart_state.get("status"),
-            coverage_pct=coverage,
-        )
-    elif needs_more_dart_backfill(coverage_info, facts.get("backfill")):
-        ledger_mod.mark_step(ledger, "dart", "running", s, ran_this_pass=True)
-        _publish_progress(s, ledger)
+    def _run_dart_maintenance(health: dict[str, Any]) -> dict[str, Any]:
+        stopped = _stop_if_cancelled()
+        if stopped:
+            return {"_cancelled": stopped}
+        if mode != "normal":
+            return {"health": health, "changed": False}
+        if _state(health, "dart_essential") != "HEALTHY":
+            return {"health": health, "changed": False}
+        facts_path = live_dir / "financial_facts.parquet"
+        before = _artifact_sig(facts_path)
+        batch_size = max(1, min(int(dart_batch_size or 50), 100))
+        RUNNER.logs.append("DART maintenance 1배치 (normal only)")
         try:
-            RUNNER.logs.append(f"[3/5] DART 커버리지 {coverage or 0}% · 다음 {dart_batch_size}종목을 이어서 수집합니다.")
-            dart = job_dart_backfill(expected.isoformat(), max(1, min(int(dart_batch_size or 50), 100)))
-            progress = dart.get("dart_backfill") or {}
-            ledger_mod.mark_step(
-                ledger,
-                "dart",
-                progress.get("status") or "success",
-                s,
-                processed=progress.get("processed_this_run") or 0,
-                covered_tickers=progress.get("covered_tickers"),
-                coverage_pct=progress.get("coverage_pct"),
-            )
-            _step_out(
-                "dart",
-                "OpenDART 전 종목 커버리지 1배치",
-                status=progress.get("status") or "success",
-                processed=progress.get("processed_this_run") or 0,
-                covered_tickers=progress.get("covered_tickers"),
-                coverage_pct=progress.get("coverage_pct"),
-            )
-            RUNNER.logs.append(f"[3/5] DART 백필 완료 · 커버리지 {progress.get('coverage_pct') or coverage or 0}%")
+            backfill_dart_financials(s, expected, batch_size=batch_size)
+            after = _artifact_sig(facts_path)
+            changed = before != after
+            _step_out("dart_maintenance", "OpenDART maintenance", status="success", changed=changed)
+            return {"health": _health(), "changed": changed}
         except Exception as exc:  # noqa: BLE001
-            warnings.append(f"DART 백필 보류: {str(exc)[:180]}")
-            ledger_mod.mark_step(ledger, "dart", "warning", s, detail=str(exc)[:240])
-            _step_out("dart", "OpenDART 전 종목 커버리지 1배치", status="warning")
-    else:
-        ledger_mod.mark_step(ledger, "dart", "skipped_sufficient", s, coverage_pct=coverage)
-        RUNNER.logs.append(f"[3/5] DART 커버리지 {coverage}%로 목표를 충족해 백필을 건너뜁니다.")
-        _step_out("dart", "OpenDART 커버리지 확인", status="skipped_sufficient", coverage_pct=coverage)
-    _publish_progress(s, ledger)
+            warnings.append(f"DART maintenance 보류: {str(exc)[:160]}")
+            _step_out("dart_maintenance", "OpenDART maintenance", status="warning")
+            return {"health": _health(), "changed": False}
 
-    # --- KIS ---
-    stopped = _stop_if_cancelled()
-    if stopped:
-        return stopped
-    kis_state = (ledger.get("steps") or {}).get("kis") or {}
-    from kr_quant.flow.official import collection_is_current
-    kis_current = not (s.kis_app_key and s.kis_app_secret) or collection_is_current(s)
-    if ledger_mod.step_done(kis_state) and kis_state.get("status") != "pending" and kis_current:
-        ledger_mod.mark_step(
-            ledger,
-            "kis",
-            "skipped_already_success" if kis_state.get("status") == "success" else kis_state.get("status") or "skipped_already_success",
-            s,
-            detail="같은 날 이미 완료한 KIS 단계를 다시 돌리지 않습니다.",
-        )
-        RUNNER.logs.append("[4/5] KIS 수급은 오늘 이미 끝나 재실행하지 않습니다.")
-        _step_out("kis", "KIS 수급", status="skipped_already_success" if kis_state.get("status") == "success" else kis_state.get("status"))
-    elif s.kis_app_key and s.kis_app_secret:
-        ledger_mod.mark_step(ledger, "kis", "running", s, ran_this_pass=True)
+    def _run_kis(health: dict[str, Any]) -> dict[str, Any]:
+        stopped = _stop_if_cancelled()
+        if stopped:
+            return {"_cancelled": stopped}
+        kis_state = (ledger.get("steps") or {}).get("kis") or {}
+        from kr_quant.flow.official import collection_is_current
+
+        kis_current = not (s.kis_app_key and s.kis_app_secret) or collection_is_current(s)
+        if ledger_mod.step_done(kis_state) and kis_state.get("status") != "pending" and kis_current:
+            ledger_mod.mark_step(
+                ledger, "kis",
+                "skipped_already_success" if kis_state.get("status") == "success" else kis_state.get("status") or "skipped_already_success",
+                s,
+                detail="같은 날 이미 완료한 KIS 단계",
+            )
+            _step_out("kis", "KIS 수급", status="skipped_already_success")
+            return {"health": health}
+        if s.kis_app_key and s.kis_app_secret:
+            ledger_mod.mark_step(ledger, "kis", "running", s, ran_this_pass=True)
+            _publish_progress(s, ledger)
+            try:
+                from kr_quant.flow.official import collect_official
+
+                flow = collect_official(s)
+                status = flow.get("pipeline_status") or ("success" if not flow.get("errors") and flow.get("saved") else "partial")
+                ledger_mod.mark_step(ledger, "kis", status, s, attempted=flow.get("attempted") or 0, saved=flow.get("saved") or 0)
+                _step_out("kis", "KIS 수급", status=status, attempted=flow.get("attempted") or 0, saved=flow.get("saved") or 0)
+                if flow.get("errors"):
+                    warnings.append(f"KIS 일부 수집 실패 {len(flow.get('errors') or [])}건")
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"KIS 수급 보류: {str(exc)[:180]}")
+                ledger_mod.mark_step(ledger, "kis", "warning", s, detail=str(exc)[:240])
+                _step_out("kis", "KIS 수급", status="warning")
+        else:
+            ledger_mod.mark_step(ledger, "kis", "skipped_not_configured", s)
+            _step_out("kis", "KIS 수급", status="skipped_not_configured")
+        return {"health": _health()}
+
+    # ----- main flow -----
+    health = _health()
+    plan = plan_pipeline(health, mode=mode)
+    planned = action_kinds(plan)
+    RUNNER.logs.append(f"smart-sync mode={mode} plan={planned}")
+
+    # KRX / master
+    if "REFRESH_KRX" in planned or _state(health, "krx") != "HEALTHY" or _state(health, "master") != "HEALTHY":
+        out = _run_krx(health, reason="plan_or_prerequisite")
+        if out.get("_cancelled"):
+            return out["_cancelled"]
+        health = out["health"]
+        # Non-ok KRX: still allow later DART essential repair; Quant stays blocked by health gates.
         _publish_progress(s, ledger)
-        try:
-            from kr_quant.flow.official import collect_official
-
-            RUNNER.logs.append("[4/5] KIS 관심·고유동성 종목 수급을 갱신합니다.")
-            flow = collect_official(s)
-            status = flow.get('pipeline_status') or ("success" if not flow.get("errors") and flow.get('saved') else "partial")
-            ledger_mod.mark_step(
-                ledger,
-                "kis",
-                status,
-                s,
-                attempted=flow.get("attempted") or 0,
-                saved=flow.get("saved") or 0,
-            )
-            _step_out(
-                "kis",
-                "KIS 관심·고유동성 수급",
-                status=status,
-                attempted=flow.get("attempted") or 0,
-                saved=flow.get("saved") or 0,
-            )
-            if flow.get("errors"):
-                warnings.append(f"KIS 일부 수집 실패 {len(flow.get('errors') or [])}건")
-            RUNNER.logs.append(f"[4/5] KIS 수급 완료 · {flow.get('saved') or 0}행 저장")
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"KIS 수급 보류: {str(exc)[:180]}")
-            ledger_mod.mark_step(ledger, "kis", "warning", s, detail=str(exc)[:240])
-            _step_out("kis", "KIS 관심·고유동성 수급", status="warning")
     else:
-        ledger_mod.mark_step(ledger, "kis", "skipped_not_configured", s)
-        RUNNER.logs.append("[4/5] KIS 키가 없어 수급 갱신을 건너뜁니다.")
-        _step_out("kis", "KIS 수급", status="skipped_not_configured")
-    _publish_progress(s, ledger)
+        ledger_mod.mark_step(ledger, "krx", "skipped_fresh", s, detail="KRX/master already healthy")
+        _step_out("krx", "KRX 시세", status="skipped_fresh")
 
-    # --- Publish readiness (actual upload stays in JobRunner._maybe_publish) ---
     stopped = _stop_if_cancelled()
     if stopped:
         return stopped
-    RUNNER.logs.append("[5/5] 최종 최신성·품질 계약을 확인합니다.")
-    final = freshness_snapshot(s)
-    if final.get("stale_price") or final.get("contract_status") == "blocked":
-        ledger_mod.mark_step(
-            ledger,
-            "publish",
-            "blocked_stale",
-            s,
-            detail="시세가 기대일에 못 미쳐 공개판을 올리지 않습니다.",
-        )
-        _step_out("publish", "공개판", status="blocked_stale")
-        RUNNER.logs.append("[5/5] 공개판은 시세 지연으로 안전 차단합니다.")
-    elif not ledger_mod.step_done((ledger.get("steps") or {}).get("quant")):
-        ledger_mod.mark_step(ledger, "publish", "blocked_dependency", s, detail="퀀트 단계가 끝나지 않았습니다.")
+
+    # Re-plan after KRX
+    health = _health()
+    plan = plan_pipeline(health, mode=mode)
+    planned = action_kinds(plan)
+
+    waiting_krx = _state(health, "krx") != "HEALTHY"
+    master_ok = _state(health, "master") == "HEALTHY"
+
+    # DART essential before Quant
+    if "REPAIR_DART_ESSENTIAL" in planned or _state(health, "dart_essential") in {"MISSING", "CORRUPT"}:
+        out = _run_dart_essential(health)
+        if out.get("_cancelled"):
+            return out["_cancelled"]
+        health = out["health"]
+        if not out.get("ok"):
+            ledger_mod.mark_step(ledger, "publish", "blocked_dependency", s, detail="DART essential incomplete")
+            overall = "failed"
+            ledger_mod.finish(ledger, overall, s)
+            _publish_progress(s, ledger)
+            return _result(
+                pipeline_status="failed",
+                next_action=out.get("next_action") or "필수 재무 artifact 복구 후 다시 실행하세요.",
+            )
+        _publish_progress(s, ledger)
+    else:
+        ledger_mod.mark_step(ledger, "dart", "skipped_fresh", s, detail="필수 재무 artifact 정상")
+        _step_out("dart", "OpenDART Essential", status="skipped_fresh")
+
+    health = _health()
+    plan = plan_pipeline(health, mode=mode)
+    planned = action_kinds(plan)
+
+    # Quant
+    quant_needed = (
+        "REBUILD_QUANT" in planned
+        or _state(health, "quant") != "HEALTHY"
+    )
+    if waiting_krx or not master_ok or _state(health, "dart_essential") != "HEALTHY":
+        ledger_mod.mark_step(ledger, "quant", "blocked_dependency", s, detail="upstream not ready")
+        _step_out("quant", "퀀트 재계산", status="blocked_dependency")
+        quant_ok = False
+    elif quant_needed:
+        out = _run_quant(health, reason="plan")
+        if out.get("_cancelled"):
+            return out["_cancelled"]
+        health = out["health"]
+        quant_ok = bool(out.get("ok"))
+        if not quant_ok:
+            ledger_mod.mark_step(ledger, "publish", "blocked_dependency", s, detail="Quant verify failed")
+            ledger_mod.finish(ledger, "failed", s)
+            _publish_progress(s, ledger)
+            return _result(pipeline_status="failed", next_action="퀀트 산출물 검증 실패. 로그를 확인하세요.")
+    else:
+        ledger_mod.mark_step(ledger, "quant", "skipped_fresh", s)
+        _step_out("quant", "퀀트 재계산", status="skipped_fresh")
+        quant_ok = True
+
+    # Optional maintenance (normal only)
+    health = _health()
+    plan = plan_pipeline(health, mode=mode)
+    if mode == "normal" and "DART_MAINTENANCE_BATCH" in action_kinds(plan) and _state(health, "dart_essential") == "HEALTHY":
+        out = _run_dart_maintenance(health)
+        if out.get("_cancelled"):
+            return out["_cancelled"]
+        health = out["health"]
+        if out.get("changed") and quant_ok and not waiting_krx and master_ok:
+            outq = _run_quant(health, reason="maintenance_dirty")
+            if outq.get("_cancelled"):
+                return outq["_cancelled"]
+            health = outq["health"]
+            quant_ok = bool(outq.get("ok"))
+            if not quant_ok:
+                ledger_mod.finish(ledger, "failed", s)
+                _publish_progress(s, ledger)
+                return _result(pipeline_status="failed", next_action="maintenance 이후 퀀트 검증 실패")
+
+    # KIS
+    out = _run_kis(_health())
+    if out.get("_cancelled"):
+        return out["_cancelled"]
+    health = out["health"]
+    _publish_progress(s, ledger)
+
+    # Final verification / publish readiness
+    health = _health()
+    core_ok = _verify_core(health, "krx", "master", "dart_essential", "quant")
+    if failure_kind in {"VERIFY_FAILED", "REPAIR_INCOMPLETE"}:
+        ledger_mod.mark_step(ledger, "publish", "blocked_dependency", s, detail=failure_kind)
         _step_out("publish", "공개판", status="blocked_dependency")
+        overall = "failed"
+    elif _state(health, "krx") != "HEALTHY":
+        ledger_mod.mark_step(ledger, "publish", "blocked_stale", s, detail="시세가 기대일에 못 미침")
+        _step_out("publish", "공개판", status="blocked_stale")
+        overall = "partial" if failure_kind == "WAITING_SOURCE" or True else "partial"
+    elif not core_ok:
+        ledger_mod.mark_step(ledger, "publish", "blocked_dependency", s, detail="core not verified")
+        _step_out("publish", "공개판", status="blocked_dependency")
+        overall = "failed" if failure_kind else "partial"
     else:
-        ledger_mod.mark_step(ledger, "publish", "queued", s, detail="품질 가드 통과 시에만 업로드합니다.")
+        ledger_mod.mark_step(ledger, "publish", "queued", s, detail="품질 가드 통과 시에만 업로드")
         _step_out("publish", "공개판", status="queued")
+        overall = "success"
 
-    overall = ledger_mod.decide_overall(ledger, s)
-    if warnings and overall == "success":
+    decided = ledger_mod.decide_overall(ledger, s)
+    if decided == "failed":
+        overall = "failed"
+    elif warnings and overall == "success":
         overall = "partial"
+    elif decided in {"partial", "blocked"} and overall == "success":
+        overall = decided if decided != "blocked" else "partial"
+
     ledger_mod.finish(ledger, overall, s)
     _publish_progress(s, ledger)
 
-    final_facts = (((final.get("sources") or {}).get("financial_facts") or {}).get("coverage") or {})
-    krx_step = (ledger.get("steps") or {}).get("krx") or {}
-    if krx_step.get("status") == "failed":
-        next_action = "KRX 인증·응답 또는 수집 오류를 확인한 뒤 스마트 실행으로 재시도하세요. 이전 정상 자료는 유지됩니다."
-    elif krx_step.get("status") == "source_not_ready" and krx_step.get("retry_at"):
-        next_action = f"KRX 자료가 준비되면 {str(krx_step.get('retry_at'))[11:16]} KST에 시세 단계만 다시 받습니다."
-    elif (final_facts.get("coverage_pct") or 0) < 90:
-        next_action = "다음 예약 실행에서 DART 백필을 이어갑니다."
+    if failure_kind == "WAITING_SOURCE":
+        next_action = "KRX 자료가 준비되면 시세 단계부터 다시 받습니다."
+    elif overall == "failed":
+        next_action = "필수 artifact 복구/검증 실패. 자동 복구 또는 로그를 확인하세요."
     elif overall == "success":
         next_action = "일일 데이터 정상화가 완료되었습니다."
     else:
         next_action = "일부 단계는 다음 실행에서 이어갑니다."
 
-    return {
-        "kind": "smart-sync",
-        "as_of": expected.isoformat(),
-        "steps": steps,
-        "warnings": warnings,
-        "pipeline_status": overall,
-        "freshness": final,
-        "ledger": ledger_mod.public_snapshot(s, ledger=ledger),
-        "dart_coverage": {
-            "tickers": final_facts.get("tickers"),
-            "universe_tickers": final_facts.get("universe_tickers"),
-            "coverage_pct": final_facts.get("coverage_pct"),
-            "target_pct": 90.0,
-        },
-        "next_action": next_action,
-        "used_in_quant": False,
-    }
+    return _result(pipeline_status=overall, next_action=next_action)
 
 
 def _maybe_publish(kind: str) -> None:

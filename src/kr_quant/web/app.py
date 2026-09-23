@@ -177,6 +177,7 @@ class JobIn(BaseModel):
     dart_batch_size: int = 50
     skip_ingest: bool = False
     continuous: bool = False
+    mode: str = "normal"
 
 
 class WatchIn(BaseModel):
@@ -4011,6 +4012,9 @@ def api_job_start(body: JobIn) -> dict[str, Any]:
         if body.kind == "refresh-local":
             return RUNNER.start("refresh-local", lambda: job_live(body.as_of, 3, 0, True))
         if body.kind == "smart-sync":
+            mode = (body.mode or "normal").strip().lower()
+            if mode not in {"normal", "recover"}:
+                raise HTTPException(status_code=400, detail=f"invalid mode: {body.mode!r}")
             return RUNNER.start(
                 "smart-sync",
                 lambda: job_smart_sync(
@@ -4018,6 +4022,8 @@ def api_job_start(body: JobIn) -> dict[str, Any]:
                     body.lookback_days or 80,
                     body.max_corps or 400,
                     body.dart_batch_size or 50,
+                    "manual",
+                    mode,
                 ),
             )
         if body.kind == "demo":
