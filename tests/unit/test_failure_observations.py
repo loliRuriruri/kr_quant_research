@@ -41,7 +41,7 @@ def test_old_snapshot_causes_repaired_without_mutating_memory(monkeypatch):
              'failed_analysis': ['UNSUPPORTED_CAUSE'], 'seasonality_score': 73.2}]
     stored = {'payload': {'rows': rows}}
     monkeypatch.setattr(web, 'load_settings', lambda: object())
-    monkeypatch.setattr(season_snapshot, 'read_bundle', lambda *a: copy.deepcopy(stored))
+    monkeypatch.setattr(season_snapshot, 'read_bundle', lambda *a, **kw: copy.deepcopy(stored))
     result = web._season_bundle()
     assert '원인 미확인' in result['payload']['rows'][0]['failed_analysis'][0]
     assert rows[0]['failed_analysis'] == ['UNSUPPORTED_CAUSE']
