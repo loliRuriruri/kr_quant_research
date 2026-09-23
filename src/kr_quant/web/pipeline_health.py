@@ -14,7 +14,6 @@ from kr_quant.freshness import expected_price_date, trading_session_lag
 from kr_quant.ingest.live import DART_USABLE_TARGET_PCT, dart_coverage_report
 from kr_quant.settings import Settings
 
-# Externally visible component states (locked design).
 COMPONENT_STATES = frozenset(
     {"HEALTHY", "STALE", "PARTIAL", "MISSING", "CORRUPT", "UPDATING", "BLOCKED"}
 )
@@ -30,10 +29,27 @@ PIPELINE_STATES = frozenset(
     }
 )
 
-# Required columns derived from current producers/consumers (ingest.live + run_from_staged).
-REQUIRED_PRICES = frozenset({"ticker", "trade_date", "market", "close", "volume"})
+# Derived from current Quant consumers (ingest.live required_* + financials.snapshot /
+# quarters / run_from_staged / build_inputs_for_security).
+REQUIRED_PRICES = frozenset(
+    {"ticker", "trade_date", "market", "close", "volume", "market_cap", "trading_value"}
+)
 REQUIRED_MASTER = frozenset({"ticker", "market", "sect"})
-REQUIRED_FACTS = frozenset({"ticker"})
+REQUIRED_FACTS = frozenset(
+    {
+        "ticker",
+        "security_id",
+        "available_date",
+        "canonical_account",
+        "fs_div",
+        "currency",
+        "bsns_year",
+        "reprt_code",
+        "normalized_value",
+        "period_end",
+    }
+)
+REQUIRED_QUANT_STOCKS = frozenset({"ticker"})
 
 
 def _component(
@@ -74,7 +90,7 @@ def _inspect_parquet(
         pf = pq.ParquetFile(path)
         names = {field.name for field in pf.schema_arrow}
         rows = int(pf.metadata.num_rows) if pf.metadata is not None else 0
-    except Exception as exc:  # noqa: BLE001 — unreadable parquet is CORRUPT
+    except Exception as exc:  # noqa: BLE001
         return {
             "ok": False,
             "state": "CORRUPT",
@@ -113,7 +129,6 @@ def _inspect_parquet(
 
 
 def _max_trade_date(path: Path) -> date | None:
-    """Minimal column read for prices max trade_date only."""
     try:
         import pandas as pd
 
@@ -133,7 +148,6 @@ def _live_path(settings: Settings, name: str) -> Path:
 
 
 def _coverage_from_state(settings: Settings, facts_ok: bool) -> dict[str, Any]:
-    """Coverage is informational and never overrides essential artifact health."""
     live = settings.staged_dir / "live"
     master_path = live / "master.parquet"
     facts_path = live / "financial_facts.parquet"
@@ -152,9 +166,11 @@ def _coverage_from_state(settings: Settings, facts_ok: bool) -> dict[str, Any]:
         import pandas as pd
 
         if master_path.exists():
-            # Bounded: ticker-only when possible for coverage universe.
             try:
-                master = pd.read_parquet(master_path, columns=["ticker", "market", "sect", "kind", "secu_group", "corp_code"])
+                master = pd.read_parquet(
+                    master_path,
+                    columns=["ticker", "market", "sect", "kind", "secu_group", "corp_code"],
+                )
             except Exception:  # noqa: BLE001
                 try:
                     master = pd.read_parquet(master_path, columns=["ticker"])
@@ -209,7 +225,13 @@ def _krx_health(settings: Settings, *, expected: date, now: datetime | None) -> 
     max_day = _max_trade_date(path)
     as_of = None if max_day is None else max_day.isoformat()
     if max_day is None:
-        return _component("CORRUPT", reason="trade_date_unreadable", as_of=None, path=str(path), rows=inspected["rows"])
+        return _component(
+            "CORRUPT",
+            reason="trade_date_unreadable",
+            as_of=None,
+            path=str(path),
+            rows=inspected["rows"],
+        )
     if max_day < expected:
         return _component(
             "STALE",
@@ -243,12 +265,7 @@ def _master_health(settings: Settings) -> dict[str, Any]:
             rows=inspected.get("rows"),
             missing_columns=inspected.get("missing_columns"),
         )
-    return _component(
-        "HEALTHY",
-        reason="master_readable",
-        path=str(path),
-        rows=inspected["rows"],
-    )
+    return _component("HEALTHY", reason="master_readable", path=str(path), rows=inspected["rows"])
 
 
 def _dart_essential_health(settings: Settings) -> dict[str, Any]:
@@ -280,49 +297,88 @@ def _quant_health(
     if blocked_by:
         return _component("BLOCKED", reason="upstream_required_missing", blocked_by=list(blocked_by))
 
-    from kr_quant.run_generation import current_output_path, load_manifest
+    from kr_quant.run_generation import load_manifest
 
     manifest = load_manifest(settings)
-    stocks_path = current_output_path(settings, "latest_all_stocks.parquet")
-    quality_path = current_output_path(settings, "data_quality_report.json")
-
-    if not stocks_path.exists():
+    if not isinstance(manifest, dict):
         return _component(
             "MISSING",
-            reason="quant_all_stocks_missing",
-            path=str(stocks_path),
-            manifest_present=bool(manifest),
+            reason="committed_manifest_missing",
+            path=str(settings.output_dir / "current_manifest.json"),
         )
 
-    inspected = _inspect_parquet(stocks_path, required_columns=frozenset({"ticker"}))
+    run_id = manifest.get("run_id")
+    generation_dir_raw = manifest.get("generation_dir")
+    if not run_id or not generation_dir_raw:
+        return _component(
+            "CORRUPT",
+            reason="committed_manifest_incomplete",
+            manifest_keys=sorted(manifest.keys()),
+        )
+
+    generation_dir = Path(str(generation_dir_raw))
+    if not generation_dir.exists() or not generation_dir.is_dir():
+        return _component(
+            "MISSING",
+            reason="committed_generation_dir_missing",
+            run_id=str(run_id),
+            generation_dir=str(generation_dir),
+        )
+
+    stocks_path = generation_dir / "latest_all_stocks.parquet"
+    quality_path = generation_dir / "data_quality_report.json"
+
+    inspected = _inspect_parquet(stocks_path, required_columns=REQUIRED_QUANT_STOCKS)
     if not inspected["ok"]:
         return _component(
             inspected["state"],
-            reason=inspected.get("reason") or "quant_output_corrupt",
+            reason=inspected.get("reason") or "committed_all_stocks_missing",
             path=inspected.get("path"),
             size=inspected.get("size"),
             rows=inspected.get("rows"),
+            run_id=str(run_id),
+            generation_dir=str(generation_dir),
+            missing_columns=inspected.get("missing_columns"),
+        )
+
+    if not quality_path.exists():
+        return _component(
+            "MISSING",
+            reason="committed_quality_report_missing",
+            path=str(quality_path),
+            run_id=str(run_id),
+            generation_dir=str(generation_dir),
         )
 
     as_of: str | None = None
-    if quality_path.exists():
-        try:
-            payload = json.loads(quality_path.read_text(encoding="utf-8"))
-            if isinstance(payload, dict) and payload.get("as_of_date"):
-                as_of = str(payload.get("as_of_date"))[:10]
-        except (OSError, json.JSONDecodeError, TypeError):
-            as_of = None
-    if as_of is None and isinstance(manifest, dict):
-        raw = manifest.get("as_of") or manifest.get("as_of_date")
-        if raw:
-            as_of = str(raw)[:10]
+    try:
+        payload = json.loads(quality_path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict) and payload.get("as_of_date"):
+            as_of = str(payload.get("as_of_date"))[:10]
+    except (OSError, json.JSONDecodeError, TypeError):
+        return _component(
+            "CORRUPT",
+            reason="committed_quality_report_unreadable",
+            path=str(quality_path),
+            run_id=str(run_id),
+        )
 
+    manifest_as_of = str(manifest.get("as_of_date") or manifest.get("as_of") or "")[:10] or None
     if as_of is None:
         return _component(
             "CORRUPT",
             reason="quant_as_of_missing",
             path=str(stocks_path),
             rows=inspected["rows"],
+            run_id=str(run_id),
+        )
+    if manifest_as_of and manifest_as_of != as_of:
+        return _component(
+            "CORRUPT",
+            reason="quant_as_of_mismatch",
+            as_of=as_of,
+            manifest_as_of=manifest_as_of,
+            run_id=str(run_id),
         )
 
     if price_as_of and as_of < price_as_of:
@@ -333,15 +389,19 @@ def _quant_health(
             price_as_of=price_as_of,
             path=str(stocks_path),
             rows=inspected["rows"],
+            run_id=str(run_id),
+            generation_dir=str(generation_dir),
         )
 
     return _component(
         "HEALTHY",
-        reason="quant_aligned",
+        reason="committed_quant_aligned",
         as_of=as_of,
         price_as_of=price_as_of,
         path=str(stocks_path),
         rows=inspected["rows"],
+        run_id=str(run_id),
+        generation_dir=str(generation_dir),
     )
 
 
@@ -370,21 +430,36 @@ def _kis_health(settings: Settings, *, expected: date) -> dict[str, Any]:
 def _season_health(settings: Settings, *, busy: bool) -> dict[str, Any]:
     """A1: readiness/updating only — no LKG serving."""
     from kr_quant.run_generation import is_updating
+    from kr_quant.web.season_snapshot import _folder
 
     updating = bool(busy) or is_updating(settings)
-    # Presence of any season folder/files is informational; A1 does not build.
-    season_root = settings.root / "data" / "cache" / "season_snapshots"
-    has_cache = season_root.exists() and any(season_root.glob("*.json"))
+    season_root = _folder(settings)
+    has_cache = False
+    if season_root.exists():
+        has_cache = any(season_root.glob("*.json")) or (season_root / "current.json").exists()
     if updating:
         return _component(
             "UPDATING",
             reason="source_or_runner_updating",
             cache_present=has_cache,
+            path=str(season_root),
             lkg_serving="deferred_to_a4",
         )
     if has_cache:
-        return _component("HEALTHY", reason="season_cache_present", cache_present=True, lkg_serving="deferred_to_a4")
-    return _component("MISSING", reason="season_cache_absent", cache_present=False, lkg_serving="deferred_to_a4")
+        return _component(
+            "HEALTHY",
+            reason="season_cache_present",
+            cache_present=True,
+            path=str(season_root),
+            lkg_serving="deferred_to_a4",
+        )
+    return _component(
+        "MISSING",
+        reason="season_cache_absent",
+        cache_present=False,
+        path=str(season_root),
+        lkg_serving="deferred_to_a4",
+    )
 
 
 def _pipeline_state(
@@ -396,12 +471,11 @@ def _pipeline_state(
         return "RUNNING", False
 
     dart = components.get("dart_essential") or {}
-    master = components.get("master") or {}
     quant = components.get("quant") or {}
     krx = components.get("krx") or {}
 
     repair_triggers = []
-    for name in ("dart_essential", "master"):
+    for name in ("dart_essential", "master", "krx"):
         state = (components.get(name) or {}).get("state")
         if state in {"MISSING", "CORRUPT"}:
             repair_triggers.append(name)
@@ -417,12 +491,7 @@ def _pipeline_state(
         return "NEEDS_DAILY_UPDATE", False
 
     if krx.get("state") == "HEALTHY" and dart.get("state") == "HEALTHY" and quant.get("state") == "HEALTHY":
-        # Optional partials (coverage/kis/season) do not block READY.
         return "READY", False
-
-    # Mixed non-repair issues (e.g. KIS missing while core healthy already handled).
-    if krx.get("state") in {"MISSING", "CORRUPT"}:
-        return "REPAIR_REQUIRED", True
 
     return "PARTIAL", False
 
@@ -471,7 +540,6 @@ def pipeline_health(
     if pipeline_state not in PIPELINE_STATES:
         raise ValueError(f"unsupported pipeline state: {pipeline_state}")
 
-    # Ledger is attached for diagnostics only; never used to clear REPAIR_REQUIRED.
     ledger_info = None
     if isinstance(ledger, Mapping):
         ledger_info = {

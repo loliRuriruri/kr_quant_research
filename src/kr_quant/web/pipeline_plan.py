@@ -19,7 +19,6 @@ ACTIONS = frozenset(
     }
 )
 
-# Recover must never schedule these long/forced jobs (H12).
 FORBIDDEN_IN_RECOVER = frozenset(
     {
         "krx-history",
@@ -88,29 +87,28 @@ def plan_pipeline(
     season = _state(components, "season")
     master = _state(components, "master")
 
-    # KRX refresh when stale/missing/corrupt (local artifact view).
-    if krx in {"STALE", "MISSING", "CORRUPT"}:
+    # Master is a live prerequisite for Quant. Within locked action vocabulary,
+    # REFRESH_KRX is the smallest prerequisite that can restore live master (A2 verifies).
+    if master in {"MISSING", "CORRUPT"}:
+        actions.append(
+            _action(
+                "REFRESH_KRX",
+                reason=f"master_{master.lower()}_requires_krx_refresh",
+            )
+        )
+    elif krx in {"STALE", "MISSING", "CORRUPT"}:
         actions.append(_action("REFRESH_KRX", reason=f"krx_{krx.lower()}"))
 
-    # DART essential repair BEFORE Quant (ordering contract).
     if dart in {"MISSING", "CORRUPT"}:
         actions.append(_action("REPAIR_DART_ESSENTIAL", reason=f"dart_essential_{dart.lower()}"))
 
-    # Master missing/corrupt also blocks operable Quant — repair path is via essential data stack;
-    # recover/normal both need Quant rebuild after essentials restored. We still schedule Quant
-    # rebuild when master is broken so the plan expresses dependency, but DART essential (if any)
-    # remains earlier. Master itself has no separate action in the locked action set.
     quant_needs_rebuild = quant in {"STALE", "MISSING", "CORRUPT", "BLOCKED"} or master in {
         "MISSING",
         "CORRUPT",
     }
     if quant_needs_rebuild:
-        # If Quant is only blocked by dart_essential and we already scheduled repair, still
-        # include REBUILD_QUANT after it so dependents are explicit.
         actions.append(_action("REBUILD_QUANT", reason=f"quant_{quant.lower() or 'blocked'}"))
 
-    # Optional bounded DART maintenance in normal mode only when essential is healthy
-    # and coverage is below target. Never a Quant prerequisite.
     if mode == "normal" and dart == "HEALTHY" and coverage == "PARTIAL":
         actions.append(
             _action(
@@ -121,14 +119,11 @@ def plan_pipeline(
         )
 
     if kis in {"STALE", "MISSING", "CORRUPT", "PARTIAL"}:
-        # KIS never forces Quant rebuild (matrix 19).
         actions.append(_action("REFRESH_KIS", reason=f"kis_{kis.lower()}"))
 
-    # Season rebuild only when season itself is not healthy (A1; LKG is A4).
     if season in {"MISSING", "STALE", "UPDATING", "CORRUPT"}:
         actions.append(_action("REBUILD_SEASON", reason=f"season_{season.lower()}"))
 
-    # Publish check when core looks ready-ish after planned work, or already READY.
     if pipeline_state in {"READY", "NEEDS_DAILY_UPDATE", "PARTIAL"} or actions:
         core_ok_after = dart not in {"MISSING", "CORRUPT"} or any(
             a["action"] == "REPAIR_DART_ESSENTIAL" for a in actions
@@ -138,13 +133,11 @@ def plan_pipeline(
         ):
             actions.append(_action("CHECK_PUBLISH", reason="evaluate_publish_readiness"))
 
-    # Hard guarantee: no forbidden long-job actions in recover (or ever in this planner).
     for row in actions:
         if row["action"] in FORBIDDEN_IN_RECOVER:
             raise RuntimeError(f"planner emitted forbidden action: {row['action']}")
 
     if mode == "recover":
-        # Strip optional maintenance / publish niceties that are not minimum operable restore.
         actions = [
             row
             for row in actions
@@ -159,13 +152,14 @@ def plan_pipeline(
             }
         ]
 
-    # Enforce DART essential before Quant in the final list.
     kinds = [row["action"] for row in actions]
     if "REPAIR_DART_ESSENTIAL" in kinds and "REBUILD_QUANT" in kinds:
         if kinds.index("REPAIR_DART_ESSENTIAL") > kinds.index("REBUILD_QUANT"):
             raise RuntimeError("planner violated DART-essential-before-Quant ordering")
+    if "REFRESH_KRX" in kinds and "REBUILD_QUANT" in kinds:
+        if kinds.index("REFRESH_KRX") > kinds.index("REBUILD_QUANT"):
+            raise RuntimeError("planner violated KRX/master-refresh-before-Quant ordering")
 
-    # Deduplicate while preserving order.
     seen: set[str] = set()
     ordered: list[dict[str, Any]] = []
     for row in actions:

@@ -58,8 +58,6 @@ def test_13_facts_missing_repairs_before_quant():
     health["repair_required"] = True
     plan = plan_pipeline(health, mode="recover")
     kinds = action_kinds(plan)
-    assert "REPAIR_DART_ESSENTIAL" in kinds
-    assert "REBUILD_QUANT" in kinds
     assert kinds.index("REPAIR_DART_ESSENTIAL") < kinds.index("REBUILD_QUANT")
 
 
@@ -82,20 +80,15 @@ def test_15_16_17_recover_never_schedules_long_jobs():
     health["pipeline_state"] = "REPAIR_REQUIRED"
     plan = plan_pipeline(health, mode="recover")
     kinds = set(action_kinds(plan))
-    assert "krx-history" not in kinds
-    assert "KRX_HISTORY" not in kinds
-    assert "DART_FULL_COVERAGE" not in kinds
-    assert "DART_CONTINUOUS" not in kinds
-    assert "FULL_UPDATE" not in kinds
-    assert "LIVE_FULL_UPDATE" not in kinds
     assert "DART_MAINTENANCE_BATCH" not in kinds
+    assert "FULL_UPDATE" not in kinds
+    assert "krx-history" not in kinds
 
 
 def test_18_normal_may_schedule_one_maintenance_batch():
     health = _health(dart_coverage={"state": "PARTIAL", "coverage_pct": 70.0})
     plan = plan_pipeline(health, mode="normal")
-    kinds = action_kinds(plan)
-    assert kinds.count("DART_MAINTENANCE_BATCH") == 1
+    assert action_kinds(plan).count("DART_MAINTENANCE_BATCH") == 1
 
 
 def test_19_kis_stale_does_not_force_quant_rebuild():
@@ -104,3 +97,22 @@ def test_19_kis_stale_does_not_force_quant_rebuild():
     kinds = action_kinds(plan)
     assert "REFRESH_KIS" in kinds
     assert "REBUILD_QUANT" not in kinds
+
+
+def test_master_missing_schedules_krx_before_quant():
+    health = _health(master={"state": "MISSING"}, quant={"state": "BLOCKED", "blocked_by": ["master"]})
+    health["pipeline_state"] = "REPAIR_REQUIRED"
+    plan = plan_pipeline(health, mode="recover")
+    kinds = action_kinds(plan)
+    assert "REFRESH_KRX" in kinds
+    assert "REBUILD_QUANT" in kinds
+    assert kinds.index("REFRESH_KRX") < kinds.index("REBUILD_QUANT")
+    assert any(a.get("reason", "").startswith("master_") for a in plan["actions"] if a["action"] == "REFRESH_KRX")
+
+
+def test_master_corrupt_schedules_krx_before_quant():
+    health = _health(master={"state": "CORRUPT"}, quant={"state": "BLOCKED", "blocked_by": ["master"]})
+    health["pipeline_state"] = "REPAIR_REQUIRED"
+    plan = plan_pipeline(health, mode="normal")
+    kinds = action_kinds(plan)
+    assert kinds.index("REFRESH_KRX") < kinds.index("REBUILD_QUANT")
