@@ -175,16 +175,30 @@ def _patch_common(
         lambda value: seen.append("kis") or {"attempted": 40, "saved": 400, "errors": []},
     )
 
-    # recent filings: default no dirty
+    # recent filings: default no dirty; countable for skip-gate tests
     import kr_quant.ingest.recent_filings as rf
 
-    monkeypatch.setattr(
-        rf,
-        "refresh_recent",
-        lambda s: {"status": "success", "refreshed_tickers": [], "needs_recalculation": False},
-    )
+    recent_calls: list[dict] = []
+    recent_cfg = {
+        "status": "success",
+        "refreshed_tickers": [],
+        "needs_recalculation": False,
+        "raise": False,
+    }
 
-    return settings, state, seen, dart_calls, facts_path
+    def fake_refresh(s):
+        recent_calls.append(dict(recent_cfg))
+        if recent_cfg.get("raise"):
+            raise RuntimeError("recent filings boom")
+        return {
+            "status": recent_cfg.get("status", "success"),
+            "refreshed_tickers": list(recent_cfg.get("refreshed_tickers") or []),
+            "needs_recalculation": bool(recent_cfg.get("needs_recalculation")),
+        }
+
+    monkeypatch.setattr(rf, "refresh_recent", fake_refresh)
+
+    return settings, state, seen, dart_calls, facts_path, recent_calls, recent_cfg
 
 
 # ----- legacy / runner / scheduler -----
@@ -582,7 +596,7 @@ def test_31_recover_never_dart_maintenance(monkeypatch, tmp_path):
 
 
 def test_32_normal_maintenance_changes_facts_reruns_quant(monkeypatch, tmp_path):
-    settings, state, seen, dart_calls, facts_path = _patch_common(
+    settings, state, seen, dart_calls, facts_path, recent_calls, recent_cfg = _patch_common(
         monkeypatch,
         tmp_path,
         krx="HEALTHY",
@@ -600,7 +614,7 @@ def test_32_normal_maintenance_changes_facts_reruns_quant(monkeypatch, tmp_path)
 
 
 def test_33_normal_maintenance_unchanged_facts_no_extra_quant(monkeypatch, tmp_path):
-    settings, state, seen, dart_calls, facts_path = _patch_common(
+    settings, state, seen, dart_calls, facts_path, recent_calls, recent_cfg = _patch_common(
         monkeypatch,
         tmp_path,
         krx="HEALTHY",
@@ -739,3 +753,185 @@ def test_decide_overall_verify_failed_is_hard_failure(tmp_path):
     assert smart_ledger.decide_overall(ledger, settings) == "failed"
     ledger["steps"]["quant"]["status"] = "repair_incomplete"
     assert smart_ledger.decide_overall(ledger, settings) == "failed"
+
+
+# ----- A2 corrective: recent filings before Quant skip + maintenance exception -----
+
+
+def test_recent_filings_dirty_forces_quant_even_when_healthy(monkeypatch, tmp_path):
+    settings, state, seen, dart_calls, facts_path, recent_calls, recent_cfg = _patch_common(
+        monkeypatch,
+        tmp_path,
+        krx="HEALTHY",
+        master="HEALTHY",
+        dart_essential="HEALTHY",
+        quant="HEALTHY",
+        coverage=95.0,
+        kis="HEALTHY",
+    )
+    recent_cfg["refreshed_tickers"] = ["005930"]
+    recent_cfg["needs_recalculation"] = False
+    result = jobs.job_smart_sync()
+    assert recent_calls, "refresh_recent must run before Quant skip decision"
+    assert "quant" in seen
+    assert not any(s["kind"] == "quant" and s["status"] == "skipped_fresh" for s in result["steps"])
+    saved = smart_ledger.load_ledger(settings)
+    assert saved["steps"]["quant"]["status"] == "success"
+    assert saved["steps"]["publish"]["status"] == "queued"
+    assert result["pipeline_status"] in {"success", "partial"}
+
+
+def test_recent_filings_clean_allows_quant_skip(monkeypatch, tmp_path):
+    settings, state, seen, dart_calls, facts_path, recent_calls, recent_cfg = _patch_common(
+        monkeypatch,
+        tmp_path,
+        krx="HEALTHY",
+        master="HEALTHY",
+        dart_essential="HEALTHY",
+        quant="HEALTHY",
+        coverage=95.0,
+        kis="HEALTHY",
+    )
+    result = jobs.job_smart_sync()
+    assert recent_calls, "clean path must still check recent filings"
+    assert "quant" not in seen
+    assert any(s["kind"] == "quant" and s["status"] == "skipped_fresh" for s in result["steps"])
+    assert result["pipeline_status"] == "success"
+
+
+def test_recent_filings_failure_fail_closed(monkeypatch, tmp_path):
+    settings, state, seen, dart_calls, facts_path, recent_calls, recent_cfg = _patch_common(
+        monkeypatch,
+        tmp_path,
+        krx="HEALTHY",
+        master="HEALTHY",
+        dart_essential="HEALTHY",
+        quant="HEALTHY",
+        coverage=95.0,
+        kis="HEALTHY",
+    )
+    recent_cfg["raise"] = True
+    result = jobs.job_smart_sync()
+    assert result["pipeline_status"] == "failed"
+    assert result["failure_kind"] == "VERIFY_FAILED"
+    assert "quant" not in seen
+    assert not any(s["kind"] == "quant" and s["status"] == "skipped_fresh" for s in result["steps"])
+    saved = smart_ledger.load_ledger(settings)
+    assert saved["steps"]["publish"]["status"] == "blocked_dependency"
+    assert saved["steps"]["quant"]["status"] != "skipped_fresh"
+
+
+def test_recent_filings_non_success_status_fail_closed(monkeypatch, tmp_path):
+    settings, state, seen, dart_calls, facts_path, recent_calls, recent_cfg = _patch_common(
+        monkeypatch,
+        tmp_path,
+        krx="HEALTHY",
+        master="HEALTHY",
+        dart_essential="HEALTHY",
+        quant="HEALTHY",
+        coverage=95.0,
+        kis="HEALTHY",
+    )
+    recent_cfg["status"] = "error"
+    result = jobs.job_smart_sync()
+    assert result["pipeline_status"] == "failed"
+    assert result["failure_kind"] == "VERIFY_FAILED"
+    assert not any(s["kind"] == "quant" and s["status"] == "skipped_fresh" for s in result["steps"])
+    saved = smart_ledger.load_ledger(settings)
+    assert saved["steps"]["publish"]["status"] == "blocked_dependency"
+
+
+def test_maintenance_mutates_then_raises_forces_quant(monkeypatch, tmp_path):
+    settings, state, seen, dart_calls, facts_path, recent_calls, recent_cfg = _patch_common(
+        monkeypatch,
+        tmp_path,
+        krx="HEALTHY",
+        master="HEALTHY",
+        dart_essential="HEALTHY",
+        quant="HEALTHY",
+        coverage=40.0,
+        kis="HEALTHY",
+    )
+    facts_path.write_bytes(b"facts-v1")
+    import kr_quant.ingest.live as live_mod
+
+    def mutate_then_raise(settings_arg, expected, batch_size=50):
+        seen.append("dart")
+        dart_calls["n"] += 1
+        prev = facts_path.read_bytes() if facts_path.exists() else b""
+        facts_path.write_bytes(prev + b"mutated")
+        raise RuntimeError("bookkeeping failed after write")
+
+    monkeypatch.setattr(live_mod, "backfill_dart_financials", mutate_then_raise)
+    result = jobs.job_smart_sync(mode="normal")
+    # Forbidden: treat as unchanged and keep stale Quant publishable without rebuild
+    maint = [s for s in result["steps"] if s["kind"] == "dart_maintenance"]
+    assert maint and maint[0].get("changed") is True
+    assert "quant" in seen, "mutated facts must force Quant rebuild"
+    saved = smart_ledger.load_ledger(settings)
+    assert saved["steps"]["publish"]["status"] != "queued" or saved["steps"]["quant"]["status"] == "success"
+    if result["pipeline_status"] == "failed":
+        assert saved["steps"]["publish"]["status"] == "blocked_dependency"
+    else:
+        assert saved["steps"]["quant"]["status"] == "success"
+        assert saved["steps"]["publish"]["status"] == "queued"
+
+
+def test_maintenance_raises_without_mutation_keeps_quant(monkeypatch, tmp_path):
+    settings, state, seen, dart_calls, facts_path, recent_calls, recent_cfg = _patch_common(
+        monkeypatch,
+        tmp_path,
+        krx="HEALTHY",
+        master="HEALTHY",
+        dart_essential="HEALTHY",
+        quant="HEALTHY",
+        coverage=40.0,
+        kis="HEALTHY",
+    )
+    facts_path.write_bytes(b"facts-stable")
+    import kr_quant.ingest.live as live_mod
+
+    def raise_only(settings_arg, expected, batch_size=50):
+        seen.append("dart")
+        dart_calls["n"] += 1
+        raise RuntimeError("network blip before write")
+
+    monkeypatch.setattr(live_mod, "backfill_dart_financials", raise_only)
+    result = jobs.job_smart_sync(mode="normal")
+    maint = [s for s in result["steps"] if s["kind"] == "dart_maintenance"]
+    assert maint and maint[0].get("changed") is False
+    assert "quant" not in seen
+    assert any(s["kind"] == "quant" and s["status"] == "skipped_fresh" for s in result["steps"])
+    saved = smart_ledger.load_ledger(settings)
+    assert saved["steps"]["publish"]["status"] == "queued"
+    assert result["pipeline_status"] in {"success", "partial"}
+
+
+def test_maintenance_corrupts_then_raises_blocks_quant(monkeypatch, tmp_path):
+    settings, state, seen, dart_calls, facts_path, recent_calls, recent_cfg = _patch_common(
+        monkeypatch,
+        tmp_path,
+        krx="HEALTHY",
+        master="HEALTHY",
+        dart_essential="HEALTHY",
+        quant="HEALTHY",
+        coverage=40.0,
+        kis="HEALTHY",
+    )
+    facts_path.write_bytes(b"facts-v1")
+    import kr_quant.ingest.live as live_mod
+
+    def corrupt_then_raise(settings_arg, expected, batch_size=50):
+        seen.append("dart")
+        dart_calls["n"] += 1
+        facts_path.write_bytes(b"corrupt-blob")
+        state["dart_essential"] = "CORRUPT"
+        raise RuntimeError("failed after corruption")
+
+    monkeypatch.setattr(live_mod, "backfill_dart_financials", corrupt_then_raise)
+    result = jobs.job_smart_sync(mode="normal")
+    assert "quant" not in seen
+    assert result["pipeline_status"] == "failed"
+    assert result["failure_kind"] in {"REPAIR_INCOMPLETE", "VERIFY_FAILED"}
+    saved = smart_ledger.load_ledger(settings)
+    assert saved["steps"]["publish"]["status"] == "blocked_dependency"

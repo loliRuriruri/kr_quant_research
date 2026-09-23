@@ -344,7 +344,14 @@ def job_screen(as_of: str, source: str) -> dict[str, Any]:
     return _summarize(result)
 
 
-def job_live(as_of: str, lookback_days: int, max_corps: int, skip_ingest: bool) -> dict[str, Any]:
+def job_live(
+    as_of: str,
+    lookback_days: int,
+    max_corps: int,
+    skip_ingest: bool,
+    *,
+    prefetched_recent: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     from kr_quant.freshness import freshness_snapshot
     from kr_quant.ingest.live import bootstrap_live
     from kr_quant.orchestration.run import run_from_staged
@@ -353,12 +360,12 @@ def job_live(as_of: str, lookback_days: int, max_corps: int, skip_ingest: bool) 
     s = load_settings()
     d = resolve_as_of(as_of)
     info: dict[str, Any] = {"as_of": d.isoformat()}
-    recent = None
-    if s.opendart_api_key and (s.staged_dir / 'live' / 'financial_facts.parquet').exists():
+    recent = prefetched_recent
+    if recent is None and s.opendart_api_key and (s.staged_dir / 'live' / 'financial_facts.parquet').exists():
         from kr_quant.ingest.recent_filings import refresh_recent
         recent = refresh_recent(s)
-        if recent['status'] != 'success':
-            raise RuntimeError('최근 DART 정정 재무 갱신 미완료: 재계산을 보류합니다.')
+    if recent is not None and recent.get('status') != 'success':
+        raise RuntimeError('최근 DART 정정 재무 갱신 미완료: 재계산을 보류합니다.')
     if not skip_ingest:
         if not s.krx_api_key or not s.opendart_api_key:
             raise RuntimeError("실데이터 수집에는 KRX와 OpenDART 키가 필요합니다.")
@@ -951,25 +958,35 @@ def job_smart_sync(
         _step_out("dart", "OpenDART Essential", status="repair_incomplete")
         return {"health": _health(), "ok": False}
 
-    def _recent_filings_dirty(health: dict[str, Any]) -> bool:
+    def _check_recent_filings(health: dict[str, Any]) -> dict[str, Any]:
+        """Run recent-filings once before Quant skip/rebuild. Fail closed on errors."""
         if _state(health, "dart_essential") != "HEALTHY":
-            return False
+            return {"applicable": False, "dirty": False, "payload": None}
+        if _state(health, "krx") != "HEALTHY" or _state(health, "master") != "HEALTHY":
+            return {"applicable": False, "dirty": False, "payload": None}
         if not getattr(s, "opendart_api_key", None):
-            return False
+            return {"applicable": False, "dirty": False, "payload": None}
         if not (live_dir / "financial_facts.parquet").exists():
-            return False
+            return {"applicable": False, "dirty": False, "payload": None}
         from kr_quant.ingest.recent_filings import refresh_recent
 
         try:
             recent_check = refresh_recent(s)
-            if recent_check.get("status") != "success":
-                raise RuntimeError("최근 정정 공시 재무 대조 미완료")
-            return bool(recent_check.get("refreshed_tickers")) or bool(recent_check.get("needs_recalculation"))
-        except Exception:
-            ledger_mod.mark_step(ledger, "quant", "failed", s, detail="recent_filings_failed")
+        except Exception as exc:  # noqa: BLE001
+            ledger_mod.mark_step(ledger, "quant", "verify_failed", s, detail=f"recent_filings_failed:{exc}")
             raise RuntimeError("DART 최근 공시 대조 실패: 재계산·공개 갱신 보류") from None
+        if not isinstance(recent_check, dict) or recent_check.get("status") != "success":
+            ledger_mod.mark_step(ledger, "quant", "verify_failed", s, detail="recent_filings_failed")
+            raise RuntimeError("DART 최근 공시 대조 실패: 재계산·공개 갱신 보류")
+        dirty = bool(recent_check.get("refreshed_tickers")) or bool(recent_check.get("needs_recalculation"))
+        return {"applicable": True, "dirty": dirty, "payload": recent_check}
 
-    def _run_quant(health: dict[str, Any], *, reason: str) -> dict[str, Any]:
+    def _run_quant(
+        health: dict[str, Any],
+        *,
+        reason: str,
+        prefetched_recent: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         nonlocal failure_kind
         stopped = _stop_if_cancelled()
         if stopped:
@@ -979,24 +996,17 @@ def job_smart_sync(
             _step_out("quant", "퀀트 재계산", status="blocked_dependency")
             return {"health": health, "ok": False}
 
-        try:
-            dirty = _recent_filings_dirty(health)
-        except RuntimeError as exc:
-            failure_kind = "VERIFY_FAILED"
-            warnings.append(str(exc))
-            _step_out("quant", "퀀트 재계산", status="failed")
-            return {"health": _health(), "ok": False}
-
-        if _state(health, "quant") == "HEALTHY" and not dirty and reason != "maintenance_dirty":
-            ledger_mod.mark_step(ledger, "quant", "skipped_fresh", s)
-            _step_out("quant", "퀀트 재계산", status="skipped_fresh")
-            return {"health": health, "ok": True}
-
         ledger_mod.mark_step(ledger, "quant", "running", s, ran_this_pass=True)
         _publish_progress(s, ledger)
         RUNNER.logs.append(f"퀀트 재계산 시작 ({reason})")
         try:
-            live = job_live(expected.isoformat(), lookback_days, 0, skip_ingest=True)
+            live = job_live(
+                expected.isoformat(),
+                lookback_days,
+                0,
+                skip_ingest=True,
+                prefetched_recent=prefetched_recent,
+            )
             status = live.get("pipeline_status") or live.get("status") or "success"
             health = _health()
             if status == "error" or _state(health, "quant") != "HEALTHY":
@@ -1025,23 +1035,34 @@ def job_smart_sync(
         if stopped:
             return {"_cancelled": stopped}
         if mode != "normal":
-            return {"health": health, "changed": False}
+            return {"health": health, "changed": False, "error": None}
         if _state(health, "dart_essential") != "HEALTHY":
-            return {"health": health, "changed": False}
+            return {"health": health, "changed": False, "error": None}
         facts_path = live_dir / "financial_facts.parquet"
         before = _artifact_sig(facts_path)
         batch_size = max(1, min(int(dart_batch_size or 50), 100))
         RUNNER.logs.append("DART maintenance 1배치 (normal only)")
+        error: Exception | None = None
         try:
             backfill_dart_financials(s, expected, batch_size=batch_size)
-            after = _artifact_sig(facts_path)
-            changed = before != after
-            _step_out("dart_maintenance", "OpenDART maintenance", status="success", changed=changed)
-            return {"health": _health(), "changed": changed}
         except Exception as exc:  # noqa: BLE001
+            error = exc
             warnings.append(f"DART maintenance 보류: {str(exc)[:160]}")
-            _step_out("dart_maintenance", "OpenDART maintenance", status="warning")
-            return {"health": _health(), "changed": False}
+        after = _artifact_sig(facts_path)
+        changed = before != after
+        health_now = _health()
+        if error is None:
+            _step_out("dart_maintenance", "OpenDART maintenance", status="success", changed=changed)
+            return {"health": health_now, "changed": changed, "error": None}
+        # Exception path: signature after attempt still decides whether Quant is dirty.
+        _step_out(
+            "dart_maintenance",
+            "OpenDART maintenance",
+            status="warning",
+            changed=changed,
+            error=str(error)[:160],
+        )
+        return {"health": health_now, "changed": changed, "error": error}
 
     def _run_kis(health: dict[str, Any]) -> dict[str, Any]:
         stopped = _stop_if_cancelled()
@@ -1136,48 +1157,103 @@ def job_smart_sync(
     planned = action_kinds(plan)
 
     # Quant
-    quant_needed = (
-        "REBUILD_QUANT" in planned
-        or _state(health, "quant") != "HEALTHY"
-    )
+    recent_info: dict[str, Any] = {"applicable": False, "dirty": False, "payload": None}
     if waiting_krx or not master_ok or _state(health, "dart_essential") != "HEALTHY":
         ledger_mod.mark_step(ledger, "quant", "blocked_dependency", s, detail="upstream not ready")
         _step_out("quant", "퀀트 재계산", status="blocked_dependency")
         quant_ok = False
-    elif quant_needed:
-        out = _run_quant(health, reason="plan")
-        if out.get("_cancelled"):
-            return out["_cancelled"]
-        health = out["health"]
-        quant_ok = bool(out.get("ok"))
-        if not quant_ok:
-            ledger_mod.mark_step(ledger, "publish", "blocked_dependency", s, detail="Quant verify failed")
+    else:
+        try:
+            recent_info = _check_recent_filings(health)
+        except RuntimeError as exc:
+            failure_kind = "VERIFY_FAILED"
+            warnings.append(str(exc))
+            ledger_mod.mark_step(ledger, "publish", "blocked_dependency", s, detail="recent_filings_failed")
+            _step_out("quant", "퀀트 재계산", status="verify_failed", reason="recent_filings_failed")
             ledger_mod.finish(ledger, "failed", s)
             _publish_progress(s, ledger)
-            return _result(pipeline_status="failed", next_action="퀀트 산출물 검증 실패. 로그를 확인하세요.")
-    else:
-        ledger_mod.mark_step(ledger, "quant", "skipped_fresh", s)
-        _step_out("quant", "퀀트 재계산", status="skipped_fresh")
-        quant_ok = True
+            return _result(pipeline_status="failed", next_action="최근 공시 대조 실패. 재계산·공개를 보류합니다.")
 
-    # Optional maintenance (normal only)
+        quant_needed = (
+            "REBUILD_QUANT" in planned
+            or _state(health, "quant") != "HEALTHY"
+            or bool(recent_info.get("dirty"))
+        )
+        if quant_needed:
+            reason = "recent_filings" if recent_info.get("dirty") and _state(health, "quant") == "HEALTHY" else "plan"
+            out = _run_quant(
+                health,
+                reason=reason,
+                prefetched_recent=recent_info.get("payload"),
+            )
+            if out.get("_cancelled"):
+                return out["_cancelled"]
+            health = out["health"]
+            quant_ok = bool(out.get("ok"))
+            if not quant_ok:
+                ledger_mod.mark_step(ledger, "publish", "blocked_dependency", s, detail="Quant verify failed")
+                ledger_mod.finish(ledger, "failed", s)
+                _publish_progress(s, ledger)
+                return _result(pipeline_status="failed", next_action="퀀트 산출물 검증 실패. 로그를 확인하세요.")
+        else:
+            ledger_mod.mark_step(ledger, "quant", "skipped_fresh", s, detail="recent_filings_clean")
+            _step_out("quant", "퀀트 재계산", status="skipped_fresh")
+            quant_ok = True
+
+    # Optional maintenance (normal only). Skip when Quant cannot be re-verified
+    # afterward (WAITING_SOURCE / upstream block); otherwise facts could go dirty
+    # while publish/KIS follow-up still needs a coherent Quant gate.
     health = _health()
     plan = plan_pipeline(health, mode=mode)
-    if mode == "normal" and "DART_MAINTENANCE_BATCH" in action_kinds(plan) and _state(health, "dart_essential") == "HEALTHY":
+    can_reverify_quant = (
+        quant_ok
+        and not waiting_krx
+        and master_ok
+        and _state(health, "dart_essential") == "HEALTHY"
+        and _state(health, "krx") == "HEALTHY"
+    )
+    if (
+        mode == "normal"
+        and can_reverify_quant
+        and "DART_MAINTENANCE_BATCH" in action_kinds(plan)
+        and _state(health, "dart_essential") == "HEALTHY"
+    ):
         out = _run_dart_maintenance(health)
         if out.get("_cancelled"):
             return out["_cancelled"]
         health = out["health"]
-        if out.get("changed") and quant_ok and not waiting_krx and master_ok:
-            outq = _run_quant(health, reason="maintenance_dirty")
-            if outq.get("_cancelled"):
-                return outq["_cancelled"]
-            health = outq["health"]
-            quant_ok = bool(outq.get("ok"))
-            if not quant_ok:
+        changed = bool(out.get("changed"))
+        maint_error = out.get("error")
+        if changed:
+            # Facts mutated (even if backfill later raised): stale Quant must not publish.
+            if _state(health, "dart_essential") in {"MISSING", "CORRUPT"}:
+                failure_kind = "REPAIR_INCOMPLETE" if _state(health, "dart_essential") == "CORRUPT" else "VERIFY_FAILED"
+                ledger_mod.mark_step(ledger, "publish", "blocked_dependency", s, detail="maintenance left facts unhealthy")
                 ledger_mod.finish(ledger, "failed", s)
                 _publish_progress(s, ledger)
-                return _result(pipeline_status="failed", next_action="maintenance 이후 퀀트 검증 실패")
+                return _result(
+                    pipeline_status="failed",
+                    next_action="maintenance 이후 재무 artifact가 비정상입니다.",
+                )
+            if not waiting_krx and master_ok and _state(health, "dart_essential") == "HEALTHY":
+                outq = _run_quant(health, reason="maintenance_dirty")
+                if outq.get("_cancelled"):
+                    return outq["_cancelled"]
+                health = outq["health"]
+                quant_ok = bool(outq.get("ok"))
+                if not quant_ok:
+                    ledger_mod.finish(ledger, "failed", s)
+                    _publish_progress(s, ledger)
+                    return _result(pipeline_status="failed", next_action="maintenance 이후 퀀트 검증 실패")
+            else:
+                failure_kind = "VERIFY_FAILED"
+                ledger_mod.mark_step(ledger, "publish", "blocked_dependency", s, detail="maintenance changed facts but upstream blocked")
+                ledger_mod.finish(ledger, "failed", s)
+                _publish_progress(s, ledger)
+                return _result(pipeline_status="failed", next_action="maintenance가 재무를 바꿨으나 재검증할 수 없습니다.")
+        elif maint_error is not None:
+            # Exception with unchanged facts: warning/partial only; keep verified Quant.
+            pass
 
     # KIS
     out = _run_kis(_health())
