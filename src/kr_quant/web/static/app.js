@@ -1898,6 +1898,7 @@ function switchView(name, force = false) {
   } else {
     if (typeof stopMacroLivePolling === "function") stopMacroLivePolling();
   }
+  if (name !== "seasonality" && typeof stopSeasonStalePoll === "function") stopSeasonStalePoll();
 
   // Instant DOM Switch: If view is already rendered and within TTL, show instantly without network roundtrip
   const now = Date.now();
@@ -2078,18 +2079,128 @@ function renderPageEvidence(name = currentView) {
   );
 }
 
+let seasonStalePollTimer = null;
+let seasonStalePollInFlight = false;
+let seasonStalePollGeneration = null;
+
+function stopSeasonStalePoll() {
+  if (seasonStalePollTimer) {
+    clearTimeout(seasonStalePollTimer);
+    seasonStalePollTimer = null;
+  }
+  seasonStalePollInFlight = false;
+}
+
+function ensureSeasonLkgBanner() {
+  const view = $("#view-seasonality");
+  if (!view) return null;
+  let banner = $("#season-lkg-banner");
+  if (banner) return banner;
+  banner = document.createElement("div");
+  banner.id = "season-lkg-banner";
+  banner.setAttribute("role", "status");
+  banner.setAttribute("aria-live", "polite");
+  banner.hidden = true;
+  banner.style.cssText = "display:none; margin:0 0 12px; padding:10px 12px; border-radius:10px; border:1px solid rgba(245,158,11,0.45); background:rgba(120,53,15,0.14); color:#fde68a; font-size:12.5px; line-height:1.55;";
+  const anchor = $("#seasonality-tier1-briefing");
+  if (anchor && anchor.parentNode === view) view.insertBefore(banner, anchor);
+  else view.prepend(banner);
+  return banner;
+}
+
+function renderSeasonLkgBanner(snapshot) {
+  const banner = ensureSeasonLkgBanner();
+  if (!banner) return;
+  if (!snapshot || snapshot.state !== "stale_while_revalidate" || snapshot.is_current !== false) {
+    banner.hidden = true;
+    banner.style.display = "none";
+    banner.textContent = "";
+    return;
+  }
+  const asOf = snapshot.snapshot_as_of || snapshot.selection_date || "알 수 없음";
+  const expected = snapshot.expected_as_of || "";
+  let body = `이전 검증 스냅샷을 표시 중입니다 (기준일 ${asOf}). 오늘·최신·현재 검증 완료 후보가 아닙니다.`;
+  if (snapshot.refresh_error) {
+    body += ` 현재 스냅샷 갱신에 실패했습니다${snapshot.refresh_error_code ? ` (${snapshot.refresh_error_code})` : ""}.`;
+  } else if (snapshot.refresh_pending) {
+    body += expected ? ` 현재 스냅샷(${expected}) 준비 중이며 완료되면 자동으로 전환합니다.` : " 현재 스냅샷 준비 중이며 완료되면 자동으로 전환합니다.";
+  }
+  banner.textContent = body;
+  banner.hidden = false;
+  banner.style.display = "block";
+  if (snapshot.refresh_error) {
+    banner.style.borderColor = "rgba(248,113,113,0.55)";
+    banner.style.background = "rgba(127,29,29,0.18)";
+    banner.style.color = "#fecaca";
+  } else {
+    banner.style.borderColor = "rgba(245,158,11,0.45)";
+    banner.style.background = "rgba(120,53,15,0.14)";
+    banner.style.color = "#fde68a";
+  }
+}
+
+function scheduleSeasonStalePoll(snapshot) {
+  stopSeasonStalePoll();
+  if (currentView !== "seasonality") return;
+  if (!snapshot || snapshot.is_current !== false || snapshot.state !== "stale_while_revalidate") return;
+  seasonStalePollGeneration = snapshot.generation_id || null;
+  const tick = async () => {
+    if (currentView !== "seasonality") {
+      stopSeasonStalePoll();
+      return;
+    }
+    if (seasonStalePollInFlight) return;
+    seasonStalePollInFlight = true;
+    try {
+      // Snapshot-state poll only — never call Tier1 AI while stale.
+      const res = await api("/api/seasonality/highlights");
+      const snap = res?.snapshot || {};
+      renderSeasonLkgBanner(snap);
+      if (snap.is_current === true) {
+        const changed = Boolean(snap.generation_id && snap.generation_id !== seasonStalePollGeneration);
+        stopSeasonStalePoll();
+        if (changed || snap.state === "ready") {
+          return ensureViewLoaded("seasonality", true);
+        }
+        return;
+      }
+    } catch (_err) {
+      // Keep a single-flight timer; transient 503/network should not stack polls.
+    } finally {
+      seasonStalePollInFlight = false;
+    }
+    if (currentView === "seasonality" && !seasonStalePollTimer) {
+      seasonStalePollTimer = setTimeout(() => {
+        seasonStalePollTimer = null;
+        tick();
+      }, 4000);
+    }
+  };
+  seasonStalePollTimer = setTimeout(() => {
+    seasonStalePollTimer = null;
+    tick();
+  }, 4000);
+}
+
 function setSeasonalityAsOf(payload) {
   if (currentView !== "seasonality") return;
   const context = payload?.data_context || {};
+  const snapshot = payload?.snapshot || {};
   const parts = [];
   if (context.price_as_of) parts.push(`KRX 일봉 ${context.price_as_of}`);
   const calculated = fmtWhen(context.calculated_at);
   if (calculated) parts.push(`계절성 계산 ${calculated}`);
-  if (payload?.snapshot?.generation_id) parts.push(`공통 자료 ${payload.snapshot.generation_id.slice(0, 8)}`);
+  if (snapshot.generation_id) parts.push(`공통 자료 ${snapshot.generation_id.slice(0, 8)}`);
+  if (snapshot.state === "stale_while_revalidate" && snapshot.is_current === false) {
+    const asOf = snapshot.snapshot_as_of || snapshot.selection_date;
+    if (asOf) parts.push(`이전 검증 ${asOf}`);
+  }
   setPageAsOf(
     parts.join(" · ") || "계절성 데이터 시점 확인 불가",
     `${context.source || "KRX 일봉 기반 월간 계절성"}입니다. 다른 메뉴의 공시·수급 시점과 공유하지 않습니다.`
   );
+  renderSeasonLkgBanner(snapshot);
+  scheduleSeasonStalePoll(snapshot);
 }
 
 function asofBanner(text) {

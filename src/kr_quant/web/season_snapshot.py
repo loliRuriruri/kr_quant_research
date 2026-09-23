@@ -61,7 +61,9 @@ def _key(settings, lookback):
 
 def _copy_bundle(bundle, listing_view=None):
     if listing_view is None:
-        return copy.deepcopy(bundle)
+        out = copy.deepcopy(bundle)
+        out.pop("_serve_meta", None)
+        return out
     if listing_view in ('themes', 'highlights', 'pre-entry', 'pre-entry-summary'):
         payload = bundle['payload']
         selected = {'stats': payload['stats']}
@@ -141,10 +143,111 @@ def select_rows(bundle, *, horizon_days=90, min_grade=None, status=None, query=N
     return rows
 
 
+def _safe_generation_id(value) -> str | None:
+    """Accept only opaque hex digests; reject path-like or traversable names."""
+    if not isinstance(value, str) or not value:
+        return None
+    lowered = value.lower()
+    if any(token in value for token in ("/", "\\", "..", ":", "\0")):
+        return None
+    if len(lowered) != 64 or any(ch not in "0123456789abcdef" for ch in lowered):
+        return None
+    return lowered
+
+
+def read_last_known_good(settings, lookback: int = 5, *, listing_view=None) -> dict | None:
+    """Display-only prior snapshot. Never weakens read_bundle() current identity checks."""
+    if lookback not in LOOKBACKS:
+        raise ValueError("지원 기간: 0(전체), 2, 3, 5년")
+    pointer = _folder(settings) / f"latest_lb_{lookback}.json"
+    try:
+        tip = json.loads(pointer.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(tip, dict):
+        return None
+    generation = _safe_generation_id(tip.get("generation_id"))
+    if generation is None:
+        return None
+    path = _folder(settings) / f"{generation}.json"
+    try:
+        # Resolve strictly under the season folder; reject escapes even if hex-like.
+        if path.resolve().parent != _folder(settings).resolve():
+            return None
+        bundle = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(bundle, dict):
+            return None
+        if _safe_generation_id(bundle.get("generation_id")) != generation:
+            return None
+        identity = bundle.get("identity")
+        if not isinstance(identity, dict) or identity.get("lookback") != lookback:
+            return None
+        if identity.get("schema") not in (None, SCHEMA):
+            return None
+        payload = bundle.get("payload")
+        if not isinstance(payload, dict) or not isinstance(payload.get("rows"), list):
+            return None
+        if bundle.get("content_hash") != _digest(payload):
+            return None
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return None
+    return _copy_bundle(bundle, listing_view)
+
+
+def refresh_in_flight(settings, lookback: int) -> bool:
+    with _LOCK:
+        return _key(settings, lookback) in _PENDING
+
+
+def attach_serve_meta(
+    bundle,
+    *,
+    is_current: bool,
+    refresh_pending: bool = False,
+    expected_as_of: str | None = None,
+    refresh_error: bool = False,
+    refresh_error_code: str | None = None,
+):
+    """Ephemeral HTTP/serve marker only. Must never be written into generation JSON."""
+    if bundle is None:
+        return None
+    meta = {
+        "is_current": bool(is_current),
+        "refresh_pending": bool(refresh_pending),
+    }
+    if is_current:
+        meta["state"] = "ready"
+    else:
+        meta["state"] = "stale_while_revalidate"
+        meta["snapshot_as_of"] = bundle["identity"]["day"]
+        meta["expected_as_of"] = expected_as_of or date.today().isoformat()
+        if refresh_error:
+            meta["refresh_error"] = True
+            meta["refresh_error_code"] = refresh_error_code or "SEASON_BUILD_FAILED"
+    bundle["_serve_meta"] = meta
+    return bundle
+
+
 def public_meta(bundle) -> dict:
-    return {"generation_id": bundle["generation_id"], "generated_at": bundle["generated_at"],
-            "selection_date": bundle["identity"]["day"], "lookback_years": bundle["identity"]["lookback"],
-            "state": "ready", "record_type": "observed_snapshot", "schema": SCHEMA}
+    serve = bundle.get("_serve_meta") if isinstance(bundle.get("_serve_meta"), dict) else {}
+    meta = {
+        "generation_id": bundle["generation_id"],
+        "generated_at": bundle["generated_at"],
+        "selection_date": bundle["identity"]["day"],
+        "lookback_years": bundle["identity"]["lookback"],
+        "state": serve.get("state", "ready"),
+        "record_type": "observed_snapshot",
+        "schema": SCHEMA,
+        "is_current": serve.get("is_current", True),
+        "refresh_pending": bool(serve.get("refresh_pending", False)),
+    }
+    if serve.get("state") == "stale_while_revalidate":
+        meta["snapshot_as_of"] = serve.get("snapshot_as_of") or meta["selection_date"]
+        meta["expected_as_of"] = serve.get("expected_as_of")
+        if serve.get("refresh_error"):
+            meta["refresh_error"] = True
+            meta["refresh_error_code"] = serve.get("refresh_error_code") or "SEASON_BUILD_FAILED"
+    return meta
 
 
 def build_bundle(settings, lookback: int = 5) -> dict:

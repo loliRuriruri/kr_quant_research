@@ -31,3 +31,28 @@ def test_season_card_supplies_candidate_facts_and_snapshot(monkeypatch, tmp_path
     assert '데이터 충돌이나 모순' in captured['messages'][1]['content']
     assert '올해 근거 없음' in captured['messages'][1]['content']
     assert captured['prompt_version'] == 'seasonality_tier1_v8_direct_verdict'
+
+def test_season_ai_deferred_on_stale_snapshot(monkeypatch, tmp_path):
+    from kr_quant.research import providers
+    monkeypatch.setattr(web, 'load_settings', lambda: SimpleNamespace(root=tmp_path))
+    monkeypatch.setattr(providers, 'resolve_tier1_endpoint', lambda s: object())
+    monkeypatch.setattr(web, 'api_seasonality_highlights_get', lambda: {
+        'snapshot': {
+            'generation_id': 'g-old',
+            'selection_date': '2026-09-01',
+            'snapshot_as_of': '2026-09-01',
+            'is_current': False,
+            'state': 'stale_while_revalidate',
+            'refresh_pending': True,
+        },
+        'data': {'glance_top3': [{'ticker': '105560', 'signal_id': 's1',
+            'remaining_peak': {'sample_count': 3}}]},
+    })
+    called = []
+    monkeypatch.setattr(web, 'tier1_cached_chat_json', lambda *a, **k: called.append(1) or {'ok': True})
+    res = web.api_seasonality_tier1_briefing_get()
+    assert res['ok'] is False
+    assert res['error_code'] == 'STALE_SNAPSHOT_AI_DEFERRED'
+    assert res['ai_generated'] is False
+    assert '보류' in res['message']
+    assert called == []

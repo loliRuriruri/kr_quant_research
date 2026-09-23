@@ -949,3 +949,20 @@ def test_pipeline_panel_js_terminal_and_busy_contracts():
     assert "고급 데이터 작업" in html
     assert "setPipelineBusyUi" in js
 
+
+def test_a4_season_lkg_ui_banner_and_poll_contracts():
+    js = client.get("/static/app.js").text
+    assert "function renderSeasonLkgBanner" in js
+    assert "function scheduleSeasonStalePoll" in js
+    assert "function stopSeasonStalePoll" in js
+    assert "stale_while_revalidate" in js
+    assert "이전 검증 스냅샷을 표시 중입니다" in js
+    assert "오늘·최신·현재 검증 완료 후보가 아닙니다" in js
+    assert "refresh_error" in js
+    assert 'api("/api/seasonality/highlights")' in js
+    assert "never call Tier1 AI while stale" in js or "Snapshot-state poll only" in js
+    assert "setTimeout" in js and "4000" in js
+    assert "stopSeasonStalePoll()" in js
+    # Leaving Season stops the poll; poll reload uses ensureViewLoaded
+    assert 'name !== "seasonality"' in js and "stopSeasonStalePoll" in js
+    assert 'ensureViewLoaded("seasonality", true)' in js

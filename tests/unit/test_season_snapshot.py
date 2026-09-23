@@ -107,8 +107,14 @@ def test_http_reads_shared_generation_without_computing(prepared, monkeypatch):
     queued = []
     monkeypatch.setattr(snapshots, 'request_build', lambda *a: queued.append(1))
     response = client.get('/api/seasonality/highlights')
-    assert response.status_code == 503
-    assert response.headers['X-Research-Snapshot'] == 'pending'
+    assert response.status_code == 200
+    body = response.json()
+    assert body['snapshot']['is_current'] is False
+    assert body['snapshot']['state'] == 'stale_while_revalidate'
+    assert body['snapshot']['refresh_pending'] is True
+    assert body['snapshot']['selection_date']
+    assert body['snapshot']['snapshot_as_of'] == body['snapshot']['selection_date']
+    assert '_serve_meta' not in body
     assert len(calls) == 1 and queued == [1]
     assert client.get('/api/seasonality/discovery?lookback_years=999').status_code == 422
 
@@ -153,3 +159,172 @@ def test_data_job_schedules_preparation_but_cancel_does_not(prepared, monkeypatc
     runner._run('smart-sync', lambda: {'pipeline_status': 'interrupted', 'cancelled': True})
     assert queued == [1]
     assert tracked == [1]
+
+
+def test_lkg_validation_fail_closed(prepared):
+    s, _, _ = prepared
+    built = snapshots.build_bundle(s)
+    folder = snapshots._folder(s)
+    pointer = folder / 'latest_lb_5.json'
+    good = pointer.read_text(encoding='utf-8')
+    # missing pointer
+    pointer.unlink()
+    assert snapshots.read_last_known_good(s) is None
+    pointer.write_text(good, encoding='utf-8')
+    # path-like generation_id
+    pointer.write_text('{"generation_id":"../etc/passwd","generated_at":"x"}', encoding='utf-8')
+    assert snapshots.read_last_known_good(s) is None
+    # non-hex generation_id
+    pointer.write_text('{"generation_id":"not-a-hex-digest-value","generated_at":"x"}', encoding='utf-8')
+    assert snapshots.read_last_known_good(s) is None
+    # pointer to missing generation file
+    missing = 'a' * 64
+    pointer.write_text(json.dumps({"generation_id": missing, "generated_at": "x"}), encoding='utf-8')
+    assert snapshots.read_last_known_good(s) is None
+    # restore valid pointer then tamper payload hash
+    pointer.write_text(good, encoding='utf-8')
+    path = folder / f"{built['generation_id']}.json"
+    damaged = json.loads(path.read_text(encoding='utf-8'))
+    damaged['payload']['rows'][0]['company'] = 'tampered-lkg'
+    path.write_text(json.dumps(damaged), encoding='utf-8')
+    snapshots._MEM.clear()
+    assert snapshots.read_last_known_good(s) is None
+    # lookback mismatch
+    path.write_text(json.dumps(built), encoding='utf-8')
+    damaged_id = copy.deepcopy(built)
+    damaged_id['identity'] = dict(built['identity'])
+    damaged_id['identity']['lookback'] = 2
+    damaged_id['content_hash'] = snapshots._digest(damaged_id['payload'])
+    path.write_text(json.dumps(damaged_id), encoding='utf-8')
+    assert snapshots.read_last_known_good(s) is None
+
+
+def test_lkg_current_first_and_supersede(prepared, monkeypatch):
+    s, price, _ = prepared
+    first = snapshots.build_bundle(s)
+    current = snapshots.read_bundle(s)
+    lkg = snapshots.read_last_known_good(s)
+    assert current['generation_id'] == first['generation_id'] == lkg['generation_id']
+    from kr_quant.web import app as web
+    monkeypatch.setattr(web, 'load_settings', lambda: s)
+    client = TestClient(web.app)
+    ready = client.get('/api/seasonality/highlights').json()['snapshot']
+    assert ready['is_current'] is True
+    assert ready['state'] == 'ready'
+    assert ready['refresh_pending'] is False
+    assert 'snapshot_as_of' not in ready
+    price.write_bytes(b'identity shift for supersede')
+    snapshots._MEM.clear()
+    assert snapshots.read_bundle(s) is None
+    stale = snapshots.read_last_known_good(s)
+    assert stale['generation_id'] == first['generation_id']
+    monkeypatch.setattr(snapshots, 'request_build', lambda *a, **k: None)
+    stale_http = client.get('/api/seasonality/pre-entry').json()['snapshot']
+    assert stale_http['is_current'] is False
+    assert stale_http['state'] == 'stale_while_revalidate'
+    # rebuild current and confirm supersede
+    second = snapshots.build_bundle(s)
+    assert second['generation_id'] != first['generation_id']
+    snapshots._MEM.clear()
+    assert snapshots.read_bundle(s)['generation_id'] == second['generation_id']
+    assert client.get('/api/seasonality/highlights').json()['snapshot']['generation_id'] == second['generation_id']
+    assert client.get('/api/seasonality/highlights').json()['snapshot']['is_current'] is True
+
+
+def test_lkg_preparation_failed_and_no_lkg_503(prepared, monkeypatch):
+    import time
+    s, price, _ = prepared
+    first = snapshots.build_bundle(s)
+    from kr_quant.web import app as web
+    monkeypatch.setattr(web, 'load_settings', lambda: s)
+    client = TestClient(web.app)
+    price.write_bytes(b'force stale identity')
+    snapshots._MEM.clear()
+    key = snapshots._key(s, 5)
+    with snapshots._LOCK:
+        snapshots._ERRORS[key] = (time.monotonic(), 'Boom')
+    monkeypatch.setattr(snapshots, 'request_build', lambda *a, **k: (_ for _ in ()).throw(AssertionError('no build')))
+    res = client.get('/api/seasonality/themes')
+    assert res.status_code == 200
+    snap = res.json()['snapshot']
+    assert snap['is_current'] is False
+    assert snap['refresh_error'] is True
+    assert snap['refresh_error_code'] == 'SEASON_BUILD_FAILED'
+    assert snap['refresh_pending'] is False
+    assert snap['generation_id'] == first['generation_id']
+    # remove LKG pointer -> keep hard 503
+    (snapshots._folder(s) / 'latest_lb_5.json').unlink()
+    assert client.get('/api/seasonality/themes').status_code == 503
+
+
+def test_lkg_no_shadow_and_no_request_while_runner_busy(prepared, monkeypatch):
+    s, price, calls = prepared
+    snapshots.build_bundle(s)
+    price.write_bytes(b'busy runner identity change')
+    snapshots._MEM.clear()
+    from kr_quant.web import app as web
+    from kr_quant.web import jobs
+    monkeypatch.setattr(web, 'load_settings', lambda: s)
+    monkeypatch.setattr(jobs.RUNNER, 'is_running', lambda: True)
+    queued = []
+    shadows = []
+    monkeypatch.setattr(snapshots, 'request_build', lambda *a, **k: queued.append(1))
+    monkeypatch.setattr(snapshots, '_schedule_shadow', lambda *a, **k: shadows.append(1))
+    client = TestClient(web.app)
+    body = client.get('/api/seasonality/discovery?view=summary&limit=2').json()
+    assert body['snapshot']['is_current'] is False
+    assert queued == []
+    assert shadows == []
+    # LKG serve must not write generation files
+    before = {p.name: p.stat().st_mtime_ns for p in snapshots._folder(s).glob('*.json')}
+    client.get('/api/seasonality/highlights')
+    after = {p.name: p.stat().st_mtime_ns for p in snapshots._folder(s).glob('*.json')}
+    assert before == after
+
+
+def test_lkg_ai_deferred_when_stale(prepared, monkeypatch):
+    s, price, _ = prepared
+    snapshots.build_bundle(s)
+    price.write_bytes(b'stale for ai defer')
+    snapshots._MEM.clear()
+    from kr_quant.web import app as web
+    monkeypatch.setattr(web, 'load_settings', lambda: s)
+    monkeypatch.setattr(snapshots, 'request_build', lambda *a, **k: None)
+    called = []
+    monkeypatch.setattr(web, 'tier1_cached_chat_json', lambda *a, **k: called.append(1) or {'ok': True})
+    client = TestClient(web.app)
+    res = client.get('/api/seasonality/tier1-briefing').json()
+    assert res['ok'] is False
+    assert res['error_code'] == 'STALE_SNAPSHOT_AI_DEFERRED'
+    assert res['ai_generated'] is False
+    assert called == []
+
+
+def test_lkg_listing_view_and_409_preserved(prepared, monkeypatch):
+    s, price, _ = prepared
+    built = snapshots.build_bundle(s)
+    price.write_bytes(b'stale listing')
+    snapshots._MEM.clear()
+    from kr_quant.web import app as web
+    monkeypatch.setattr(web, 'load_settings', lambda: s)
+    monkeypatch.setattr(snapshots, 'request_build', lambda *a, **k: None)
+    client = TestClient(web.app)
+    summary = client.get('/api/seasonality/discovery?view=summary&limit=1').json()
+    assert summary['snapshot']['is_current'] is False
+    assert 'rows' in summary
+    assert client.get(f"/api/seasonality/discovery/{built['payload']['rows'][0]['ticker']}?generation_id=old").status_code == 409
+    assert client.get('/api/seasonality/discovery?generation_id=old').status_code == 409
+
+
+def test_serve_meta_not_persisted_into_generation(prepared):
+    s, _, _ = prepared
+    built = snapshots.build_bundle(s)
+    snapshots.attach_serve_meta(built, is_current=False, refresh_pending=True, expected_as_of='2099-01-01')
+    assert built['_serve_meta']['state'] == 'stale_while_revalidate'
+    meta = snapshots.public_meta(built)
+    assert meta['is_current'] is False
+    assert '_serve_meta' not in meta
+    path = snapshots._folder(s) / f"{built['generation_id']}.json"
+    on_disk = json.loads(path.read_text(encoding='utf-8'))
+    assert '_serve_meta' not in on_disk
+    assert on_disk['content_hash'] == snapshots._digest(on_disk['payload'])

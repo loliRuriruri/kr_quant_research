@@ -2059,6 +2059,21 @@ def api_seasonality_tier1_briefing_get() -> dict[str, Any]:
                 "window_adverse_excursion_p50", "validation_status", "costs_included")},
         })
     snapshot = highlights_payload.get("snapshot") or {}
+    if snapshot.get("is_current") is False:
+        # Do not let an unconfigured free route rewrite the stale deferral code.
+        from types import SimpleNamespace as _NS
+        stale_endpoint = endpoint
+        if getattr(endpoint, "provider", None) == "tier1_unavailable":
+            stale_endpoint = _NS(provider="stale_snapshot", model=getattr(endpoint, "model", None))
+        return tier1_unavailable(
+            stale_endpoint,
+            code="STALE_SNAPSHOT_AI_DEFERRED",
+            message="현재 시즌 스냅샷이 준비되는 동안 새 AI 분석은 보류합니다. 이전 검증 스냅샷은 화면에서만 참고하세요.",
+            sources=["seasonality_highlights"],
+            missing=["current_snapshot"],
+            prompt_version=prompt_version,
+            as_of=snapshot.get("selection_date") or snapshot.get("snapshot_as_of"),
+        )
     if candidates:
         # The card explains these candidates, not unrelated monthly/event lists.
         # Those lists remain intact in the source endpoint and the original UI.
@@ -3127,19 +3142,48 @@ def api_flow_collect_ticker_post(ticker: str) -> dict[str, Any]:
 
 
 def _season_bundle(lookback_years=5, *, listing_view=None):
-    from kr_quant.web.season_snapshot import read_bundle, request_build
+    from datetime import date as _date
+    from kr_quant.run_generation import is_updating
+    from kr_quant.web.season_snapshot import (
+        attach_serve_meta,
+        preparation_failed,
+        read_bundle,
+        read_last_known_good,
+        request_build,
+    )
     s = load_settings()
     try:
-        bundle = (read_bundle(s, lookback_years) if listing_view is None
-                  else read_bundle(s, lookback_years, listing_view=listing_view))
-        if bundle is None:
-            from kr_quant.web.season_snapshot import preparation_failed
-            if preparation_failed(s, lookback_years):
-                raise HTTPException(status_code=503, detail="시즌 자료 준비에 실패했습니다. 이전 후보를 대신 표시하지 않습니다. 로그를 확인하고 잠시 후 다시 시도해 주세요.")
-            if not RUNNER.is_running():
+        bundle = read_bundle(s, lookback_years, listing_view=listing_view)
+        if bundle is not None:
+            attach_serve_meta(bundle, is_current=True, refresh_pending=False)
+        else:
+            lkg = read_last_known_good(s, lookback_years, listing_view=listing_view)
+            failed = preparation_failed(s, lookback_years)
+            updating = is_updating(s)
+            # During an active data job do not start a duplicate season builder.
+            if not RUNNER.is_running() and not failed and not updating:
                 request_build(s, lookback_years)
-            raise HTTPException(status_code=503, detail="시즌 자료를 백그라운드에서 준비 중입니다. 이전 후보를 오늘의 후보로 표시하지 않습니다. 잠시 후 다시 확인해 주세요.",
-                                headers={"Retry-After": "3", "X-Research-Snapshot": "pending"})
+            if lkg is not None:
+                attach_serve_meta(
+                    lkg,
+                    is_current=False,
+                    refresh_pending=not failed,
+                    expected_as_of=_date.today().isoformat(),
+                    refresh_error=bool(failed),
+                    refresh_error_code="SEASON_BUILD_FAILED" if failed else None,
+                )
+                bundle = lkg
+            elif failed:
+                raise HTTPException(
+                    status_code=503,
+                    detail="시즌 자료 준비에 실패했습니다. 이전 후보를 대신 표시하지 않습니다. 로그를 확인하고 잠시 후 다시 시도해 주세요.",
+                )
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail="시즌 자료를 백그라운드에서 준비 중입니다. 이전 후보를 오늘의 후보로 표시하지 않습니다. 잠시 후 다시 확인해 주세요.",
+                    headers={"Retry-After": "3", "X-Research-Snapshot": "pending"},
+                )
         # Read-time repair also covers older persisted discovery payloads. Never
         # rewrite their observation file or invent a new historical cause.
         from kr_quant.research.failure_observations import failure_observations
