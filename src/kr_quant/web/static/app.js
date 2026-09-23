@@ -2429,7 +2429,7 @@ async function loadPipelinePanel(options = {}) {
 }
 
 async function refreshPipelineAfterTerminalJob() {
-  await loadStatus();
+  await loadStatusPanel();
   if (currentView === "run") {
     await loadPipelinePanel({ includePlans: true, force: true });
   }

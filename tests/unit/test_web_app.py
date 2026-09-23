@@ -935,6 +935,13 @@ def test_pipeline_panel_js_terminal_and_busy_contracts():
     assert "showToast" in err_snip
     success_snip = poll_snip[poll_snip.find('["success", "partial"]') : poll_snip.find('["success", "partial"]') + 900]
     assert "refreshPipelineAfterTerminalJob" in success_snip
+    # Corrective #2: canonical status refresh (no undefined loadStatus)
+    refresh_idx = js.find("async function refreshPipelineAfterTerminalJob")
+    assert refresh_idx >= 0
+    refresh_snip = js[refresh_idx : refresh_idx + 350]
+    assert "await loadStatusPanel();" in refresh_snip
+    assert "await loadStatus();" not in js
+    assert "function loadStatusPanel" in js
     # Layer contracts still present
     html = client.get("/").text
     assert "오늘 필요한 작업 스마트 실행" in html
