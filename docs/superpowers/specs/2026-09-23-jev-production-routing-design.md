@@ -157,9 +157,13 @@ source-backed research overlay / status (REVIEW_REQUIRED | CONFLICT_FOUND |
 
 ### 3.3 Doc ↔ code comparison notes (differences that matter for this design)
 
-1. **Gate persistence is implemented but has no runtime caller.** No `src/`
-   or `scripts/` module invokes `evaluate_research_gate_generation` /
-   `write_research_gate_artifact`. P1 wires this through a new runtime module.
+1. **Gate persistence is implemented but has no runtime caller today.** No
+   `src/` or `scripts/` module invokes `evaluate_research_gate_generation` /
+   `write_research_gate_artifact`. The only existing JEV hook is
+   `season_snapshot._schedule_shadow` → `season_jev_shadow.request_shadow_evaluation`
+   (fire-and-forget, current completed 5-year bundle only, never LKG serving).
+   §4.5 locks the single authoritative orchestrator entrypoint and the
+   production hook that replaces that delegation in P1.
 2. **`lookup_threshold` returns `SHADOW_ONLY` even for numeric thresholds**
    (J3 Task 1 note). Therefore production eligibility cannot be derived from
    lookup status alone; the approval layer in §5 is mandatory.
@@ -305,6 +309,78 @@ Hard rules:
 | M3 (P6) | set `"mode": "production"` after all five heads eligible | explicit approval + production readiness packet |
 
 Rollback is the reverse of the same table (each step is a config-only commit).
+
+### 4.5 Runtime Orchestration and Production Hook (locked)
+
+Authoritative entrypoint (locked name):
+
+```python
+def request_runtime_evaluation(settings, bundle: Mapping[str, Any]) -> None:
+    ...
+```
+
+- Lives in `src/kr_quant/research/jev_runtime.py`.
+- Fire-and-forget: spawns one daemon worker thread and returns immediately;
+  the caller (Season snapshot completion) never waits for JEV.
+- One generation is single-flight (in-process lock + persisted artifacts).
+- Any exception is logged to the runtime status surface; it must never
+  propagate to the caller, never fail the Season snapshot, and never mutate
+  deterministic Quant/Season artifacts.
+- `bundle` must be a current completed 5-year Season bundle with a
+  `generation_id` and `identity.lookback == 5`; otherwise return without
+  side effects.
+
+Mode behavior (locked):
+
+```text
+disabled:
+  return; zero provider calls, zero gate writes, zero research
+
+shadow:
+  evaluate/persist JEV shadow  (existing season_jev_shadow path)
+  → evaluate/persist gate       (run_shadow_gate_pass)
+  → STOP (no executor, no evidence, no overlay)
+
+canary:
+  shadow → gate → eligibility → bounded executor → evidence verifier → overlay
+
+production:
+  same complete chain for all eligible candidates within budget
+```
+
+Production hook (locked):
+
+- The single existing hook site is
+  `src/kr_quant/web/season_snapshot.py::_schedule_shadow` (currently calls
+  `season_jev_shadow.request_shadow_evaluation`).
+- P1 replaces that call with `jev_runtime.request_runtime_evaluation`
+  (delegation only; the hook's existing guard conditions stay:
+  current completed bundle only, `lookback == 5`, never LKG serving).
+- `season_snapshot.py` is the only production integration surface for P1–P6;
+  no other caller may invoke the orchestrator implicitly.
+- A CLI/operator command (`scripts/jev_runtime.py`, subcommand `runtime-pass`)
+  is the second, explicitly documented entrypoint for operator runs and for
+  P1.7 evidence. Both entrypoints call the same orchestrator function.
+- LKG (`stale_while_revalidate` serving) must never trigger JEV.
+
+### 4.6 Restart / Resume and Idempotency (locked)
+
+For one generation, the orchestrator resumes from persisted artifacts:
+
+```text
+shadow exists, gate missing                              → resume at gate
+shadow + gate exist, overlay missing (canary/production) → resume at executor
+verified evidence exists with exact execution identity   → reuse (no side effects)
+stale / mismatched identity                              → do not reuse
+concurrent duplicate runtime request                     → single-flight (one worker)
+process restart                                          → bounded resume from persisted artifacts
+```
+
+- No duplicate provider calls or research calls may occur merely because the
+  web/server process restarted.
+- Execution reuse identity is the 9-tuple in §6.5; gate reuse identity is the
+  8-tuple in J3 §16.1; shadow reuse identity is the 4-tuple in §3.3 item 9.
+- A resumed pass records `resumed=true` in the runtime overlay counts.
 
 ---
 
@@ -642,6 +718,45 @@ exist:
   it; never a fallback to another source.
 - P3 ships the executor with injected adapters; real adapter wiring is its own
   reviewed task and never enables a source that is not in the allowlist.
+
+### 6.10 Shadow Status Preservation and Join Identity (locked)
+
+J3 `evaluate_research_gate_generation` evaluates every `results[]` record and
+does not itself preserve shadow SKIPPED semantics. The runtime layer solves
+this without changing J3:
+
+A. Only shadow records with `status` `GENERATED` or `REUSED` are gate
+   candidates. `SKIPPED` / `ERROR` records are never passed to the gate.
+B. Shadow `SKIPPED` / `ERROR` records retain their original `status` and
+   `skip_reason` / `error` in runtime processing and in the overlay.
+C. Runtime mapping (locked, deterministic):
+
+```text
+GENERATED / REUSED               → gate candidate
+SKIPPED + API_CAP_GENERATION     → runtime SKIPPED_BUDGET (reason retained)
+SKIPPED + API_CAP_DAILY          → runtime SKIPPED_BUDGET (reason retained)
+SKIPPED + API_BUDGET_UNAVAILABLE → runtime SKIPPED_BUDGET (reason retained)
+ERROR (provider/evaluation)      → runtime FAILED (original error retained)
+```
+
+D. A skipped API-budget record must never be converted into
+   `MISSING_ANSWERS`, `MISSING_HEAD`, or generic uncalibrated merely because
+   its `answers` is `{}`.
+E. Gate artifacts contain only gate-eligible records (`GENERATED`/`REUSED`);
+   the J3 envelope schema is unchanged. The runtime overlay carries the
+   non-eligible records with their original provenance.
+F. Runtime execution has access to both the original shadow record and the
+   corresponding gate result, joined by the locked join key:
+
+```text
+generation_id + provider + requested_model + evaluator_version
++ candidate_id + state_hash
+```
+
+- Gate envelope `results[]` order and content are untouched by the runtime
+  (no J3 schema change, no J3 core edit).
+- A shadow record with missing/empty `state_hash` is not a gate candidate and
+  is surfaced as `FAILED` with reason `STATE_HASH_MISSING`.
 
 ---
 
@@ -989,7 +1104,12 @@ Required new test files:
 tests/unit/test_jev_runtime.py            (mode resolution, eligibility, approval, overlay, budget, canary scope)
 tests/unit/test_jev_research_executor.py  (statuses, allowlist, budgets, idempotency, timeout, isolation)
 tests/unit/test_jev_evidence.py           (schema, statuses, bounding, secret/path rejection, hashing)
+tests/unit/test_jev_runtime_integration.py (hook + orchestration integration contracts)
 ```
+
+`tests/unit/test_season_snapshot.py` is modified to cover the hook contract
+(current bundle only, LKG never triggers JEV, runtime failure does not fail
+the snapshot).
 
 Mandatory coverage classes:
 
@@ -1004,17 +1124,42 @@ Mandatory coverage classes:
 5. Invalidation overlay mapping (all four statuses).
 6. Canary: deterministic sampling; cap enforcement; deep-AI tighter cap;
    metrics null-safety on zero denominators.
-7. Failure matrix: one test per row 1–24 (P7.1).
+7. Failure matrix: one test per row 1–24 (P6.3 pre-production gate).
 8. Invariance: no config writes; `enabled=false` until approved activation;
    thresholds 14/14 null until approved adoption; no Quant imports in new
    modules; no network imports (static AST checks mirroring J3 Task 5).
+9. Integration contracts (locked, 12): (1) current Season bundle → orchestrator
+   called exactly once; (2) disabled → no provider call, no gate write, no
+   executor, no evidence; (3) shadow → shadow + gate written, executor/evidence
+   never called; (4) shadow SKIPPED budget record retains original skip reason
+   and is never converted to `MISSING_ANSWERS`; (5) shadow ERROR record is
+   isolated and accurately surfaced; (6) canary executes only the deterministic
+   bounded candidate subset; (7) production executes only eligible `true`
+   requirements; (8) verifier is mandatory before any `VERIFIED` overlay;
+   (9) runtime exception leaves the Season snapshot valid/current; (10) LKG
+   serve does not schedule runtime JEV; (11) duplicate same generation causes
+   no duplicate provider/research side effect; (12) process resume continues
+   from existing exact artifacts.
 
 ---
 
 ## 16. Phase Decomposition
 
-The recommended P1–P7 decomposition is accepted unchanged. Justification for
-keeping it:
+P1–P7 are retained with three locked adjustments required by the P0 review:
+
+- P1 now includes the authoritative runtime orchestrator
+  (`request_runtime_evaluation`) and the real production hook
+  (`season_snapshot._schedule_shadow` delegation) plus integration tests, so
+  the chain is reachable from a continuously executed runtime path — not just
+  defined.
+- P5 adds an explicitly authorized live canary operation task after config
+  activation; config mode alone is not accepted as evidence.
+- P6 places the pre-production certification gate (failure matrix, runtime
+  integration, isolation, full suite, canary metrics, rollback) **before**
+  production activation; P7 then holds final invariance certification and the
+  readiness record.
+
+Justification for the ordering:
 
 - P1 is the only phase that touches live providers, and it is shadow-only —
   isolating it first produces the runtime evidence P2+ needs.
@@ -1024,7 +1169,8 @@ keeping it:
   gates because the verifier is the trust boundary for external content.
 - P5 (canary) precedes P6 (production) so live research scope is proven under
   caps before full eligibility is required.
-- P7 certifies the failure matrix and invariants last, on frozen code.
+- Certification precedes activation so production cannot be enabled before
+  the failure/isolation evidence exists.
 
 No phase may skip its STOP/review gate. No phase changes Quant behavior.
 
@@ -1051,7 +1197,12 @@ Production v1 is done only when:
 - Every canary/production head is approval-gated per §5.
 - Executor runs only allowlisted, budgeted, idempotent actions.
 - Evidence verification is mandatory and fail-closed.
-- Failure matrix rows 1–24 have executable tests.
+- Failure matrix rows 1–24 have executable tests, green **before** production
+  activation (P6.3 gate).
+- The orchestrator entrypoint is reachable from the production hook
+  (`_schedule_shadow`) and from the documented operator CLI; no
+  function-only dead code.
+- Integration contracts in §15 item 9 are green.
 - `config/jev_thresholds.json` non-null values exist only with approval
   records; `config/season_jev.json` mode changes only via approved commits.
 - Full pytest suite green; no Quant regression.
@@ -1075,6 +1226,11 @@ Production v1 is done only when:
 | Config writes by runtime | forbidden |
 | Secrets in artifacts/logs | forbidden |
 | Network in tests | forbidden |
+| Runtime orchestrator | single authoritative entrypoint; fire-and-forget |
+| Season snapshot hook | `_schedule_shadow` delegation only; current bundle only |
+| LKG serving | never triggers JEV |
+| Shadow SKIPPED/ERROR | provenance preserved; never converted to gate errors |
+| Production activation | blocked until the P6.3 pre-production certification gate passes |
 
 ## Self-Review Checklist (author)
 
@@ -1090,6 +1246,11 @@ Production v1 is done only when:
 - [x] Observability fields listed; P0 implements none
 - [x] Security/privacy rules locked
 - [x] Doc↔code comparison notes recorded
+- [x] Runtime orchestrator entrypoint + production hook locked
+- [x] Shadow status preservation + join identity locked
+- [x] Restart/resume + single-flight rules locked
+- [x] Integration test contracts (12) locked
+- [x] Certification ordered before production activation
 - [x] No TODO/TBD placeholders
 - [x] No implementation in this commit
 

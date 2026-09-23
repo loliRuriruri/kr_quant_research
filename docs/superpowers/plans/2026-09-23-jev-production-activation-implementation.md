@@ -1,16 +1,16 @@
-# JEV Production Activation Implementation Plan (P1–P7)
+# JEV Production Activation Implementation Plan (P1–P7, Corrective Rev 2)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Take the existing JEV shadow / calibration / research-gate stack (J1–J3) to a safe Production v1 with explicit runtime modes, approval-gated thresholds, a bounded research executor, a mandatory evidence verifier, and canary-before-production, without ever mutating deterministic Quant.
+**Goal:** Take the existing JEV shadow / calibration / research-gate stack (J1–J3) to a safe Production v1 with one authoritative runtime orchestrator, a real production hook, approval-gated thresholds, a bounded research executor, a mandatory evidence verifier, and canary-before-production — without ever mutating deterministic Quant.
 
-**Architecture:** One new runtime module (`jev_runtime.py`) owns mode resolution, approval-gated eligibility, overlay/status persistence, and canary metrics. One new executor module (`jev_research_executor.py`) owns allowlisted, budgeted, idempotent research execution. One new evidence module (`jev_evidence.py`) owns evidence objects and verification. Existing J1–J3 contracts are consumed, not redesigned; any proven interface deficiency requires STOP + approval before editing.
+**Architecture:** One new runtime module (`jev_runtime.py`) owns the orchestrator entrypoint (`request_runtime_evaluation`), mode resolution, approval-gated eligibility, overlay/status persistence, and canary metrics. One new executor module (`jev_research_executor.py`) owns allowlisted, budgeted, idempotent research execution. One new evidence module (`jev_evidence.py`) owns evidence objects and verification. The only production integration surface is `src/kr_quant/web/season_snapshot.py::_schedule_shadow`, which delegates to the orchestrator; a documented operator CLI (`scripts/jev_runtime.py`) is the second entrypoint calling the same core. Existing J1–J3 contracts are consumed, not redesigned.
 
-**Tech Stack:** Python 3.11+, pytest, stdlib `json` / `hashlib` / `math` / `pathlib` / `datetime`, existing `kr_quant.atomic_io.write_json_atomic`, existing `season_jev_budget.BudgetLock`, existing J2/J3 modules. No new dependencies. No Node changes.
+**Tech Stack:** Python 3.11+, pytest, stdlib `json` / `hashlib` / `math` / `pathlib` / `datetime` / `threading`, existing `kr_quant.atomic_io.write_json_atomic`, existing `season_jev_budget.BudgetLock`, existing J2/J3 modules. No new dependencies. No Node changes.
 
 **Spec:** `docs/superpowers/specs/2026-09-23-jev-production-routing-design.md`
 **Base:** `origin/main` @ `44b2c467be59d90851705e9ea7f0175a38203727`
-**Design branch (already created):** `jev-production-v1-design`
+**Design branch:** `jev-production-v1-design`
 
 ---
 
@@ -31,8 +31,11 @@ After each implementation Task:
 
 Only start the next Task after explicit approval.
 
-Config-activation Tasks (1.4, 2.4 adoption, 5.3, 6.3) additionally require an
+Config-activation Tasks (1.6, 2.4 adoption, 5.3, 6.4) additionally require an
 explicit GPT/user approval message **before** the config commit is created.
+
+Task 6.4 (production activation) is hard-blocked by Task 6.3 (pre-production
+certification gate). It may not run before 6.3 is green and approved.
 
 Work in an isolated worktree. Do not use a dirty primary checkout.
 
@@ -57,10 +60,25 @@ Hard constraints for every Task:
 
 - Keep `config/season_jev.json` `enabled=false` and `config/jev_thresholds.json`
   all-null **until** an explicitly approved activation/adoption Task says
-  otherwise (only Tasks 1.4, 2.4, 5.3, 6.3 may change them, each with its own
+  otherwise (only Tasks 1.6, 2.4, 5.3, 6.4 may change them, each with its own
   approval and STOP gate).
-- No production routing before P6.3; no research side effects before P5.3.
-- No JEV provider calls or research calls in unit tests.
+- No production routing before Task 6.4; no research side effects before
+  Task 5.3/5.4.
+- The runtime chain must be reachable from a real continuously executed path:
+  `season_snapshot._schedule_shadow` (production hook) and
+  `scripts/jev_runtime.py runtime-pass` (documented operator entrypoint).
+  A function that exists but is never called is forbidden.
+- The production hook must keep its existing guard conditions: current
+  completed 5-year bundle only (`lookback == 5`), never LKG serving
+  (`read_last_known_good` path untouched), snapshot completion independent.
+- J1–J3 cores stay unchanged: `season_jev_shadow.py`,
+  `jev_research_gate.py`, `jev_calibration.py`, `season_jev_budget.py`,
+  `atomic_io.py`. Consume their public functions only. If a change is
+  absolutely required: **STOP** in that Task and obtain explicit approval.
+- Shadow `SKIPPED`/`ERROR` provenance must be preserved exactly per spec
+  §6.10 (A–F); never converted into `MISSING_ANSWERS`/`MISSING_HEAD` or
+  generic uncalibrated.
+- No JEV provider calls or research calls in unit tests (injected fakes only).
 - No Quant rank/score/snapshot/trade/portfolio mutation anywhere.
 - No provider fallback, model fallback, evaluator fallback, or `0.5` fallback.
 - No `default true` / `default false` for null thresholds or failed evidence.
@@ -96,9 +114,12 @@ carry a verification-only contract instead. No silent omissions.
 | 2 | Threshold adopted without approval record | 2.1, 2.2 |
 | 3 | Executor running non-allowlisted or unbudgeted actions | 3.1, 3.2, 3.3 |
 | 4 | Unverified evidence reaching an overlay as VERIFIED | 4.1, 4.2, 4.3 |
-| 5 | JEV/research failure leaking into Quant | 1.3, 3.2, 7.2 |
-| 6 | Canary exceeding caps or failing to roll back | 5.1, 5.2, 5.3 |
-| 7 | Config changed outside approved activation tasks | 1.4, 2.4, 5.3, 6.3, 7.2 |
+| 5 | JEV/research failure leaking into Quant or Season snapshot | 1.3, 1.5, 3.2, 7.1 |
+| 6 | Canary exceeding caps or failing to roll back | 5.1, 5.2, 5.3, 5.4 |
+| 7 | Config changed outside approved activation tasks | 1.6, 2.4, 5.3, 6.4, 7.1 |
+| 8 | Orchestrator defined but never called (dead code) | 1.3, 1.5, 1.7 |
+| 9 | Shadow SKIPPED/ERROR provenance lost in runtime mapping | 1.3, 6.3 |
+| 10 | Production activated before certification | 6.3, 6.4 |
 
 ---
 
@@ -110,17 +131,20 @@ carry a verification-only contract instead. No silent omissions.
 src/kr_quant/research/jev_runtime.py
 src/kr_quant/research/jev_research_executor.py
 src/kr_quant/research/jev_evidence.py
-scripts/jev_threshold_approval.py
+scripts/jev_runtime.py
 tests/unit/test_jev_runtime.py
 tests/unit/test_jev_research_executor.py
 tests/unit/test_jev_evidence.py
-docs/superpowers/plans/2026-09-23-jev-production-v1-certification.md   (P7.3)
+tests/unit/test_jev_runtime_integration.py
+docs/superpowers/plans/2026-09-23-jev-production-v1-certification.md   (P7.2)
 ```
 
 ### Planned modify
 
 ```text
-config/season_jev.json                 (only Tasks 1.4, 5.3, 6.3)
+src/kr_quant/web/season_snapshot.py    (only Task 1.5; hook delegation)
+tests/unit/test_season_snapshot.py     (only Task 1.5)
+config/season_jev.json                 (only Tasks 1.6, 5.3, 6.4)
 config/jev_thresholds.json             (only Task 2.4 adoption)
 src/kr_quant/web/app.py                (P6.2 read-only endpoint)
 src/kr_quant/web/static/app.js         (P6.2 read-only display)
@@ -175,6 +199,15 @@ ACTIONABLE_HEADS = (
     "needsCurrentYearCheck", "needsNews", "needsDart",
     "needsDeepAI", "invalidationCheckNeeded",
 )
+
+SHADOW_GATE_ELIGIBLE_STATUSES = frozenset({"GENERATED", "REUSED"})
+SHADOW_BUDGET_SKIP_REASONS = frozenset({
+    "API_CAP_GENERATION", "API_CAP_DAILY", "API_BUDGET_UNAVAILABLE",
+})
+SHADOW_JOIN_KEY_FIELDS = (
+    "generation_id", "provider", "requested_model",
+    "evaluator_version", "candidate_id", "state_hash",
+)
 ```
 
 Eligibility reason codes (locked):
@@ -193,6 +226,12 @@ CANARY_ELIGIBILITY_INCOMPLETE, PRODUCTION_ELIGIBILITY_INCOMPLETE,
 RESEARCH_CONFIG_INVALID
 ```
 
+Runtime record mapping reasons (locked):
+
+```text
+STATE_HASH_MISSING, SHADOW_ERROR, SHADOW_SKIPPED_BUDGET
+```
+
 ### `jev_runtime.py` functions
 
 ```python
@@ -205,6 +244,33 @@ def run_shadow_gate_pass(settings, *, shadow_payload: Mapping[str, Any],
     # disabled -> {"status": "SKIPPED", "reason": "MODE_DISABLED"} (no writes)
     # envelope error -> {"status": "ERROR", "error": {...}} (no writes)
     # ok -> {"status": "OK", "gate": <envelope>, "path": str}
+
+def partition_shadow_records(shadow_payload: Mapping[str, Any]) -> dict: ...
+    # -> {"gate_candidates": [records...], "preserved": [records...]}
+    # gate_candidates: status in {GENERATED, REUSED} and non-empty state_hash
+    # preserved: SKIPPED/ERROR records + missing-state_hash records (original
+    #            status/skip_reason/error retained verbatim)
+
+def map_shadow_record_status(record: Mapping[str, Any]) -> dict: ...
+    # -> {"runtime_status": str, "reason": str|None}
+    # GENERATED/REUSED -> {"runtime_status": "GATE_CANDIDATE", "reason": None}
+    # SKIPPED + budget reason -> {"runtime_status": "SKIPPED_BUDGET", "reason": <original>}
+    # SKIPPED + other reason -> {"runtime_status": "SKIPPED_UNCALIBRATED", "reason": <original>}
+    # ERROR -> {"runtime_status": "FAILED", "reason": <original error or "SHADOW_ERROR">}
+    # missing/empty state_hash -> {"runtime_status": "FAILED", "reason": "STATE_HASH_MISSING"}
+
+def run_runtime_pass(settings, *, bundle: Mapping[str, Any],
+                     threshold_cfg: Mapping[str, Any] | None = None,
+                     shadow_evaluator=None, adapters=None,
+                     executor=None, verifier=None,
+                     now=None) -> dict: ...
+    # synchronous core; returns {"status": str, "mode": str, "generation_id": str,
+    #   "shadow": {...}, "gate": {...}, "overlay": {...}|None, "resumed": bool,
+    #   "counts": {...}, "error": str|None}
+    # injected hooks are for tests; defaults are lazy imports of the real modules
+
+def request_runtime_evaluation(settings, bundle: Mapping[str, Any]) -> None: ...
+    # fire-and-forget daemon thread around run_runtime_pass; never raises
 
 def runtime_status(settings, *, threshold_cfg: Mapping[str, Any] | None = None) -> dict: ...
 def bucket_hash(provider: str, requested_model: str, evaluator_version: str) -> str: ...
@@ -233,6 +299,19 @@ def runtime_overlay_path(settings, generation_id: str, provider: str) -> Path: .
 def evidence_bundle_path(settings, generation_id: str, provider: str) -> Path: ...
 def write_runtime_overlay(path: Path, payload: Mapping[str, Any]) -> None: ...
 def write_canary_metrics_report(settings, metrics: Mapping[str, Any]) -> Path: ...
+```
+
+### `scripts/jev_runtime.py` (operator entrypoint)
+
+```text
+subcommand: runtime-pass
+  --lookback 5            (default 5; loads current bundle via season_snapshot.read_bundle)
+  --generation <id>       (optional; loads {data_dir}/research_snapshots/season/<id>.json
+                           and requires bundle["generation_id"] == <id>)
+behavior:
+  loads bundle → calls jev_runtime.run_runtime_pass synchronously
+  prints the returned status JSON; exit 0 on OK/SKIPPED, 1 on ERROR
+  no network beyond the configured provider path already authorized for the mode
 ```
 
 ### `jev_research_executor.py` constants
@@ -325,7 +404,7 @@ def write_evidence_bundle(path: Path, evidences: Sequence[Mapping[str, Any]]) ->
 **Interfaces consumed:** raw `config/season_jev.json` (read-only), `Settings.root`.
 
 **Interfaces produced:** module constants; `load_raw_runtime_config`;
-`resolve_runtime_mode` (signature above).
+`resolve_runtime_mode`.
 
 **Tests (files):** `tests/unit/test_jev_runtime.py`
 
@@ -375,7 +454,7 @@ git diff -- config/    # must be empty
 `research_gate_path`, `write_research_gate_artifact`, `ResearchGateError`
 (from `kr_quant.research.jev_research_gate`); `resolve_runtime_mode`.
 
-**Interfaces produced:** `run_shadow_gate_pass` (signature above).
+**Interfaces produced:** `run_shadow_gate_pass`.
 
 **Tests (files):** `tests/unit/test_jev_runtime.py`
 
@@ -411,7 +490,76 @@ git diff -- config/ src/kr_quant/research/jev_research_gate.py    # must be empt
 
 ---
 
-## Task 1.3: Runtime Status Snapshot
+## Task 1.3: Runtime Orchestrator Entrypoint
+
+**Files**
+- MODIFY `src/kr_quant/research/jev_runtime.py`
+- CREATE `tests/unit/test_jev_runtime_integration.py`
+- MODIFY `tests/unit/test_jev_runtime.py` (record mapping unit tests)
+
+**Interfaces consumed:** `season_jev_shadow.evaluate_generation` and
+`load_config` (public; shadow step); `jev_calibration.load_thresholds`;
+`run_shadow_gate_pass`; `resolve_runtime_mode`; `resolve_mode_eligibility`
+(P2+, lazy); executor/verifier modules (P3/P4+, lazy, injectable).
+
+**Interfaces produced:** `partition_shadow_records`,
+`map_shadow_record_status`, `run_runtime_pass`,
+`request_runtime_evaluation`.
+
+**Tests (files):** `tests/unit/test_jev_runtime.py`,
+`tests/unit/test_jev_runtime_integration.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases (unit, `test_jev_runtime.py`):
+  - `partition_shadow_records`: GENERATED/REUSED → `gate_candidates`;
+    SKIPPED/ERROR and missing-`state_hash` records → `preserved` with original
+    `status`/`skip_reason`/`error` untouched
+  - `map_shadow_record_status`: budget skip reasons → `SKIPPED_BUDGET` with
+    original reason retained; other SKIPPED → `SKIPPED_UNCALIBRATED`; ERROR →
+    `FAILED`; missing `state_hash` → `FAILED`/`STATE_HASH_MISSING`
+  - a budget-skipped record with `answers={}` is never treated as
+    `MISSING_ANSWERS`/`MISSING_HEAD`
+- [ ] RED cases (integration, `test_jev_runtime_integration.py`, injected fakes):
+  - `disabled`: zero shadow/gate/executor/verifier calls, no writes
+  - `shadow`: shadow evaluated (fake) + gate written; executor/verifier fakes
+    never called; overlay absent; `side_effects_executed=false`
+  - `canary` with fakes: chain reaches bounded executor → verifier → overlay
+  - `production` with fakes: only eligible `true` requirements execute
+  - resume: shadow exists/gate missing → gate only (no second shadow call);
+    shadow+gate exist/overlay missing → executor only; verified evidence with
+    exact identity → reused, no adapter call; mismatched identity → no reuse
+  - single-flight: two concurrent `request_runtime_evaluation` calls for one
+    generation → one shadow evaluation, one gate write
+  - exception in any step is contained: `run_runtime_pass` returns `ERROR`
+    status; `request_runtime_evaluation` never raises
+  - threshold config unreadable → runtime error status, no gate artifact
+- [ ] GREEN: implement the four functions; `run_runtime_pass` is synchronous
+  and dependency-injectable; `request_runtime_evaluation` spawns one daemon
+  thread (guarded by an in-process single-flight set) and swallows exceptions.
+
+**Test command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_runtime_integration.py -q --tb=short
+```
+
+**Implementation:** GREEN: orchestrator core + async wrapper + record mapping.
+
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_runtime_integration.py tests/unit/test_season_jev_shadow.py -q --tb=short
+git diff -- config/ src/kr_quant/research/season_jev_shadow.py src/kr_quant/web/season_snapshot.py    # must be empty
+```
+
+**Commit subject:** `feat(jev): add runtime orchestrator entrypoint`
+
+**STOP gate:** Await approval before Task 1.4.
+
+---
+
+## Task 1.4: Runtime Status Snapshot
 
 **Files**
 - MODIFY `src/kr_quant/research/jev_runtime.py`
@@ -420,7 +568,7 @@ git diff -- config/ src/kr_quant/research/jev_research_gate.py    # must be empt
 **Interfaces consumed:** existing shadow artifacts, gate artifacts (read-only);
 `resolve_runtime_mode`.
 
-**Interfaces produced:** `runtime_status` (signature above).
+**Interfaces produced:** `runtime_status`.
 
 **Tests (files):** `tests/unit/test_jev_runtime.py`
 
@@ -450,11 +598,66 @@ git diff -- config/    # must be empty
 
 **Commit subject:** `feat(jev): add JEV runtime status snapshot`
 
-**STOP gate:** Await approval before Task 1.4.
+**STOP gate:** Await approval before Task 1.5.
 
 ---
 
-## Task 1.4: Activate Shadow Runtime Mode (config; explicit approval)
+## Task 1.5: Season Snapshot Hook Integration
+
+**Files**
+- MODIFY `src/kr_quant/web/season_snapshot.py`
+- MODIFY `tests/unit/test_season_snapshot.py`
+- MODIFY `tests/unit/test_jev_runtime_integration.py`
+
+**Interfaces consumed:** `jev_runtime.request_runtime_evaluation`.
+
+**Interfaces produced:** `_schedule_shadow` delegation (the single production
+hook). Guard conditions unchanged: `lookback == 5`, dict bundle, try/except
+isolation; LKG path untouched.
+
+**Tests (files):** `tests/unit/test_season_snapshot.py`,
+`tests/unit/test_jev_runtime_integration.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases (all seven required hook properties):
+  - disabled mode → no provider call, no gate write, no executor, no evidence
+  - shadow mode → shadow + gate only (executor/verifier fakes not called)
+  - current completed bundle only (`lookback != 5` → no runtime call)
+  - LKG (`read_last_known_good` serving) does not schedule runtime JEV
+  - runtime failure does not fail the snapshot (bundle still current/valid)
+  - one generation is single-flight (duplicate `_schedule_shadow` → one pass)
+  - Season snapshot return latency does not wait for JEV (slow fake worker;
+    `request_build` returns within the bounded test threshold)
+- [ ] GREEN: replace the `season_jev_shadow.request_shadow_evaluation` import
+  and call in `_schedule_shadow` with `jev_runtime.request_runtime_evaluation`
+  (same try/except). No other change in the file.
+- [ ] If this delegation proves unsafe during implementation: **STOP** and
+  propose an alternative explicit caller that is still a real continuously
+  reachable runtime path; do not proceed silently.
+
+**Test command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_season_snapshot.py tests/unit/test_jev_runtime_integration.py -q --tb=short
+```
+
+**Implementation:** GREEN: one delegation change + hook contract tests.
+
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_season_snapshot.py tests/unit/test_season_jev_shadow.py tests/unit/test_jev_runtime.py tests/unit/test_jev_runtime_integration.py -q --tb=short
+git diff -- config/ src/kr_quant/research/    # only season_snapshot.py under src/kr_quant/web
+```
+
+**Commit subject:** `feat(jev): delegate season snapshot hook to runtime orchestrator`
+
+**STOP gate:** Await approval before Task 1.6.
+
+---
+
+## Task 1.6: Activate Shadow Runtime Mode (config; explicit approval)
 
 **Files**
 - MODIFY `config/season_jev.json` only.
@@ -463,7 +666,7 @@ git diff -- config/    # must be empty
 
 **Interfaces produced:** none (config data).
 
-**Tests (files):** none new; existing `tests/unit/test_jev_runtime.py` and
+**Tests (files):** none new; `tests/unit/test_jev_runtime.py` and
 `tests/unit/test_season_jev_shadow.py` act as regression.
 
 **RED-first:** N/A — config-only activation task. No new behavior is written;
@@ -491,39 +694,58 @@ C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -c "from pathlib impor
 
 **Commit subject:** `chore(jev): activate JEV shadow runtime mode`
 
-**STOP gate:** Await approval before Task 1.5.
+**STOP gate:** Await approval before Task 1.7.
 
 ---
 
-## Task 1.5: Live Shadow Evidence Run (operator; no code)
+## Task 1.7: Live Shadow Evidence Run (operator; executable)
 
 **Files**
-- None (no code or config change).
+- CREATE `scripts/jev_runtime.py` (operator CLI; if not created earlier)
 
-**Interfaces consumed:** existing shadow scheduling + `run_shadow_gate_pass`.
+**Interfaces consumed:** `season_snapshot.read_bundle` (current bundle);
+`jev_runtime.run_runtime_pass`; `season_jev_shadow` provider path.
 
-**Interfaces produced:** runtime artifacts under real data dirs (shadow +
-gate only; no research, no evidence).
+**Interfaces produced:** runtime artifacts for one real generation
+(shadow + gate only in shadow mode).
 
-**Tests (files):** none (operator run).
+**Tests (files):** `tests/unit/test_jev_runtime_integration.py` (CLI contract
+test with injected offline fakes; no live calls in tests)
 
-**RED-first:** N/A — operator evidence task. Contract is observational
-(counts + artifact presence); no code change, so empty commit is forbidden.
+**RED-first:** failing CLI contract tests before implementation.
 
-- [ ] Run the existing season snapshot / shadow path with `enabled=true`.
-- [ ] Verify one shadow artifact exists under
-  `data/research_snapshots/season_jev_shadow/` and one gate artifact under
-  `data/research_snapshots/season_jev_research_gate/`.
-- [ ] Record counts and the generation id in the verification packet.
-- [ ] Confirm zero research calls and zero evidence artifacts.
+- [ ] RED cases:
+  - `runtime-pass` with no bundle available → exit 1, message, no writes
+  - `runtime-pass` with a fixture bundle (fakes) → exit 0, prints status JSON
+    with `mode`, `generation_id`, `shadow`, `gate`, `counts`
+  - `--generation <id>` requires the exact persisted bundle id
+- [ ] GREEN: implement `scripts/jev_runtime.py` (`runtime-pass` subcommand)
+  calling `run_runtime_pass` synchronously.
+- [ ] OPERATOR ACTION (single documented command; no hidden Python invocation):
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe scripts/jev_runtime.py runtime-pass
+```
+
+  or, equivalently, the production hook path: let the season snapshot complete
+  for the current 5-year view (the hook schedules the same orchestrator).
+- [ ] VERIFY (operator evidence):
+  - shadow artifact exists under `data/research_snapshots/season_jev_shadow/`
+  - gate artifact exists under `data/research_snapshots/season_jev_research_gate/`
+  - research overlay/evidence artifacts absent in shadow mode
+  - gate artifact `side_effects_executed == false`
+  - rerun for the same generation → reuse/skip, no duplicate provider call
+    (shadow artifact bytes unchanged; no new budget ledger consumption)
+- [ ] If no code change is needed beyond the CLI: commit the CLI only; do not
+  create an empty commit.
 
 **Test command**
 
 ```powershell
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_season_jev_shadow.py tests/unit/test_jev_runtime.py -q --tb=short
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime_integration.py -q --tb=short
 ```
 
-**Implementation:** operate the pipeline once; no code changes.
+**Implementation:** GREEN: CLI + operator run.
 
 **Verification command**
 
@@ -531,9 +753,10 @@ C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/t
 Get-ChildItem data/research_snapshots/season_jev_shadow
 Get-ChildItem data/research_snapshots/season_jev_research_gate
 Get-ChildItem data/research_snapshots/season_jev_evidence -ErrorAction SilentlyContinue   # must be absent/empty
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe scripts/jev_runtime.py runtime-pass
 ```
 
-**Commit subject:** NO COMMIT (empty commit forbidden).
+**Commit subject:** `feat(jev): add operator runtime-pass CLI`
 
 **STOP gate:** Return evidence; await approval before P2.
 
@@ -549,7 +772,7 @@ Get-ChildItem data/research_snapshots/season_jev_evidence -ErrorAction SilentlyC
 module.
 
 **Interfaces produced:** `bucket_hash`, `build_approval_record`,
-`approval_record_hash`, `verify_approval_record` (signatures above).
+`approval_record_hash`, `verify_approval_record`.
 
 **Tests (files):** `tests/unit/test_jev_runtime.py`
 
@@ -597,7 +820,7 @@ git diff -- config/    # must be empty
 (`kr_quant.research.jev_calibration`).
 
 **Interfaces produced:** `resolve_head_eligibility`,
-`resolve_mode_eligibility`, `resolve_research_config` (signatures above).
+`resolve_mode_eligibility`, `resolve_research_config`.
 
 **Tests (files):** `tests/unit/test_jev_runtime.py`
 
@@ -796,8 +1019,7 @@ git diff -- config/ src/kr_quant/research/jev_research_gate.py    # must be empt
 `kr_quant.atomic_io.write_json_atomic`; plan output from Task 3.1.
 
 **Interfaces produced:** `execution_key`, `run_execution_pass`,
-`load_reusable_executions`, `runtime_overlay_path`, `write_runtime_overlay`
-(signatures above).
+`load_reusable_executions`, `runtime_overlay_path`, `write_runtime_overlay`.
 
 **Tests (files):** `tests/unit/test_jev_research_executor.py`
 
@@ -810,6 +1032,8 @@ git diff -- config/ src/kr_quant/research/jev_research_gate.py    # must be empt
   - stale `RUNNING` entry → `FAILED` (`CRASH_RECOVERED`) then retryable
   - reuse: same 9-tuple key with `VERIFIED` → reused, no adapter call
   - adapter exception → `FAILED` contained; overlay written atomically
+  - overlay includes preserved shadow records (spec §6.10 B/C/F) alongside
+    gate results
 
 **Test command**
 
@@ -886,7 +1110,7 @@ git diff -- src/kr_quant/research/season_jev_shadow.py    # must be empty
 **Interfaces consumed:** none external.
 
 **Interfaces produced:** module constants; `build_evidence`,
-`evidence_artifact_hash`, `validate_evidence` (signatures above).
+`evidence_artifact_hash`, `validate_evidence`.
 
 **Tests (files):** `tests/unit/test_jev_evidence.py`
 
@@ -929,7 +1153,7 @@ git diff -- config/    # must be empty
 
 **Interfaces consumed:** `validate_evidence`, `evidence_artifact_hash`.
 
-**Interfaces produced:** `verify_evidence` (signature above).
+**Interfaces produced:** `verify_evidence`.
 
 **Tests (files):** `tests/unit/test_jev_evidence.py`
 
@@ -972,14 +1196,14 @@ C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/t
 - MODIFY `src/kr_quant/research/jev_evidence.py`
 - MODIFY `tests/unit/test_jev_research_executor.py`
 - MODIFY `tests/unit/test_jev_evidence.py`
+- MODIFY `tests/unit/test_jev_runtime_integration.py`
 
 **Interfaces consumed:** `verify_evidence`, `validate_evidence`.
 
 **Interfaces produced:** `write_evidence_bundle`, `evidence_bundle_path`;
 executor calls the verifier unconditionally.
 
-**Tests (files):** `tests/unit/test_jev_research_executor.py`,
-`tests/unit/test_jev_evidence.py`
+**Tests (files):** the three files above.
 
 **RED-first:** failing tests before implementation.
 
@@ -990,11 +1214,12 @@ executor calls the verifier unconditionally.
   - `NO_CONFLICT_FOUND` requires verified `invalidation_check`
   - evidence bundle written atomically at the locked path; bypass attempt
     raises (`RuntimeError`)
+  - orchestrator integration: canary chain reaches verifier before overlay
 
 **Test command**
 
 ```powershell
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py -q --tb=short
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py tests/unit/test_jev_runtime_integration.py -q --tb=short
 ```
 
 **Implementation:** GREEN: implement bundle persistence + mandatory verifier
@@ -1003,7 +1228,7 @@ call in `run_execution_pass`.
 **Verification command**
 
 ```powershell
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py -q --tb=short
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py tests/unit/test_jev_runtime_integration.py -q --tb=short
 git diff -- config/    # must be empty
 ```
 
@@ -1023,7 +1248,7 @@ git diff -- config/    # must be empty
 `resolve_research_config` (extended).
 
 **Interfaces produced:** extended `resolve_research_config`;
-`canary_rollback_guard` (signatures above).
+`canary_rollback_guard`.
 
 **Tests (files):** `tests/unit/test_jev_runtime.py`
 
@@ -1065,7 +1290,7 @@ git diff -- config/    # must be empty
 **Interfaces consumed:** runtime overlays, human review records (fixtures).
 
 **Interfaces produced:** `compute_canary_metrics`,
-`write_canary_metrics_report` (signatures above).
+`write_canary_metrics_report`.
 
 **Tests (files):** `tests/unit/test_jev_runtime.py`
 
@@ -1097,44 +1322,101 @@ C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/t
 
 ---
 
-## Task 5.3: Activate Canary (config; explicit approval)
+## Task 5.3: Activate Canary (config + runtime-path verification; explicit approval)
 
 **Files**
 - MODIFY `config/season_jev.json` only: add the `research` block with
   `research.canary`, set `"mode": "canary"` (`enabled` stays `true`).
+- MODIFY `tests/unit/test_jev_runtime_integration.py` (runtime-path proof with
+  injected offline fakes; no live calls).
 
-**Interfaces consumed:** `resolve_research_config`,
-`resolve_mode_eligibility` (verification only).
+**Interfaces consumed:** `resolve_research_config`, `resolve_mode_eligibility`,
+`run_runtime_pass` (fakes).
 
-**Interfaces produced:** none (config data).
+**Interfaces produced:** none beyond the config data; integration proof that
+the hook reaches shadow → gate → bounded executor → verifier → overlay.
 
-**Tests (files):** none new; `tests/unit/test_jev_runtime.py` regression.
+**Tests (files):** `tests/unit/test_jev_runtime_integration.py`
 
-**RED-first:** N/A — config-only activation task; contract is verification-only
-(`mode_ok=true` for canary; only the research block + mode field in the diff).
+**RED-first:** the runtime-path integration test is written first (RED), then
+the config activation is applied and the test passes (GREEN).
 
+- [ ] RED: canary integration test with injected fakes asserting the full
+  chain and the deterministic bounded candidate subset.
 - [ ] REQUIRED: explicit GPT/user approval + canary scope review recorded.
 - [ ] Prerequisites: `>= 1` eligible head (Task 2.4), `>= 10` gate artifacts
   from P1 evidence.
+- [ ] Apply the config edit; then GREEN on the integration test.
+- [ ] Note: config mode alone is not evidence — the integration test must pass.
 
 **Test command**
 
 ```powershell
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py -q --tb=short
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime_integration.py tests/unit/test_jev_runtime.py -q --tb=short
 ```
 
-**Implementation:** apply the config edit; stage only `config/season_jev.json`.
+**Implementation:** config edit + integration proof.
 
 **Verification command**
 
 ```powershell
 git diff --cached -- config/season_jev.json    # only research block + mode
 git diff -- config/jev_thresholds.json         # must be empty
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime_integration.py -q --tb=short
 ```
 
 **Commit subject:** `chore(jev): activate JEV canary scope`
 
-**STOP gate:** Await approval before P6.
+**STOP gate:** Await approval before Task 5.4.
+
+---
+
+## Task 5.4: Canary Operation (operator; live; explicit authorization)
+
+**Files**
+- None (operator run; no code change).
+
+**Interfaces consumed:** production hook (season snapshot) or
+`scripts/jev_runtime.py runtime-pass`; live canary allowlisted adapters.
+
+**Interfaces produced:** real overlay/evidence artifacts under canary caps;
+canary metrics report.
+
+**Tests (files):** none new; regression = the full JEV test set.
+
+**RED-first:** N/A — authorized live operator run; contract is bounded
+execution within locked caps + recorded metrics.
+
+- [ ] REQUIRED: explicit authorization for live canary calls recorded.
+- [ ] Run one canary pass for the current generation.
+- [ ] VERIFY:
+  - executed candidates `<= research.canary.max_candidates_per_generation`
+  - research calls `<= research.canary.max_research_calls_per_day`
+  - deep_ai calls `<= research.canary.max_deep_ai_calls_per_day`
+  - disallowed action types never executed (`SKIPPED_DISALLOWED` if present)
+  - overlay + evidence artifacts exist; `canary_metrics.json` written
+  - rollback guard evaluated; result recorded
+- [ ] If no code change is needed: **NO COMMIT**.
+
+**Test command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_runtime_integration.py tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py -q --tb=short
+```
+
+**Implementation:** operator run; no code changes.
+
+**Verification command**
+
+```powershell
+Get-Content data/research_snapshots/season_jev_runtime/reports/canary_metrics.json -Raw
+Get-ChildItem data/research_snapshots/season_jev_runtime
+Get-ChildItem data/research_snapshots/season_jev_evidence
+```
+
+**Commit subject:** NO COMMIT (empty commit forbidden).
+
+**STOP gate:** Return metrics evidence; await approval before P6.
 
 ---
 
@@ -1172,7 +1454,7 @@ C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/t
 **Verification command**
 
 ```powershell
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py -q --tb=short
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_runtime_integration.py -q --tb=short
 ```
 
 **Commit subject:** `feat(jev): enforce production eligibility gate`
@@ -1221,96 +1503,164 @@ git diff -- config/    # must be empty
 
 ---
 
-## Task 6.3: Activate Production (config; explicit approval)
+## Task 6.3: Pre-Production Certification Gate (mandatory)
 
 **Files**
-- MODIFY `config/season_jev.json` only: `"mode": "production"`.
+- MODIFY `tests/unit/test_jev_runtime.py`
+- MODIFY `tests/unit/test_jev_research_executor.py`
+- MODIFY `tests/unit/test_jev_evidence.py`
+- MODIFY `tests/unit/test_jev_runtime_integration.py`
 
-**Interfaces consumed:** `resolve_mode_eligibility` (verification only).
+**Interfaces consumed:** all runtime/executor/evidence public functions;
+canary metrics artifact; failure matrix rows.
 
-**Interfaces produced:** none (config data).
+**Interfaces produced:** certification evidence packet (tests + command
+outputs). No production code changes expected; if a defect is found, fix it in
+a separate commit and re-run this gate.
 
-**Tests (files):** none new; P7.1 failure-matrix suite is the regression.
+**Tests (files):** the four files above.
 
-**RED-first:** N/A — config-only activation task; contract is verification-only
-(`mode_ok=true` for production; exactly one field changes).
+**RED-first:** RED→GREEN per failure row; test names
+`test_failure_row_01_...` … `test_failure_row_24_...` mapping to spec §10.
+Also add/verify the 12 integration contracts from spec §15 item 9.
 
-- [ ] REQUIRED: explicit GPT/user approval + production readiness packet.
-- [ ] Prerequisites: all five actionable heads eligible; canary metrics within
-  rollback thresholds for the agreed window; failure matrix tests green (P7.1
-  may run before this task if review requests it).
+- [ ] MANDATORY before Task 6.4 (all must be green):
+  - failure matrix rows 1–24
+  - Quant isolation tests (no Quant imports; static AST checks)
+  - config safety tests (`enabled`/mode/thresholds unchanged by tests)
+  - executor/evidence targeted tests
+  - runtime integration tests (spec §15 item 9, all 12)
+  - full repository suite exit 0
+  - canary metrics within locked limits (from Task 5.4 evidence)
+  - rollback path verified (`canary_rollback_guard` + documented config-only
+    rollback)
+- [ ] Each failure-row test asserts: statuses, side effects, retryability,
+  Quant-untouched, and (where applicable) original shadow provenance retained.
 
 **Test command**
 
 ```powershell
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py -q --tb=short
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py tests/unit/test_jev_runtime_integration.py -q --tb=short
 ```
 
-**Implementation:** apply the one-field config edit.
+**Implementation:** add the failure/integration tests; fix only genuine
+defects found (separate commit if production code changes).
+
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py tests/unit/test_jev_runtime_integration.py tests/unit/test_jev_research_gate.py tests/unit/test_jev_calibration.py tests/unit/test_season_jev_shadow.py tests/unit/test_season_snapshot.py -q --tb=short
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest -q --tb=short    # full suite, exit 0
+git diff -- config/    # must be empty
+```
+
+**Commit subject:** `test(jev): certify production failure and integration matrix`
+
+**STOP gate:** Certification packet returned; explicit GPT/user approval
+required before Task 6.4. **Production may not be activated before this gate.**
+
+---
+
+## Task 6.4: Activate Production (config + runtime-path verification; explicit approval)
+
+**Files**
+- MODIFY `config/season_jev.json` only: `"mode": "production"`.
+- MODIFY `tests/unit/test_jev_runtime_integration.py` (production-path proof
+  with injected fakes; only eligible `true` requirements execute).
+
+**Interfaces consumed:** `resolve_mode_eligibility`, `run_runtime_pass`.
+
+**Interfaces produced:** none beyond config data; integration proof of the
+full production chain.
+
+**Tests (files):** `tests/unit/test_jev_runtime_integration.py`
+
+**RED-first:** production integration test written first (RED), then config
+activation (GREEN).
+
+- [ ] HARD BLOCK: Task 6.3 certification packet approved.
+- [ ] REQUIRED: explicit GPT/user approval + production readiness packet.
+- [ ] Prerequisites: all five actionable heads eligible; canary metrics within
+  rollback thresholds for the agreed window.
+- [ ] Apply the one-field config edit; then GREEN on the integration test.
+
+**Test command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime_integration.py -q --tb=short
+```
+
+**Implementation:** config edit + integration proof.
 
 **Verification command**
 
 ```powershell
 git diff --cached -- config/season_jev.json    # exactly one field
 git diff -- config/jev_thresholds.json         # must be empty
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime_integration.py -q --tb=short
 ```
 
 **Commit subject:** `chore(jev): activate JEV production routing`
+
+**STOP gate:** Await approval before Task 6.5.
+
+---
+
+## Task 6.5: Post-Activation Smoke / Final Record (bounded)
+
+**Files**
+- None (operator run; no code change).
+
+**Interfaces consumed:** production hook; runtime status endpoint.
+
+**Interfaces produced:** one bounded post-activation smoke record (generation
+id, mode, counts, budget usage, rollback-guard result).
+
+**Tests (files):** none new; regression = full JEV set.
+
+**RED-first:** N/A — bounded post-activation observation; contract is a
+recorded smoke result with no cap violations.
+
+- [ ] Run one bounded production pass (or observe the next scheduled pass).
+- [ ] VERIFY: mode `production`; eligibility 5/5; caps respected; overlay +
+  evidence written; no Quant diff; rollback guard evaluated.
+- [ ] Record results in the Task packet. No commit unless a real defect fix is
+  required (separate commit + STOP).
+
+**Test command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_runtime_integration.py -q --tb=short
+```
+
+**Implementation:** operator observation only.
+
+**Verification command**
+
+```powershell
+Get-ChildItem data/research_snapshots/season_jev_runtime
+Get-ChildItem data/research_snapshots/season_jev_evidence
+git status --porcelain    # no unexpected tracked changes
+```
+
+**Commit subject:** NO COMMIT (empty commit forbidden).
 
 **STOP gate:** Await approval before P7.
 
 ---
 
-## Task 7.1: Failure Matrix Certification
+## Task 7.1: Final Invariance and Isolation Certification
 
 **Files**
-- MODIFY `tests/unit/test_jev_runtime.py`
-- MODIFY `tests/unit/test_jev_research_executor.py`
-- MODIFY `tests/unit/test_jev_evidence.py`
-
-**Interfaces consumed:** all runtime/executor/evidence public functions.
-
-**Interfaces produced:** test-only (one test per failure-matrix row).
-
-**Tests (files):** the three files above.
-
-**RED-first:** RED→GREEN per row; test names
-`test_failure_row_01_...` … `test_failure_row_24_...` mapping to spec §10.
-
-- [ ] Each test asserts: statuses, side effects, retryability, and
-  Quant-untouched (no Quant module import).
-
-**Test command**
-
-```powershell
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py -q --tb=short
-```
-
-**Implementation:** add the 24 row tests; fix only genuine defects found.
-
-**Verification command**
-
-```powershell
-C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py tests/unit/test_jev_research_gate.py tests/unit/test_jev_calibration.py tests/unit/test_season_jev_shadow.py -q --tb=short
-```
-
-**Commit subject:** `test(jev): certify production failure matrix`
-
-**STOP gate:** Await approval before Task 7.2.
-
----
-
-## Task 7.2: Invariance and Isolation Certification
-
-**Files**
-- MODIFY tests only if needed (prefer no production code changes).
+- MODIFY tests only if gaps exist (prefer no production code changes).
 
 **Interfaces consumed:** all new modules (static inspection).
 
 **Interfaces produced:** test-only assertions.
 
 **Tests (files):** `tests/unit/test_jev_runtime.py`,
-`tests/unit/test_jev_research_executor.py`, `tests/unit/test_jev_evidence.py`
+`tests/unit/test_jev_research_executor.py`, `tests/unit/test_jev_evidence.py`,
+`tests/unit/test_jev_runtime_integration.py`
 
 **RED-first:** add assertions first where gaps exist; otherwise N/A (gap-closure
 task with explicit NO COMMIT allowed).
@@ -1321,6 +1671,8 @@ task with explicit NO COMMIT allowed).
 - [ ] Config safety: `config/season_jev.json` and
   `config/jev_thresholds.json` unchanged by tests; mode resolution fail-closed
   cases covered.
+- [ ] Hook invariants re-verified on frozen code (LKG never triggers JEV;
+  snapshot isolation).
 
 **Test command**
 
@@ -1342,11 +1694,11 @@ Hard criterion: exit 0, **0 failed**. Do not hardcode pass counts.
 **Commit subject (only if a real diff exists):**
 `test(jev): certify production v1 invariants`
 
-**STOP gate:** Await approval before Task 7.3.
+**STOP gate:** Await approval before Task 7.2.
 
 ---
 
-## Task 7.3: Production Readiness Certification Record
+## Task 7.2: Production Readiness Certification Record
 
 **Files**
 - CREATE `docs/superpowers/plans/2026-09-23-jev-production-v1-certification.md`
@@ -1359,8 +1711,8 @@ Hard criterion: exit 0, **0 failed**. Do not hardcode pass counts.
 
 **RED-first:** N/A — documentation task; contract is content completeness
 (identity, mode state, threshold/approval inventory, failure matrix results,
-full-suite result, canary metrics summary, rollback status, open risks,
-Quant-untouched statement).
+integration contracts, full-suite result, canary metrics summary, rollback
+status, open risks, Quant-untouched statement).
 
 - [ ] Include all required sections; stage the exact path only.
 
@@ -1390,9 +1742,11 @@ git diff --cached --name-only    # exactly the one doc
 | Spec section | Primary Tasks |
 | --- | --- |
 | §4.1 mode semantics | 1.1, 6.1 |
-| §4.2 config schema | 1.1, 5.1, 5.3, 6.3 |
+| §4.2 config schema | 1.1, 5.1, 5.3, 6.4 |
 | §4.3 backward compatibility | 1.1 |
-| §4.4 migration | 1.4, 5.3, 6.3 |
+| §4.4 migration | 1.6, 5.3, 6.4 |
+| §4.5 runtime orchestration + production hook | 1.3, 1.5, 1.7 |
+| §4.6 restart/resume + idempotency | 1.3, 6.3 |
 | §5.3 approval record | 2.1, 2.3 |
 | §5.4 eligibility rule | 2.2 |
 | §5.5 mode eligibility | 2.2, 6.1 |
@@ -1404,17 +1758,19 @@ git diff --cached --name-only    # exactly the one doc
 | §6.7 timeouts/isolation | 3.2 |
 | §6.8 overlay schema | 3.2 |
 | §6.9 adapter allowlist | 3.3 |
+| §6.10 shadow status preservation + join identity | 1.3, 3.2, 6.3 |
 | §7.2 evidence schema | 4.1 |
 | §7.3 verification statuses | 4.2 |
 | §7.4 max-age table | 4.2 |
 | §8 invalidation semantics | 4.3 |
-| §9 canary design | 5.1, 5.2, 5.3 |
-| §10 failure matrix | 7.1 |
-| §11 readiness inventory | 1.5 (refresh) |
-| §12 observability | 1.3, 6.2 |
-| §13 security | 4.1, 7.2 |
+| §9 canary design | 5.1, 5.2, 5.3, 5.4 |
+| §10 failure matrix | 6.3 |
+| §11 readiness inventory | 1.7 (refresh) |
+| §12 observability | 1.4, 6.2 |
+| §13 security | 4.1, 7.1 |
 | §14 persistence paths | 3.2, 4.3, 2.3 |
-| §15 testing strategy | 7.1, 7.2 |
+| §15 testing strategy (incl. 12 integration contracts) | 6.3, 7.1 |
+| §16 phase ordering (certification before activation) | 6.3, 6.4 |
 
 ---
 
@@ -1422,11 +1778,15 @@ git diff --cached --name-only    # exactly the one doc
 
 Before declaring production v1 done:
 
+- [ ] The orchestrator is reachable from the production hook and the operator
+      CLI (no function-only dead code)
 - [ ] Modes resolve exactly per spec §4.3; conflicts fail closed
 - [ ] No non-null threshold without an approval record
 - [ ] Executor never runs non-allowlisted or unbudgeted actions
 - [ ] Evidence verification mandatory; no unverified `VERIFIED`
-- [ ] Failure matrix rows 1–24 tested
+- [ ] Shadow SKIPPED/ERROR provenance preserved (spec §6.10)
+- [ ] Failure matrix rows 1–24 tested **before** production activation (6.3)
+- [ ] Integration contracts (spec §15 item 9, 12) tested
 - [ ] Full `pytest -q --tb=short` exit 0 / 0 failed
 - [ ] `config/season_jev.json` and `config/jev_thresholds.json` changed only
       by approved activation/adoption commits
@@ -1439,26 +1799,34 @@ Before declaring production v1 done:
 
 Production v1 is done when P1–P7 Tasks are approved and:
 
-1. `jev_runtime.py`, `jev_research_executor.py`, `jev_evidence.py` +
-   their tests exist and pass
+1. `jev_runtime.py`, `jev_research_executor.py`, `jev_evidence.py`,
+   `scripts/jev_runtime.py` + their tests exist and pass
 2. Public interfaces match this plan
-3. Approval-gated eligibility is enforced at runtime
-4. Canary ran within caps and metrics are recorded
-5. Production activation happened only after explicit approval
-6. J1–J3 modules and configs remain unchanged except the approved
-   activation/adoption commits
-7. Full suite green; deterministic Quant unaffected
+3. The production hook delegates to the orchestrator; LKG never triggers JEV
+4. Approval-gated eligibility is enforced at runtime
+5. Canary ran within caps and metrics are recorded
+6. Pre-production certification (6.3) passed before production activation
+7. Production activation happened only after explicit approval; a bounded
+   post-activation smoke record exists
+8. J1–J3 modules and configs remain unchanged except the approved
+   activation/adoption commits and the single Task 1.5 hook delegation
+9. Full suite green; deterministic Quant unaffected
 
 ---
 
 ## Forbidden Implementation Behaviors
 
+- Defining the orchestrator without a real caller (hook or CLI)
 - Editing J1–J3 core modules without STOP + approval
 - Any config write by runtime code
 - Setting `enabled=true` / `mode != "disabled"` outside approved Tasks
+- Activating production (6.4) before the 6.3 certification gate
+- Accepting config mode alone as canary/production evidence
 - Writing non-null thresholds outside Task 2.4
 - Executing research in shadow/disabled mode
 - Any adapter call not in the allowlist
+- Converting shadow SKIPPED/ERROR records into `MISSING_ANSWERS`/
+  `MISSING_HEAD`/generic uncalibrated
 - Persisting secrets or raw provider payloads
 - Quant imports in runtime/executor/evidence modules
 - `git add .` / `git add -A` / force push / amend
@@ -1485,17 +1853,23 @@ J4 naming
 
 ## Plan Self-Review Checklist
 
-- [x] All 24 Tasks declare Files / Interfaces consumed / Interfaces produced /
+- [x] All 28 Tasks declare Files / Interfaces consumed / Interfaces produced /
       Tests / RED-first (or explicit N/A with reason) / Test command /
       Implementation / Verification command / Commit subject / STOP gate
+- [x] Runtime orchestrator entrypoint + real production hook + operator CLI
+- [x] Shadow status preservation (A–F) + join identity in Tasks 1.3/3.2/6.3
+- [x] Restart/resume + single-flight rules in Tasks 1.3/6.3
+- [x] P1.7 is executable through a documented operator command
+- [x] Canary/production activation require runtime-path integration proof
+- [x] Pre-production certification gate (6.3) blocks activation (6.4)
+- [x] 12 integration contracts assigned (6.3 / 7.1)
 - [x] Config changes confined to approved activation/adoption Tasks
 - [x] No TODO/TBD placeholders
 - [x] Spec sections mapped to primary Tasks (coverage matrix)
-- [x] No J1–J3 modifications planned
+- [x] No J1–J3 modifications planned (only the Task 1.5 hook delegation in web/)
 - [x] No live calls in tests
-- [x] Failure matrix ownership assigned to P7.1
 - [x] Rollback and certification explicit
 
 ---
 
-**END OF JEV PRODUCTION ACTIVATION IMPLEMENTATION PLAN**
+**END OF JEV PRODUCTION ACTIVATION IMPLEMENTATION PLAN (CORRECTIVE REV 2)**
