@@ -44,7 +44,7 @@ def load_raw_runtime_config(settings) -> dict[str, Any]:
     path = Path(settings.root) / "config" / "season_jev.json"
     try:
         raw = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         return {_CONFIG_LOAD_ERROR_KEY: f"CONFIG_UNREADABLE:{type(exc).__name__}"}
     try:
         data = json.loads(raw)

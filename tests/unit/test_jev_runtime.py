@@ -149,6 +149,20 @@ def test_non_object_json_records_error(tmp_path: Path) -> None:
     assert result["errors"]
 
 
+def test_invalid_utf8_bytes_record_error_and_preserve_file(tmp_path: Path) -> None:
+    folder = tmp_path / "config"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "season_jev.json"
+    payload = b"\xff\xfe\xfa"
+    path.write_bytes(payload)
+    raw = rt.load_raw_runtime_config(_settings(tmp_path))
+    result = rt.resolve_runtime_mode(raw)
+    assert result["mode"] == "disabled"
+    assert result["errors"]
+    assert "CONFIG_UNREADABLE" in " ".join(result["errors"])
+    assert path.read_bytes() == payload
+
+
 def test_valid_config_round_trip(tmp_path: Path) -> None:
     _write_config(
         tmp_path,
