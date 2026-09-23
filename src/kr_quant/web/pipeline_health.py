@@ -316,7 +316,18 @@ def _quant_health(
             manifest_keys=sorted(manifest.keys()),
         )
 
+    from kr_quant.run_generation import generation_dir as expected_generation_dir
+
     generation_dir = Path(str(generation_dir_raw))
+    expected_dir = expected_generation_dir(settings, str(run_id))
+    if generation_dir.resolve() != expected_dir.resolve():
+        return _component(
+            "CORRUPT",
+            reason="committed_generation_dir_mismatch",
+            run_id=str(run_id),
+            generation_dir=str(generation_dir),
+            expected_generation_dir=str(expected_dir),
+        )
     if not generation_dir.exists() or not generation_dir.is_dir():
         return _component(
             "MISSING",
@@ -353,8 +364,24 @@ def _quant_health(
     as_of: str | None = None
     try:
         payload = json.loads(quality_path.read_text(encoding="utf-8"))
-        if isinstance(payload, dict) and payload.get("as_of_date"):
+        if not isinstance(payload, dict):
+            return _component(
+                "CORRUPT",
+                reason="committed_quality_report_invalid",
+                path=str(quality_path),
+                run_id=str(run_id),
+            )
+        if payload.get("as_of_date"):
             as_of = str(payload.get("as_of_date"))[:10]
+        quality_run = payload.get("run_id")
+        if quality_run is not None and str(quality_run) != str(run_id):
+            return _component(
+                "CORRUPT",
+                reason="committed_quality_run_id_mismatch",
+                path=str(quality_path),
+                run_id=str(run_id),
+                quality_run_id=str(quality_run),
+            )
     except (OSError, json.JSONDecodeError, TypeError):
         return _component(
             "CORRUPT",
@@ -428,38 +455,110 @@ def _kis_health(settings: Settings, *, expected: date) -> dict[str, Any]:
 
 
 def _season_health(settings: Settings, *, busy: bool) -> dict[str, Any]:
-    """A1: readiness/updating only — no LKG serving."""
+    """A1: diagnose current season readiness only — no LKG serving / no build."""
     from kr_quant.run_generation import is_updating
-    from kr_quant.web.season_snapshot import _folder
+    from kr_quant.web.season_snapshot import _digest, _folder, read_bundle, source_identity
 
-    updating = bool(busy) or is_updating(settings)
+    lookback = 5  # primary/default season bundle
     season_root = _folder(settings)
-    has_cache = False
-    if season_root.exists():
-        has_cache = any(season_root.glob("*.json")) or (season_root / "current.json").exists()
+    updating = bool(busy) or is_updating(settings)
+    hist_like = _season_historical_artifacts(season_root)
+
     if updating:
         return _component(
             "UPDATING",
             reason="source_or_runner_updating",
-            cache_present=has_cache,
+            cache_present=bool(hist_like),
             path=str(season_root),
+            lookback=lookback,
             lkg_serving="deferred_to_a4",
         )
-    if has_cache:
+
+    # Read-only current contract (same as production read_bundle). Never request_build.
+    try:
+        bundle = read_bundle(settings, lookback=lookback)
+    except Exception as exc:  # noqa: BLE001
+        return _component(
+            "CORRUPT",
+            reason=f"season_read_failed:{type(exc).__name__}",
+            path=str(season_root),
+            lookback=lookback,
+            lkg_serving="deferred_to_a4",
+        )
+
+    if isinstance(bundle, dict) and bundle.get("generation_id"):
         return _component(
             "HEALTHY",
-            reason="season_cache_present",
-            cache_present=True,
-            path=str(season_root),
+            reason="current_season_bundle_valid",
+            as_of=(bundle.get("identity") or {}).get("day") if isinstance(bundle.get("identity"), dict) else None,
+            path=str(season_root / f"{bundle.get('generation_id')}.json"),
+            generation_id=str(bundle.get("generation_id")),
+            lookback=lookback,
             lkg_serving="deferred_to_a4",
         )
+
+    # Distinguish corrupt current file vs stale history vs empty.
+    try:
+        identity = source_identity(settings, lookback)
+        expected = _digest(identity)
+        expected_path = season_root / f"{expected}.json"
+        if expected_path.exists():
+            return _component(
+                "CORRUPT",
+                reason="current_generation_file_invalid",
+                path=str(expected_path),
+                generation_id=expected,
+                lookback=lookback,
+                lkg_serving="deferred_to_a4",
+            )
+    except Exception:  # noqa: BLE001
+        expected = None
+        expected_path = None
+
+    pointer = season_root / f"latest_lb_{lookback}.json"
+    if pointer.exists() and not (expected_path and expected_path.exists()):
+        return _component(
+            "STALE",
+            reason="season_pointer_without_current_generation",
+            path=str(pointer),
+            lookback=lookback,
+            historical_present=True,
+            lkg_serving="deferred_to_a4",
+        )
+
+    if hist_like:
+        return _component(
+            "STALE",
+            reason="season_historical_only_not_current",
+            path=str(season_root),
+            lookback=lookback,
+            historical_present=True,
+            lkg_serving="deferred_to_a4",
+        )
+
     return _component(
         "MISSING",
-        reason="season_cache_absent",
-        cache_present=False,
+        reason="current_season_bundle_absent",
         path=str(season_root),
+        lookback=lookback,
+        historical_present=False,
         lkg_serving="deferred_to_a4",
     )
+
+
+def _season_historical_artifacts(season_root: Path) -> list[str]:
+    """Production-like artifacts only (hex generation ids / latest_lb_*)."""
+    if not season_root.exists():
+        return []
+    found: list[str] = []
+    for path in sorted(season_root.glob("*.json")):
+        name = path.name
+        stem = path.stem
+        if name.startswith("latest_lb_"):
+            found.append(name)
+        elif len(stem) == 64 and all(ch in "0123456789abcdef" for ch in stem.lower()):
+            found.append(name)
+    return found
 
 
 def _pipeline_state(

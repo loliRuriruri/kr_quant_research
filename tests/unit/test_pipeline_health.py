@@ -16,7 +16,7 @@ from kr_quant.web.pipeline_health import (
     REQUIRED_PRICES,
     pipeline_health,
 )
-from kr_quant.web.season_snapshot import _folder as season_folder
+from kr_quant.web.season_snapshot import _digest, _folder as season_folder, source_identity
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -128,7 +128,26 @@ def _write_corrupt_parquet(path: Path) -> None:
     path.write_bytes(b"not-a-parquet-file")
 
 
-def _write_season_canonical(settings) -> None:
+def _write_current_season_bundle(settings, *, lookback: int = 5) -> dict:
+    """Write a production-shaped current generation bundle for lookback=5."""
+    root = season_folder(settings)
+    root.mkdir(parents=True, exist_ok=True)
+    identity = source_identity(settings, lookback)
+    generation = _digest(identity)
+    payload = {"rows": [{"ticker": "000001", "pattern_id": "test"}], "highlights": {}, "themes": {}, "stats": {}}
+    bundle = {
+        "generation_id": generation,
+        "identity": identity,
+        "generated_at": "2026-08-20T00:00:00+00:00",
+        "payload": payload,
+        "content_hash": _digest(payload),
+    }
+    path = root / f"{generation}.json"
+    path.write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
+    return bundle
+
+
+def _write_unrelated_season_json(settings) -> None:
     root = season_folder(settings)
     root.mkdir(parents=True, exist_ok=True)
     (root / "current.json").write_text(json.dumps({"state": "ready"}), encoding="utf-8")
@@ -142,7 +161,7 @@ def test_1_healthy_artifact_set_ready(tmp_path):
     _write_master(live)
     _write_facts(live)
     _write_committed_quant(settings, as_of=day)
-    _write_season_canonical(settings)
+    _write_current_season_bundle(settings)
     snap = pipeline_health(settings, now=datetime(2026, 8, 20, 18, 30, tzinfo=KST))
     assert snap["components"]["krx"]["state"] == "HEALTHY"
     assert snap["components"]["dart_essential"]["state"] == "HEALTHY"
@@ -366,17 +385,89 @@ def test_prices_missing_required_quant_field_is_corrupt(tmp_path):
     assert "market_cap" in REQUIRED_PRICES
 
 
-def test_canonical_season_path_detected(tmp_path):
+def test_canonical_season_current_bundle_healthy(tmp_path):
     settings = _settings(tmp_path)
     live = _live(settings)
     _write_prices(live, "2026-08-20")
     _write_master(live)
     _write_facts(live)
     _write_committed_quant(settings, as_of="2026-08-20")
-    _write_season_canonical(settings)
+    bundle = _write_current_season_bundle(settings)
+    before = sorted(p.name for p in season_folder(settings).glob("*.json"))
     snap = pipeline_health(settings, now=datetime(2026, 8, 20, 18, 30, tzinfo=KST))
+    after = sorted(p.name for p in season_folder(settings).glob("*.json"))
     assert snap["components"]["season"]["state"] == "HEALTHY"
-    assert "research_snapshots" in str(snap["components"]["season"]["path"]).replace("\\", "/")
+    assert snap["components"]["season"]["generation_id"] == bundle["generation_id"]
+    assert "research_snapshots" in Path(snap["components"]["season"]["path"]).as_posix()
+    assert before == after  # F: no snapshot build side effect
+
+
+def test_historical_generation_without_current_is_not_healthy(tmp_path):
+    settings = _settings(tmp_path)
+    live = _live(settings)
+    _write_prices(live, "2026-08-20")
+    _write_master(live)
+    _write_facts(live)
+    _write_committed_quant(settings, as_of="2026-08-20")
+    root = season_folder(settings)
+    root.mkdir(parents=True, exist_ok=True)
+    old_id = "a" * 64
+    payload = {"rows": []}
+    old = {
+        "generation_id": old_id,
+        "identity": {"schema": 1, "lookback": 5, "day": "2020-01-01", "sources": ["old"]},
+        "payload": payload,
+        "content_hash": _digest(payload),
+    }
+    (root / f"{old_id}.json").write_text(json.dumps(old), encoding="utf-8")
+    # Change a source_identity input so the current digest cannot match the old file.
+    marker = settings.root / "data" / "cache" / "investor_flow.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps({"touched": True, "nonce": "season-stale"}), encoding="utf-8")
+    snap = pipeline_health(settings, now=datetime(2026, 8, 20, 18, 30, tzinfo=KST))
+    assert snap["components"]["season"]["state"] in {"STALE", "MISSING"}
+    assert snap["components"]["season"]["state"] != "HEALTHY"
+
+
+def test_season_pointer_without_generation_not_healthy(tmp_path):
+    settings = _settings(tmp_path)
+    live = _live(settings)
+    _write_prices(live, "2026-08-20")
+    _write_master(live)
+    _write_facts(live)
+    _write_committed_quant(settings, as_of="2026-08-20")
+    root = season_folder(settings)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "latest_lb_5.json").write_text(
+        json.dumps({"generation_id": "b" * 64, "lookback": 5}), encoding="utf-8"
+    )
+    snap = pipeline_health(settings, now=datetime(2026, 8, 20, 18, 30, tzinfo=KST))
+    assert snap["components"]["season"]["state"] != "HEALTHY"
+    assert snap["components"]["season"]["state"] in {"STALE", "MISSING"}
+
+
+def test_unrelated_current_json_alone_not_healthy(tmp_path):
+    settings = _settings(tmp_path)
+    live = _live(settings)
+    _write_prices(live, "2026-08-20")
+    _write_master(live)
+    _write_facts(live)
+    _write_committed_quant(settings, as_of="2026-08-20")
+    _write_unrelated_season_json(settings)
+    snap = pipeline_health(settings, now=datetime(2026, 8, 20, 18, 30, tzinfo=KST))
+    assert snap["components"]["season"]["state"] == "MISSING"
+
+
+def test_season_updating_overrides_cache(tmp_path):
+    settings = _settings(tmp_path)
+    live = _live(settings)
+    _write_prices(live, "2026-08-20")
+    _write_master(live)
+    _write_facts(live)
+    _write_committed_quant(settings, as_of="2026-08-20")
+    _write_current_season_bundle(settings)
+    snap = pipeline_health(settings, now=datetime(2026, 8, 20, 18, 30, tzinfo=KST), busy=True)
+    assert snap["components"]["season"]["state"] == "UPDATING"
 
 
 def test_legacy_wrong_season_cache_alone_not_healthy(tmp_path):
