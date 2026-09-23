@@ -1898,7 +1898,9 @@ function switchView(name, force = false) {
   } else {
     if (typeof stopMacroLivePolling === "function") stopMacroLivePolling();
   }
-  if (name !== "seasonality" && typeof stopSeasonStalePoll === "function") stopSeasonStalePoll();
+  // B. leaving overall Season view clears stale client state + poll
+  if (name !== "seasonality" && typeof clearSeasonStaleClientState === "function") clearSeasonStaleClientState();
+  else if (name !== "seasonality" && typeof stopSeasonStalePoll === "function") stopSeasonStalePoll();
 
   // Instant DOM Switch: If view is already rendered and within TTL, show instantly without network roundtrip
   const now = Date.now();
@@ -2082,6 +2084,8 @@ function renderPageEvidence(name = currentView) {
 let seasonStalePollTimer = null;
 let seasonStalePollInFlight = false;
 let seasonStalePollGeneration = null;
+// Explicit client LKG/stale meta; snapshot-less Season subtabs must not clear this.
+let lastSeasonSnapshotMeta = null;
 
 function stopSeasonStalePoll() {
   if (seasonStalePollTimer) {
@@ -2089,6 +2093,25 @@ function stopSeasonStalePoll() {
     seasonStalePollTimer = null;
   }
   seasonStalePollInFlight = false;
+}
+
+function hasRealSeasonSnapshot(snapshot) {
+  return Boolean(snapshot && typeof snapshot === "object" && snapshot.generation_id);
+}
+
+function invalidateSnapshotBackedV11Caches() {
+  // Snapshot-backed Season subtabs only; do not needlessly wipe direct-compute tabs.
+  const cache = (typeof window !== "undefined" && window.v11SubtabLoadedAt) || (typeof v11SubtabLoadedAt !== "undefined" ? v11SubtabLoadedAt : null);
+  if (!cache) return;
+  ["pre-entry", "discovery", "explanation"].forEach((key) => {
+    delete cache[key];
+  });
+}
+
+function clearSeasonStaleClientState() {
+  lastSeasonSnapshotMeta = null;
+  renderSeasonLkgBanner(null);
+  stopSeasonStalePoll();
 }
 
 function ensureSeasonLkgBanner() {
@@ -2155,10 +2178,16 @@ function scheduleSeasonStalePoll(snapshot) {
       // Snapshot-state poll only — never call Tier1 AI while stale.
       const res = await api("/api/seasonality/highlights");
       const snap = res?.snapshot || {};
+      if (hasRealSeasonSnapshot(snap)) {
+        lastSeasonSnapshotMeta = snap;
+      }
       renderSeasonLkgBanner(snap);
       if (snap.is_current === true) {
         const changed = Boolean(snap.generation_id && snap.generation_id !== seasonStalePollGeneration);
         stopSeasonStalePoll();
+        lastSeasonSnapshotMeta = hasRealSeasonSnapshot(snap) ? snap : null;
+        // Current generation invalidates stale snapshot-backed subtab TTL caches.
+        invalidateSnapshotBackedV11Caches();
         if (changed || snap.state === "ready") {
           return ensureViewLoaded("seasonality", true);
         }
@@ -2186,21 +2215,38 @@ function setSeasonalityAsOf(payload) {
   if (currentView !== "seasonality") return;
   const context = payload?.data_context || {};
   const snapshot = payload?.snapshot || {};
+  const realSnapshot = hasRealSeasonSnapshot(snapshot) ? snapshot : null;
   const parts = [];
   if (context.price_as_of) parts.push(`KRX 일봉 ${context.price_as_of}`);
   const calculated = fmtWhen(context.calculated_at);
   if (calculated) parts.push(`계절성 계산 ${calculated}`);
-  if (snapshot.generation_id) parts.push(`공통 자료 ${snapshot.generation_id.slice(0, 8)}`);
-  if (snapshot.state === "stale_while_revalidate" && snapshot.is_current === false) {
-    const asOf = snapshot.snapshot_as_of || snapshot.selection_date;
+  // Prefer live snapshot labels; do not relabel LKG current from snapshot-less payloads.
+  if (realSnapshot?.generation_id) parts.push(`공통 자료 ${realSnapshot.generation_id.slice(0, 8)}`);
+  if (realSnapshot && realSnapshot.state === "stale_while_revalidate" && realSnapshot.is_current === false) {
+    const asOf = realSnapshot.snapshot_as_of || realSnapshot.selection_date;
     if (asOf) parts.push(`이전 검증 ${asOf}`);
   }
   setPageAsOf(
     parts.join(" · ") || "계절성 데이터 시점 확인 불가",
     `${context.source || "KRX 일봉 기반 월간 계절성"}입니다. 다른 메뉴의 공시·수급 시점과 공유하지 않습니다.`
   );
-  renderSeasonLkgBanner(snapshot);
-  scheduleSeasonStalePoll(snapshot);
+  if (realSnapshot) {
+    lastSeasonSnapshotMeta = realSnapshot;
+    renderSeasonLkgBanner(realSnapshot);
+    if (realSnapshot.is_current === true) {
+      // A. real snapshot says current -> clear stale mode + invalidate snapshot-backed caches
+      stopSeasonStalePoll();
+      invalidateSnapshotBackedV11Caches();
+    } else if (realSnapshot.state === "stale_while_revalidate" && realSnapshot.is_current === false) {
+      scheduleSeasonStalePoll(realSnapshot);
+    } else {
+      stopSeasonStalePoll();
+    }
+    return;
+  }
+  // Snapshot-less Season subtab (calendar/heatmap/momentum/guide): may update data-as-of,
+  // but DO NOT clear stale banner, DO NOT stop stale poll, DO NOT relabel LKG current.
+  // Keep the single 4s poll alive while still inside overall Season view.
 }
 
 function asofBanner(text) {

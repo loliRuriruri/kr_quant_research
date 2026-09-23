@@ -328,3 +328,64 @@ def test_serve_meta_not_persisted_into_generation(prepared):
     on_disk = json.loads(path.read_text(encoding='utf-8'))
     assert '_serve_meta' not in on_disk
     assert on_disk['content_hash'] == snapshots._digest(on_disk['payload'])
+
+
+def test_lkg_identity_digest_and_root_binding(prepared):
+    """LKG fails closed when generation no longer binds to identity, or root is foreign."""
+    s, _, _ = prepared
+    built = snapshots.build_bundle(s)
+    folder = snapshots._folder(s)
+    path = folder / f"{built['generation_id']}.json"
+    pointer = folder / 'latest_lb_5.json'
+    original_bytes = path.read_bytes()
+    pointer_bytes = pointer.read_bytes()
+
+    # A. valid generation accepted
+    ok = snapshots.read_last_known_good(s)
+    assert ok is not None
+    assert ok['generation_id'] == built['generation_id']
+    assert path.read_bytes() == original_bytes
+    assert pointer.read_bytes() == pointer_bytes
+
+    def _mutate_identity(mutator):
+        damaged = json.loads(path.read_text(encoding='utf-8'))
+        damaged['identity'] = mutator(dict(damaged['identity']))
+        # keep generation_id + payload + content_hash unchanged
+        path.write_text(json.dumps(damaged), encoding='utf-8')
+        snapshots._MEM.clear()
+        assert snapshots.read_last_known_good(s) is None
+        # no silent rewrite of snapshot or pointer
+        assert path.read_text(encoding='utf-8') == json.dumps(damaged)
+        assert pointer.read_bytes() == pointer_bytes
+        path.write_bytes(original_bytes)
+
+    # B. identity.day changed, generation_id+payload unchanged -> rejected
+    _mutate_identity(lambda ident: {**ident, 'day': '1999-01-01'})
+    # C. identity.sources changed, generation_id+payload unchanged -> rejected
+    _mutate_identity(lambda ident: {**ident, 'sources': [['foreign-source', 1, 2]]})
+    # D. identity.model_hash/config_hash changed without recomputing generation -> rejected
+    _mutate_identity(lambda ident: {**ident, 'model_hash': '0' * 64, 'config_hash': '1' * 64})
+
+    # Foreign root: recompute generation so digest binds; root check still rejects.
+    foreign = json.loads(original_bytes.decode('utf-8'))
+    foreign['identity'] = dict(foreign['identity'])
+    foreign['identity']['root'] = 'C:/foreign/installation/root'
+    new_gen = snapshots._digest(foreign['identity'])
+    foreign['generation_id'] = new_gen
+    foreign_path = folder / f'{new_gen}.json'
+    foreign_path.write_text(json.dumps(foreign), encoding='utf-8')
+    pointer.write_text(
+        json.dumps({'generation_id': new_gen, 'generated_at': foreign['generated_at']}),
+        encoding='utf-8',
+    )
+    snapshots._MEM.clear()
+    assert snapshots.read_last_known_good(s) is None
+    # Independent of path-traversal: generation id is valid hex and file stays under folder
+    assert snapshots._safe_generation_id(new_gen) == new_gen
+    assert foreign_path.resolve().parent == folder.resolve()
+    # no mutation of foreign snapshot contents on reject
+    assert json.loads(foreign_path.read_text(encoding='utf-8'))['identity']['root'] == 'C:/foreign/installation/root'
+    path.write_bytes(original_bytes)
+    pointer.write_bytes(pointer_bytes)
+    foreign_path.unlink(missing_ok=True)
+    assert snapshots.read_last_known_good(s)['generation_id'] == built['generation_id']

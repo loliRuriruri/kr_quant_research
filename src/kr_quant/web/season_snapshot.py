@@ -184,6 +184,12 @@ def read_last_known_good(settings, lookback: int = 5, *, listing_view=None) -> d
             return None
         if identity.get("schema") not in (None, SCHEMA):
             return None
+        # Fail-closed: LKG generation must still bind to the stored identity digest.
+        if _digest(identity) != generation:
+            return None
+        # Installation root must match; never silently rewrite a foreign snapshot root.
+        if identity.get("root") != str(settings.root.resolve()):
+            return None
         payload = bundle.get("payload")
         if not isinstance(payload, dict) or not isinstance(payload.get("rows"), list):
             return None

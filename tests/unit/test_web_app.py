@@ -964,5 +964,38 @@ def test_a4_season_lkg_ui_banner_and_poll_contracts():
     assert "setTimeout" in js and "4000" in js
     assert "stopSeasonStalePoll()" in js
     # Leaving Season stops the poll; poll reload uses ensureViewLoaded
-    assert 'name !== "seasonality"' in js and "stopSeasonStalePoll" in js
+    assert 'name !== "seasonality"' in js and ("stopSeasonStalePoll" in js or "clearSeasonStaleClientState" in js)
     assert 'ensureViewLoaded("seasonality", true)' in js
+
+
+def test_a4_corrective_stale_client_state_contracts():
+    """Structural contracts: preserve stale meta across snapshot-less subtabs; invalidate on current."""
+    js = client.get("/static/app.js").text
+    # A/B: lastSeasonSnapshotMeta stores stale; snapshot-less setSeasonalityAsOf must not clear it
+    assert "lastSeasonSnapshotMeta" in js
+    assert "function hasRealSeasonSnapshot" in js
+    assert "function setSeasonalityAsOf" in js
+    assert "DO NOT clear stale banner" in js
+    assert "DO NOT stop stale poll" in js
+    assert "DO NOT relabel LKG current" in js
+    # C: snapshot-less path must not call stopSeasonStalePoll merely because snapshot absent
+    asof = js.split("function setSeasonalityAsOf(payload)", 1)[1].split("function asofBanner", 1)[0]
+    assert "if (realSnapshot)" in asof
+    assert "DO NOT stop stale poll" in asof
+    tail = asof.rsplit("return;", 1)[-1]
+    assert "stopSeasonStalePoll" not in tail
+    assert "renderSeasonLkgBanner" not in tail
+    # D: leaving Season still clears/stops via clearSeasonStaleClientState
+    assert "function clearSeasonStaleClientState" in js
+    assert "clearSeasonStaleClientState()" in js
+    assert 'name !== "seasonality"' in js
+    # E: current arrival -> stop poll, invalidate snapshot-backed V11 caches
+    assert "function invalidateSnapshotBackedV11Caches" in js
+    assert '["pre-entry", "discovery", "explanation"]' in js
+    assert "invalidateSnapshotBackedV11Caches()" in js
+    assert "is_current === true" in js
+    # F: poll current-arrival path invalidates caches so pre-entry revisit cannot reuse stale TTL
+    assert "V11_SUBTAB_TTL_MS" in js
+    assert "v11SubtabLoadedAt" in js
+    poll_current = js.split("if (snap.is_current === true)", 1)[1][:900]
+    assert "invalidateSnapshotBackedV11Caches()" in poll_current
