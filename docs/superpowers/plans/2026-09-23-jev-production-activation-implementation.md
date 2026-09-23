@@ -75,6 +75,17 @@ Test runner (venv lives in the main checkout; worktrees use this interpreter):
 C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest <target> -q --tb=short
 ```
 
+Every Task below declares, explicitly:
+
+```text
+Files | Interfaces consumed | Interfaces produced | Tests (files) |
+RED-first | Test command | Implementation | Verification command |
+Commit subject | STOP gate
+```
+
+Config/operator Tasks declare `RED-first: N/A` explicitly with the reason and
+carry a verification-only contract instead. No silent omissions.
+
 ---
 
 ## Review Focus
@@ -307,24 +318,20 @@ def write_evidence_bundle(path: Path, evidences: Sequence[Mapping[str, Any]]) ->
 
 ## Task 1.1: Runtime Mode Resolution
 
-### Goal
-
-Create the runtime module skeleton with pure, fail-closed mode resolution and
-raw-config loading. No gate wiring, no overlay, no eligibility.
-
-### Files
-
+**Files**
 - CREATE `src/kr_quant/research/jev_runtime.py`
 - CREATE `tests/unit/test_jev_runtime.py`
 
-### Interfaces consumed / produced
+**Interfaces consumed:** raw `config/season_jev.json` (read-only), `Settings.root`.
 
-- Consumed: raw `config/season_jev.json` (read-only), `Settings.root`.
-- Produced: constants + `load_raw_runtime_config` + `resolve_runtime_mode`.
+**Interfaces produced:** module constants; `load_raw_runtime_config`;
+`resolve_runtime_mode` (signature above).
 
-### Steps
+**Tests (files):** `tests/unit/test_jev_runtime.py`
 
-- [ ] RED: failing tests for the §4.3 algorithm:
+**RED-first:** write failing tests first (cases below), then implement GREEN.
+
+- [ ] RED cases:
   - `mode` absent + `enabled=false` → `disabled`
   - `mode` absent + `enabled=true` → `shadow` + reason `LEGACY_ENABLED_TRUE`
   - `mode` absent + `enabled` absent → `disabled`
@@ -334,142 +341,174 @@ raw-config loading. No gate wiring, no overlay, no eligibility.
   - `mode="bogus"` → `disabled` + `CONFIG_MODE_INVALID`
   - config file missing/unreadable → `disabled` + errors recorded
   - resolution is pure: input mapping never mutated; no file writes
-- [ ] GREEN: implement constants, `load_raw_runtime_config`, `resolve_runtime_mode`.
-- [ ] Targeted tests: `pytest tests/unit/test_jev_runtime.py -q --tb=short`
-- [ ] Invariants: no config writes; `git diff -- config/` empty; no network imports.
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): add JEV runtime mode resolution
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement constants, `load_raw_runtime_config`,
+`resolve_runtime_mode` exactly per spec §4.3.
 
-Task verification packet returned; await approval before Task 1.2.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
+git diff --check
+git diff -- config/    # must be empty
+```
+
+**Commit subject:** `feat(jev): add JEV runtime mode resolution`
+
+**STOP gate:** Task verification packet returned; await approval before Task 1.2.
 
 ---
 
 ## Task 1.2: Shadow Gate Runtime Pass
 
-### Goal
-
-Wire the existing J3 gate to a runtime entry point with idempotent, atomic
-persistence. No research side effects. No J3 core changes.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/research/jev_runtime.py`
 - MODIFY `tests/unit/test_jev_runtime.py`
 
-### Interfaces consumed / produced
+**Interfaces consumed:** `evaluate_research_gate_generation`,
+`research_gate_path`, `write_research_gate_artifact`, `ResearchGateError`
+(from `kr_quant.research.jev_research_gate`); `resolve_runtime_mode`.
 
-- Consumed: `evaluate_research_gate_generation`,
-  `research_gate_path`, `write_research_gate_artifact`, `ResearchGateError`
-  (from `kr_quant.research.jev_research_gate`); `resolve_runtime_mode`.
-- Produced: `run_shadow_gate_pass`.
+**Interfaces produced:** `run_shadow_gate_pass` (signature above).
 
-### Steps
+**Tests (files):** `tests/unit/test_jev_runtime.py`
 
-- [ ] RED: failing tests:
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
   - `disabled` → `SKIPPED`/`MODE_DISABLED`, no artifact written (tmp_path)
   - valid fixture envelope → gate artifact written atomically at the exact
     `research_gate_path`; returned gate equals persisted bytes
   - envelope corruption → `ERROR`, no artifact written
   - repeated calls with identical input → byte-identical artifact (no churn)
   - unsupported provider in payload → `ERROR` (`ResearchGateError`), no write
-- [ ] GREEN: implement `run_shadow_gate_pass` using only existing J3 functions.
-- [ ] Targeted tests + invariants (no config writes; no network; no research).
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): wire shadow gate runtime pass
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement `run_shadow_gate_pass` using only
+existing J3 functions; no J3 core edits.
 
-Await approval before Task 1.3.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_gate.py -q --tb=short
+git diff -- config/ src/kr_quant/research/jev_research_gate.py    # must be empty
+```
+
+**Commit subject:** `feat(jev): wire shadow gate runtime pass`
+
+**STOP gate:** Await approval before Task 1.3.
 
 ---
 
 ## Task 1.3: Runtime Status Snapshot
 
-### Goal
-
-Provide the read-only observability payload (§12) with zero writes.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/research/jev_runtime.py`
 - MODIFY `tests/unit/test_jev_runtime.py`
 
-### Steps
+**Interfaces consumed:** existing shadow artifacts, gate artifacts (read-only);
+`resolve_runtime_mode`.
 
-- [ ] RED: failing tests with fixture shadow/gate artifacts in `tmp_path`:
+**Interfaces produced:** `runtime_status` (signature above).
+
+**Tests (files):** `tests/unit/test_jev_runtime.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
   - counts reflect `evaluated/reused/skipped/error` from the latest shadow artifact
   - gate calibrated/uncalibrated head counts
   - mode + reason surfaced; missing dirs → zeros, no exception
   - `threshold_config_hash` present when a gate artifact exists
   - no file writes during `runtime_status`
-- [ ] GREEN: implement `runtime_status`.
-- [ ] Targeted tests + invariants.
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): add JEV runtime status snapshot
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement `runtime_status`.
 
-Await approval before Task 1.4.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
+git diff -- config/    # must be empty
+```
+
+**Commit subject:** `feat(jev): add JEV runtime status snapshot`
+
+**STOP gate:** Await approval before Task 1.4.
 
 ---
 
 ## Task 1.4: Activate Shadow Runtime Mode (config; explicit approval)
 
-### Goal
-
-Make `disabled` → `shadow` the first live mode change.
-
-### Files
-
+**Files**
 - MODIFY `config/season_jev.json` only.
 
-### Steps
+**Interfaces consumed:** `resolve_runtime_mode` (verification only).
+
+**Interfaces produced:** none (config data).
+
+**Tests (files):** none new; existing `tests/unit/test_jev_runtime.py` and
+`tests/unit/test_season_jev_shadow.py` act as regression.
+
+**RED-first:** N/A — config-only activation task. No new behavior is written;
+the contract is verification-only (mode resolves to `shadow`; no other diff).
 
 - [ ] REQUIRED: explicit GPT/user approval message recorded in the task packet.
 - [ ] Edit exactly two fields: `"mode": "shadow"`, `"enabled": true`.
-- [ ] Verification:
+
+**Test command**
 
 ```powershell
 C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_season_jev_shadow.py -q --tb=short
-git diff --cached -- config/season_jev.json
 ```
 
-  Confirm the diff shows exactly the two fields.
-- [ ] Confirm `config/jev_thresholds.json` unchanged (`git diff -- config/jev_thresholds.json` empty).
+**Implementation:** apply the two-field edit; stage only
+`config/season_jev.json`.
 
-### Commit subject
+**Verification command**
 
-```text
-chore(jev): activate JEV shadow runtime mode
+```powershell
+git diff --cached -- config/season_jev.json        # exactly the two fields
+git diff -- config/jev_thresholds.json             # must be empty
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -c "from pathlib import Path; from types import SimpleNamespace; from kr_quant.research.jev_runtime import load_raw_runtime_config, resolve_runtime_mode; s=SimpleNamespace(root=Path('.'), data_dir=Path('data')); print(resolve_runtime_mode(load_raw_runtime_config(s))['mode'])"
 ```
 
-### STOP condition
+**Commit subject:** `chore(jev): activate JEV shadow runtime mode`
 
-Await approval before Task 1.5.
+**STOP gate:** Await approval before Task 1.5.
 
 ---
 
 ## Task 1.5: Live Shadow Evidence Run (operator; no code)
 
-### Goal
+**Files**
+- None (no code or config change).
 
-Operate shadow mode once and collect runtime evidence (no research side effects).
+**Interfaces consumed:** existing shadow scheduling + `run_shadow_gate_pass`.
 
-### Steps
+**Interfaces produced:** runtime artifacts under real data dirs (shadow +
+gate only; no research, no evidence).
+
+**Tests (files):** none (operator run).
+
+**RED-first:** N/A — operator evidence task. Contract is observational
+(counts + artifact presence); no code change, so empty commit is forbidden.
 
 - [ ] Run the existing season snapshot / shadow path with `enabled=true`.
 - [ ] Verify one shadow artifact exists under
@@ -477,28 +516,46 @@ Operate shadow mode once and collect runtime evidence (no research side effects)
   `data/research_snapshots/season_jev_research_gate/`.
 - [ ] Record counts and the generation id in the verification packet.
 - [ ] Confirm zero research calls and zero evidence artifacts.
-- [ ] If no code/test change is needed: **NO COMMIT** (empty commit forbidden).
 
-### STOP condition
+**Test command**
 
-Return evidence; await approval before P2.
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_season_jev_shadow.py tests/unit/test_jev_runtime.py -q --tb=short
+```
+
+**Implementation:** operate the pipeline once; no code changes.
+
+**Verification command**
+
+```powershell
+Get-ChildItem data/research_snapshots/season_jev_shadow
+Get-ChildItem data/research_snapshots/season_jev_research_gate
+Get-ChildItem data/research_snapshots/season_jev_evidence -ErrorAction SilentlyContinue   # must be absent/empty
+```
+
+**Commit subject:** NO COMMIT (empty commit forbidden).
+
+**STOP gate:** Return evidence; await approval before P2.
 
 ---
 
 ## Task 2.1: Approval Record Contract
 
-### Goal
-
-Implement approval record construction, hashing, and verification.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/research/jev_runtime.py`
 - MODIFY `tests/unit/test_jev_runtime.py`
 
-### Steps
+**Interfaces consumed:** none external; canonical JSON helpers local to the
+module.
 
-- [ ] RED: failing tests:
+**Interfaces produced:** `bucket_hash`, `build_approval_record`,
+`approval_record_hash`, `verify_approval_record` (signatures above).
+
+**Tests (files):** `tests/unit/test_jev_runtime.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
   - valid record verifies (`ok=true`)
   - `threshold` mismatch with config value → `APPROVAL_MISMATCH`
   - `review_status="REJECT"` → `REVIEW_NOT_ACCEPTED`
@@ -507,37 +564,46 @@ Implement approval record construction, hashing, and verification.
   - `support.valid_count < 100` → `SUPPORT_INSUFFICIENT`
   - bucket mismatch → `APPROVAL_MISMATCH`
   - `bucket_hash` is deterministic 64-hex and identity-sensitive
-- [ ] GREEN: implement `bucket_hash`, `build_approval_record`,
-  `approval_record_hash`, `verify_approval_record` using canonical JSON
-  (`sort_keys=True`, `ensure_ascii=False`, compact separators).
-- [ ] Targeted tests + invariants.
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): add threshold approval record contract
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: canonical JSON (`sort_keys=True`,
+`ensure_ascii=False`, compact separators) + the four functions.
 
-Await approval before Task 2.2.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
+git diff -- config/    # must be empty
+```
+
+**Commit subject:** `feat(jev): add threshold approval record contract`
+
+**STOP gate:** Await approval before Task 2.2.
 
 ---
 
 ## Task 2.2: Approval-Gated Eligibility Resolution
 
-### Goal
-
-Resolve per-head and per-mode eligibility exactly per spec §5.4/§5.5.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/research/jev_runtime.py`
 - MODIFY `tests/unit/test_jev_runtime.py`
 
-### Steps
+**Interfaces consumed:** `verify_approval_record`, `lookup_threshold`
+(`kr_quant.research.jev_calibration`).
 
-- [ ] RED: failing tests for every reason code:
+**Interfaces produced:** `resolve_head_eligibility`,
+`resolve_mode_eligibility`, `resolve_research_config` (signatures above).
+
+**Tests (files):** `tests/unit/test_jev_runtime.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases for every reason code:
   `THRESHOLD_NULL`, `THRESHOLD_MALFORMED`, `BUCKET_MISSING`,
   `APPROVAL_MISSING`, `APPROVAL_MISMATCH`, `REVIEW_NOT_ACCEPTED`,
   `HOLDOUT_NOT_PRISTINE`, `SUPPORT_INSUFFICIENT`; plus:
@@ -545,72 +611,90 @@ Resolve per-head and per-mode eligibility exactly per spec §5.4/§5.5.
   - advisory heads never affect `mode_ok`
   - `resolve_research_config` validates canary overrides `<=` production caps
     and returns `RESEARCH_CONFIG_INVALID` on violation
-- [ ] GREEN: implement `resolve_head_eligibility`,
-  `resolve_mode_eligibility`, `resolve_research_config`.
-- [ ] Targeted tests + invariants (thresholds config unchanged).
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): resolve approval-gated head eligibility
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement the three functions; fail closed.
 
-Await approval before Task 2.3.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_calibration.py -q --tb=short
+git diff -- config/    # must be empty
+```
+
+**Commit subject:** `feat(jev): resolve approval-gated head eligibility`
+
+**STOP gate:** Await approval before Task 2.3.
 
 ---
 
 ## Task 2.3: Approval CLI (offline)
 
-### Goal
-
-Provide the operator tooling for approval artifacts.
-
-### Files
-
+**Files**
 - CREATE `scripts/jev_threshold_approval.py`
 - MODIFY `tests/unit/test_jev_runtime.py` (CLI import test, mirroring
   `_load_calibration_cli` style)
 
-### Interfaces consumed / produced
+**Interfaces consumed:** `jev_runtime.build_approval_record`,
+`verify_approval_record`, `write_json_atomic`; selection JSON and holdout
+report JSON files.
 
-- Consumed: `jev_runtime.build_approval_record`, `verify_approval_record`,
-  `write_json_atomic`; selection JSON and holdout report JSON files.
-- Produced: subcommands `build` and `verify`; `build` writes the approval
-  artifact atomically; `verify` prints JSON `{ok, reason}` and exits 0/1.
+**Interfaces produced:** subcommands `build` and `verify`; `build` writes the
+approval artifact atomically; `verify` prints JSON `{ok, reason}` and exits 0/1.
 
-### Steps
+**Tests (files):** `tests/unit/test_jev_runtime.py`
 
-- [ ] RED: failing tests:
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
   - `build` with valid selection + holdout report writes the exact approval path
   - `build` refuses `review_status != ACCEPT`
   - `verify` returns `ok=true` for a valid artifact and exit 0
   - `verify` returns `ok=false` for a tampered artifact and exit 1
   - CLI imports only `argparse/json/sys/pathlib` + `kr_quant` (no network)
-- [ ] GREEN: implement the CLI.
-- [ ] Targeted tests + invariants.
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): add threshold approval CLI
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement the CLI with argparse; no network.
 
-Await approval before Task 2.4.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
+git diff -- config/ scripts/jev_calibration_export.py    # must be empty
+```
+
+**Commit subject:** `feat(jev): add threshold approval CLI`
+
+**STOP gate:** Await approval before Task 2.4.
 
 ---
 
 ## Task 2.4: Calibration + Threshold Adoption (operator; repeat per head)
 
-### Goal
+**Files**
+- MODIFY `config/jev_thresholds.json` (one head value per approved adoption).
 
-Execute the promotion chain for real and adopt approved thresholds one head at
-a time. No code changes.
+**Interfaces consumed:** existing calibration CLI (`scripts/jev_calibration_export.py`),
+new approval CLI (`scripts/jev_threshold_approval.py`), `resolve_head_eligibility`.
 
-### Steps (per head)
+**Interfaces produced:** approval artifacts under
+`data/research/jev_calibration/approvals/`; one config threshold value.
+
+**Tests (files):** none new; `tests/unit/test_jev_runtime.py` is the regression.
+
+**RED-first:** N/A — data-dependent operator adoption. Contract: value copied
+verbatim from a verified approval record; exactly one config value changes;
+eligibility flips to `ELIGIBLE`.
 
 - [ ] Export/label/ingest/report with the existing CLI:
 
@@ -624,7 +708,7 @@ python scripts/jev_calibration_export.py holdout-eval --dataset <dataset_labeled
 ```
 
 - [ ] Require holdout `review_status=ACCEPT` and `holdout_pristine=true`.
-- [ ] Build the approval artifact:
+- [ ] Build + verify the approval artifact:
 
 ```powershell
 python scripts/jev_threshold_approval.py build --selection <selection_locked.json> --holdout <holdout_report.json> --out <approvals_dir>\<bucket_hash>__<head>.json
@@ -633,42 +717,46 @@ python scripts/jev_threshold_approval.py verify --approval <approval.json> --con
 
 - [ ] MODIFY `config/jev_thresholds.json`: set exactly one value — copy
   `threshold` from the approval record for that head. Nothing else changes.
-- [ ] Verification:
+
+**Test command**
 
 ```powershell
 C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
-git diff --cached -- config/jev_thresholds.json
 ```
 
-  Confirm exactly one value changed; eligibility for that head is `ELIGIBLE`.
+**Implementation:** run the chain; edit exactly one config value per head.
 
-### Commit subject (per head)
+**Verification command**
 
-```text
-chore(jev): adopt approved threshold for <head>
+```powershell
+git diff --cached -- config/jev_thresholds.json    # exactly one value changed
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -c "import json; from pathlib import Path; from types import SimpleNamespace; from kr_quant.research.jev_runtime import resolve_head_eligibility; cfg=json.loads(Path('config/jev_thresholds.json').read_text(encoding='utf-8')); s=SimpleNamespace(root=Path('.'), data_dir=Path('data')); print(resolve_head_eligibility(threshold_cfg=cfg, approvals_dir=Path('data/research/jev_calibration/approvals'), provider='typesafe_direct', requested_model='jev-latest', evaluator_version='season-jev-shadow-v1', head='<head>'))"
 ```
 
-### STOP condition
+**Commit subject (per head):** `chore(jev): adopt approved threshold for <head>`
 
-Explicit approval per head; await approval before the next head or P3.
+**STOP gate:** Explicit approval per head; await approval before the next head or P3.
 
 ---
 
 ## Task 3.1: Bounded Execution Planning
 
-### Goal
-
-Create the executor module with locked statuses, allowlist checks, and
-deterministic canary sampling. No execution yet.
-
-### Files
-
+**Files**
 - CREATE `src/kr_quant/research/jev_research_executor.py`
 - CREATE `tests/unit/test_jev_research_executor.py`
 
-### Steps
+**Interfaces consumed:** J3 gate envelope structure (`results[].gate` with
+`research_requirements`, `mode`, `state_hash`); `resolve_research_config`
+output; `resolve_mode_eligibility` output.
 
-- [ ] RED: failing tests:
+**Interfaces produced:** module constants (`EXECUTOR_SCHEMA_VERSION`,
+`STATUS_*`, `REQUIREMENT_TYPES`); `build_execution_plan`.
+
+**Tests (files):** `tests/unit/test_jev_research_executor.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
   - `false` → `NOT_REQUIRED`; `null` → `SKIPPED_UNCALIBRATED`
   - type not in allowlist → `SKIPPED_DISALLOWED`
   - canary sampling: deterministic first-N by `candidate_id` ascending;
@@ -676,149 +764,178 @@ deterministic canary sampling. No execution yet.
   - production: no sampling
   - gate candidate with `mode=ERROR` → skipped, never planned
   - `shadow` mode → planner refuses (`ValueError`, no plan)
-- [ ] GREEN: implement `build_execution_plan` + constants.
-- [ ] Targeted tests + invariants (no network, no research calls).
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): add bounded research execution planning
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement `build_execution_plan` + constants.
 
-Await approval before Task 3.2.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py -q --tb=short
+git diff -- config/ src/kr_quant/research/jev_research_gate.py    # must be empty
+```
+
+**Commit subject:** `feat(jev): add bounded research execution planning`
+
+**STOP gate:** Await approval before Task 3.2.
 
 ---
 
 ## Task 3.2: Execution Loop, Budgets, Idempotency
 
-### Goal
-
-Execute planned requirements with separate research budgets, timeouts, and
-crash-safe idempotency. Evidence is produced as raw dicts in this task; the
-mandatory verifier flow lands in Task 4.3.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/research/jev_research_executor.py`
 - MODIFY `tests/unit/test_jev_research_executor.py`
 
-### Steps
+**Interfaces consumed:** `season_jev_budget.BudgetLock`;
+`kr_quant.atomic_io.write_json_atomic`; plan output from Task 3.1.
 
-- [ ] RED: failing tests with injected fake adapters:
+**Interfaces produced:** `execution_key`, `run_execution_pass`,
+`load_reusable_executions`, `runtime_overlay_path`, `write_runtime_overlay`
+(signatures above).
+
+**Tests (files):** `tests/unit/test_jev_research_executor.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases with injected fake adapters:
   - budget exhaustion → `SKIPPED_BUDGET`; deep_ai cap enforced separately
   - requirement timeout → `FAILED` (`TIMEOUT`), siblings continue
   - duplicate single-flight: two calls → one adapter invocation
   - stale `RUNNING` entry → `FAILED` (`CRASH_RECOVERED`) then retryable
   - reuse: same 9-tuple key with `VERIFIED` → reused, no adapter call
   - adapter exception → `FAILED` contained; overlay written atomically
-- [ ] GREEN: implement `execution_key`, `run_execution_pass`,
-  `load_reusable_executions`, research budget ledger on
-  `season_jev_budget.BudgetLock`, overlay persistence helpers
-  (`runtime_overlay_path`, `write_runtime_overlay`).
-- [ ] Targeted tests + invariants (no config writes; no Quant imports).
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): execute bounded research requirements
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement the loop, ledger, reuse, overlay writers.
 
-Await approval before Task 3.3.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py tests/unit/test_season_jev_budget.py -q --tb=short
+git diff -- config/ src/kr_quant/research/season_jev_budget.py    # must be empty
+```
+
+**Commit subject:** `feat(jev): execute bounded research requirements`
+
+**STOP gate:** Await approval before Task 3.3.
 
 ---
 
 ## Task 3.3: Allowlisted Adapters
 
-### Goal
-
-Wire the five requirement types to existing repo services, injected and
-credential-gated, with no fallback.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/research/jev_research_executor.py`
 - MODIFY `tests/unit/test_jev_research_executor.py`
 
-### Steps
+**Interfaces consumed:** `kr_quant.ingest.recent_filings` (dart /
+current_year_check), `kr_quant.ingest.naver_search` (news), existing analysis
+LLM path `kr_quant.research.analyze` (deep_ai), deterministic state review
+(invalidation_check); `Settings` credentials.
 
-- [ ] RED: failing tests:
+**Interfaces produced:** `default_adapters(settings) -> dict[str, Callable]`.
+
+**Tests (files):** `tests/unit/test_jev_research_executor.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
   - `default_adapters` returns exactly the five allowlisted callables
   - credential missing → `FAILED` (`CREDENTIAL_MISSING`), no fallback
   - adapter output is normalized to raw evidence dicts (bounded, no secrets)
   - adapters are never called in shadow mode
-- [ ] GREEN: implement `default_adapters` with lazy imports of
-  `kr_quant.ingest.recent_filings` (dart/current_year_check),
-  `kr_quant.ingest.naver_search` (news), and the existing analysis LLM path
-  (`kr_quant.research.analyze` provider routing) for `deep_ai`;
-  `invalidation_check` uses deterministic state review.
-- [ ] Targeted tests + invariants (tests use fakes; no network).
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): add allowlisted research adapters
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement `default_adapters` with lazy imports;
+tests use fakes only.
 
-Await approval before P4.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py -q --tb=short
+git diff -- src/kr_quant/research/season_jev_shadow.py    # must be empty
+```
+
+**Commit subject:** `feat(jev): add allowlisted research adapters`
+
+**STOP gate:** Await approval before P4.
 
 ---
 
 ## Task 4.1: Evidence Object Contract
 
-### Goal
-
-Create the evidence module: construction, bounding, hashing, validation.
-
-### Files
-
+**Files**
 - CREATE `src/kr_quant/research/jev_evidence.py`
 - CREATE `tests/unit/test_jev_evidence.py`
 
-### Steps
+**Interfaces consumed:** none external.
 
-- [ ] RED: failing tests:
+**Interfaces produced:** module constants; `build_evidence`,
+`evidence_artifact_hash`, `validate_evidence` (signatures above).
+
+**Tests (files):** `tests/unit/test_jev_evidence.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
   - valid evidence builds with exact locked fields
   - claim > 500 / excerpt > 2000 → truncated + `truncated=true`
   - secret-like fields (`api_key`, `token`, `secret`, `password`,
     `authorization`, `cookie`) → `SECRET_REJECTED`
   - source_identity with `..`, `/`, `\`, absolute path → `INVALID_SOURCE_IDENTITY`
   - `artifact_hash` recomputation exact; tamper → `ERROR`
-- [ ] GREEN: implement constants, `build_evidence`,
-  `evidence_artifact_hash`, `validate_evidence`.
-- [ ] Targeted tests + invariants.
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): add evidence object contract
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_evidence.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement constants + three functions.
 
-Await approval before Task 4.2.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_evidence.py -q --tb=short
+git diff -- config/    # must be empty
+```
+
+**Commit subject:** `feat(jev): add evidence object contract`
+
+**STOP gate:** Await approval before Task 4.2.
 
 ---
 
 ## Task 4.2: Evidence Verifier
 
-### Goal
-
-Implement verification statuses with provenance, max-age, and conflict rules.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/research/jev_evidence.py`
 - MODIFY `tests/unit/test_jev_evidence.py`
 
-### Steps
+**Interfaces consumed:** `validate_evidence`, `evidence_artifact_hash`.
 
-- [ ] RED: failing tests:
+**Interfaces produced:** `verify_evidence` (signature above).
+
+**Tests (files):** `tests/unit/test_jev_evidence.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
   - `VERIFIED` on complete provenance within max age
   - `UNVERIFIED` when `source_date` null or provenance incomplete
   - `STALE` at max-age boundary (exact boundary tests)
@@ -826,302 +943,377 @@ Implement verification statuses with provenance, max-age, and conflict rules.
     candidate/type
   - `ERROR` on malformed input / hash mismatch / secret / path rejection
   - failure never returns `evidence=false`; status carries the failure
-- [ ] GREEN: implement `verify_evidence`.
-- [ ] Targeted tests + invariants.
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): verify evidence provenance and conflicts
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_evidence.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement `verify_evidence` with the locked
+max-age table.
 
-Await approval before Task 4.3.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_evidence.py -q --tb=short
+```
+
+**Commit subject:** `feat(jev): verify evidence provenance and conflicts`
+
+**STOP gate:** Await approval before Task 4.3.
 
 ---
 
 ## Task 4.3: Mandatory Verifier Flow
 
-### Goal
-
-Make verification mandatory between executor and overlay; persist the evidence
-bundle atomically.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/research/jev_research_executor.py`
 - MODIFY `src/kr_quant/research/jev_evidence.py`
 - MODIFY `tests/unit/test_jev_research_executor.py`
 - MODIFY `tests/unit/test_jev_evidence.py`
 
-### Steps
+**Interfaces consumed:** `verify_evidence`, `validate_evidence`.
 
-- [ ] RED: failing tests:
+**Interfaces produced:** `write_evidence_bundle`, `evidence_bundle_path`;
+executor calls the verifier unconditionally.
+
+**Tests (files):** `tests/unit/test_jev_research_executor.py`,
+`tests/unit/test_jev_evidence.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
   - executor calls the verifier for every raw result; no overlay `VERIFIED`
     without verifier `VERIFIED`
   - verifier failure → requirement `FAILED`/`PARTIAL`, overlay `UNVERIFIED`
   - `NO_CONFLICT_FOUND` requires verified `invalidation_check`
   - evidence bundle written atomically at the locked path; bypass attempt
     raises (`RuntimeError`)
-- [ ] GREEN: implement `write_evidence_bundle`, `evidence_bundle_path`, and the
-  mandatory verifier call inside `run_execution_pass`.
-- [ ] Targeted tests + invariants.
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): require evidence verification before overlay
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement bundle persistence + mandatory verifier
+call in `run_execution_pass`.
 
-Await approval before P5.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py -q --tb=short
+git diff -- config/    # must be empty
+```
+
+**Commit subject:** `feat(jev): require evidence verification before overlay`
+
+**STOP gate:** Await approval before P5.
 
 ---
 
 ## Task 5.1: Canary Scope and Rollback Guard
 
-### Goal
-
-Implement canary config resolution and rollback trigger evaluation.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/research/jev_runtime.py`
 - MODIFY `tests/unit/test_jev_runtime.py`
 
-### Steps
+**Interfaces consumed:** raw config `research` block; existing
+`resolve_research_config` (extended).
 
-- [ ] RED: failing tests:
+**Interfaces produced:** extended `resolve_research_config`;
+`canary_rollback_guard` (signatures above).
+
+**Tests (files):** `tests/unit/test_jev_runtime.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
   - canary overrides validated (`<=` production caps) else
     `RESEARCH_CONFIG_INVALID`
-  - `canary_rollback_guard` triggers per §9.5 table (each row)
+  - `canary_rollback_guard` triggers per spec §9.5 table (each row)
   - guard never mutates config; returns `{triggered, action, reason}`
-- [ ] GREEN: implement `resolve_research_config` extension and
-  `canary_rollback_guard`.
-- [ ] Targeted tests + invariants.
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): add canary scope and rollback guard
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement the validation + guard.
 
-Await approval before Task 5.2.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
+git diff -- config/    # must be empty
+```
+
+**Commit subject:** `feat(jev): add canary scope and rollback guard`
+
+**STOP gate:** Await approval before Task 5.2.
 
 ---
 
 ## Task 5.2: Canary Metrics Report
 
-### Goal
-
-Compute the locked metric list with null-safe denominators and persist the
-report.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/research/jev_runtime.py`
 - MODIFY `tests/unit/test_jev_runtime.py`
 
-### Steps
+**Interfaces consumed:** runtime overlays, human review records (fixtures).
 
-- [ ] RED: failing tests:
-  - every §9.4 metric present; zero denominator → `None` (never `0.0`)
+**Interfaces produced:** `compute_canary_metrics`,
+`write_canary_metrics_report` (signatures above).
+
+**Tests (files):** `tests/unit/test_jev_runtime.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
+  - every spec §9.4 metric present; zero denominator → `None` (never `0.0`)
   - rate math exact on fixtures
   - human review queue deterministic (`sha256(candidate_id)[0:8] % 5 == 0`)
   - report written atomically under the locked path
-- [ ] GREEN: implement `compute_canary_metrics`,
-  `write_canary_metrics_report`.
-- [ ] Targeted tests + invariants.
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): add canary metrics report
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: implement metrics + report writer.
 
-Await approval before Task 5.3.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
+```
+
+**Commit subject:** `feat(jev): add canary metrics report`
+
+**STOP gate:** Await approval before Task 5.3.
 
 ---
 
 ## Task 5.3: Activate Canary (config; explicit approval)
 
-### Files
-
+**Files**
 - MODIFY `config/season_jev.json` only: add the `research` block with
   `research.canary`, set `"mode": "canary"` (`enabled` stays `true`).
 
-### Steps
+**Interfaces consumed:** `resolve_research_config`,
+`resolve_mode_eligibility` (verification only).
+
+**Interfaces produced:** none (config data).
+
+**Tests (files):** none new; `tests/unit/test_jev_runtime.py` regression.
+
+**RED-first:** N/A — config-only activation task; contract is verification-only
+(`mode_ok=true` for canary; only the research block + mode field in the diff).
 
 - [ ] REQUIRED: explicit GPT/user approval + canary scope review recorded.
 - [ ] Prerequisites: `>= 1` eligible head (Task 2.4), `>= 10` gate artifacts
   from P1 evidence.
-- [ ] Verification: `resolve_mode_eligibility` returns `mode_ok=true` for
-  canary; `git diff --cached -- config/season_jev.json` shows only the
-  research block + mode field.
 
-### Commit subject
+**Test command**
 
-```text
-chore(jev): activate JEV canary scope
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** apply the config edit; stage only `config/season_jev.json`.
 
-Await approval before P6.
+**Verification command**
+
+```powershell
+git diff --cached -- config/season_jev.json    # only research block + mode
+git diff -- config/jev_thresholds.json         # must be empty
+```
+
+**Commit subject:** `chore(jev): activate JEV canary scope`
+
+**STOP gate:** Await approval before P6.
 
 ---
 
 ## Task 6.1: Production Eligibility Enforcement
 
-### Goal
-
-Enforce the 5/5 production requirement at runtime, independent of config
-intent.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/research/jev_runtime.py`
 - MODIFY `tests/unit/test_jev_runtime.py`
 
-### Steps
+**Interfaces consumed:** `resolve_mode_eligibility` (extended),
+`resolve_head_eligibility`.
 
-- [ ] RED: failing tests:
+**Interfaces produced:** enforcement wiring in `resolve_mode_eligibility` and
+the runtime overlay `mode` field.
+
+**Tests (files):** `tests/unit/test_jev_runtime.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases:
   - production with 4/5 eligible → `mode_ok=false`,
     `PRODUCTION_ELIGIBILITY_INCOMPLETE`, no execution
   - production with 5/5 → `mode_ok=true`
   - canary with 0 eligible → `CANARY_ELIGIBILITY_INCOMPLETE`
   - runtime overlay `mode` field reflects the resolved mode
-- [ ] GREEN: implement enforcement wiring in `resolve_mode_eligibility` and
-  the overlay.
-- [ ] Targeted tests + invariants.
 
-### Commit subject
+**Test command**
 
-```text
-feat(jev): enforce production eligibility gate
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** GREEN: enforce 5/5 for production, `>= 1` for canary.
 
-Await approval before Task 6.2.
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py -q --tb=short
+```
+
+**Commit subject:** `feat(jev): enforce production eligibility gate`
+
+**STOP gate:** Await approval before Task 6.2.
 
 ---
 
 ## Task 6.2: Read-Only Observability Surface
 
-### Goal
-
-Expose the §12 fields in the web UI, read-only.
-
-### Files
-
+**Files**
 - MODIFY `src/kr_quant/web/app.py`
 - MODIFY `src/kr_quant/web/static/app.js`
 - MODIFY `tests/unit/test_web_app.py`
 
-### Steps
+**Interfaces consumed:** `jev_runtime.runtime_status`.
 
-- [ ] RED: failing tests: endpoint returns the locked field set; missing
-  artifacts → zeros/`null`; no mutation controls; no Quant payload changes.
-- [ ] GREEN: implement the endpoint + read-only card/banner.
-- [ ] Targeted tests:
+**Interfaces produced:** read-only endpoint + display card; exact field set
+from spec §12.
+
+**Tests (files):** `tests/unit/test_web_app.py`
+
+**RED-first:** failing tests before implementation.
+
+- [ ] RED cases: endpoint returns the locked field set; missing artifacts →
+  zeros/`null`; no mutation controls; no Quant payload changes.
+
+**Test command**
 
 ```powershell
 C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_web_app.py -q --tb=short
 ```
 
-### Commit subject
+**Implementation:** GREEN: add endpoint + read-only card/banner.
 
-```text
-feat(web): show JEV runtime overlay status
+**Verification command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_web_app.py -q --tb=short
+git diff -- config/    # must be empty
 ```
 
-### STOP condition
+**Commit subject:** `feat(web): show JEV runtime overlay status`
 
-Await approval before Task 6.3.
+**STOP gate:** Await approval before Task 6.3.
 
 ---
 
 ## Task 6.3: Activate Production (config; explicit approval)
 
-### Files
-
+**Files**
 - MODIFY `config/season_jev.json` only: `"mode": "production"`.
 
-### Steps
+**Interfaces consumed:** `resolve_mode_eligibility` (verification only).
+
+**Interfaces produced:** none (config data).
+
+**Tests (files):** none new; P7.1 failure-matrix suite is the regression.
+
+**RED-first:** N/A — config-only activation task; contract is verification-only
+(`mode_ok=true` for production; exactly one field changes).
 
 - [ ] REQUIRED: explicit GPT/user approval + production readiness packet.
 - [ ] Prerequisites: all five actionable heads eligible; canary metrics within
   rollback thresholds for the agreed window; failure matrix tests green (P7.1
   may run before this task if review requests it).
-- [ ] Verification: `resolve_mode_eligibility` returns `mode_ok=true`;
-  diff shows exactly one field change.
 
-### Commit subject
+**Test command**
 
-```text
-chore(jev): activate JEV production routing
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py -q --tb=short
 ```
 
-### STOP condition
+**Implementation:** apply the one-field config edit.
 
-Await approval before P7.
+**Verification command**
+
+```powershell
+git diff --cached -- config/season_jev.json    # exactly one field
+git diff -- config/jev_thresholds.json         # must be empty
+```
+
+**Commit subject:** `chore(jev): activate JEV production routing`
+
+**STOP gate:** Await approval before P7.
 
 ---
 
 ## Task 7.1: Failure Matrix Certification
 
-### Goal
-
-One executable test per failure-matrix row 1–24.
-
-### Files
-
+**Files**
 - MODIFY `tests/unit/test_jev_runtime.py`
 - MODIFY `tests/unit/test_jev_research_executor.py`
 - MODIFY `tests/unit/test_jev_evidence.py`
 
-### Steps
+**Interfaces consumed:** all runtime/executor/evidence public functions.
 
-- [ ] RED→GREEN per row; test names `test_failure_row_01_...` …
-  `test_failure_row_24_...` mapping to spec §10.
-- [ ] Each test asserts: statuses, `side effects`, retryability, and
+**Interfaces produced:** test-only (one test per failure-matrix row).
+
+**Tests (files):** the three files above.
+
+**RED-first:** RED→GREEN per row; test names
+`test_failure_row_01_...` … `test_failure_row_24_...` mapping to spec §10.
+
+- [ ] Each test asserts: statuses, side effects, retryability, and
   Quant-untouched (no Quant module import).
-- [ ] Targeted + JEV regression:
+
+**Test command**
+
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py -q --tb=short
+```
+
+**Implementation:** add the 24 row tests; fix only genuine defects found.
+
+**Verification command**
 
 ```powershell
 C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest tests/unit/test_jev_runtime.py tests/unit/test_jev_research_executor.py tests/unit/test_jev_evidence.py tests/unit/test_jev_research_gate.py tests/unit/test_jev_calibration.py tests/unit/test_season_jev_shadow.py -q --tb=short
 ```
 
-### Commit subject
+**Commit subject:** `test(jev): certify production failure matrix`
 
-```text
-test(jev): certify production failure matrix
-```
-
-### STOP condition
-
-Await approval before Task 7.2.
+**STOP gate:** Await approval before Task 7.2.
 
 ---
 
 ## Task 7.2: Invariance and Isolation Certification
 
-### Goal
+**Files**
+- MODIFY tests only if needed (prefer no production code changes).
 
-Close verification gaps only. Prefer NO production code changes.
+**Interfaces consumed:** all new modules (static inspection).
 
-### Files
+**Interfaces produced:** test-only assertions.
 
-- MODIFY tests only if needed.
+**Tests (files):** `tests/unit/test_jev_runtime.py`,
+`tests/unit/test_jev_research_executor.py`, `tests/unit/test_jev_evidence.py`
 
-### Steps
+**RED-first:** add assertions first where gaps exist; otherwise N/A (gap-closure
+task with explicit NO COMMIT allowed).
 
 - [ ] Static AST checks: new modules import no `requests/httpx/aiohttp/urllib/
   socket/subprocess/selenium/playwright`, no `os.environ` key access, no Quant
@@ -1129,54 +1321,67 @@ Close verification gaps only. Prefer NO production code changes.
 - [ ] Config safety: `config/season_jev.json` and
   `config/jev_thresholds.json` unchanged by tests; mode resolution fail-closed
   cases covered.
-- [ ] Full suite:
+
+**Test command**
 
 ```powershell
 C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest -q --tb=short
 ```
 
-  Hard criterion: exit 0, 0 failed. Do not hardcode pass counts.
-- [ ] If no code/test changes are needed: **NO COMMIT** (empty commit forbidden).
+**Implementation:** close gaps; no behavior changes.
 
-### Commit subject (only if a real diff exists)
+**Verification command**
 
-```text
-test(jev): certify production v1 invariants
+```powershell
+C:\Users\a4jud\kr_quant_research\.venv\Scripts\python.exe -m pytest -q --tb=short    # exit 0, 0 failed
+git diff -- config/    # must be empty
 ```
 
-### STOP condition
+Hard criterion: exit 0, **0 failed**. Do not hardcode pass counts.
 
-Await approval before Task 7.3.
+**Commit subject (only if a real diff exists):**
+`test(jev): certify production v1 invariants`
+
+**STOP gate:** Await approval before Task 7.3.
 
 ---
 
 ## Task 7.3: Production Readiness Certification Record
 
-### Goal
-
-Record the final evidence packet as a tracked document.
-
-### Files
-
+**Files**
 - CREATE `docs/superpowers/plans/2026-09-23-jev-production-v1-certification.md`
 
-### Steps
+**Interfaces consumed:** all verification packets from P1–P7.
 
-- [ ] Include: identity (SHAs), mode state, threshold/approval inventory,
-  failure matrix results, full-suite result, canary metrics summary, rollback
-  ladder status, open risks, and the explicit statement that Quant remained
-  untouched.
-- [ ] Stage exact path only; `git diff --cached --check`.
+**Interfaces produced:** tracked certification document.
 
-### Commit subject
+**Tests (files):** none (documentation).
 
-```text
-docs(jev): record production v1 certification
+**RED-first:** N/A — documentation task; contract is content completeness
+(identity, mode state, threshold/approval inventory, failure matrix results,
+full-suite result, canary metrics summary, rollback status, open risks,
+Quant-untouched statement).
+
+- [ ] Include all required sections; stage the exact path only.
+
+**Test command**
+
+```powershell
+git diff --check
 ```
 
-### STOP condition
+**Implementation:** write the certification record from verified evidence.
 
-Final packet; production v1 complete pending GPT accept.
+**Verification command**
+
+```powershell
+git diff --cached --check
+git diff --cached --name-only    # exactly the one doc
+```
+
+**Commit subject:** `docs(jev): record production v1 certification`
+
+**STOP gate:** Final packet; production v1 complete pending GPT accept.
 
 ---
 
@@ -1280,8 +1485,9 @@ J4 naming
 
 ## Plan Self-Review Checklist
 
-- [x] Every Task has files, interfaces, tests, RED-first, commands, commit
-      subject, STOP gate
+- [x] All 24 Tasks declare Files / Interfaces consumed / Interfaces produced /
+      Tests / RED-first (or explicit N/A with reason) / Test command /
+      Implementation / Verification command / Commit subject / STOP gate
 - [x] Config changes confined to approved activation/adoption Tasks
 - [x] No TODO/TBD placeholders
 - [x] Spec sections mapped to primary Tasks (coverage matrix)
