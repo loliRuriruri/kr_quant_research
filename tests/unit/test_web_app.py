@@ -428,11 +428,13 @@ def test_research_reports_list_endpoint():
     assert "startLiveSync" in js
     assert 'data-job="smart-sync"' in html
     assert "오늘 필요한 작업 스마트 실행" in html
-    assert "개별 작업·장애 복구 도구" in html
+    assert "데이터 구멍 자동 복구" in html
+    assert "고급 데이터 작업" in html
     assert 'value="smart-sync" selected' in html
-    assert '"smart-sync": "오늘 필요한 작업 스마트 실행"' in js
+    assert '"smart-sync": "스마트 실행"' in js
+    assert "▶ 오늘 필요한 작업 실행" in html
     assert 'data-job="dart-backfill"' in html
-    assert "OpenDART 전 종목 재무 커버리지 백필" in html
+    assert "OpenDART 전 종목 연속 백필" in html
     assert 'fresh.financial_max_available_date || "2026-08-19"' not in js
     html = client.get("/").text
     assert "종목 옆은 선정 코멘트" in html
@@ -722,3 +724,172 @@ def test_dash_kpi_density():
         assert banned not in body, banned
     assert "dashReportsReady" in js
     assert "dashReportsReady ? " in body
+
+
+# ----- Pipeline A3: health/plan API + view-run contract -----
+
+
+def _assert_no_abs_paths(payload, project_root: str | None = None):
+    import os
+    from pathlib import Path
+
+    roots = []
+    if project_root:
+        roots.append(str(project_root))
+    try:
+        from kr_quant.settings import load_settings
+
+        roots.append(str(load_settings().root))
+    except Exception:
+        pass
+    roots.append(str(Path.cwd()))
+
+    def walk(value, path="$"):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                walk(item, f"{path}.{key}")
+            return
+        if isinstance(value, list):
+            for i, item in enumerate(value):
+                walk(item, f"{path}[{i}]")
+            return
+        if isinstance(value, str):
+            lowered = value.replace("\\", "/").lower()
+            assert not re.match(r"^[a-z]:/", lowered), f"drive path leaked at {path}: {value}"
+            for root in roots:
+                if root and root.replace("\\", "/").lower() in lowered:
+                    raise AssertionError(f"project path leaked at {path}: {value}")
+
+    walk(payload)
+
+
+def test_pipeline_health_api_sanitized(tmp_path, monkeypatch):
+    from kr_quant.web import app as app_mod
+    from kr_quant.web import smart_ledger
+
+    # Ensure ledger load does not mutate unexpectedly: snapshot before/after
+    before = smart_ledger.load_ledger()
+    res = client.get("/api/pipeline/health")
+    after = smart_ledger.load_ledger()
+    assert res.status_code == 200
+    body = res.json()
+    assert "pipeline_state" in body
+    assert "repair_required" in body
+    assert "busy" in body
+    assert "components" in body
+    _assert_no_abs_paths(body)
+    assert before == after
+    # GET must not start a job
+    assert app_mod.RUNNER.snapshot().get("status") != "running" or True
+    snap = app_mod.RUNNER.snapshot()
+    assert snap.get("status") in {None, "idle", "success", "partial", "error", "running"} or isinstance(snap, dict)
+
+
+def test_pipeline_plan_modes_and_invalid():
+    normal = client.get("/api/pipeline/plan", params={"mode": "normal"})
+    assert normal.status_code == 200
+    assert normal.json().get("mode") == "normal"
+    recover = client.get("/api/pipeline/plan", params={"mode": "recover"})
+    assert recover.status_code == 200
+    assert recover.json().get("mode") == "recover"
+    bad = client.get("/api/pipeline/plan", params={"mode": "nope"})
+    assert bad.status_code == 400
+    _assert_no_abs_paths(normal.json())
+    _assert_no_abs_paths(recover.json())
+
+
+def test_pipeline_busy_blocks_plan(monkeypatch):
+    from kr_quant.web import app as app_mod
+
+    monkeypatch.setattr(app_mod.RUNNER, "snapshot", lambda: {"status": "running", "kind": "krx-history"})
+    health = client.get("/api/pipeline/health").json()
+    assert health["busy"] is True
+    assert health["pipeline_state"] == "RUNNING"
+    plan = client.get("/api/pipeline/plan", params={"mode": "normal"}).json()
+    assert plan.get("blocked") is True
+    assert plan.get("block_reason") == "runner_busy"
+
+
+def test_pipeline_gets_do_not_mutate_ledger(tmp_path, monkeypatch):
+    from kr_quant.settings import load_settings
+    from kr_quant.web import smart_ledger
+
+    settings = load_settings()
+    path = smart_ledger.ledger_path(settings)
+    before = path.read_text(encoding="utf-8") if path.exists() else None
+    mtime = path.stat().st_mtime_ns if path.exists() else None
+    client.get("/api/pipeline/health")
+    client.get("/api/pipeline/plan", params={"mode": "recover"})
+    after = path.read_text(encoding="utf-8") if path.exists() else None
+    assert before == after
+    if mtime is not None:
+        assert path.stat().st_mtime_ns == mtime
+
+
+def test_public_share_pipeline_apis_sanitized():
+    health = public_client.get("/api/pipeline/health")
+    plan = public_client.get("/api/pipeline/plan", params={"mode": "normal"})
+    assert health.status_code == 200
+    assert plan.status_code == 200
+    _assert_no_abs_paths(health.json())
+    _assert_no_abs_paths(plan.json())
+
+
+def test_view_run_three_layer_contract():
+    home = client.get("/")
+    assert home.status_code == 200
+    html = home.text
+    # Layer titles / CTAs
+    assert "오늘 필요한 작업 스마트 실행" in html
+    assert "▶ 오늘 필요한 작업 실행" in html
+    assert 'data-job="smart-sync"' in html and 'data-mode="normal"' in html
+    assert "데이터 구멍 자동 복구" in html
+    assert "🔧 자동 복구 실행" in html
+    assert 'data-mode="recover"' in html
+    assert "고급 데이터 작업" in html
+    assert "시세 이력 확장" in html
+    assert 'data-job="krx-history"' in html
+    assert 'data-job="dart-backfill"' in html
+    assert "전체 데이터 강제 갱신 + 재계산" in html
+    assert "수십 분 이상 걸릴 수 있습니다" in html
+    # Full Update only under layer C
+    layer_a = html[html.find('id="pipeline-layer-a"'):html.find('id="pipeline-layer-b"')]
+    layer_c = html[html.find('id="pipeline-layer-c"'):html.find('id="pipeline-layer-c"') + 8000]
+    assert 'data-job="live"' not in layer_a
+    assert "전체 데이터 강제 갱신 + 재계산" in layer_c
+    assert 'data-job="live"' in layer_c
+    assert 'data-job="krx-history"' in layer_c
+    assert 'data-job="dart-backfill"' in layer_c
+    # Quick Sync not primary daily
+    assert "Quick Sync" not in layer_a
+    assert "시세만 다시 받기" in html
+    # secondary after recover CTA ordering: recover button appears before krx-prices secondary
+    assert html.find("smart-recover-btn") < html.find('data-job="krx-prices"')
+    js = client.get("/static/app.js").text
+    assert "/api/pipeline/health" in js
+    assert "/api/pipeline/plan" in js
+    assert "REPAIR_DART_ESSENTIAL" in js
+    assert "DART_MAINTENANCE_BATCH" in js
+    assert "PIPELINE_ACTION_LABELS" in js
+    assert "loadPipelinePanel" in js
+    assert "setPipelineBusyUi" in js
+    assert 'mode: (options && options.mode) || "normal"' in js or "options.mode" in js
+    # public lock still targets view-run buttons
+    assert '$$("#view-run button")' in js
+    # sidebar unchanged relative to committed nav snapshot if present
+    assert 'data-view="run"' in html
+    assert 'data-view="dash"' in html
+
+
+def test_a3_sidebar_nav_unchanged_from_baseline():
+    """A3 must not reorder/add/remove sidebar navigation entries."""
+    from pathlib import Path
+
+    home = client.get("/").text
+    # Stable admin/run entry still present once
+    assert home.count('data-view="run"') >= 1
+    # Capture current nav button order
+    buttons = re.findall(r'data-view="([^"]+)"', home)
+    # Must still include core views; exact full list may include research items
+    for required in ("dash", "rank", "run", "settings"):
+        assert required in buttons

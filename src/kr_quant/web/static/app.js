@@ -1790,6 +1790,7 @@ async function loadViewData(name, force) {
   if (name === "run") {
     await loadStatusPanel();
     stampRunAsOf();
+    await loadPipelinePanel();
     return;
   }
   if (name === "seasonality") {
@@ -2162,6 +2163,231 @@ function quantPipelineBadge(fresh) {
       : "점수가 저장 종가와 다릅니다. 스마트 실행이 다시 계산합니다.",
   };
 }
+
+/* ==== A3 pipeline panel helpers (inserted into app.js) ==== */
+const PIPELINE_ACTION_LABELS = {
+  REFRESH_KRX: "KRX 시세/마스터 갱신",
+  REPAIR_DART_ESSENTIAL: "OpenDART 필수 재무 복구",
+  REBUILD_QUANT: "퀀트 점수 재계산",
+  REFRESH_KIS: "KIS 수급 갱신",
+  REBUILD_SEASON: "시즌 자료 재생성 예정",
+  DART_MAINTENANCE_BATCH: "DART 커버리지 1배치 확장",
+  CHECK_PUBLISH: "품질/공개판 확인",
+  WAIT_SOURCE: "공급처 자료 대기",
+};
+
+let pipelinePanelPending = null;
+let lastPipelineHealth = null;
+let lastPipelinePlan = null;
+
+function pipelineActionLabel(action) {
+  return PIPELINE_ACTION_LABELS[action] || action;
+}
+
+function formatPipelinePlanLines(plan, { healthyMarks = true } = {}) {
+  const actions = (plan && plan.actions) || [];
+  if (plan && plan.blocked) {
+    return "현재 실행 중:\n" + (JOB_KINDS[(lastStatus && lastStatus.job && lastStatus.job.kind)] || lastStatus?.job?.kind || "다른 작업") + "\n완료 후 다시 사용할 수 있습니다.";
+  }
+  if (!actions.length) return "할 일 없음";
+  const lines = [];
+  for (const row of actions) {
+    const kind = row.action || row;
+    if (kind === "CHECK_PUBLISH") continue;
+    const label = pipelineActionLabel(kind);
+    if (kind === "REBUILD_SEASON") {
+      lines.push("→ " + label);
+    } else {
+      lines.push("→ " + label);
+    }
+  }
+  return lines.length ? ("예정 작업\n" + lines.join("\n")) : "할 일 없음";
+}
+
+function applyPipelineHealthToCards(health) {
+  if (!health || !health.components) return;
+  const c = health.components;
+  const krx = c.krx || {};
+  const dartE = c.dart_essential || {};
+  const dartC = c.dart_coverage || {};
+  const quant = c.quant || {};
+  const season = c.season || {};
+
+  const pxDateEl = $("#run-diag-price-date");
+  const pxMetaEl = $("#run-diag-price-meta");
+  const pxBadge = $("#run-status-price-badge");
+  if (krx.state === "HEALTHY") {
+    if (pxBadge) { pxBadge.textContent = "정상"; pxBadge.className = "chip ok"; }
+    if (pxDateEl) pxDateEl.textContent = krx.as_of ? `시세 ${krx.as_of}` : "시세 정상";
+    if (pxMetaEl) pxMetaEl.textContent = "KRX 시세가 기대일과 맞습니다.";
+  } else if (krx.state === "STALE") {
+    if (pxBadge) { pxBadge.textContent = "갱신 필요"; pxBadge.className = "chip warn"; }
+    if (pxDateEl) pxDateEl.textContent = krx.as_of ? `시세 ${krx.as_of}` : "시세 지연";
+    if (pxMetaEl) pxMetaEl.textContent = "스마트 실행이 시세를 갱신합니다.";
+  } else if (krx.state === "MISSING" || krx.state === "CORRUPT") {
+    if (pxBadge) { pxBadge.textContent = "자동 복구 필요"; pxBadge.className = "chip warn"; }
+    if (pxDateEl) pxDateEl.textContent = "시세 자료 이상";
+    if (pxMetaEl) pxMetaEl.textContent = krx.reason || "필수 시세 artifact를 복구하세요.";
+  }
+
+  const dartDateEl = $("#run-diag-dart-date");
+  const dartMetaEl = $("#run-diag-dart-meta");
+  const dartBadge = $("#run-status-dart-badge");
+  if (dartE.state === "MISSING" || dartE.state === "CORRUPT") {
+    if (dartBadge) { dartBadge.textContent = "필수자료 복구 필요"; dartBadge.className = "chip warn"; }
+    if (dartDateEl) dartDateEl.textContent = "필수 재무 없음";
+    if (dartMetaEl) dartMetaEl.textContent = "커버리지 숫자와 무관하게 필수 재무 artifact가 필요합니다.";
+  } else if (dartE.state === "HEALTHY" && dartC.state === "PARTIAL") {
+    if (dartBadge) { dartBadge.textContent = "사용 가능"; dartBadge.className = "chip ok"; }
+    if (dartDateEl) dartDateEl.textContent = "사용 가능 · 커버리지 확장 중";
+    const pct = dartC.coverage_pct != null ? dartC.coverage_pct : "";
+    if (dartMetaEl) dartMetaEl.textContent = pct !== "" ? `커버리지 ${pct}% / 목표 ${dartC.target_pct || 90}%` : "필수자료 정상 · 커버리지 확장 중";
+  } else if (dartE.state === "HEALTHY") {
+    if (dartBadge) { dartBadge.textContent = "정상"; dartBadge.className = "chip ok"; }
+    if (dartDateEl) dartDateEl.textContent = "필수 재무 정상";
+    if (dartMetaEl) {
+      const pct = dartC.coverage_pct;
+      dartMetaEl.textContent = pct != null ? `커버리지 ${pct}%` : "필수 재무 artifact 정상";
+    }
+  }
+
+  const quantDateEl = $("#run-diag-quant-date");
+  const quantMetaEl = $("#run-diag-quant-meta");
+  const quantBadge = $("#run-status-quant-badge");
+  if (quant.state === "HEALTHY") {
+    if (quantBadge) { quantBadge.textContent = "최신"; quantBadge.className = "chip ok"; }
+    if (quantDateEl) quantDateEl.textContent = quant.as_of ? `점수 ${quant.as_of}` : "점수 최신";
+    if (quantMetaEl) quantMetaEl.textContent = "커밋된 퀀트 산출물이 정상입니다.";
+  } else if (quant.state === "STALE") {
+    if (quantBadge) { quantBadge.textContent = "재계산 필요"; quantBadge.className = "chip warn"; }
+    if (quantDateEl) quantDateEl.textContent = quant.as_of ? `점수 ${quant.as_of}` : "점수 지연";
+    if (quantMetaEl) quantMetaEl.textContent = "스마트 실행이 점수를 다시 계산합니다.";
+  } else if (quant.state === "BLOCKED") {
+    if (quantBadge) { quantBadge.textContent = "선행자료 복구 필요"; quantBadge.className = "chip warn"; }
+    if (quantDateEl) quantDateEl.textContent = "점수 대기";
+    const blocked = (quant.blocked_by || []).join(", ");
+    if (quantMetaEl) quantMetaEl.textContent = blocked ? `선행 복구: ${blocked}` : "선행 자료 복구 후 재계산합니다.";
+  } else if (quant.state === "MISSING" || quant.state === "CORRUPT") {
+    if (quantBadge) { quantBadge.textContent = "자동 복구 필요"; quantBadge.className = "chip warn"; }
+    if (quantDateEl) quantDateEl.textContent = "점수 자료 이상";
+    if (quantMetaEl) quantMetaEl.textContent = quant.reason || "자동 복구로 점수를 다시 만드세요.";
+  }
+
+  if (season.state === "UPDATING") {
+    const smartSummaryEl = $("#smart-run-summary");
+    // season note folded into plan area when relevant
+    const planEl = $("#smart-run-plan");
+    if (planEl && !String(planEl.textContent || "").includes("시즌 자료 갱신")) {
+      planEl.textContent = (planEl.textContent || "") + "\n시즌 자료 갱신 보류/준비 중";
+    }
+  }
+}
+
+function applySchedulerBusySkip(status) {
+  const sched = (status && status.scheduler) || {};
+  const schedBadge = $("#run-diag-sched-badge");
+  const schedNextEl = $("#run-diag-sched-next");
+  const skip = String(sched.last_skip || sched.last_error || "");
+  if (/실행 중|busy|RUNNER|점유/i.test(skip)) {
+    if (schedBadge) {
+      schedBadge.textContent = "RUNNER 점유 중";
+      schedBadge.className = "chip warn";
+    }
+    if (schedNextEl) {
+      schedNextEl.textContent = "다른 작업 진행 중이라 이번 실행 건너뜀";
+    }
+  }
+}
+
+function setPipelineBusyUi(job) {
+  const smartBtn = $("#smart-sync-btn");
+  const recoverBtn = $("#smart-recover-btn");
+  const busyEl = $("#pipeline-busy-reason");
+  const running = job && job.status === "running";
+  const label = running ? (JOB_KINDS[job.kind] || job.kind || "작업") : "";
+  if (smartBtn) {
+    smartBtn.disabled = !!running;
+    if (running) {
+      smartBtn.textContent = job.kind === "smart-sync" ? "스마트 실행 중…" : "다른 작업 진행 중";
+    } else {
+      smartBtn.textContent = "▶ 오늘 필요한 작업 실행";
+    }
+  }
+  if (recoverBtn) {
+    recoverBtn.disabled = !!running;
+    recoverBtn.textContent = running ? "다른 작업 진행 중" : "🔧 자동 복구 실행";
+  }
+  if (busyEl) {
+    if (running) {
+      busyEl.hidden = false;
+      busyEl.textContent = `현재 다른 작업이 실행 중입니다 (${label}).\n완료 후 다시 사용할 수 있습니다.`;
+    } else {
+      busyEl.hidden = true;
+      busyEl.textContent = "";
+    }
+  }
+}
+
+async function loadPipelinePanel() {
+  if (pipelinePanelPending) return pipelinePanelPending;
+  pipelinePanelPending = (async () => {
+    try {
+      const [health, planNormal, planRecover] = await Promise.all([
+        api("/api/pipeline/health"),
+        api("/api/pipeline/plan?mode=normal"),
+        api("/api/pipeline/plan?mode=recover"),
+      ]);
+      lastPipelineHealth = health;
+      lastPipelinePlan = planNormal;
+      applyPipelineHealthToCards(health);
+      applySchedulerBusySkip(lastStatus);
+
+      const summaryEl = $("#smart-run-summary");
+      const planEl = $("#smart-run-plan");
+      if (health && health.busy) {
+        const kind = lastStatus?.job?.kind;
+        if (summaryEl) summaryEl.textContent = `현재 실행 중: ${JOB_KINDS[kind] || kind || "작업"}`;
+        if (planEl) planEl.textContent = "완료 후 다시 사용할 수 있습니다.";
+      } else if (planEl) {
+        planEl.textContent = formatPipelinePlanLines(planNormal);
+        if (summaryEl) {
+          summaryEl.textContent = health?.repair_required
+            ? "필수 자료에 구멍이 있습니다. 일상 실행 또는 자동 복구를 사용하세요."
+            : (planNormal?.actions || []).some((a) => (a.action || a) !== "CHECK_PUBLISH")
+              ? "오늘 남은 단계만 순서대로 실행합니다."
+              : "지금은 추가로 할 일일 작업이 없습니다.";
+        }
+      }
+
+      const layerB = $("#pipeline-layer-b");
+      const banner = $("#pipeline-repair-banner");
+      const causeEl = $("#pipeline-repair-cause");
+      const repairPlanEl = $("#pipeline-repair-plan");
+      if (health?.repair_required) {
+        if (layerB) layerB.open = true;
+        if (banner) banner.hidden = false;
+        const dartE = health.components?.dart_essential || {};
+        const krx = health.components?.krx || {};
+        const master = health.components?.master || {};
+        const reasons = [];
+        if (dartE.state === "MISSING" || dartE.state === "CORRUPT") reasons.push("OpenDART 필수 재무자료가 없습니다.");
+        if (krx.state === "MISSING" || krx.state === "CORRUPT") reasons.push("KRX 시세 자료에 문제가 있습니다.");
+        if (master.state === "MISSING" || master.state === "CORRUPT") reasons.push("종목 마스터 자료에 문제가 있습니다.");
+        if (causeEl) causeEl.textContent = "원인:\n" + (reasons.join("\n") || "필수 artifact 복구가 필요합니다.");
+        if (repairPlanEl) repairPlanEl.textContent = "복구 계획:\n" + formatPipelinePlanLines(planRecover).replace(/^예정 작업\n/, "");
+      } else {
+        if (banner) banner.hidden = true;
+      }
+
+      const job = lastStatus?.job;
+      if (job) setPipelineBusyUi(job);
+    } catch (err) {
+      console.warn("pipeline panel load failed", err);
+    }
+  })().finally(() => { pipelinePanelPending = null; });
+  return pipelinePanelPending;
+}
+
 
 function renderRunDiagnostics(status) {
   if (!status) return;
@@ -4872,6 +5098,7 @@ async function renderStatusPanel() {
   }
   renderSchedLine(status.scheduler);
   renderRunDiagnostics(status);
+  if (currentView === "run") loadPipelinePanel();
   
   const llmName = status.llm_label || status.llm_provider || "openrouter";
   const llmModel = status.llm_model ? status.llm_model.split("/").pop() : "";
@@ -10429,14 +10656,14 @@ function showToast(msg, type = "info", duration = 3500) {
 }
 
 const JOB_KINDS = {
-  "smart-sync": "오늘 필요한 작업 스마트 실행",
+  "smart-sync": "스마트 실행",
   demo: "데모 실행",
   screen: "재계산",
-  live: "실데이터 수집+계산",
+  live: "전체 데이터 강제 갱신 + 재계산",
   "live-skip": "실데이터 재계산",
   "krx-prices": "KRX 시세 갱신",
-  "krx-history": "시세 이력 확장 (750일)",
-  "dart-backfill": "OpenDART 전 종목 백필",
+  "krx-history": "시세 이력 확장",
+  "dart-backfill": "OpenDART 전 종목 연속 백필",
   "investor-kis": "공식 수급 수집",
   "dart-nps": "국민연금 공시 수집",
   strategy: "전략 랩 스캔",
@@ -10536,18 +10763,13 @@ async function pollJob() {
   try {
     const job = await api("/api/jobs");
     renderJob(job);
-    const smartBtn = $("#smart-sync-btn");
+    setPipelineBusyUi(job);
     if (job.status === "running") {
-      if (smartBtn) {
-        smartBtn.textContent = job.kind === "smart-sync" ? "처리 중…" : "다른 작업 진행 중";
-        smartBtn.disabled = true;
+      if (currentView === "run") {
+        loadPipelinePanel();
       }
       setTimeout(pollJob, 1200);
     } else {
-      if (smartBtn) {
-        smartBtn.textContent = "▶ 스마트 실행";
-        smartBtn.disabled = false;
-      }
       if (["success", "partial"].includes(job.status)) {
         const title = JOB_KINDS[job.kind] || job.kind || "작업";
         const partial = job.status === "partial";
@@ -10567,6 +10789,7 @@ async function pollJob() {
           cancelled || partial ? 7000 : 3500,
         );
         await loadStatus();
+        if (currentView === "run") await loadPipelinePanel();
         await reloadActiveView();
       } else if (job.status === "error") {
         const title = JOB_KINDS[job.kind] || job.kind || "작업";
@@ -10578,7 +10801,7 @@ async function pollJob() {
   }
 }
 
-async function startJob(kind) {
+async function startJob(kind, options = {}) {
   const asofVal = $("#run-asof")?.value?.trim() || "auto";
   const lookbackVal = Number($("#run-lookback")?.value || 80);
   const maxVal = Number($("#run-max")?.value || 400);
@@ -10591,6 +10814,7 @@ async function startJob(kind) {
     max_corps: maxVal,
     dart_batch_size: 50,
     skip_ingest: kind === "live-skip" || kind === "screen",
+    mode: (options && options.mode) || "normal",
   };
   if (kind === "screen") payload.kind = "screen";
   if (kind === "krx-prices") {
@@ -10626,7 +10850,7 @@ async function startJob(kind) {
   } catch (err) {
     showToast(`⛔ <b>${title}</b>를 시작하지 못했습니다<br>${escapeHtml(err.message || "")}`, "error", 5500);
     if (smartBtn) {
-      smartBtn.textContent = "▶ 스마트 실행";
+      smartBtn.textContent = "▶ 오늘 필요한 작업 실행";
       smartBtn.disabled = false;
     }
   }
@@ -11755,7 +11979,7 @@ $("#llm-model-select").addEventListener("change", () => {
     .catch((err) => alert(err.message));
 });
 $$("[data-job]").forEach((btn) =>
-  btn.addEventListener("click", () => startJob(btn.dataset.job).catch((err) => alert(err.message)))
+  btn.addEventListener("click", () => startJob(btn.dataset.job, { mode: btn.dataset.mode || "normal" }).catch((err) => alert(err.message)))
 );
 $("#job-cancel-btn")?.addEventListener("click", () => cancelJob());
 

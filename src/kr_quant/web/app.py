@@ -24,6 +24,7 @@ if sys.platform == "win32":
         pass
 
 import json
+import re
 import logging
 import math
 import os
@@ -31,7 +32,7 @@ import time
 
 logger = logging.getLogger("kr_quant.web")
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
@@ -3999,6 +4000,90 @@ def api_research_report_post(body: ResearchIn) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         pass
     return {"ok": True, "row": record}
+
+
+# Snippet to insert into app.py before @app.get("/api/jobs")
+
+def _sanitize_pipeline_value(value: Any, *, project_root: str | None = None) -> Any:
+    """Strip absolute filesystem paths and secrets from pipeline payloads."""
+    if isinstance(value, Mapping):
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            key_l = str(key).lower()
+            if key_l in {"path", "paths", "file", "filepath", "abs_path", "absolute_path"}:
+                continue
+            if key_l in {"api_key", "token", "secret", "password", "credential", "credentials"}:
+                continue
+            out[str(key)] = _sanitize_pipeline_value(item, project_root=project_root)
+        return out
+    if isinstance(value, list):
+        return [_sanitize_pipeline_value(item, project_root=project_root) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_pipeline_value(item, project_root=project_root) for item in value]
+    if isinstance(value, str):
+        text = value
+        root = project_root or ""
+        if root and root.replace("\\", "/").lower() in text.replace("\\", "/").lower():
+            return "<redacted-path>"
+        # Windows drive or POSIX absolute path fragments
+        if re.match(r"^[A-Za-z]:[\\/]", text) or text.startswith("/home/") or text.startswith("/Users/"):
+            return "<redacted-path>"
+        if "\\" in text and (":\\" in text or text.startswith("\\\\")):
+            return "<redacted-path>"
+        return text
+    return value
+
+
+def _pipeline_busy() -> bool:
+    snap = RUNNER.snapshot()
+    return str(snap.get("status") or "") == "running"
+
+
+def _pipeline_health_payload() -> dict[str, Any]:
+    from kr_quant.web import smart_ledger as ledger_mod
+    from kr_quant.web.pipeline_health import pipeline_health
+
+    settings = load_settings()
+    ledger = ledger_mod.load_ledger(settings)
+    busy = _pipeline_busy()
+    raw = pipeline_health(settings, ledger=ledger, busy=busy)
+    project_root = str(getattr(settings, "root", "") or "")
+    safe = _sanitize_pipeline_value(raw, project_root=project_root)
+    # Ensure required top-level keys exist even if sanitizer dropped nothing critical.
+    if not isinstance(safe, dict):
+        safe = {}
+    safe["busy"] = busy
+    if busy:
+        safe["pipeline_state"] = "RUNNING"
+    return safe
+
+
+def _pipeline_plan_payload(mode: str) -> dict[str, Any]:
+    from kr_quant.web.pipeline_plan import VALID_MODES, InvalidPipelineMode, plan_pipeline
+
+    mode = (mode or "normal").strip().lower()
+    if mode not in VALID_MODES:
+        raise HTTPException(status_code=400, detail=f"invalid mode: {mode!r}")
+    health = _pipeline_health_payload()
+    try:
+        plan = plan_pipeline(health, mode=mode)
+    except InvalidPipelineMode as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    settings = load_settings()
+    project_root = str(getattr(settings, "root", "") or "")
+    return _sanitize_pipeline_value(plan, project_root=project_root)
+
+
+@app.get("/api/pipeline/health")
+def api_pipeline_health() -> dict[str, Any]:
+    """Read-only sanitized pipeline health for the execution UI."""
+    return _pipeline_health_payload()
+
+
+@app.get("/api/pipeline/plan")
+def api_pipeline_plan(mode: str = "normal") -> dict[str, Any]:
+    """Read-only repair plan preview for normal/recover modes."""
+    return _pipeline_plan_payload(mode)
 
 
 @app.get("/api/jobs")

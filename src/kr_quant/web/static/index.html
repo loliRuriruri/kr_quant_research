@@ -1139,140 +1139,148 @@
 
       <div class="grid-2" style="margin-top:16px;">
         <div style="display:flex; flex-direction:column; gap:16px;">
-          <!-- 2. Smart daily maintenance with manual recovery tools -->
-          <article class="card">
+                    <!-- A3: 3-layer execution pipeline -->
+          <article class="card" id="pipeline-exec-card">
             <div class="card-h">
               <div>
-                <h2 style="margin:0;">✨ 오늘 필요한 데이터 자동 관리</h2>
-                <p class="hint" style="margin-top:2px;">운영자는 아래 버튼 하나만 사용하면 됩니다. 현재 상태를 읽고 필요한 단계만 순서대로 실행합니다.</p>
+                <h2 style="margin:0;">실행 파이프라인</h2>
+                <p class="hint" style="margin-top:2px;">일상 운영은 스마트 실행만, 구멍은 자동 복구, 장시간 작업은 고급에서 다룹니다.</p>
               </div>
             </div>
 
-            <div class="run-action-box highlight-blue" style="margin-top:12px; border-width:2px;">
-              <div class="run-action-box-left">
-                <div class="run-action-badge ok">권장 · 매일 19:10 자동 실행</div>
-                <div class="run-action-name" style="font-size:17px;">오늘 필요한 작업 스마트 실행</div>
-                <div class="run-action-desc" id="smart-run-summary">
-                  데이터 상태를 확인하는 중입니다. 시세·재무·퀀트·수급 중 필요한 작업만 고릅니다.
-                </div>
-                <div class="run-action-detail" id="smart-run-plan" style="margin-top:8px;">
-                  KRX 확인 → 필요 시 전체 재계산 → DART 50종목 백필 → KIS 수급 → 품질검사·공개판 갱신
-                </div>
-                <div class="run-action-detail" id="smart-run-steps" style="margin-top:8px;"></div>
-              </div>
-              <div class="run-action-box-right" style="display:flex; flex-direction:column; gap:8px; align-items:flex-end;">
-                <button class="primary" id="smart-sync-btn" data-job="smart-sync" style="white-space:nowrap; padding:13px 22px; font-size:14px; font-weight:800;">▶ 스마트 실행</button>
-                <button class="ghost" id="job-cancel-btn" type="button" hidden>단계 경계에서 중단</button>
-              </div>
-            </div>
-
-            <details class="run-advanced-details" style="margin-top:16px;">
-              <summary style="cursor:pointer; color:#94a3b8; font-size:12.5px; font-weight:600; padding:6px 0;">🛠 개별 작업·장애 복구 도구</summary>
-              <p class="hint" style="margin:6px 0 10px;">특정 단계만 다시 실행하거나 장기 백테스트 이력을 처음 채울 때만 사용하세요.</p>
-              <div class="run-action-cards">
-              <!-- Action Card 1: Fast Price Sync -->
-              <div class="run-action-box highlight-blue">
+            <!-- LAYER A: Daily -->
+            <section class="pipeline-layer pipeline-layer-a" id="pipeline-layer-a" style="margin-top:12px;">
+              <div class="run-action-box highlight-blue" style="border-width:2px;">
                 <div class="run-action-box-left">
-                  <div class="run-action-badge">⚡ 추천 (매일 18:10 이후)</div>
-                  <div class="run-action-name">1. 빠른 일봉 시세 동기화 (Quick Sync)</div>
-                  <div class="run-action-desc">
-                    <b>어떤 상황에 누르나요?</b> 저장 종가가 기대 기준일보다 하루 늦을 때 누릅니다. 기대일만 요청하며, KRX가 그 세션을 아직 공개하지 않으면 이전 날짜로 되돌아가 완료 처리하지 않습니다. 15:30~심야에는 공급처 일봉이 비어 있을 수 있습니다.<br>
-                    <span class="run-action-detail">⏱️ 준비돼 있으면 약 15~30초 · 미공개면 바로 미준비로 끝남 · 저장 종가가 기대일과 같을 때만 완료</span>
+                  <div class="run-action-badge ok">Layer A · 일상 운영</div>
+                  <div class="run-action-name" style="font-size:17px;">오늘 필요한 작업 스마트 실행</div>
+                  <div class="run-action-desc" id="smart-run-summary">
+                    파이프라인 상태를 확인하는 중입니다.
                   </div>
+                  <div class="run-action-detail" id="smart-run-plan" style="margin-top:8px;">예정 작업을 불러오는 중…</div>
+                  <div class="run-action-detail" id="smart-run-steps" style="margin-top:8px;"></div>
+                  <div class="run-action-detail" id="pipeline-busy-reason" style="margin-top:8px; color:#fbbf24;" hidden></div>
+                </div>
+                <div class="run-action-box-right" style="display:flex; flex-direction:column; gap:8px; align-items:flex-end;">
+                  <button class="primary" id="smart-sync-btn" data-job="smart-sync" data-mode="normal" style="white-space:nowrap; padding:13px 22px; font-size:14px; font-weight:800;">▶ 오늘 필요한 작업 실행</button>
+                  <button class="ghost" id="job-cancel-btn" type="button" hidden>단계 경계에서 중단</button>
+                </div>
+              </div>
+            </section>
+
+            <!-- LAYER B: Auto recovery -->
+            <details class="pipeline-layer pipeline-layer-b run-advanced-details" id="pipeline-layer-b" style="margin-top:16px;">
+              <summary style="cursor:pointer; color:#fbbf24; font-size:13px; font-weight:700; padding:6px 0;">데이터 구멍 자동 복구</summary>
+              <div id="pipeline-repair-banner" class="pipeline-repair-banner" hidden style="margin:8px 0 12px; padding:10px 12px; border-radius:8px; border:1px solid #f59e0b; background:rgba(245,158,11,0.12);">
+                <div style="font-weight:800; color:#fbbf24;">⚠ 자동 복구가 필요합니다</div>
+                <div id="pipeline-repair-cause" class="hint" style="margin-top:4px;"></div>
+                <div id="pipeline-repair-plan" class="run-action-detail" style="margin-top:6px;"></div>
+              </div>
+              <div class="run-action-box" style="margin-top:8px; border-color:#f59e0b;">
+                <div class="run-action-box-left">
+                  <div class="run-action-badge warn">Layer B · 장애 / 자동 복구</div>
+                  <div class="run-action-name">필수 artifact만 최소 복구</div>
+                  <div class="run-action-desc">연속 DART·이력 확장·전체 강제 갱신은 하지 않습니다. 구멍만 메운 뒤 퀀트를 다시 맞춥니다.</div>
                 </div>
                 <div class="run-action-box-right">
-                  <button class="primary" data-job="krx-prices" style="white-space:nowrap; padding:10px 18px; font-weight:700;">⚡ 지금 즉시 일봉 시세 갱신</button>
+                  <button class="primary" id="smart-recover-btn" data-job="smart-sync" data-mode="recover" style="white-space:nowrap; padding:12px 18px; font-weight:800; background:#b45309; border-color:#b45309;">🔧 자동 복구 실행</button>
                 </div>
               </div>
-
-              <!-- Action Card 2: Full Ingest & Quant Score Re-rank -->
-              <div class="run-action-box highlight-green">
-                <div class="run-action-box-left">
-                  <div class="run-action-badge ok">🚀 주 1회 / 실적 발표기 추천</div>
-                  <div class="run-action-name">2. 실데이터 빠른 갱신 + 퀀트 전체 재계산 (Full Update)</div>
-                  <div class="run-action-desc">
-                    <b>어떤 상황에 누르나요?</b> KRX 전 종목 시세와 OpenDART 우선 수집 종목(기본 시총 상위 400개)을 갱신한 뒤 퀀트 순위와 전략 캐시를 같은 기준일로 다시 계산할 때 누릅니다.<br>
-                    <span class="run-action-detail">⏱️ 수 분 소요 · KRX 전 종목 + DART 우선 400개 · 5대 팩터와 전략 캐시 재산출</span>
-                  </div>
-                </div>
-                <div class="run-action-box-right">
-                  <button class="btn-action-green" data-job="live" style="white-space:nowrap; padding:10px 18px; font-weight:700;">🚀 빠른 갱신 + 전체 재계산</button>
-                </div>
+              <div class="pipeline-secondary-tools" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:8px;">
+                <button class="ghost" data-job="krx-prices" style="font-size:12px; padding:6px 12px;">시세만 다시 받기</button>
+                <button class="ghost" data-job="live-skip" style="font-size:12px; padding:6px 12px;">점수만 다시 계산</button>
               </div>
-
-              <!-- Action Card 3: Deep Backtest History -->
-              <div class="run-action-box highlight-purple">
-                <div class="run-action-box-left">
-                  <div class="run-action-badge purple">📦 백테스트 시세 이력 확장 (3·5·7·10년 선택)</div>
-                  <div class="run-action-name">3. 백테스트 시세 빅데이터 이력 확장 (장기 정밀 검증)</div>
-                  <div class="run-action-desc">
-                    <b>어떤 상황에 누르나요?</b> '전략·백테스트 랩'에서 4대 매매 타이밍(RSI, 볼린저 등)을 3~10년 장기 사이클(상승·하락·위기 국면)로 정밀 검증할 때 누릅니다.<br>
-                    <span class="run-action-detail">💡 이미 수집된 일자는 건너뛰며, 한 번 채워두면 로컬에 영구 보존되어 다음부터 0초로 즉시 분석됩니다.</span>
-                  </div>
-                  <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
-                    <span style="font-size:12px; font-weight:700; color:#c084fc;">📅 수집 기간 선택:</span>
-                    <select id="run-history-duration" style="background:#1e1b4b; color:#e0e7ff; border:1px solid #6366f1; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600;">
-                      <option value="750">3년 (750거래일) · 스윙·단기 전략 적합 (약 8분)</option>
-                      <option value="1250" selected>5년 (1,250거래일) ⭐ 골든 스탠다드 (추천, 약 15분)</option>
-                      <option value="1750">7년 (1,750거래일) · 미중 무역분쟁 포함 장기 검증 (약 22분)</option>
-                      <option value="2500">10년 (2,500거래일) · 10년 풀사이클 거시 검증 (약 30분)</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="run-action-box-right">
-                  <button class="ghost" data-job="krx-history" style="white-space:nowrap; padding:10px 18px; font-weight:700; border-color:#a855f7; color:#c084fc; background:rgba(168,85,247,0.12);">📦 선택 기간 시세 이력 채우기</button>
-                </div>
-              </div>
-
-              <!-- Action Card 4: Resumable full-universe DART coverage -->
-              <div class="run-action-box highlight-green">
-                <div class="run-action-box-left">
-                  <div class="run-action-badge ok">📑 5단계 · 전 종목 재무 커버리지</div>
-                  <div class="run-action-name">4. OpenDART 전 종목 재무 커버리지 백필</div>
-                  <div class="run-action-desc">
-                    <b>어떤 상황에 누르나요?</b> 빠른 갱신의 시총 상위 400개 밖에 있는 종목까지 재무공시를 순차 적재할 때 누릅니다. '목표까지 자동 연속 수집'을 선택하면 버튼을 반복해서 누를 필요 없이 전 종목(2,500여 개)이 끝날 때까지 백그라운드에서 자동으로 이어서 수집합니다.<br>
-                    <span class="run-action-detail">📌 최신 분기 자동 선택 · 013/오류 시간차 재시도 · 언제든 안전 중단 가능 · 목표 완료 후 퀀트 점수 일괄 재계산</span>
-                  </div>
-                  <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
-                    <span style="font-size:12px; font-weight:700; color:#34d399;">수집 모드:</span>
-                    <select id="run-dart-batch" style="background:#052e2b; color:#d1fae5; border:1px solid #10b981; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600;">
-                      <option value="continuous" selected>🚀 목표(전 종목)까지 자동 연속 수집 ⭐ (추천)</option>
-                      <option value="100">100종목 · 1회만 실행</option>
-                      <option value="50">50종목 · 1회만 실행</option>
-                      <option value="25">25종목 · 짧게 1회만 실행</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="run-action-box-right">
-                  <button id="btn-dart-backfill" class="ghost" data-job="dart-backfill" style="white-space:nowrap; padding:10px 18px; font-weight:700; border-color:#10b981; color:#6ee7b7; background:rgba(16,185,129,0.18);">🚀 DART 전 종목 끝까지 자동 수집</button>
-                </div>
-              </div>
-              </div>
+              <p class="hint" style="margin-top:6px;">위 두 버튼은 보조 도구입니다. 일상·복구의 기본 선택은 자동 복구 실행입니다.</p>
             </details>
 
-            <!-- Advanced Collapsible Settings -->
-            <details class="run-advanced-details" style="margin-top:16px;">
-              <summary style="cursor:pointer; color:#94a3b8; font-size:12.5px; font-weight:600; padding:6px 0;">⚙️ 고급 수동 설정 & 데모 모드 (전문가용)</summary>
-              <div class="settings-grid" style="margin-top:10px; background:#0f172a; padding:14px; border-radius:8px; border:1px solid #1e293b;">
-                <label>기준일 (기본 auto)
-                  <input id="run-asof" value="auto" />
-                </label>
-                <div class="row">
-                  <label>lookback 일수
-                    <input id="run-lookback" type="number" value="80" min="20" max="1250" />
-                  </label>
-                  <label>DART 빠른 수집 종목 수
-                    <input id="run-max" type="number" value="400" min="10" max="3000" />
-                  </label>
+            <!-- LAYER C: Advanced -->
+            <details class="pipeline-layer pipeline-layer-c run-advanced-details" id="pipeline-layer-c" style="margin-top:16px;">
+              <summary style="cursor:pointer; color:#94a3b8; font-size:12.5px; font-weight:600; padding:6px 0;">고급 데이터 작업</summary>
+              <div class="pipeline-advanced-warning" style="margin:8px 0 12px; padding:10px 12px; border-radius:8px; border:1px solid #ef4444; background:rgba(239,68,68,0.10); color:#fecaca; font-size:12.5px; line-height:1.45;">
+                이 작업은 수십 분 이상 걸릴 수 있습니다.
+                실행 중에는 일일 스마트 실행과 새 시즌 스냅샷 생성이 미뤄질 수 있습니다.
+                기존 완성 데이터는 삭제하지 않습니다.
+              </div>
+              <div class="run-action-cards">
+                <div class="run-action-box highlight-purple">
+                  <div class="run-action-box-left">
+                    <div class="run-action-badge purple">시세 이력 확장</div>
+                    <div class="run-action-name">시세 이력 확장</div>
+                    <div class="run-action-desc">백테스트용 장기 일봉을 채웁니다. 이미 있는 일자는 건너뜁니다.</div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
+                      <span style="font-size:12px; font-weight:700; color:#c084fc;">📅 수집 기간:</span>
+                      <select id="run-history-duration" style="background:#1e1b4b; color:#e0e7ff; border:1px solid #6366f1; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600;">
+                        <option value="750">3년 (750거래일)</option>
+                        <option value="1250" selected>5년 (1,250거래일)</option>
+                        <option value="1750">7년 (1,750거래일)</option>
+                        <option value="2500">10년 (2,500거래일)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="run-action-box-right">
+                    <button class="ghost" data-job="krx-history" style="white-space:nowrap; padding:10px 18px; font-weight:700; border-color:#a855f7; color:#c084fc; background:rgba(168,85,247,0.12);">시세 이력 확장</button>
+                  </div>
                 </div>
-                <div class="actions" style="grid-column:span 2; margin-top:8px; display:flex; gap:8px;">
-                  <button class="ghost" data-job="demo" style="font-size:11.5px;">🧪 가상 데모 데이터 실행</button>
-                  <button class="ghost" data-job="live-skip" style="font-size:11.5px;">⚡ 수집 없이 기존 파일로만 재계산</button>
-                  <button class="ghost" data-job="screen" style="font-size:11.5px;">📊 스크리닝 점수만 재계산</button>
+
+                <div class="run-action-box highlight-green">
+                  <div class="run-action-box-left">
+                    <div class="run-action-badge ok">OpenDART 연속 백필</div>
+                    <div class="run-action-name">OpenDART 전 종목 연속 백필</div>
+                    <div class="run-action-desc">필수 복구가 아니라 전 종목 커버리지를 끝까지 채울 때만 사용하세요.</div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
+                      <span style="font-size:12px; font-weight:700; color:#34d399;">수집 모드:</span>
+                      <select id="run-dart-batch" style="background:#052e2b; color:#d1fae5; border:1px solid #10b981; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600;">
+                        <option value="continuous" selected>목표(전 종목)까지 자동 연속 수집</option>
+                        <option value="100">100종목 · 1회</option>
+                        <option value="50">50종목 · 1회</option>
+                        <option value="25">25종목 · 1회</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="run-action-box-right">
+                    <button id="btn-dart-backfill" class="ghost" data-job="dart-backfill" style="white-space:nowrap; padding:10px 18px; font-weight:700; border-color:#10b981; color:#6ee7b7; background:rgba(16,185,129,0.18);">OpenDART 전 종목 연속 백필</button>
+                  </div>
+                </div>
+
+                <div class="run-action-box highlight-green" id="pipeline-full-update-card">
+                  <div class="run-action-box-left">
+                    <div class="run-action-badge">강제 갱신</div>
+                    <div class="run-action-name">전체 데이터 강제 갱신 + 재계산</div>
+                    <div class="run-action-desc">
+                      일반적으로 사용할 필요가 없습니다.
+                      스마트 실행 또는 자동 복구로 해결되지 않을 때만 사용하세요.
+                    </div>
+                  </div>
+                  <div class="run-action-box-right">
+                    <button class="btn-action-green" data-job="live" style="white-space:nowrap; padding:10px 18px; font-weight:700;">전체 데이터 강제 갱신 + 재계산</button>
+                  </div>
                 </div>
               </div>
+
+              <details class="run-advanced-details" style="margin-top:14px;">
+                <summary style="cursor:pointer; color:#94a3b8; font-size:12.5px; font-weight:600; padding:6px 0;">⚙️ 고급 수동 설정 & 데모 모드 (전문가용)</summary>
+                <div class="settings-grid" style="margin-top:10px; background:#0f172a; padding:14px; border-radius:8px; border:1px solid #1e293b;">
+                  <label>기준일 (기본 auto)
+                    <input id="run-asof" value="auto" />
+                  </label>
+                  <div class="row">
+                    <label>lookback 일수
+                      <input id="run-lookback" type="number" value="80" min="20" max="1250" />
+                    </label>
+                    <label>DART 빠른 수집 종목 수
+                      <input id="run-max" type="number" value="400" min="10" max="3000" />
+                    </label>
+                  </div>
+                  <div class="actions" style="grid-column:span 2; margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+                    <button class="ghost" data-job="demo" style="font-size:11.5px;">🧪 가상 데모 데이터 실행</button>
+                    <button class="ghost" data-job="live-skip" style="font-size:11.5px;">⚡ 수집 없이 기존 파일로만 재계산</button>
+                    <button class="ghost" data-job="screen" style="font-size:11.5px;">📊 스크리닝 점수만 재계산</button>
+                  </div>
+                </div>
+              </details>
             </details>
           </article>
+
 
           <!-- 3. Daily Auto-Scheduler Card -->
           <article class="card">

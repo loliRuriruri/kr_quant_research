@@ -7141,3 +7141,11 @@ td.nps-empty { text-align: center; padding: 28px 12px; color: #94a3b8; }
 @media (max-width: 700px) {
   .dash-report-card { grid-template-columns: minmax(0, 1fr); }
 }
+
+
+/* A3 execution pipeline layers */
+.pipeline-layer-a .run-action-box { box-shadow: 0 0 0 1px rgba(59,130,246,0.35); }
+.pipeline-layer-b[open] > summary { color: #fbbf24; }
+.pipeline-repair-banner { animation: none; }
+.pipeline-secondary-tools .ghost { opacity: 0.92; }
+.pipeline-advanced-warning { font-weight: 600; }
