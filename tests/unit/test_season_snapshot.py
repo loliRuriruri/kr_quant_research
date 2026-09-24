@@ -389,3 +389,127 @@ def test_lkg_identity_digest_and_root_binding(prepared):
     pointer.write_bytes(pointer_bytes)
     foreign_path.unlink(missing_ok=True)
     assert snapshots.read_last_known_good(s)['generation_id'] == built['generation_id']
+
+
+# ---------------------------------------------------------------------------
+# P1 Task 1.5 — season snapshot hook integration
+# ---------------------------------------------------------------------------
+
+
+def test_schedule_shadow_delegates_to_runtime_orchestrator(prepared, monkeypatch):
+    from kr_quant.research import jev_runtime as rt
+    from kr_quant.research import season_jev_shadow as shadow_mod
+
+    s, _, _ = prepared
+    runtime_calls = []
+    legacy_calls = []
+    monkeypatch.setattr(
+        rt,
+        'request_runtime_evaluation',
+        lambda settings, bundle: runtime_calls.append((settings, bundle)),
+    )
+    monkeypatch.setattr(
+        shadow_mod, 'request_shadow_evaluation', lambda *a, **k: legacy_calls.append(1)
+    )
+
+    bundle = {'generation_id': 'gen-hook', 'identity': {'lookback': 5}}
+    snapshots._schedule_shadow(s, bundle, 5)
+
+    assert len(runtime_calls) == 1
+    assert runtime_calls[0][0] is s
+    assert runtime_calls[0][1] is bundle
+    assert legacy_calls == []
+
+    # guards retained: lookback must be 5 and the bundle must be a dict
+    snapshots._schedule_shadow(s, bundle, 2)
+    snapshots._schedule_shadow(s, bundle, 3)
+    snapshots._schedule_shadow(s, 'not-a-dict', 5)
+    snapshots._schedule_shadow(s, None, 5)
+    snapshots._schedule_shadow(s, ['not', 'dict'], 5)
+
+    assert len(runtime_calls) == 1
+    assert legacy_calls == []
+
+
+def test_lkg_serve_never_schedules_runtime(prepared, monkeypatch):
+    from kr_quant.research import jev_runtime as rt
+    from kr_quant.web import app as web
+
+    s, price, _ = prepared
+    built = snapshots.build_bundle(s)
+    price.write_bytes(b'stale for lkg runtime guard')
+    snapshots._MEM.clear()
+    runtime_calls = []
+    hook_calls = []
+    monkeypatch.setattr(
+        rt, 'request_runtime_evaluation', lambda *a, **k: runtime_calls.append(1)
+    )
+    monkeypatch.setattr(snapshots, '_schedule_shadow', lambda *a, **k: hook_calls.append(1))
+    monkeypatch.setattr(snapshots, 'request_build', lambda *a, **k: None)
+    monkeypatch.setattr(web, 'load_settings', lambda: s)
+
+    client = TestClient(web.app)
+    body = client.get('/api/seasonality/highlights').json()
+
+    assert body['snapshot']['is_current'] is False
+    assert body['snapshot']['generation_id'] == built['generation_id']
+    assert runtime_calls == []
+    assert hook_calls == []
+
+
+def test_schedule_shadow_failure_does_not_fail_snapshot(prepared, monkeypatch):
+    from kr_quant.research import jev_runtime as rt
+    from kr_quant.research import season_jev_shadow as shadow_mod
+
+    s, _, _ = prepared
+    built = snapshots.build_bundle(s)
+    pointer = snapshots._folder(s) / 'latest_lb_5.json'
+    before = pointer.read_bytes()
+
+    def boom(*a, **k):
+        raise RuntimeError('runtime exploded')
+
+    monkeypatch.setattr(rt, 'request_runtime_evaluation', boom)
+    monkeypatch.setattr(shadow_mod, 'request_shadow_evaluation', boom)
+
+    snapshots._schedule_shadow(s, built, 5)  # must not raise
+
+    assert snapshots.read_bundle(s)['generation_id'] == built['generation_id']
+    assert pointer.read_bytes() == before
+
+
+def test_request_build_does_not_wait_for_runtime_worker(prepared, monkeypatch):
+    import threading
+    import time
+
+    from kr_quant.research import jev_runtime as rt
+    from kr_quant.research import season_jev_shadow as shadow_mod
+
+    s, _, _ = prepared
+    entered, release = threading.Event(), threading.Event()
+
+    def blocking_pass(settings, *, bundle):
+        entered.set()
+        release.wait(5)
+        return {'status': 'SKIPPED', 'reason': 'TEST_BLOCKING'}
+
+    monkeypatch.setattr(rt, 'run_runtime_pass', blocking_pass)
+    monkeypatch.setattr(shadow_mod, 'evaluate_generation', lambda *a, **k: None)
+
+    started = time.monotonic()
+    snapshots.request_build(s)
+    assert entered.wait(3)
+
+    key = snapshots._key(s, 5)
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        with snapshots._LOCK:
+            if key not in snapshots._PENDING:
+                break
+        time.sleep(0.01)
+    with snapshots._LOCK:
+        assert key not in snapshots._PENDING
+    assert not release.is_set()
+    assert time.monotonic() - started < 3
+    assert snapshots.read_bundle(s) is not None
+    release.set()

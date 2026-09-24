@@ -315,9 +315,9 @@ def _schedule_shadow(settings, bundle, lookback: int) -> None:
     if lookback != 5 or not isinstance(bundle, dict):
         return
     try:
-        from kr_quant.research.season_jev_shadow import request_shadow_evaluation
+        from kr_quant.research.jev_runtime import request_runtime_evaluation
 
-        request_shadow_evaluation(settings, bundle)
+        request_runtime_evaluation(settings, bundle)
     except Exception:
         logger.exception("Jev shadow schedule failed; season snapshot unchanged")
 

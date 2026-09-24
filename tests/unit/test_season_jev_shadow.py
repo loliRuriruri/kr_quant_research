@@ -310,9 +310,11 @@ def test_partial_status_when_some_candidates_fail(tmp_path, monkeypatch, env_key
 
 
 def test_lookback_five_only_auto_trigger(tmp_path, monkeypatch):
+    from kr_quant.research import jev_runtime as rt
+
     s = _settings(tmp_path)
     called = []
-    monkeypatch.setattr(shadow, "request_shadow_evaluation", lambda settings, bundle: called.append(bundle["identity"]["lookback"]))
+    monkeypatch.setattr(rt, "request_runtime_evaluation", lambda settings, bundle: called.append(bundle["identity"]["lookback"]))
     snapshots._schedule_shadow(s, _bundle(), 2)
     snapshots._schedule_shadow(s, _bundle(), 5)
     snapshots._schedule_shadow(s, _bundle(), 3)

@@ -18,6 +18,7 @@ import pytest
 from kr_quant.research import jev_runtime as rt
 from kr_quant.research import season_jev_shadow
 from kr_quant.research.jev_research_gate import research_gate_path
+from kr_quant.web import season_snapshot as snapshots
 
 GEN = "gen-1"
 PROVIDER = "typesafe_direct"
@@ -1009,3 +1010,98 @@ def test_gate_reuse_blocked_by_invalid_mode(tmp_path: Path) -> None:
     replacement = json.loads(Path(second["paths"]["gate"]).read_text(encoding="utf-8"))
     assert replacement["mode"] == "SHADOW_ONLY"
     assert replacement["side_effects_executed"] is False
+
+
+# ---------------------------------------------------------------------------
+# P1 Task 1.5 — season snapshot hook integration
+# ---------------------------------------------------------------------------
+
+
+def test_hook_disabled_mode_zero_downstream_work(tmp_path: Path, monkeypatch) -> None:
+    _write_season_config(tmp_path, {"enabled": False})
+    settings = _settings(tmp_path)
+    shadow = {"calls": 0}
+    monkeypatch.setattr(
+        season_jev_shadow,
+        "evaluate_generation",
+        lambda *a, **k: shadow.__setitem__("calls", shadow["calls"] + 1),
+    )
+
+    snapshots._schedule_shadow(settings, _bundle(), 5)
+
+    assert _wait_for(lambda: GEN not in rt._PENDING_GENERATIONS)
+    assert shadow["calls"] == 0
+    assert not (tmp_path / "data").exists()
+
+
+def test_hook_shadow_mode_reaches_shadow_and_gate_only(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _write_season_config(tmp_path, {"mode": "shadow", "enabled": True})
+    _write_thresholds(tmp_path)
+    settings = _settings(tmp_path)
+    shadow = {"calls": 0}
+    executor = {"calls": 0}
+    verifier = {"calls": 0}
+    real_pass = rt.run_runtime_pass
+
+    def wrapped(settings_, *, bundle):
+        return real_pass(
+            settings_,
+            bundle=bundle,
+            shadow_evaluator=_fake_evaluator(shadow),
+            executor=_fake_executor(executor),
+            verifier=_fake_verifier(verifier),
+        )
+
+    monkeypatch.setattr(rt, "run_runtime_pass", wrapped)
+    monkeypatch.setattr(
+        season_jev_shadow, "request_shadow_evaluation", lambda *a, **k: None
+    )
+
+    snapshots._schedule_shadow(settings, _bundle(), 5)
+
+    assert _wait_for(lambda: GEN not in rt._PENDING_GENERATIONS)
+    assert shadow["calls"] == 1
+    assert research_gate_path(settings, GEN, PROVIDER).exists()
+    assert executor["calls"] == 0
+    assert verifier["calls"] == 0
+    assert not (tmp_path / "data" / "research_snapshots" / "season_jev_runtime").exists()
+
+
+def test_hook_duplicate_schedule_is_single_flight(tmp_path: Path, monkeypatch) -> None:
+    _write_season_config(tmp_path, {"mode": "shadow", "enabled": True})
+    _write_thresholds(tmp_path)
+    settings = _settings(tmp_path)
+    calls = {"count": 0}
+    gate_writes = {"count": 0}
+    payload = _shadow_payload([_record("c1")])
+    release = threading.Event()
+
+    def fake_evaluate_generation(settings_, bundle):
+        calls["count"] += 1
+        release.wait(timeout=5)
+        _write_shadow_artifact(settings_, payload)
+        return payload
+
+    real_write = rt.write_research_gate_artifact
+
+    def counting_write(path, gate_payload):
+        gate_writes["count"] += 1
+        return real_write(path, gate_payload)
+
+    monkeypatch.setattr(season_jev_shadow, "evaluate_generation", fake_evaluate_generation)
+    monkeypatch.setattr(rt, "write_research_gate_artifact", counting_write)
+
+    snapshots._schedule_shadow(settings, _bundle(), 5)
+    assert _wait_for(lambda: GEN in rt._PENDING_GENERATIONS, timeout=1.0)
+    assert _wait_for(lambda: calls["count"] == 1)
+
+    snapshots._schedule_shadow(settings, _bundle(), 5)  # duplicate: single-flight
+
+    release.set()
+    assert _wait_for(lambda: GEN not in rt._PENDING_GENERATIONS)
+
+    assert calls["count"] == 1
+    assert gate_writes["count"] == 1
+    assert research_gate_path(settings, GEN, PROVIDER).exists()
