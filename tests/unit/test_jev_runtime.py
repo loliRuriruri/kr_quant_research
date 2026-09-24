@@ -1490,3 +1490,372 @@ def test_research_config_canary_deep_ai_cap_exceeds_production() -> None:
     result = rt.resolve_research_config("canary", {"research": cfg})
     assert result["status"] == "INVALID"
     assert result["reason"] == "RESEARCH_CONFIG_INVALID"
+
+
+# ---------------------------------------------------------------------------
+# P2 Task 2.3 — threshold approval CLI (offline)
+# ---------------------------------------------------------------------------
+
+
+def _load_approval_cli():
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "jev_threshold_approval.py"
+    spec = importlib.util.spec_from_file_location("jev_threshold_approval_cli", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _selection_locked(
+    *, head: str = "needsNews", threshold: float = 0.4, **overrides
+) -> dict:
+    from kr_quant.research.jev_calibration import lock_selection
+
+    manifest = {
+        "dataset_id": "labels-2026-09",
+        "dataset_hash": "a" * 64,
+        "bucket": {
+            "provider": "typesafe_direct",
+            "requested_model": "jev-latest",
+            "evaluator_version": "season-jev-shadow-v1",
+        },
+        "head": head,
+        "selected_threshold": threshold,
+        "selection_basis": "calibration_only",
+        "calibration_metrics_hash": "b" * 64,
+        "selected_at": "2026-09-23T00:00:00Z",
+    }
+    manifest.update(overrides)
+    return lock_selection(manifest)
+
+
+def _holdout_report(
+    selection: dict, *, review_status: str | None = "ACCEPT", **overrides
+) -> dict:
+    report = {
+        "state": "HOLDOUT_REVEALED",
+        "head": selection["head"],
+        "selected_threshold": selection["selected_threshold"],
+        "selection_manifest_hash": selection["selection_manifest_hash"],
+        "selection_basis": "calibration_only",
+        "selection_locked_at": selection["selected_at"],
+        "holdout_revealed_at": "2026-09-23T01:00:00Z",
+        "TP": 40,
+        "FP": 10,
+        "TN": 50,
+        "FN": 5,
+        "support_positive": 60,
+        "support_negative": 60,
+        "unknown_count": 0,
+        "invalid_probability_count": 0,
+        "holdout_revealed": True,
+    }
+    report.update(overrides)
+    if review_status is not None:
+        report["review_status"] = review_status
+    return report
+
+
+def _write_json_file(path: Path, payload: object) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def _expected_approval_path(tmp_path: Path, head: str = "needsNews") -> Path:
+    return (
+        tmp_path
+        / "approvals"
+        / f"{rt.bucket_hash('typesafe_direct', 'jev-latest', 'season-jev-shadow-v1')}__{head}.json"
+    )
+
+
+def _run_build(
+    cli, tmp_path: Path, selection: dict, holdout: dict, *, out: Path | None = None
+) -> int:
+    selection_path = _write_json_file(tmp_path / "selection.json", selection)
+    holdout_path = _write_json_file(tmp_path / "holdout.json", holdout)
+    return cli.main(
+        [
+            "build",
+            "--selection",
+            str(selection_path),
+            "--holdout",
+            str(holdout_path),
+            "--out",
+            str(out if out is not None else _expected_approval_path(tmp_path)),
+        ]
+    )
+
+
+def test_approval_cli_build_valid(tmp_path: Path, capsys) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked()
+    holdout = _holdout_report(selection)
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 0
+    assert out.is_file()
+    record = json.loads(out.read_text(encoding="utf-8"))
+    assert record["approval_type"] == "jev_threshold_approval"
+    assert record["head"] == "needsNews"
+    assert record["threshold"] == 0.4
+    assert record["holdout_pristine"] is True
+    assert record["review_status"] == "ACCEPT"
+    assert record["approved_by"] == "human"
+    assert record["support"] == {
+        "valid_count": 120,
+        "positive_count": 60,
+        "negative_count": 60,
+    }
+    assert record["selection_manifest_hash"] == selection["selection_manifest_hash"]
+    expected_holdout_hash = rt.approval_record_hash(
+        {key: value for key, value in holdout.items() if key != "holdout_report_hash"}
+    )
+    assert record["holdout_report_hash"] == expected_holdout_hash
+    assert rt.verify_approval_record(
+        record,
+        provider="typesafe_direct",
+        requested_model="jev-latest",
+        evaluator_version="season-jev-shadow-v1",
+        head="needsNews",
+        threshold=0.4,
+    ) == {"ok": True, "reason": None}
+    assert '"status": "OK"' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("review", ["REJECT", "COLLECT_MORE_LABELS", None])
+def test_approval_cli_build_rejects_non_accept_review(
+    tmp_path: Path, review: str | None
+) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked()
+    holdout = _holdout_report(selection, review_status=review)
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 1
+    assert not out.exists()
+
+
+def test_approval_cli_build_rejects_selection_hash_tamper(tmp_path: Path) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked()
+    holdout = _holdout_report(selection)
+    selection["selection_manifest_hash"] = "0" * 64
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 1
+    assert not out.exists()
+
+
+def test_approval_cli_build_rejects_holdout_selection_mismatch(tmp_path: Path) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked()
+    holdout = _holdout_report(selection, selection_manifest_hash="0" * 64)
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 1
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "override", [{"selected_threshold": 0.5}, {"head": "needsDart"}]
+)
+def test_approval_cli_build_rejects_holdout_identity_mismatch(
+    tmp_path: Path, override: dict
+) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked()
+    holdout = _holdout_report(selection, **override)
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 1
+    assert not out.exists()
+
+
+def test_approval_cli_build_rejects_non_pristine_marker(tmp_path: Path) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked(pristine_holdout=False)
+    holdout = _holdout_report(selection)
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 1
+    assert not out.exists()
+
+
+def test_approval_cli_build_rejects_unreadable_inputs(tmp_path: Path) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked()
+    holdout = _holdout_report(selection)
+    selection_path = tmp_path / "selection.json"
+    selection_path.write_text("{not-json", encoding="utf-8")
+    holdout_path = _write_json_file(tmp_path / "holdout.json", holdout)
+    out = _expected_approval_path(tmp_path)
+
+    rc = cli.main(
+        [
+            "build",
+            "--selection",
+            str(selection_path),
+            "--holdout",
+            str(holdout_path),
+            "--out",
+            str(out),
+        ]
+    )
+
+    assert rc == 1
+    assert not out.exists()
+
+
+def test_approval_cli_build_rejects_output_path_mismatch(tmp_path: Path) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked()
+    holdout = _holdout_report(selection)
+    out = tmp_path / "approvals" / "wrong__name.json"
+
+    rc = _run_build(cli, tmp_path, selection, holdout, out=out)
+
+    assert rc == 1
+    assert not out.exists()
+
+
+def _verify_fixture(
+    tmp_path: Path, *, record: dict | None = None, config_threshold: object = 0.4
+) -> int:
+    cli = _load_approval_cli()
+    record = record if record is not None else rt.build_approval_record(**_approval_kwargs())
+    approval_path = _write_json_file(tmp_path / "approval.json", record)
+    cfg = _threshold_cfg()
+    cfg["buckets"][0]["thresholds"]["needsNews"] = config_threshold
+    config_path = _write_json_file(tmp_path / "jev_thresholds.json", cfg)
+    return cli.main(["verify", "--approval", str(approval_path), "--config", str(config_path)])
+
+
+def test_approval_cli_verify_valid_writes_nothing(tmp_path: Path, capsys) -> None:
+    cli = _load_approval_cli()
+    record = rt.build_approval_record(**_approval_kwargs())
+    approval_path = _write_json_file(tmp_path / "approval.json", record)
+    cfg = _threshold_cfg()
+    cfg["buckets"][0]["thresholds"]["needsNews"] = 0.4
+    config_path = _write_json_file(tmp_path / "jev_thresholds.json", cfg)
+    before = _fs_snapshot(tmp_path)
+
+    rc = cli.main(["verify", "--approval", str(approval_path), "--config", str(config_path)])
+
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert out == {"ok": True, "reason": None}
+    assert _fs_snapshot(tmp_path) == before
+
+
+def test_approval_cli_verify_tampered(tmp_path: Path, capsys) -> None:
+    record = rt.build_approval_record(**_approval_kwargs())
+    record["dataset_id"] = "tampered"
+
+    rc = _verify_fixture(tmp_path, record=record)
+
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert out == {"ok": False, "reason": "APPROVAL_MISMATCH"}
+
+
+def test_approval_cli_verify_config_threshold_mismatch(tmp_path: Path, capsys) -> None:
+    rc = _verify_fixture(tmp_path, config_threshold=0.5)
+
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert out == {"ok": False, "reason": "APPROVAL_MISMATCH"}
+
+
+def test_approval_cli_verify_null_config_threshold_fails_closed(
+    tmp_path: Path, capsys
+) -> None:
+    rc = _verify_fixture(tmp_path, config_threshold=None)
+
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert out["ok"] is False
+
+
+def test_approval_cli_verify_malformed_files_fail_closed(tmp_path: Path, capsys) -> None:
+    cli = _load_approval_cli()
+    record = rt.build_approval_record(**_approval_kwargs())
+    approval_path = _write_json_file(tmp_path / "approval.json", record)
+    bad_config = tmp_path / "bad_config.json"
+    bad_config.write_text("{not-json", encoding="utf-8")
+
+    rc = cli.main(["verify", "--approval", str(approval_path), "--config", str(bad_config)])
+
+    assert rc == 1
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["ok"] is False
+
+    bad_approval = tmp_path / "bad_approval.json"
+    bad_approval.write_text("[]", encoding="utf-8")
+    cfg = _threshold_cfg()
+    cfg["buckets"][0]["thresholds"]["needsNews"] = 0.4
+    config_path = _write_json_file(tmp_path / "jev_thresholds.json", cfg)
+
+    rc = cli.main(
+        ["verify", "--approval", str(bad_approval), "--config", str(config_path)]
+    )
+
+    assert rc == 1
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["ok"] is False
+
+
+def test_approval_cli_has_no_network_imports() -> None:
+    import ast
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "jev_threshold_approval.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+    forbidden = {
+        "requests",
+        "httpx",
+        "aiohttp",
+        "urllib",
+        "urllib3",
+        "socket",
+        "subprocess",
+        "selenium",
+        "playwright",
+    }
+    assert not (imported & forbidden)
+    assert imported <= {
+        "__future__",
+        "argparse",
+        "json",
+        "sys",
+        "pathlib",
+        "datetime",
+        "kr_quant",
+    }
+
+
+def test_approval_cli_import_is_side_effect_free(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    module = _load_approval_cli()
+
+    assert capsys.readouterr().out == ""
+    assert list(tmp_path.iterdir()) == []
+    assert callable(module.main)
