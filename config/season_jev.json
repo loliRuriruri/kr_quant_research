@@ -1,5 +1,6 @@
 {
-  "enabled": false,
+  "mode": "shadow",
+  "enabled": true,
   "evaluator_version": "season-jev-shadow-v1",
   "model": "jev-latest",
   "lookback_years": 5,
