@@ -1105,3 +1105,129 @@ def test_hook_duplicate_schedule_is_single_flight(tmp_path: Path, monkeypatch) -
     assert calls["count"] == 1
     assert gate_writes["count"] == 1
     assert research_gate_path(settings, GEN, PROVIDER).exists()
+
+
+# ---------------------------------------------------------------------------
+# P1 Task 1.7 — operator runtime-pass CLI (offline contract)
+# ---------------------------------------------------------------------------
+
+
+def _load_runtime_cli():
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "jev_runtime.py"
+    spec = importlib.util.spec_from_file_location("jev_runtime_cli", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _cli_settings(tmp_path: Path) -> SimpleNamespace:
+    return SimpleNamespace(root=tmp_path, data_dir=tmp_path / "data")
+
+
+def _fs_bytes(root: Path) -> dict:
+    return {
+        str(path.relative_to(root)): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _patch_cli(monkeypatch, cli, settings, bundle):
+    from kr_quant.web import season_snapshot
+
+    monkeypatch.setattr(cli, "_load_settings", lambda: settings)
+    monkeypatch.setattr(
+        season_snapshot, "read_bundle", lambda settings_, lookback=5, **kwargs: bundle
+    )
+    calls = {"runtime": [], "request": []}
+    monkeypatch.setattr(
+        rt,
+        "run_runtime_pass",
+        lambda settings_, *, bundle: calls["runtime"].append((settings_, bundle))
+        or {
+            "status": "OK",
+            "mode": "shadow",
+            "generation_id": (bundle or {}).get("generation_id"),
+            "shadow": {"present": True},
+            "gate": {"present": True},
+            "counts": {"gate_writes": 1},
+            "reason": None,
+            "error": None,
+            "paths": {},
+            "resumed": False,
+        },
+    )
+    monkeypatch.setattr(
+        rt, "request_runtime_evaluation", lambda *a, **k: calls["request"].append(1)
+    )
+    return calls
+
+
+def test_cli_runtime_pass_no_current_bundle(tmp_path: Path, monkeypatch, capsys) -> None:
+    cli = _load_runtime_cli()
+    settings = _cli_settings(tmp_path)
+    calls = _patch_cli(monkeypatch, cli, settings, None)
+    before = _fs_bytes(tmp_path)
+
+    rc = cli.main(["runtime-pass"])
+
+    assert rc == 1
+    assert calls["runtime"] == []
+    assert calls["request"] == []
+    assert "NO_CURRENT_BUNDLE" in capsys.readouterr().out
+    assert _fs_bytes(tmp_path) == before
+    assert not (tmp_path / "data").exists()
+
+
+def test_cli_runtime_pass_success_json_contract(tmp_path: Path, monkeypatch, capsys) -> None:
+    cli = _load_runtime_cli()
+    settings = _cli_settings(tmp_path)
+    bundle = {"generation_id": "gen-cli", "identity": {"lookback": 5}}
+    calls = _patch_cli(monkeypatch, cli, settings, bundle)
+    before = _fs_bytes(tmp_path)
+
+    rc = cli.main(["runtime-pass"])
+
+    assert rc == 0
+    assert len(calls["runtime"]) == 1
+    assert calls["runtime"][0][0] is settings
+    assert calls["runtime"][0][1] is bundle
+    assert calls["request"] == []
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    for key in ("mode", "generation_id", "status", "shadow", "gate", "counts"):
+        assert key in out
+    assert out["mode"] == "shadow"
+    assert out["generation_id"] == "gen-cli"
+    assert _fs_bytes(tmp_path) == before
+
+
+def test_cli_runtime_pass_accepts_exact_generation(tmp_path: Path, monkeypatch) -> None:
+    cli = _load_runtime_cli()
+    settings = _cli_settings(tmp_path)
+    bundle = {"generation_id": "gen-cli", "identity": {"lookback": 5}}
+    calls = _patch_cli(monkeypatch, cli, settings, bundle)
+
+    rc = cli.main(["runtime-pass", "--generation", "gen-cli"])
+
+    assert rc == 0
+    assert len(calls["runtime"]) == 1
+
+
+def test_cli_runtime_pass_rejects_generation_mismatch(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    cli = _load_runtime_cli()
+    settings = _cli_settings(tmp_path)
+    bundle = {"generation_id": "gen-cli", "identity": {"lookback": 5}}
+    calls = _patch_cli(monkeypatch, cli, settings, bundle)
+    before = _fs_bytes(tmp_path)
+
+    rc = cli.main(["runtime-pass", "--generation", "gen-other"])
+
+    assert rc == 1
+    assert calls["runtime"] == []
+    assert calls["request"] == []
+    assert "GENERATION_MISMATCH" in capsys.readouterr().out
+    assert _fs_bytes(tmp_path) == before
