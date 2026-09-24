@@ -416,3 +416,150 @@ def test_gate_pass_repeated_identical_call_is_byte_identical(tmp_path: Path) -> 
     assert second["status"] == "OK"
     assert path.read_bytes() == first_bytes
     assert second["gate"] == first["gate"]
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3 — partition_shadow_records / map_shadow_record_status
+# ---------------------------------------------------------------------------
+
+
+def _record(
+    cid: str,
+    *,
+    status: str = "GENERATED",
+    state_hash: object = "a" * 64,
+    answers: object = None,
+    skip_reason: object = None,
+    error: object = None,
+) -> dict:
+    record = {
+        "candidate_id": cid,
+        "state_hash": state_hash,
+        "ticker": "005930",
+        "answers": _answers() if answers is None else answers,
+        "status": status,
+    }
+    if skip_reason is not None:
+        record["skip_reason"] = skip_reason
+    if error is not None:
+        record["error"] = error
+    return record
+
+
+def test_partition_generated_and_reused_are_gate_candidates() -> None:
+    generated = _record("c1", status="GENERATED")
+    reused = _record("c2", status="REUSED")
+    parts = rt.partition_shadow_records(_shadow_payload(results=[generated, reused]))
+    assert parts["gate_candidates"] == [generated, reused]
+    assert parts["preserved"] == []
+
+
+def test_partition_skipped_and_error_are_preserved_verbatim() -> None:
+    skipped = _record("c1", status="SKIPPED", skip_reason="API_CAP_DAILY", answers={})
+    errored = _record("c2", status="ERROR", error="RUNNER:RuntimeError", answers={})
+    parts = rt.partition_shadow_records(_shadow_payload(results=[skipped, errored]))
+    assert parts["gate_candidates"] == []
+    assert parts["preserved"] == [skipped, errored]
+    assert parts["preserved"][0]["skip_reason"] == "API_CAP_DAILY"
+    assert parts["preserved"][1]["error"] == "RUNNER:RuntimeError"
+
+
+def test_partition_missing_state_hash_never_enters_gate_candidates() -> None:
+    empty_hash = _record("c1", status="GENERATED", state_hash="")
+    absent_hash = _record("c2", status="REUSED")
+    absent_hash.pop("state_hash")
+    parts = rt.partition_shadow_records(_shadow_payload(results=[empty_hash, absent_hash]))
+    assert parts["gate_candidates"] == []
+    assert parts["preserved"] == [empty_hash, absent_hash]
+
+
+def test_partition_does_not_mutate_inputs() -> None:
+    records = [
+        _record("c1"),
+        _record("c2", status="SKIPPED", skip_reason="API_CAP_DAILY", answers={}),
+    ]
+    payload = _shadow_payload(results=records)
+    before = copy.deepcopy(payload)
+    rt.partition_shadow_records(payload)
+    assert payload == before
+
+
+@pytest.mark.parametrize("bad", [None, [], "x", {"results": "nope"}, {"results": None}])
+def test_partition_rejects_malformed_payload(bad: object) -> None:
+    with pytest.raises(ValueError):
+        rt.partition_shadow_records(bad)  # type: ignore[arg-type]
+
+
+def test_map_generated_and_reused_to_gate_candidate() -> None:
+    assert rt.map_shadow_record_status(_record("c1")) == {
+        "runtime_status": "GATE_CANDIDATE",
+        "reason": None,
+    }
+    assert rt.map_shadow_record_status(_record("c1", status="REUSED")) == {
+        "runtime_status": "GATE_CANDIDATE",
+        "reason": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "reason", ["API_CAP_GENERATION", "API_CAP_DAILY", "API_BUDGET_UNAVAILABLE"]
+)
+def test_map_budget_skip_to_skipped_budget_with_original_reason(reason: str) -> None:
+    record = _record("c1", status="SKIPPED", skip_reason=reason, answers={})
+    assert rt.map_shadow_record_status(record) == {
+        "runtime_status": "SKIPPED_BUDGET",
+        "reason": reason,
+    }
+
+
+def test_map_budget_skip_with_empty_answers_never_becomes_gate_error() -> None:
+    record = _record("c1", status="SKIPPED", skip_reason="API_CAP_DAILY", answers={})
+    mapped = rt.map_shadow_record_status(record)
+    assert mapped["runtime_status"] == "SKIPPED_BUDGET"
+    assert mapped["reason"] == "API_CAP_DAILY"
+    assert "MISSING_ANSWERS" not in str(mapped)
+    assert "MISSING_HEAD" not in str(mapped)
+
+
+def test_map_other_skip_to_skipped_uncalibrated_with_reason() -> None:
+    record = _record("c1", status="SKIPPED", skip_reason="SOMETHING_ELSE", answers={})
+    assert rt.map_shadow_record_status(record) == {
+        "runtime_status": "SKIPPED_UNCALIBRATED",
+        "reason": "SOMETHING_ELSE",
+    }
+
+
+def test_map_error_to_failed_with_original_error() -> None:
+    record = _record("c1", status="ERROR", error="PROCESS_TIMEOUT", answers={})
+    assert rt.map_shadow_record_status(record) == {
+        "runtime_status": "FAILED",
+        "reason": "PROCESS_TIMEOUT",
+    }
+
+
+def test_map_error_without_reason_uses_bounded_code() -> None:
+    record = _record("c1", status="ERROR", answers={})
+    assert rt.map_shadow_record_status(record) == {
+        "runtime_status": "FAILED",
+        "reason": "SHADOW_ERROR",
+    }
+
+
+def test_map_missing_state_hash_to_failed_state_hash_missing() -> None:
+    assert rt.map_shadow_record_status(_record("c1", state_hash="")) == {
+        "runtime_status": "FAILED",
+        "reason": "STATE_HASH_MISSING",
+    }
+    absent = _record("c1")
+    absent.pop("state_hash")
+    assert rt.map_shadow_record_status(absent) == {
+        "runtime_status": "FAILED",
+        "reason": "STATE_HASH_MISSING",
+    }
+
+
+def test_map_does_not_mutate_record() -> None:
+    record = _record("c1", status="SKIPPED", skip_reason="API_CAP_DAILY", answers={})
+    before = copy.deepcopy(record)
+    rt.map_shadow_record_status(record)
+    assert record == before
