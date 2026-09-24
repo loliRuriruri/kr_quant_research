@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""JEV runtime mode resolution, shadow gate pass, orchestrator, status, and approval records
-(P1 Tasks 1.1–1.4, P2 Task 2.1).
+"""JEV runtime mode resolution, shadow gate pass, orchestrator, status, approval records,
+and approval-gated eligibility (P1 Tasks 1.1–1.4, P2 Tasks 2.1–2.2).
 
 Pure, fail-closed resolution of the runtime lifecycle mode from the raw
 ``config/season_jev.json`` payload, the lower-level shadow gate pass that wires
@@ -50,6 +50,9 @@ MODE_CANARY = "canary"
 MODE_PRODUCTION = "production"
 MODES = (MODE_DISABLED, MODE_SHADOW, MODE_CANARY, MODE_PRODUCTION)
 
+STATUS_ELIGIBLE = "ELIGIBLE"
+STATUS_INELIGIBLE = "INELIGIBLE"
+
 SHADOW_GATE_ELIGIBLE_STATUSES = frozenset({"GENERATED", "REUSED"})
 SHADOW_BUDGET_SKIP_REASONS = frozenset(
     {"API_CAP_GENERATION", "API_CAP_DAILY", "API_BUDGET_UNAVAILABLE"}
@@ -77,6 +80,20 @@ EXECUTION_IDENTITY_FIELDS = (
 
 APPROVAL_SCHEMA_VERSION = 1
 APPROVAL_ARTIFACT_TYPE = "jev_threshold_approval"
+
+ADVISORY_HEADS = ("materialNow", "historicalConflict")
+
+ACTIONABLE_HEADS = (
+    "needsCurrentYearCheck",
+    "needsNews",
+    "needsDart",
+    "needsDeepAI",
+    "invalidationCheckNeeded",
+)
+
+_RESEARCH_ACTION_TYPES = frozenset(
+    {"current_year_check", "news", "dart", "deep_ai", "invalidation_check"}
+)
 
 # Internal marker used by load_raw_runtime_config to carry a load failure into
 # resolve_runtime_mode without raising. Never persisted.
@@ -1280,3 +1297,274 @@ def verify_approval_record(
     ):
         return _fail("SUPPORT_INSUFFICIENT")
     return {"ok": True, "reason": None}
+
+
+# ---------------------------------------------------------------------------
+# P2 Task 2.2 — approval-gated eligibility resolution (pure, fail-closed)
+# ---------------------------------------------------------------------------
+
+
+def _find_exact_bucket(
+    cfg: Any,
+    *,
+    provider: str,
+    requested_model: str,
+    evaluator_version: str,
+) -> Mapping[str, Any] | None:
+    if not isinstance(cfg, Mapping):
+        return None
+    buckets = cfg.get("buckets")
+    if not isinstance(buckets, list):
+        return None
+    for bucket in buckets:
+        if not isinstance(bucket, Mapping):
+            continue
+        if (
+            bucket.get("provider") == provider
+            and bucket.get("requested_model") == requested_model
+            and bucket.get("evaluator_version") == evaluator_version
+        ):
+            return bucket
+    return None
+
+
+def resolve_head_eligibility(
+    *,
+    threshold_cfg: Mapping[str, Any],
+    approvals_dir: Any,
+    provider: str,
+    requested_model: str,
+    evaluator_version: str,
+    head: str,
+) -> dict[str, Any]:
+    """Resolve one head's approval-gated eligibility (pure, read-only, fail-closed).
+
+    Evaluation order: ``BUCKET_MISSING`` -> ``THRESHOLD_NULL`` ->
+    ``THRESHOLD_MALFORMED`` -> ``APPROVAL_MISSING`` -> ``APPROVAL_MISMATCH`` ->
+    ``REVIEW_NOT_ACCEPTED`` -> ``HOLDOUT_NOT_PRISTINE`` ->
+    ``SUPPORT_INSUFFICIENT`` -> ``ELIGIBLE``. No exception from malformed
+    threshold or approval artifact escapes as eligibility.
+    """
+    def _result(
+        status: str, reason: str | None, threshold: float | None = None
+    ) -> dict[str, Any]:
+        return {
+            "head": head,
+            "status": status,
+            "eligible": status == STATUS_ELIGIBLE,
+            "reason": reason,
+            "threshold": threshold,
+        }
+
+    bucket = _find_exact_bucket(
+        threshold_cfg,
+        provider=provider,
+        requested_model=requested_model,
+        evaluator_version=evaluator_version,
+    )
+    if bucket is None:
+        return _result(STATUS_INELIGIBLE, "BUCKET_MISSING")
+
+    thresholds = bucket.get("thresholds")
+    if (
+        not isinstance(thresholds, Mapping)
+        or head not in thresholds
+        or thresholds.get(head) is None
+    ):
+        return _result(STATUS_INELIGIBLE, "THRESHOLD_NULL")
+
+    from kr_quant.research.jev_calibration import lookup_threshold
+
+    try:
+        looked = lookup_threshold(
+            threshold_cfg,
+            provider=provider,
+            requested_model=requested_model,
+            evaluator_version=evaluator_version,
+            head=head,
+        )
+    except Exception:  # fail closed: malformed threshold never escapes as eligibility
+        return _result(STATUS_INELIGIBLE, "THRESHOLD_MALFORMED")
+    numeric = _finite_unit_float(looked.get("threshold"))
+    if numeric is None:
+        if thresholds.get(head) is None:
+            return _result(STATUS_INELIGIBLE, "THRESHOLD_NULL")
+        return _result(STATUS_INELIGIBLE, "THRESHOLD_MALFORMED")
+
+    try:
+        approval_path = (
+            Path(approvals_dir)
+            / f"{bucket_hash(provider, requested_model, evaluator_version)}__{head}.json"
+        )
+    except (TypeError, ValueError):
+        return _result(STATUS_INELIGIBLE, "APPROVAL_MISSING")
+    if not approval_path.is_file():
+        return _result(STATUS_INELIGIBLE, "APPROVAL_MISSING")
+
+    try:
+        record = json.loads(approval_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return _result(STATUS_INELIGIBLE, "APPROVAL_MISMATCH")
+    if not isinstance(record, Mapping):
+        return _result(STATUS_INELIGIBLE, "APPROVAL_MISMATCH")
+
+    try:
+        verdict = verify_approval_record(
+            record,
+            provider=provider,
+            requested_model=requested_model,
+            evaluator_version=evaluator_version,
+            head=head,
+            threshold=numeric,
+        )
+    except Exception:  # fail closed: malformed artifact never escapes as eligibility
+        return _result(STATUS_INELIGIBLE, "APPROVAL_MISMATCH")
+    if not isinstance(verdict, Mapping) or not verdict.get("ok"):
+        reason = verdict.get("reason") if isinstance(verdict, Mapping) else None
+        return _result(STATUS_INELIGIBLE, reason or "APPROVAL_MISMATCH")
+    return _result(STATUS_ELIGIBLE, None, threshold=numeric)
+
+
+def resolve_mode_eligibility(
+    *,
+    mode: str,
+    threshold_cfg: Mapping[str, Any],
+    approvals_dir: Any,
+    provider: str,
+    requested_model: str,
+    evaluator_version: str,
+) -> dict[str, Any]:
+    """Aggregate per-head eligibility into a deterministic mode decision.
+
+    CANARY requires at least one eligible actionable head; PRODUCTION requires
+    all five. Advisory heads never affect ``mode_ok``.
+    """
+    from kr_quant.research.jev_calibration import BOOLEAN_HEADS
+
+    heads: dict[str, Any] = {}
+    for head in BOOLEAN_HEADS:
+        heads[head] = resolve_head_eligibility(
+            threshold_cfg=threshold_cfg,
+            approvals_dir=approvals_dir,
+            provider=provider,
+            requested_model=requested_model,
+            evaluator_version=evaluator_version,
+            head=head,
+        )
+    eligible_heads = [head for head in BOOLEAN_HEADS if heads[head]["eligible"]]
+    ineligible_heads = {
+        head: heads[head]["reason"]
+        for head in BOOLEAN_HEADS
+        if not heads[head]["eligible"]
+    }
+    actionable_eligible = [
+        head for head in ACTIONABLE_HEADS if heads[head]["eligible"]
+    ]
+
+    if mode == MODE_CANARY:
+        mode_ok = len(actionable_eligible) >= 1
+        reason = None if mode_ok else "CANARY_ELIGIBILITY_INCOMPLETE"
+    elif mode == MODE_PRODUCTION:
+        mode_ok = len(actionable_eligible) == len(ACTIONABLE_HEADS)
+        reason = None if mode_ok else "PRODUCTION_ELIGIBILITY_INCOMPLETE"
+    else:
+        mode_ok = False
+        reason = "ELIGIBILITY_MODE_UNSUPPORTED"
+
+    return {
+        "mode": mode,
+        "mode_ok": mode_ok,
+        "reason": reason,
+        "eligible_heads": eligible_heads,
+        "ineligible_heads": ineligible_heads,
+        "heads": heads,
+    }
+
+
+def _require_int(value: Any, *, minimum: int = 0) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        return None
+    return value
+
+
+def _valid_action_types(value: Any) -> list[str] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    out: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or item not in _RESEARCH_ACTION_TYPES:
+            return None
+        out.append(item)
+    return out
+
+
+def resolve_research_config(mode: str, raw_cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the locked ``research`` runtime block (pure, no filesystem access).
+
+    Returns ``{"mode", "status", "reason", "research"}``. For canary/production,
+    a missing or malformed block — or canary caps exceeding the production caps
+    — fails closed with ``status="INVALID"`` / ``reason="RESEARCH_CONFIG_INVALID"``.
+    Other modes report ``status="OK"`` with ``research=None`` (not applicable).
+    """
+    def _invalid() -> dict[str, Any]:
+        return {
+            "mode": mode,
+            "status": "INVALID",
+            "reason": "RESEARCH_CONFIG_INVALID",
+            "research": None,
+        }
+
+    if mode not in (MODE_CANARY, MODE_PRODUCTION):
+        return {"mode": mode, "status": "OK", "reason": None, "research": None}
+
+    research = raw_cfg.get("research") if isinstance(raw_cfg, Mapping) else None
+    if not isinstance(research, Mapping):
+        return _invalid()
+
+    caps: dict[str, int] = {}
+    for key in (
+        "max_requirements_per_generation",
+        "max_research_calls_per_day",
+        "max_deep_ai_calls_per_day",
+    ):
+        value = _require_int(research.get(key), minimum=0)
+        if value is None:
+            return _invalid()
+        caps[key] = value
+    for key in ("requirement_timeout_ms", "generation_timeout_ms"):
+        if _require_int(research.get(key), minimum=1) is None:
+            return _invalid()
+
+    ages = research.get("evidence_max_age_days")
+    if not isinstance(ages, Mapping):
+        return _invalid()
+    if any(key not in _RESEARCH_ACTION_TYPES for key in ages.keys()):
+        return _invalid()
+    for action in _RESEARCH_ACTION_TYPES:
+        if _require_int(ages.get(action), minimum=1) is None:
+            return _invalid()
+
+    if _valid_action_types(research.get("allowed_action_types")) is None:
+        return _invalid()
+
+    canary = research.get("canary")
+    if canary is None:
+        if mode == MODE_CANARY:
+            return _invalid()
+    else:
+        if not isinstance(canary, Mapping):
+            return _invalid()
+        if _require_int(canary.get("max_candidates_per_generation"), minimum=0) is None:
+            return _invalid()
+        canary_daily = _require_int(canary.get("max_research_calls_per_day"), minimum=0)
+        canary_deep = _require_int(canary.get("max_deep_ai_calls_per_day"), minimum=0)
+        if canary_daily is None or canary_deep is None:
+            return _invalid()
+        if canary_daily > caps["max_research_calls_per_day"]:
+            return _invalid()
+        if canary_deep > caps["max_deep_ai_calls_per_day"]:
+            return _invalid()
+        if _valid_action_types(canary.get("allowed_action_types")) is None:
+            return _invalid()
+
+    return {"mode": mode, "status": "OK", "reason": None, "research": dict(research)}

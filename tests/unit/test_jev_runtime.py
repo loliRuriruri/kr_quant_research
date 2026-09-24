@@ -1187,3 +1187,306 @@ def test_approval_support_is_copied_not_aliased() -> None:
     record = rt.build_approval_record(**_approval_kwargs(support=support))
     support["valid_count"] = 0
     assert record["support"]["valid_count"] == 120
+
+
+# ---------------------------------------------------------------------------
+# P2 Task 2.2 — approval-gated eligibility resolution
+# ---------------------------------------------------------------------------
+
+_ACTIONABLE = (
+    "needsCurrentYearCheck",
+    "needsNews",
+    "needsDart",
+    "needsDeepAI",
+    "invalidationCheckNeeded",
+)
+
+
+def _eligibility_cfg(**head_values: object) -> dict:
+    cfg = _threshold_cfg()
+    for head, value in head_values.items():
+        cfg["buckets"][0]["thresholds"][head] = value
+    return cfg
+
+
+def _approval_path(tmp_path: Path, head: str) -> Path:
+    return (
+        tmp_path
+        / "approvals"
+        / f"{rt.bucket_hash('typesafe_direct', 'jev-latest', 'season-jev-shadow-v1')}__{head}.json"
+    )
+
+
+def _write_approval(
+    tmp_path: Path, *, head: str, threshold: float, **overrides
+) -> Path:
+    kwargs = _approval_kwargs(head=head, threshold=threshold, **overrides)
+    record = rt.build_approval_record(**kwargs)
+    path = _approval_path(tmp_path, head)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def _resolve_head(tmp_path: Path, cfg: dict, head: str = "needsNews") -> dict:
+    return rt.resolve_head_eligibility(
+        threshold_cfg=cfg,
+        approvals_dir=tmp_path / "approvals",
+        provider="typesafe_direct",
+        requested_model="jev-latest",
+        evaluator_version="season-jev-shadow-v1",
+        head=head,
+    )
+
+
+def _resolve_mode(tmp_path: Path, cfg: dict, mode: str) -> dict:
+    return rt.resolve_mode_eligibility(
+        mode=mode,
+        threshold_cfg=cfg,
+        approvals_dir=tmp_path / "approvals",
+        provider="typesafe_direct",
+        requested_model="jev-latest",
+        evaluator_version="season-jev-shadow-v1",
+    )
+
+
+def _make_eligible_cfg(
+    tmp_path: Path, heads, *, threshold: float = 0.4
+) -> dict:
+    cfg = _threshold_cfg()
+    for head in heads:
+        cfg["buckets"][0]["thresholds"][head] = threshold
+        _write_approval(tmp_path, head=head, threshold=threshold)
+    return cfg
+
+
+def test_head_eligibility_bucket_missing(tmp_path: Path) -> None:
+    result = _resolve_head(tmp_path, {"schema_version": 1, "buckets": []})
+    assert result["status"] == "INELIGIBLE"
+    assert result["eligible"] is False
+    assert result["reason"] == "BUCKET_MISSING"
+    assert result["threshold"] is None
+
+
+def test_head_eligibility_threshold_null(tmp_path: Path) -> None:
+    result = _resolve_head(tmp_path, _threshold_cfg())
+    assert result["reason"] == "THRESHOLD_NULL"
+    cfg = _threshold_cfg()
+    cfg["buckets"][0]["thresholds"].pop("needsNews")
+    assert _resolve_head(tmp_path, cfg)["reason"] == "THRESHOLD_NULL"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [True, False, "0.4", float("nan"), float("inf"), -0.1, 1.1],
+)
+def test_head_eligibility_threshold_malformed(tmp_path: Path, value: object) -> None:
+    result = _resolve_head(tmp_path, _eligibility_cfg(needsNews=value))
+    assert result["status"] == "INELIGIBLE"
+    assert result["reason"] == "THRESHOLD_MALFORMED"
+
+
+def test_head_eligibility_approval_missing(tmp_path: Path) -> None:
+    result = _resolve_head(tmp_path, _eligibility_cfg(needsNews=0.4))
+    assert result["reason"] == "APPROVAL_MISSING"
+    assert not (tmp_path / "approvals").exists()
+
+
+@pytest.mark.parametrize("payload", ["{not-json", "[]", '"text"'])
+def test_head_eligibility_approval_unreadable_or_malformed(
+    tmp_path: Path, payload: str
+) -> None:
+    path = _approval_path(tmp_path, "needsNews")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(payload, encoding="utf-8")
+    result = _resolve_head(tmp_path, _eligibility_cfg(needsNews=0.4))
+    assert result["reason"] == "APPROVAL_MISMATCH"
+
+
+def test_head_eligibility_approval_tampered(tmp_path: Path) -> None:
+    path = _write_approval(tmp_path, head="needsNews", threshold=0.4)
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["dataset_id"] = "tampered"
+    path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    assert _resolve_head(tmp_path, _eligibility_cfg(needsNews=0.4))["reason"] == "APPROVAL_MISMATCH"
+
+
+def test_head_eligibility_approval_bucket_mismatch(tmp_path: Path) -> None:
+    _write_approval(
+        tmp_path, head="needsNews", threshold=0.4, requested_model="typesafe/jev-1.13"
+    )
+    assert _resolve_head(tmp_path, _eligibility_cfg(needsNews=0.4))["reason"] == "APPROVAL_MISMATCH"
+
+
+def test_head_eligibility_review_not_accepted(tmp_path: Path) -> None:
+    _write_approval(tmp_path, head="needsNews", threshold=0.4, review_status="REJECT")
+    assert _resolve_head(tmp_path, _eligibility_cfg(needsNews=0.4))["reason"] == "REVIEW_NOT_ACCEPTED"
+
+
+def test_head_eligibility_holdout_not_pristine(tmp_path: Path) -> None:
+    _write_approval(tmp_path, head="needsNews", threshold=0.4, holdout_pristine=False)
+    assert _resolve_head(tmp_path, _eligibility_cfg(needsNews=0.4))["reason"] == "HOLDOUT_NOT_PRISTINE"
+
+
+def test_head_eligibility_support_insufficient(tmp_path: Path) -> None:
+    _write_approval(
+        tmp_path,
+        head="needsNews",
+        threshold=0.4,
+        support={"valid_count": 99, "positive_count": 60, "negative_count": 39},
+    )
+    assert _resolve_head(tmp_path, _eligibility_cfg(needsNews=0.4))["reason"] == "SUPPORT_INSUFFICIENT"
+
+
+def test_head_eligibility_valid_approval_is_eligible(tmp_path: Path) -> None:
+    path = _write_approval(tmp_path, head="needsNews", threshold=0.4)
+    before = path.read_bytes()
+
+    result = _resolve_head(tmp_path, _eligibility_cfg(needsNews=0.4))
+
+    assert result == {
+        "head": "needsNews",
+        "status": "ELIGIBLE",
+        "eligible": True,
+        "reason": None,
+        "threshold": 0.4,
+    }
+    assert path.read_bytes() == before
+    assert {p.name for p in path.parent.iterdir()} == {path.name}
+
+
+def test_mode_eligibility_canary_zero_actionable(tmp_path: Path) -> None:
+    result = _resolve_mode(tmp_path, _threshold_cfg(), "canary")
+    assert result["mode_ok"] is False
+    assert result["reason"] == "CANARY_ELIGIBILITY_INCOMPLETE"
+    assert result["eligible_heads"] == []
+    assert set(result["ineligible_heads"]) == set(_HEADS)
+
+
+def test_mode_eligibility_canary_one_actionable(tmp_path: Path) -> None:
+    cfg = _make_eligible_cfg(tmp_path, ["needsNews"])
+    result = _resolve_mode(tmp_path, cfg, "canary")
+    assert result["mode_ok"] is True
+    assert result["reason"] is None
+    assert result["eligible_heads"] == ["needsNews"]
+
+
+def test_mode_eligibility_production_four_of_five(tmp_path: Path) -> None:
+    cfg = _make_eligible_cfg(tmp_path, _ACTIONABLE[:4])
+    result = _resolve_mode(tmp_path, cfg, "production")
+    assert result["mode_ok"] is False
+    assert result["reason"] == "PRODUCTION_ELIGIBILITY_INCOMPLETE"
+    assert result["ineligible_heads"].get("invalidationCheckNeeded") == "THRESHOLD_NULL"
+
+
+def test_mode_eligibility_production_five_of_five(tmp_path: Path) -> None:
+    cfg = _make_eligible_cfg(tmp_path, _ACTIONABLE)
+    result = _resolve_mode(tmp_path, cfg, "production")
+    assert result["mode_ok"] is True
+    assert result["reason"] is None
+    assert result["eligible_heads"] == [head for head in _HEADS if head in _ACTIONABLE]
+
+
+def test_mode_eligibility_advisory_heads_do_not_affect_mode_ok(tmp_path: Path) -> None:
+    cfg = _make_eligible_cfg(tmp_path, ["materialNow"])
+    assert _resolve_mode(tmp_path, cfg, "canary")["mode_ok"] is False
+
+    cfg = _make_eligible_cfg(tmp_path, _ACTIONABLE)
+    result = _resolve_mode(tmp_path, cfg, "production")
+    assert result["mode_ok"] is True
+    assert result["ineligible_heads"].get("materialNow") == "THRESHOLD_NULL"
+    assert result["ineligible_heads"].get("historicalConflict") == "THRESHOLD_NULL"
+
+
+def test_mode_eligibility_unsupported_mode_is_not_ok(tmp_path: Path) -> None:
+    result = _resolve_mode(tmp_path, _threshold_cfg(), "shadow")
+    assert result["mode_ok"] is False
+    assert result["reason"] == "ELIGIBILITY_MODE_UNSUPPORTED"
+
+
+def _research_cfg(**overrides) -> dict:
+    base = {
+        "max_requirements_per_generation": 20,
+        "max_research_calls_per_day": 30,
+        "max_deep_ai_calls_per_day": 3,
+        "requirement_timeout_ms": 15000,
+        "generation_timeout_ms": 120000,
+        "evidence_max_age_days": {
+            "current_year_check": 45,
+            "news": 14,
+            "dart": 120,
+            "deep_ai": 7,
+            "invalidation_check": 30,
+        },
+        "allowed_action_types": [
+            "current_year_check",
+            "news",
+            "dart",
+            "deep_ai",
+            "invalidation_check",
+        ],
+        "canary": {
+            "max_candidates_per_generation": 5,
+            "max_research_calls_per_day": 10,
+            "max_deep_ai_calls_per_day": 1,
+            "allowed_action_types": ["current_year_check", "news", "dart"],
+        },
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.parametrize("mode", ["canary", "production"])
+def test_research_config_valid_accepted(mode: str) -> None:
+    result = rt.resolve_research_config(mode, {"research": _research_cfg()})
+    assert result["status"] == "OK"
+    assert result["reason"] is None
+    assert result["research"]["max_research_calls_per_day"] == 30
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {},
+        {"research": None},
+        {"research": "nope"},
+        {"research": {}},
+        {"research": _research_cfg(allowed_action_types=["not_a_type"])},
+        {"research": _research_cfg(requirement_timeout_ms=0)},
+        {"research": _research_cfg(evidence_max_age_days={"news": 14})},
+        {"research": _research_cfg(canary=None)},
+        {"research": _research_cfg(canary={"max_research_calls_per_day": 10})},
+    ],
+)
+def test_research_config_invalid_fail_closed(raw: dict) -> None:
+    result = rt.resolve_research_config("canary", raw)
+    assert result["status"] == "INVALID"
+    assert result["reason"] == "RESEARCH_CONFIG_INVALID"
+
+
+def test_research_config_canary_daily_cap_exceeds_production() -> None:
+    cfg = _research_cfg(
+        canary={
+            "max_candidates_per_generation": 5,
+            "max_research_calls_per_day": 31,
+            "max_deep_ai_calls_per_day": 1,
+            "allowed_action_types": ["news"],
+        }
+    )
+    result = rt.resolve_research_config("canary", {"research": cfg})
+    assert result["status"] == "INVALID"
+    assert result["reason"] == "RESEARCH_CONFIG_INVALID"
+
+
+def test_research_config_canary_deep_ai_cap_exceeds_production() -> None:
+    cfg = _research_cfg(
+        canary={
+            "max_candidates_per_generation": 5,
+            "max_research_calls_per_day": 10,
+            "max_deep_ai_calls_per_day": 4,
+            "allowed_action_types": ["news"],
+        }
+    )
+    result = rt.resolve_research_config("canary", {"research": cfg})
+    assert result["status"] == "INVALID"
+    assert result["reason"] == "RESEARCH_CONFIG_INVALID"
