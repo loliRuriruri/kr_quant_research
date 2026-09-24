@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +50,18 @@ def _finite_unit(value: object) -> float | None:
     if not (0.0 <= number <= 1.0):
         return None
     return number
+
+
+def _parse_utc_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+        return None
+    return parsed
 
 
 def _print(payload: dict) -> None:
@@ -128,6 +140,14 @@ def _cmd_build(args: argparse.Namespace) -> int:
 
     if selection.get("pristine_holdout") is False or holdout.get("pristine_holdout") is False:
         return _refuse("HOLDOUT_NOT_PRISTINE")
+
+    locked_at_dt = _parse_utc_timestamp(locked_at)
+    revealed_at_dt = _parse_utc_timestamp(revealed_at)
+    if locked_at_dt is None or revealed_at_dt is None or revealed_at_dt <= locked_at_dt:
+        return _refuse("HOLDOUT_CHRONOLOGY_INVALID")
+
+    if "approval_hash" in holdout:
+        return _refuse("HOLDOUT_SCHEMA_INVALID")
 
     holdout_payload = {
         key: value for key, value in holdout.items() if key != "holdout_report_hash"

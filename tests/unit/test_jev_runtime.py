@@ -1733,6 +1733,101 @@ def test_approval_cli_build_rejects_output_path_mismatch(tmp_path: Path) -> None
     assert not out.exists()
 
 
+def _last_json_line(capsys) -> dict:
+    return json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+
+
+def test_approval_cli_build_rejects_reverse_chronology(tmp_path: Path, capsys) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked(selected_at="2026-09-23T10:00:00Z")
+    holdout = _holdout_report(selection, holdout_revealed_at="2026-09-23T09:00:00Z")
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 1
+    assert not out.exists()
+    assert _last_json_line(capsys) == {
+        "status": "REFUSED",
+        "reason": "HOLDOUT_CHRONOLOGY_INVALID",
+    }
+
+
+def test_approval_cli_build_rejects_equal_chronology(tmp_path: Path, capsys) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked(selected_at="2026-09-23T10:00:00Z")
+    holdout = _holdout_report(selection, holdout_revealed_at="2026-09-23T10:00:00Z")
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 1
+    assert not out.exists()
+    assert _last_json_line(capsys)["reason"] == "HOLDOUT_CHRONOLOGY_INVALID"
+
+
+def test_approval_cli_build_rejects_malformed_reveal_timestamp(
+    tmp_path: Path, capsys
+) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked()
+    holdout = _holdout_report(selection, holdout_revealed_at="not-a-timestamp")
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 1
+    assert not out.exists()
+    assert _last_json_line(capsys)["reason"] == "HOLDOUT_CHRONOLOGY_INVALID"
+
+
+def test_approval_cli_build_rejects_malformed_lock_timestamp(
+    tmp_path: Path, capsys
+) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked(selected_at="not-a-timestamp")
+    holdout = _holdout_report(selection)
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 1
+    assert not out.exists()
+    assert _last_json_line(capsys)["reason"] == "HOLDOUT_CHRONOLOGY_INVALID"
+
+
+def test_approval_cli_build_accepts_lock_before_reveal(tmp_path: Path) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked(selected_at="2026-09-23T10:00:00Z")
+    holdout = _holdout_report(selection, holdout_revealed_at="2026-09-23T11:00:00Z")
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 0
+    assert out.is_file()
+    record = json.loads(out.read_text(encoding="utf-8"))
+    assert record["holdout_pristine"] is True
+    assert record["selection_locked_at"] == "2026-09-23T10:00:00Z"
+    assert record["holdout_revealed_at"] == "2026-09-23T11:00:00Z"
+
+
+def test_approval_cli_build_rejects_holdout_approval_hash(
+    tmp_path: Path, capsys
+) -> None:
+    cli = _load_approval_cli()
+    selection = _selection_locked()
+    holdout = _holdout_report(selection)
+    holdout["approval_hash"] = "f" * 64
+    out = _expected_approval_path(tmp_path)
+
+    rc = _run_build(cli, tmp_path, selection, holdout)
+
+    assert rc == 1
+    assert not out.exists()
+    assert _last_json_line(capsys)["reason"] == "HOLDOUT_SCHEMA_INVALID"
+
+
 def _verify_fixture(
     tmp_path: Path, *, record: dict | None = None, config_threshold: object = 0.4
 ) -> int:
@@ -1840,6 +1935,8 @@ def test_approval_cli_has_no_network_imports() -> None:
         "playwright",
     }
     assert not (imported & forbidden)
+    # `datetime` is the single narrow stdlib exception, required only for strict
+    # provenance timestamp validation (chronology) and the approved_at stamp.
     assert imported <= {
         "__future__",
         "argparse",
