@@ -869,3 +869,120 @@ def test_runtime_status_read_only_over_full_fixture(tmp_path: Path) -> None:
     rt.runtime_status(settings)
 
     assert _fs_snapshot(tmp_path) == before
+
+
+# ---------------------------------------------------------------------------
+# Task 1.4 corrective — bind gate status to the latest shadow identity
+# ---------------------------------------------------------------------------
+
+
+def test_runtime_status_does_not_attach_stale_gate_to_newer_shadow(
+    tmp_path: Path,
+) -> None:
+    settings = _active_settings(tmp_path)
+    old_gate = rt.run_shadow_gate_pass(
+        settings,
+        shadow_payload=_shadow_payload(generation_id="gen-old"),
+        threshold_cfg=_threshold_cfg(),
+    )
+    assert old_gate["status"] == "OK"
+    _write_shadow_artifact(
+        settings,
+        {
+            **_shadow_payload(generation_id="gen-new", results=[_record("c1")]),
+            "finished_at": "2026-09-02T00:00:00+00:00",
+        },
+    )
+    before = _fs_snapshot(tmp_path)
+
+    result = rt.runtime_status(settings)
+
+    assert result["shadow"]["generation_id"] == "gen-new"
+    assert result["gate"]["present"] is False
+    assert result["gate"]["generation_id"] != "gen-old"
+    assert _fs_snapshot(tmp_path) == before
+
+
+def test_runtime_status_prefers_exact_matching_gate(tmp_path: Path) -> None:
+    settings = _active_settings(tmp_path)
+    cfg = _mixed_threshold_cfg()
+    old_gate = rt.run_shadow_gate_pass(
+        settings,
+        shadow_payload=_shadow_payload(generation_id="gen-old"),
+        threshold_cfg=cfg,
+    )
+    assert old_gate["status"] == "OK"
+    _write_shadow_artifact(
+        settings,
+        {
+            **_shadow_payload(generation_id="gen-new", results=[_record("c1")]),
+            "finished_at": "2026-09-02T00:00:00+00:00",
+        },
+    )
+    new_gate = rt.run_shadow_gate_pass(
+        settings,
+        shadow_payload=_shadow_payload(generation_id="gen-new"),
+        threshold_cfg=cfg,
+    )
+    assert new_gate["status"] == "OK"
+    before = _fs_snapshot(tmp_path)
+
+    result = rt.runtime_status(settings, threshold_cfg=cfg)
+
+    assert result["shadow"]["generation_id"] == "gen-new"
+    assert result["gate"]["generation_id"] == "gen-new"
+    assert (
+        result["gate"]["threshold_config_hash"]
+        == new_gate["gate"]["threshold_config_hash"]
+    )
+    assert result["gate"]["calibrated_head_count"] == 1
+    assert result["gate"]["uncalibrated_head_count"] == 6
+    assert _fs_snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("generation_id", "gen-old"),
+        ("provider", "openrouter"),
+        ("requested_model", "typesafe/jev-1.13"),
+        ("evaluator_version", "season-jev-shadow-v2"),
+    ],
+)
+def test_runtime_status_identity_mismatch_fails_closed(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    settings = _active_settings(tmp_path)
+    cfg = _mixed_threshold_cfg()
+    gate_result = rt.run_shadow_gate_pass(
+        settings,
+        shadow_payload=_shadow_payload(generation_id="gen-new"),
+        threshold_cfg=cfg,
+    )
+    assert gate_result["status"] == "OK"
+    _write_shadow_artifact(
+        settings,
+        {
+            **_shadow_payload(generation_id="gen-new", results=[_record("c1")]),
+            "finished_at": "2026-09-02T00:00:00+00:00",
+        },
+    )
+    gate_path = research_gate_path(settings, "gen-new", "typesafe_direct")
+    tampered = dict(gate_result["gate"])
+    tampered[field] = value
+    gate_path.write_text(json.dumps(tampered, ensure_ascii=False), encoding="utf-8")
+    before = _fs_snapshot(tmp_path)
+
+    result = rt.runtime_status(settings, threshold_cfg=cfg)
+
+    gate = result["gate"]
+    assert gate["present"] is True
+    assert gate["readable"] is True
+    assert gate["error"] == "IDENTITY_MISMATCH"
+    assert gate["threshold_config_hash"] is None
+    assert gate["calibrated_head_count"] == 0
+    assert gate["uncalibrated_head_count"] == 0
+    assert _fs_snapshot(tmp_path) == before
+    assert gate_path.read_text(encoding="utf-8") == json.dumps(
+        tampered, ensure_ascii=False
+    )

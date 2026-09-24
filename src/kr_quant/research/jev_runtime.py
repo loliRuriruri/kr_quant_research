@@ -927,23 +927,31 @@ def _shadow_status(settings) -> dict[str, Any]:
 
 
 def _gate_status(settings, shadow_status: Mapping[str, Any]) -> dict[str, Any]:
-    """Read-only summary of the gate artifact matching the latest shadow."""
+    """Read-only summary of the gate artifact bound to the latest shadow.
+
+    When a usable shadow exists, only the canonical gate path for that exact
+    ``(generation_id, provider)`` is considered — never a scan of other
+    generations — and the payload identity must match the shadow. Mismatches
+    fail closed into ``error="IDENTITY_MISMATCH"`` without deriving any
+    calibrated-head or threshold claims and without rewriting the artifact.
+    """
     status = _empty_gate_status()
+    shadow_present = shadow_status.get("present") is True
+    generation_id = shadow_status.get("generation_id")
+    provider = shadow_status.get("provider")
     try:
         path = None
-        generation_id = shadow_status.get("generation_id")
-        provider = shadow_status.get("provider")
-        if (
-            shadow_status.get("present") is True
-            and isinstance(generation_id, str)
-            and generation_id
-            and isinstance(provider, str)
-            and provider
-        ):
-            candidate = research_gate_path(settings, generation_id, provider)
-            if candidate.is_file():
-                path = candidate
-        if path is None:
+        if shadow_present:
+            if (
+                isinstance(generation_id, str)
+                and generation_id
+                and isinstance(provider, str)
+                and provider
+            ):
+                candidate = research_gate_path(settings, generation_id, provider)
+                if candidate.is_file():
+                    path = candidate
+        else:
             folder = research_gate_dir(settings)
             if folder.is_dir():
                 candidates = sorted(
@@ -964,6 +972,28 @@ def _gate_status(settings, shadow_status: Mapping[str, Any]) -> dict[str, Any]:
         gate = None
     if not isinstance(gate, Mapping):
         return {**status, "present": True, "readable": False, "path": str(path)}
+
+    if shadow_present:
+        expected = (
+            generation_id,
+            provider,
+            shadow_status.get("requested_model"),
+            shadow_status.get("evaluator_version"),
+        )
+        actual = (
+            gate.get("generation_id"),
+            gate.get("provider"),
+            gate.get("requested_model"),
+            gate.get("evaluator_version"),
+        )
+        if actual != expected:
+            return {
+                **status,
+                "present": True,
+                "readable": True,
+                "error": "IDENTITY_MISMATCH",
+                "path": str(path),
+            }
 
     calibrated: set[str] = set()
     uncalibrated: set[str] = set()
