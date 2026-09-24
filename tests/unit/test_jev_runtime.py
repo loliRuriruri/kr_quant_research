@@ -563,3 +563,78 @@ def test_map_does_not_mutate_record() -> None:
     before = copy.deepcopy(record)
     rt.map_shadow_record_status(record)
     assert record == before
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3 corrective — locked execution identity (9-tuple)
+# ---------------------------------------------------------------------------
+
+
+def _execution(**overrides) -> dict:
+    record = {
+        "schema_version": 1,
+        "generation_id": "gen-1",
+        "provider": "typesafe_direct",
+        "requested_model": "jev-latest",
+        "evaluator_version": "season-jev-shadow-v1",
+        "candidate_id": "c1",
+        "state_hash": "a" * 64,
+        "requirement_type": "news",
+        "input_hash": "b" * 64,
+        "status": "VERIFIED",
+    }
+    record.update(overrides)
+    return record
+
+
+def test_execution_identity_fields_locked() -> None:
+    assert rt.EXECUTION_IDENTITY_FIELDS == (
+        "schema_version",
+        "generation_id",
+        "provider",
+        "requested_model",
+        "evaluator_version",
+        "candidate_id",
+        "state_hash",
+        "requirement_type",
+        "input_hash",
+    )
+
+
+def test_execution_reuse_key_extracts_locked_nine_tuple() -> None:
+    assert rt.execution_reuse_key(_execution()) == (
+        1,
+        "gen-1",
+        "typesafe_direct",
+        "jev-latest",
+        "season-jev-shadow-v1",
+        "c1",
+        "a" * 64,
+        "news",
+        "b" * 64,
+    )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "schema_version",
+        "generation_id",
+        "provider",
+        "requested_model",
+        "evaluator_version",
+        "candidate_id",
+        "state_hash",
+        "requirement_type",
+        "input_hash",
+    ],
+)
+def test_execution_reuse_key_requires_every_locked_field(field: str) -> None:
+    record = _execution()
+    record.pop(field)
+    assert rt.execution_reuse_key(record) is None
+
+
+@pytest.mark.parametrize("bad", [None, [], "x", 1])
+def test_execution_reuse_key_rejects_non_mapping(bad: object) -> None:
+    assert rt.execution_reuse_key(bad) is None

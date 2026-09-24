@@ -6,6 +6,7 @@ uses tmp_path settings and injected fake dependencies.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import time
@@ -154,6 +155,48 @@ def _eligibility_fake(*, mode_ok: bool = True, eligible_heads=("needsNews",), re
     return resolver
 
 
+def _input_hash(
+    candidate_id: str,
+    state_hash: str,
+    requirement_type: str,
+    state: object = None,
+) -> str:
+    payload = {
+        "candidate_id": candidate_id,
+        "state_hash": state_hash,
+        "requirement_type": requirement_type,
+        "state": state,
+    }
+    blob = json.dumps(
+        payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
+
+
+def _executions_from_gate(gate_envelope: dict) -> list[dict]:
+    executions = []
+    for row in gate_envelope.get("results") or []:
+        gate = row.get("gate") or {}
+        for requirement_type, decision in (gate.get("research_requirements") or {}).items():
+            if decision is not True:
+                continue
+            executions.append(
+                {
+                    "schema_version": 1,
+                    "generation_id": gate_envelope["generation_id"],
+                    "provider": gate_envelope["provider"],
+                    "requested_model": gate_envelope["requested_model"],
+                    "evaluator_version": gate_envelope["evaluator_version"],
+                    "candidate_id": row["candidate_id"],
+                    "state_hash": gate["state_hash"],
+                    "requirement_type": requirement_type,
+                    "input_hash": _input_hash(row["candidate_id"], gate["state_hash"], requirement_type),
+                    "status": "VERIFIED",
+                }
+            )
+    return executions
+
+
 def _fake_executor(recorder: dict):
     def executor(*, settings, gate_envelope, mode, eligibility, adapters, now):
         recorder["calls"] += 1
@@ -170,6 +213,7 @@ def _fake_executor(recorder: dict):
             "requested_model": gate_envelope["requested_model"],
             "evaluator_version": gate_envelope["evaluator_version"],
             "threshold_config_hash": gate_envelope["threshold_config_hash"],
+            "executions": _executions_from_gate(gate_envelope),
             "candidates": [],
             "side_effects_executed": True,
         }
@@ -629,3 +673,288 @@ def test_request_runtime_evaluation_never_raises(tmp_path: Path, monkeypatch) ->
     rt.request_runtime_evaluation(settings, _bundle())  # must not raise
 
     assert _wait_for(lambda: GEN not in rt._PENDING_GENERATIONS)
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3 corrective — execution reuse identity (9-tuple + VERIFIED)
+# ---------------------------------------------------------------------------
+
+
+def _canary_run_once(tmp_path: Path, monkeypatch, *, news: float | None = 0.4):
+    _write_season_config(tmp_path, {"mode": "canary", "enabled": True})
+    _write_thresholds(tmp_path, news=news)
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(rt, "resolve_mode_eligibility", _eligibility_fake(), raising=False)
+    shadow = {"calls": 0}
+    executor = {"calls": 0}
+    verifier = {"calls": 0}
+    first = rt.run_runtime_pass(
+        settings,
+        bundle=_bundle(),
+        shadow_evaluator=_fake_evaluator(shadow, write_artifact=True),
+        executor=_fake_executor(executor),
+        verifier=_fake_verifier(verifier),
+    )
+    assert first["status"] == "OK"
+    assert executor["calls"] == 1
+    return settings, first
+
+
+def _second_canary_run(settings) -> dict:
+    executor = {"calls": 0}
+    verifier = {"calls": 0}
+    result = rt.run_runtime_pass(
+        settings,
+        bundle=_bundle(),
+        shadow_evaluator=_fake_evaluator({"calls": 0}),
+        executor=_fake_executor(executor),
+        verifier=_fake_verifier(verifier),
+    )
+    result["_executor_calls"] = executor["calls"]
+    result["_verifier_calls"] = verifier["calls"]
+    return result
+
+
+def _tamper_overlay(first: dict, mutate) -> None:
+    overlay_path = Path(first["paths"]["overlay"])
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    mutate(overlay)
+    _write_json(overlay_path, overlay)
+
+
+def test_overlay_reuse_requires_exact_verified_execution_identity(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings, first = _canary_run_once(tmp_path, monkeypatch)
+    overlay = json.loads(Path(first["paths"]["overlay"]).read_text(encoding="utf-8"))
+    assert overlay["executions"]
+    assert all(execution["status"] == "VERIFIED" for execution in overlay["executions"])
+
+    second = _second_canary_run(settings)
+
+    assert second["status"] == "OK"
+    assert second["_executor_calls"] == 0
+    assert second["_verifier_calls"] == 0
+    assert second["resumed"] is True
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("candidate_id", "other-candidate"),
+        ("state_hash", "b" * 64),
+        ("requirement_type", "dart"),
+        ("input_hash", "c" * 64),
+    ],
+)
+def test_overlay_reuse_blocked_by_execution_identity_mismatch(
+    tmp_path: Path, monkeypatch, field: str, value: str
+) -> None:
+    settings, first = _canary_run_once(tmp_path, monkeypatch)
+    _tamper_overlay(
+        first, lambda overlay: overlay["executions"][0].update({field: value})
+    )
+
+    second = _second_canary_run(settings)
+
+    assert second["status"] == "OK"
+    assert second["_executor_calls"] == 1
+    assert second["_verifier_calls"] == 1
+
+
+def test_overlay_reuse_blocked_by_non_verified_status(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings, first = _canary_run_once(tmp_path, monkeypatch)
+    _tamper_overlay(
+        first, lambda overlay: overlay["executions"][0].update({"status": "FAILED"})
+    )
+
+    second = _second_canary_run(settings)
+
+    assert second["_executor_calls"] == 1
+
+
+@pytest.mark.parametrize("mutation", ["extra", "missing"])
+def test_overlay_reuse_blocked_by_extra_or_missing_execution(
+    tmp_path: Path, monkeypatch, mutation: str
+) -> None:
+    settings, first = _canary_run_once(tmp_path, monkeypatch)
+
+    def mutate(overlay: dict) -> None:
+        if mutation == "extra":
+            extra = dict(overlay["executions"][0])
+            extra["candidate_id"] = "extra-candidate"
+            extra["input_hash"] = "d" * 64
+            overlay["executions"].append(extra)
+        else:
+            overlay["executions"] = overlay["executions"][:-1]
+
+    _tamper_overlay(first, mutate)
+
+    second = _second_canary_run(settings)
+
+    assert second["_executor_calls"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3 corrective — gate resume candidate identity
+# ---------------------------------------------------------------------------
+
+
+def _shadow_run_once(tmp_path: Path, results: list):
+    _write_season_config(tmp_path, {"mode": "shadow", "enabled": True})
+    _write_thresholds(tmp_path)
+    settings = _settings(tmp_path)
+    _write_shadow_artifact(settings, _shadow_payload(results))
+    first = rt.run_runtime_pass(
+        settings, bundle=_bundle(), shadow_evaluator=_fake_evaluator({"calls": 0})
+    )
+    assert first["status"] == "OK"
+    assert first["counts"]["gate_writes"] == 1
+    return settings, first
+
+
+def _rewrite_shadow(settings, results: list) -> None:
+    _write_shadow_artifact(settings, _shadow_payload(results))
+
+
+def _second_shadow_run(settings) -> dict:
+    return rt.run_runtime_pass(
+        settings, bundle=_bundle(), shadow_evaluator=_fake_evaluator({"calls": 0})
+    )
+
+
+def test_gate_reuse_requires_exact_candidate_identity_set(tmp_path: Path) -> None:
+    settings, first = _shadow_run_once(
+        tmp_path, [_record("c1"), _record("c5", status="REUSED")]
+    )
+
+    second = _second_shadow_run(settings)
+
+    assert second["status"] == "OK"
+    assert second["counts"]["gate_writes"] == 0
+    assert second["resumed"] is True
+
+
+@pytest.mark.parametrize("mutation", ["candidate_id", "state_hash", "extra", "missing"])
+def test_gate_reuse_blocked_by_candidate_set_mismatch(
+    tmp_path: Path, mutation: str
+) -> None:
+    settings, first = _shadow_run_once(tmp_path, [_record("c1")])
+
+    if mutation == "candidate_id":
+        _rewrite_shadow(settings, [_record("c2")])
+    elif mutation == "state_hash":
+        _rewrite_shadow(settings, [_record("c1", state_hash="b" * 64)])
+    elif mutation == "extra":
+        _rewrite_shadow(settings, [_record("c1"), _record("c9")])
+    else:
+        _rewrite_shadow(settings, [])
+
+    second = _second_shadow_run(settings)
+
+    assert second["counts"]["gate_writes"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3 corrective — async wrapper bundle guard
+# ---------------------------------------------------------------------------
+
+
+def test_request_runtime_evaluation_rejects_ineligible_bundle(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _write_season_config(tmp_path, {"mode": "shadow", "enabled": True})
+    settings = _settings(tmp_path)
+    calls = {"count": 0}
+
+    def counting_pass(*args, **kwargs):
+        calls["count"] += 1
+
+    monkeypatch.setattr(rt, "run_runtime_pass", counting_pass)
+
+    bad_bundles = [
+        _bundle(lookback=3),
+        {"generation_id": GEN},
+        {"identity": {"lookback": 5}},
+        {"generation_id": GEN, "identity": {"lookback": "5"}},
+        {"generation_id": GEN, "identity": None},
+    ]
+    for bad in bad_bundles:
+        assert rt.request_runtime_evaluation(settings, bad) is None
+
+    assert calls["count"] == 0
+    assert not rt._PENDING_GENERATIONS
+    assert not (tmp_path / "data").exists()
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3 corrective — locked future executor interface seam
+# ---------------------------------------------------------------------------
+
+
+def test_locked_future_executor_interface_can_be_wired(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _write_season_config(tmp_path, {"mode": "canary", "enabled": True})
+    _write_thresholds(tmp_path, news=0.4)
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(rt, "resolve_mode_eligibility", _eligibility_fake(), raising=False)
+    recorded = {}
+
+    def build_execution_plan(*, gate_envelope, mode, research_cfg, eligibility):
+        recorded["plan"] = {
+            "gate_envelope": gate_envelope,
+            "mode": mode,
+            "research_cfg": research_cfg,
+            "eligibility": eligibility,
+        }
+        return {"schema_version": 1, "actions": []}
+
+    def run_execution_pass(*, settings, gate_envelope, plan, adapters, now=None):
+        recorded["pass"] = {
+            "settings": settings,
+            "gate_envelope": gate_envelope,
+            "plan": plan,
+            "adapters": adapters,
+            "now": now,
+        }
+        return {
+            "schema_version": 1,
+            "artifact_type": "season_jev_runtime_overlay",
+            "generation_id": gate_envelope["generation_id"],
+            "provider": gate_envelope["provider"],
+            "requested_model": gate_envelope["requested_model"],
+            "evaluator_version": gate_envelope["evaluator_version"],
+            "threshold_config_hash": gate_envelope["threshold_config_hash"],
+            "executions": _executions_from_gate(gate_envelope),
+        }
+
+    def adapter(*, settings, gate_envelope, mode, eligibility, adapters, now):
+        plan = build_execution_plan(
+            gate_envelope=gate_envelope,
+            mode=mode,
+            research_cfg={"mode": mode},
+            eligibility=eligibility,
+        )
+        return run_execution_pass(
+            settings=settings,
+            gate_envelope=gate_envelope,
+            plan=plan,
+            adapters=adapters,
+            now=now,
+        )
+
+    result = rt.run_runtime_pass(
+        settings,
+        bundle=_bundle(),
+        shadow_evaluator=_fake_evaluator({"calls": 0}),
+        executor=adapter,
+        verifier=_fake_verifier({"calls": 0}),
+    )
+
+    assert result["status"] == "OK"
+    assert recorded["plan"]["mode"] == "canary"
+    assert recorded["pass"]["plan"] == {"schema_version": 1, "actions": []}
+    assert Path(result["paths"]["overlay"]).exists()

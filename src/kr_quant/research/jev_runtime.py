@@ -7,14 +7,17 @@ the existing J3 research gate, and the synchronous runtime orchestrator with
 its fire-and-forget wrapper.
 
 Scope lock: no provider execution beyond the existing shadow public interface,
-no research executor, no evidence verifier, no config writes. P2–P4
-functionality stays lazy/injectable until its own authorized tasks land.
+no research executor, no evidence verifier, no config writes. The future P3
+executor (``build_execution_plan`` → ``run_execution_pass``) is fail-closed
+until its own authorized task lands; the canary/production executor is an
+explicit injectable Task-1.3 seam, and the overlay resume identity is the
+locked 9-tuple + ``VERIFIED`` execution status contract.
 
 Spec: docs/superpowers/specs/2026-09-23-jev-production-routing-design.md §4.3–§4.6
 """
 from __future__ import annotations
 
-import importlib
+import hashlib
 import json
 import logging
 import threading
@@ -53,6 +56,18 @@ SHADOW_JOIN_KEY_FIELDS = (
     "evaluator_version",
     "candidate_id",
     "state_hash",
+)
+
+EXECUTION_IDENTITY_FIELDS = (
+    "schema_version",
+    "generation_id",
+    "provider",
+    "requested_model",
+    "evaluator_version",
+    "candidate_id",
+    "state_hash",
+    "requirement_type",
+    "input_hash",
 )
 
 # Internal marker used by load_raw_runtime_config to carry a load failure into
@@ -262,13 +277,172 @@ def write_runtime_overlay(path: Path, payload: Mapping[str, Any]) -> None:
     write_json_atomic(Path(path), dict(payload), encoding="utf-8", compact=True)
 
 
-def _lazy_callable(module_name: str, attribute: str):
-    try:
-        module = importlib.import_module(module_name)
-    except ImportError:
+def execution_reuse_key(execution: Any) -> tuple | None:
+    """Locked execution reuse key: the exact 9-tuple, or None when incomplete.
+
+    Fields: schema_version, generation_id, provider, requested_model,
+    evaluator_version, candidate_id, state_hash, requirement_type, input_hash.
+    """
+    if not isinstance(execution, Mapping):
         return None
-    candidate = getattr(module, attribute, None)
-    return candidate if callable(candidate) else None
+    values: list[Any] = []
+    for field in EXECUTION_IDENTITY_FIELDS:
+        value = execution.get(field)
+        if field == "schema_version":
+            if isinstance(value, bool) or not isinstance(value, int):
+                return None
+        elif not isinstance(value, str) or not value.strip():
+            return None
+        values.append(value)
+    return tuple(values)
+
+
+def _canonical_json_bytes(payload: Mapping[str, Any]) -> bytes:
+    return json.dumps(
+        payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    ).encode("utf-8")
+
+
+def _execution_input_hash(
+    candidate_id: str,
+    state_hash: str,
+    requirement_type: str,
+    state: Any,
+) -> str:
+    """SHA-256 of canonical JSON {candidate_id, state_hash, requirement_type, state}."""
+    return hashlib.sha256(
+        _canonical_json_bytes(
+            {
+                "candidate_id": candidate_id,
+                "state_hash": state_hash,
+                "requirement_type": requirement_type,
+                "state": state,
+            }
+        )
+    ).hexdigest()
+
+
+def _expected_execution_keys(
+    gate_envelope: Mapping[str, Any],
+    shadow_payload: Mapping[str, Any],
+) -> set[tuple]:
+    """Expected execution identities for the gate's true requirements."""
+    states: dict[str, Any] = {}
+    for record in shadow_payload.get("results") or []:
+        if isinstance(record, Mapping):
+            candidate_id = record.get("candidate_id")
+            if isinstance(candidate_id, str) and candidate_id:
+                states[candidate_id] = record.get("state")
+
+    keys: set[tuple] = set()
+    generation_id = gate_envelope.get("generation_id")
+    provider = gate_envelope.get("provider")
+    requested_model = gate_envelope.get("requested_model")
+    evaluator_version = gate_envelope.get("evaluator_version")
+    for row in gate_envelope.get("results") or []:
+        if not isinstance(row, Mapping):
+            continue
+        gate = row.get("gate")
+        if not isinstance(gate, Mapping) or gate.get("mode") != "SHADOW_ONLY":
+            continue
+        candidate_id = row.get("candidate_id")
+        state_hash = gate.get("state_hash")
+        if not isinstance(candidate_id, str) or not candidate_id:
+            continue
+        if not isinstance(state_hash, str) or not state_hash:
+            continue
+        requirements = gate.get("research_requirements")
+        if not isinstance(requirements, Mapping):
+            continue
+        for requirement_type, decision in requirements.items():
+            if decision is not True:
+                continue
+            keys.add(
+                (
+                    RUNTIME_SCHEMA_VERSION,
+                    generation_id,
+                    provider,
+                    requested_model,
+                    evaluator_version,
+                    candidate_id,
+                    state_hash,
+                    requirement_type,
+                    _execution_input_hash(
+                        candidate_id,
+                        state_hash,
+                        str(requirement_type),
+                        states.get(candidate_id),
+                    ),
+                )
+            )
+    return keys
+
+
+def _candidate_identity_set(records: Any) -> set[tuple]:
+    out: set[tuple] = set()
+    for record in records or []:
+        if not isinstance(record, Mapping):
+            continue
+        candidate_id = record.get("candidate_id")
+        state_hash = record.get("state_hash")
+        if isinstance(candidate_id, str) and isinstance(state_hash, str):
+            out.add((candidate_id, state_hash))
+    return out
+
+
+def _gate_candidate_identity_set(gate_envelope: Any) -> set[tuple] | None:
+    if not isinstance(gate_envelope, Mapping):
+        return None
+    results = gate_envelope.get("results")
+    if not isinstance(results, list):
+        return None
+    out: set[tuple] = set()
+    for row in results:
+        if not isinstance(row, Mapping):
+            return None
+        gate = row.get("gate")
+        candidate_id = row.get("candidate_id")
+        state_hash = gate.get("state_hash") if isinstance(gate, Mapping) else None
+        if not isinstance(candidate_id, str) or not candidate_id:
+            return None
+        if not isinstance(state_hash, str) or not state_hash:
+            return None
+        out.add((candidate_id, state_hash))
+    return out
+
+
+def _overlay_reusable(
+    overlay: Any,
+    *,
+    generation_id: str,
+    payload: Mapping[str, Any],
+    current_hash: str,
+    expected_keys: set[tuple],
+) -> bool:
+    """Overlay reuse requires generation identity AND exact VERIFIED executions.
+
+    Every persisted execution must carry the locked 9-tuple identity, must be
+    ``VERIFIED``, and must match the gate's current expected execution key set
+    exactly (no extras, no missing).
+    """
+    if not isinstance(overlay, Mapping) or overlay.get("schema_version") != RUNTIME_SCHEMA_VERSION:
+        return False
+    if not _identity_matches(overlay, generation_id, payload, current_hash):
+        return False
+    executions = overlay.get("executions")
+    if not isinstance(executions, list):
+        return False
+    verified: set[tuple] = set()
+    for execution in executions:
+        key = execution_reuse_key(execution)
+        if key is None:
+            return False
+        if execution.get("status") != "VERIFIED":
+            return False
+        if key not in expected_keys:
+            return False
+        verified.add(key)
+    return verified == set(expected_keys)
 
 
 def _valid_shadow_payload(payload: Any, generation_id: str) -> bool:
@@ -304,21 +478,14 @@ def _gate_identity_matches(
     generation_id: str,
     payload: Mapping[str, Any],
     current_hash: str,
+    candidate_set: set[tuple],
 ) -> bool:
     if not isinstance(cached, Mapping) or cached.get("artifact_type") != GATE_ARTIFACT_TYPE:
         return False
-    return _identity_matches(cached, generation_id, payload, current_hash)
-
-
-def _overlay_identity_matches(
-    cached: Any,
-    generation_id: str,
-    payload: Mapping[str, Any],
-    current_hash: str,
-) -> bool:
-    if not isinstance(cached, Mapping) or cached.get("schema_version") != RUNTIME_SCHEMA_VERSION:
+    if not _identity_matches(cached, generation_id, payload, current_hash):
         return False
-    return _identity_matches(cached, generation_id, payload, current_hash)
+    cached_set = _gate_candidate_identity_set(cached)
+    return cached_set is not None and cached_set == candidate_set
 
 
 def run_runtime_pass(
@@ -429,6 +596,7 @@ def run_runtime_pass(
         parts = partition_shadow_records(payload)
         counts["gate_candidates"] = len(parts["gate_candidates"])
         counts["preserved"] = len(parts["preserved"])
+        candidate_set = _candidate_identity_set(parts["gate_candidates"])
 
         cfg = threshold_cfg
         if cfg is None:
@@ -468,7 +636,9 @@ def run_runtime_pass(
                 cached_gate = json.loads(gate_file.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 cached_gate = None
-            if _gate_identity_matches(cached_gate, generation_id, payload, current_hash):
+            if _gate_identity_matches(
+                cached_gate, generation_id, payload, current_hash, candidate_set
+            ):
                 gate = dict(cached_gate)
                 base["resumed"] = True
         if gate is None:
@@ -496,6 +666,8 @@ def run_runtime_pass(
 
         if mode == MODE_SHADOW:
             return {**base, "status": "OK"}
+
+        expected_keys = _expected_execution_keys(gate, payload)
 
         # canary / production seams (P2–P4 modules stay lazy/injectable)
         eligibility_resolver = globals().get("resolve_mode_eligibility")
@@ -530,14 +702,16 @@ def run_runtime_pass(
                 cached_overlay = json.loads(overlay_file.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 cached_overlay = None
-            if _overlay_identity_matches(cached_overlay, generation_id, payload, current_hash):
+            if _overlay_reusable(
+                cached_overlay,
+                generation_id=generation_id,
+                payload=payload,
+                current_hash=current_hash,
+                expected_keys=expected_keys,
+            ):
                 overlay = dict(cached_overlay)
                 base["resumed"] = True
         if overlay is None:
-            if executor is None:
-                executor = _lazy_callable(
-                    "kr_quant.research.jev_research_executor", "run_execution_pass"
-                )
             if executor is None:
                 return {**base, "status": "SKIPPED", "reason": "EXECUTOR_UNAVAILABLE"}
             if verifier is None:
@@ -596,12 +770,20 @@ def request_runtime_evaluation(settings, bundle: Mapping[str, Any]) -> None:
 
     Returns immediately, uses one daemon worker thread, provides in-process
     single-flight per generation, and never raises to the caller.
+
+    Bundle guard (pre-thread): the bundle must be a mapping with a non-empty
+    ``generation_id`` and ``identity.lookback == 5``; otherwise it returns
+    ``None`` without registering the pending set, spawning a thread, calling
+    ``run_runtime_pass``, or writing anything.
     """
     try:
         if not isinstance(bundle, Mapping):
             return
         generation_id = str(bundle.get("generation_id") or "")
         if not generation_id:
+            return
+        identity = bundle.get("identity")
+        if not isinstance(identity, Mapping) or identity.get("lookback") != 5:
             return
         with _PENDING_LOCK:
             if generation_id in _PENDING_GENERATIONS:
