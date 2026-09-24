@@ -27,6 +27,7 @@ from typing import Any, Mapping
 from kr_quant.atomic_io import write_json_atomic
 from kr_quant.research.jev_research_gate import (
     GATE_ARTIFACT_TYPE,
+    MODE_SHADOW_ONLY,
     ResearchGateError,
     evaluate_research_gate_generation,
     research_gate_path,
@@ -481,6 +482,10 @@ def _gate_identity_matches(
     candidate_set: set[tuple],
 ) -> bool:
     if not isinstance(cached, Mapping) or cached.get("artifact_type") != GATE_ARTIFACT_TYPE:
+        return False
+    if cached.get("mode") != MODE_SHADOW_ONLY:
+        return False
+    if cached.get("side_effects_executed") is not False:
         return False
     if not _identity_matches(cached, generation_id, payload, current_hash):
         return False

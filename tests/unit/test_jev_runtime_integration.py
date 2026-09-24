@@ -958,3 +958,54 @@ def test_locked_future_executor_interface_can_be_wired(
     assert recorded["plan"]["mode"] == "canary"
     assert recorded["pass"]["plan"] == {"schema_version": 1, "actions": []}
     assert Path(result["paths"]["overlay"]).exists()
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3 final corrective — gate resume invariants
+# ---------------------------------------------------------------------------
+
+
+def _tamper_gate(first: dict, mutate) -> None:
+    gate_path = Path(first["paths"]["gate"])
+    gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    mutate(gate)
+    _write_json(gate_path, gate)
+
+
+def test_gate_reuse_requires_shadow_only_side_effect_free_invariants(
+    tmp_path: Path,
+) -> None:
+    settings, first = _shadow_run_once(tmp_path, [_record("c1")])
+    gate = json.loads(Path(first["paths"]["gate"]).read_text(encoding="utf-8"))
+    assert gate["mode"] == "SHADOW_ONLY"
+    assert gate["side_effects_executed"] is False
+
+    second = _second_shadow_run(settings)
+
+    assert second["status"] == "OK"
+    assert second["counts"]["gate_writes"] == 0
+    assert second["resumed"] is True
+
+
+def test_gate_reuse_blocked_by_tampered_side_effects(tmp_path: Path) -> None:
+    settings, first = _shadow_run_once(tmp_path, [_record("c1")])
+    _tamper_gate(first, lambda gate: gate.update({"side_effects_executed": True}))
+
+    second = _second_shadow_run(settings)
+
+    assert second["counts"]["gate_writes"] == 1
+    replacement = json.loads(Path(second["paths"]["gate"]).read_text(encoding="utf-8"))
+    assert replacement["side_effects_executed"] is False
+    assert replacement["mode"] == "SHADOW_ONLY"
+
+
+def test_gate_reuse_blocked_by_invalid_mode(tmp_path: Path) -> None:
+    settings, first = _shadow_run_once(tmp_path, [_record("c1")])
+    _tamper_gate(first, lambda gate: gate.update({"mode": "ERROR"}))
+
+    second = _second_shadow_run(settings)
+
+    assert second["counts"]["gate_writes"] == 1
+    replacement = json.loads(Path(second["paths"]["gate"]).read_text(encoding="utf-8"))
+    assert replacement["mode"] == "SHADOW_ONLY"
+    assert replacement["side_effects_executed"] is False
