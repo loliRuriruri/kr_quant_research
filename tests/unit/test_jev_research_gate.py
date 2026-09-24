@@ -1479,7 +1479,7 @@ import os
 
 
 def test_design_22_j3_does_not_modify_production_config(tmp_path):
-    """Primary Design 22: enabled=false unchanged; config bytes invariant under J3."""
+    """Primary Design 22: active shadow config unchanged; config bytes invariant under J3."""
     season_path = Path("config/season_jev.json")
     thr_path = Path("config/jev_thresholds.json")
     before_season = season_path.read_bytes()
@@ -1488,7 +1488,8 @@ def test_design_22_j3_does_not_modify_production_config(tmp_path):
     season = json.loads(before_season.decode("utf-8"))
     thr_cfg = json.loads(before_thr.decode("utf-8"))
 
-    assert season["enabled"] is False
+    assert season["mode"] == "shadow"
+    assert season["enabled"] is True
     assert season["provider"] == "typesafe_direct"
     assert season["model"] == "jev-latest"
 
