@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -986,3 +987,203 @@ def test_runtime_status_identity_mismatch_fails_closed(
     assert gate_path.read_text(encoding="utf-8") == json.dumps(
         tampered, ensure_ascii=False
     )
+
+
+# ---------------------------------------------------------------------------
+# P2 Task 2.1 — threshold approval record contract
+# ---------------------------------------------------------------------------
+
+
+def _approval_kwargs(**overrides) -> dict:
+    base = dict(
+        provider="typesafe_direct",
+        requested_model="jev-latest",
+        evaluator_version="season-jev-shadow-v1",
+        head="needsNews",
+        threshold=0.4,
+        dataset_id="labels-2026-09",
+        dataset_hash="a" * 64,
+        selection_manifest_hash="b" * 64,
+        selection_locked_at="2026-09-23T00:00:00Z",
+        holdout_report_hash="c" * 64,
+        holdout_revealed_at="2026-09-23T00:00:00Z",
+        holdout_pristine=True,
+        review_status="ACCEPT",
+        support={"valid_count": 120, "positive_count": 60, "negative_count": 60},
+        approved_by="human",
+        approved_at="2026-09-23T00:00:00Z",
+    )
+    base.update(overrides)
+    return base
+
+
+def _verify_approval(record, **overrides) -> dict:
+    kwargs = dict(
+        provider="typesafe_direct",
+        requested_model="jev-latest",
+        evaluator_version="season-jev-shadow-v1",
+        head="needsNews",
+        threshold=0.4,
+    )
+    kwargs.update(overrides)
+    return rt.verify_approval_record(record, **kwargs)
+
+
+def test_approval_valid_record_verifies() -> None:
+    record = rt.build_approval_record(**_approval_kwargs())
+    assert record["schema_version"] == 1
+    assert record["approval_type"] == "jev_threshold_approval"
+    assert re.fullmatch(r"[0-9a-f]{64}", record["approval_hash"])
+    assert record["approval_hash"] == rt.approval_record_hash(record)
+    assert _verify_approval(record) == {"ok": True, "reason": None}
+
+
+def test_approval_threshold_mismatch_fails_closed() -> None:
+    record = rt.build_approval_record(**_approval_kwargs())
+    assert _verify_approval(record, threshold=0.5) == {
+        "ok": False,
+        "reason": "APPROVAL_MISMATCH",
+    }
+
+
+def test_approval_bucket_and_head_mismatch_fails_closed() -> None:
+    record = rt.build_approval_record(**_approval_kwargs())
+    assert _verify_approval(record, provider="openrouter") == {
+        "ok": False,
+        "reason": "APPROVAL_MISMATCH",
+    }
+    assert _verify_approval(record, requested_model="typesafe/jev-1.13") == {
+        "ok": False,
+        "reason": "APPROVAL_MISMATCH",
+    }
+    assert _verify_approval(record, evaluator_version="season-jev-shadow-v2") == {
+        "ok": False,
+        "reason": "APPROVAL_MISMATCH",
+    }
+    assert _verify_approval(record, head="needsDart") == {
+        "ok": False,
+        "reason": "APPROVAL_MISMATCH",
+    }
+
+
+def test_approval_review_reject_fails_closed() -> None:
+    record = rt.build_approval_record(**_approval_kwargs(review_status="REJECT"))
+    assert _verify_approval(record) == {"ok": False, "reason": "REVIEW_NOT_ACCEPTED"}
+
+
+def test_approval_holdout_not_pristine_fails_closed() -> None:
+    record = rt.build_approval_record(**_approval_kwargs(holdout_pristine=False))
+    assert _verify_approval(record) == {"ok": False, "reason": "HOLDOUT_NOT_PRISTINE"}
+
+
+def test_approval_support_insufficient_fails_closed() -> None:
+    record = rt.build_approval_record(
+        **_approval_kwargs(
+            support={"valid_count": 99, "positive_count": 60, "negative_count": 39}
+        )
+    )
+    assert _verify_approval(record) == {"ok": False, "reason": "SUPPORT_INSUFFICIENT"}
+
+
+def test_approval_tampered_hash_fails_closed() -> None:
+    record = rt.build_approval_record(**_approval_kwargs())
+    record["approval_hash"] = "0" * 64
+    assert _verify_approval(record) == {"ok": False, "reason": "APPROVAL_MISMATCH"}
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("dataset_id", "other-dataset"),
+        ("dataset_hash", "d" * 64),
+        ("selection_manifest_hash", "e" * 64),
+        ("holdout_report_hash", "f" * 64),
+        ("threshold", 0.9),
+        ("approved_by", "someone-else"),
+    ],
+)
+def test_approval_signed_field_tamper_fails_closed(field: str, value: object) -> None:
+    record = rt.build_approval_record(**_approval_kwargs())
+    record[field] = value  # approval_hash intentionally not recomputed
+    assert _verify_approval(record) == {"ok": False, "reason": "APPROVAL_MISMATCH"}
+
+
+def test_approval_verification_precedence() -> None:
+    low_support = {"valid_count": 1, "positive_count": 1, "negative_count": 0}
+    # structural integrity (hash) wins over semantic gates
+    record = rt.build_approval_record(
+        **_approval_kwargs(
+            review_status="REJECT", holdout_pristine=False, support=low_support
+        )
+    )
+    record["approval_hash"] = "0" * 64
+    assert _verify_approval(record) == {"ok": False, "reason": "APPROVAL_MISMATCH"}
+    # then review -> holdout -> support
+    record = rt.build_approval_record(
+        **_approval_kwargs(
+            review_status="REJECT", holdout_pristine=False, support=low_support
+        )
+    )
+    assert _verify_approval(record) == {"ok": False, "reason": "REVIEW_NOT_ACCEPTED"}
+    record = rt.build_approval_record(
+        **_approval_kwargs(holdout_pristine=False, support=low_support)
+    )
+    assert _verify_approval(record) == {"ok": False, "reason": "HOLDOUT_NOT_PRISTINE"}
+    record = rt.build_approval_record(**_approval_kwargs(support=low_support))
+    assert _verify_approval(record) == {"ok": False, "reason": "SUPPORT_INSUFFICIENT"}
+
+
+def test_approval_schema_contract_fails_closed() -> None:
+    record = rt.build_approval_record(**_approval_kwargs())
+    assert _verify_approval({**record, "schema_version": 2}) == {
+        "ok": False,
+        "reason": "APPROVAL_MISMATCH",
+    }
+    assert _verify_approval({**record, "approval_type": "other"}) == {
+        "ok": False,
+        "reason": "APPROVAL_MISMATCH",
+    }
+    assert _verify_approval("not-a-mapping") == {
+        "ok": False,
+        "reason": "APPROVAL_MISMATCH",
+    }
+    assert _verify_approval(None) == {"ok": False, "reason": "APPROVAL_MISMATCH"}
+
+
+def test_bucket_hash_contract() -> None:
+    first = rt.bucket_hash("typesafe_direct", "jev-latest", "season-jev-shadow-v1")
+    assert first == rt.bucket_hash("typesafe_direct", "jev-latest", "season-jev-shadow-v1")
+    assert re.fullmatch(r"[0-9a-f]{64}", first)
+    assert first != rt.bucket_hash("openrouter", "jev-latest", "season-jev-shadow-v1")
+    assert first != rt.bucket_hash(
+        "typesafe_direct", "typesafe/jev-1.13", "season-jev-shadow-v1"
+    )
+    assert first != rt.bucket_hash(
+        "typesafe_direct", "jev-latest", "season-jev-shadow-v2"
+    )
+
+
+def test_approval_record_hash_excludes_approval_hash() -> None:
+    record = rt.build_approval_record(**_approval_kwargs())
+    baseline = rt.approval_record_hash(record)
+    assert rt.approval_record_hash({**record, "approval_hash": "f" * 64}) == baseline
+    without = {key: value for key, value in record.items() if key != "approval_hash"}
+    assert rt.approval_record_hash(without) == baseline
+
+
+def test_approval_functions_do_not_mutate_inputs() -> None:
+    kwargs = _approval_kwargs()
+    before = copy.deepcopy(kwargs)
+    record = rt.build_approval_record(**kwargs)
+    assert kwargs == before
+    record_before = copy.deepcopy(record)
+    rt.approval_record_hash(record)
+    _verify_approval(record)
+    assert record == record_before
+
+
+def test_approval_support_is_copied_not_aliased() -> None:
+    support = {"valid_count": 120, "positive_count": 60, "negative_count": 60}
+    record = rt.build_approval_record(**_approval_kwargs(support=support))
+    support["valid_count"] = 0
+    assert record["support"]["valid_count"] == 120

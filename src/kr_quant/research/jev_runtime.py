@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-"""JEV runtime mode resolution, shadow gate pass, orchestrator, and status (P1 Tasks 1.1–1.4).
+"""JEV runtime mode resolution, shadow gate pass, orchestrator, status, and approval records
+(P1 Tasks 1.1–1.4, P2 Task 2.1).
 
 Pure, fail-closed resolution of the runtime lifecycle mode from the raw
 ``config/season_jev.json`` payload, the lower-level shadow gate pass that wires
 the existing J3 research gate, the synchronous runtime orchestrator with its
-fire-and-forget wrapper, and a read-only runtime status snapshot.
+fire-and-forget wrapper, a read-only runtime status snapshot, and the pure
+threshold approval record contract.
 
 Scope lock: no provider execution beyond the existing shadow public interface,
 no research executor, no evidence verifier, no config writes. The future P3
@@ -13,13 +15,14 @@ until its own authorized task lands; the canary/production executor is an
 explicit injectable Task-1.3 seam, and the overlay resume identity is the
 locked 9-tuple + ``VERIFIED`` execution status contract.
 
-Spec: docs/superpowers/specs/2026-09-23-jev-production-routing-design.md §4.3–§4.6, §12
+Spec: docs/superpowers/specs/2026-09-23-jev-production-routing-design.md §4.3–§4.6, §5.3, §12
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
+import math
 import threading
 from pathlib import Path
 from typing import Any, Mapping
@@ -71,6 +74,9 @@ EXECUTION_IDENTITY_FIELDS = (
     "requirement_type",
     "input_hash",
 )
+
+APPROVAL_SCHEMA_VERSION = 1
+APPROVAL_ARTIFACT_TYPE = "jev_threshold_approval"
 
 # Internal marker used by load_raw_runtime_config to carry a load failure into
 # resolve_runtime_mode without raising. Never persisted.
@@ -1119,3 +1125,158 @@ def runtime_status(
         "gate": gate,
         "thresholds": _threshold_status(settings, identity, threshold_cfg),
     }
+
+
+# ---------------------------------------------------------------------------
+# P2 Task 2.1 — threshold approval record contract (pure, offline)
+# ---------------------------------------------------------------------------
+
+
+def _finite_unit_float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0 or number > 1.0:
+        return None
+    return number
+
+
+def bucket_hash(provider: str, requested_model: str, evaluator_version: str) -> str:
+    """Lowercase SHA-256 hex of the canonical exact-bucket identity object."""
+    return hashlib.sha256(
+        _canonical_json_bytes(
+            {
+                "provider": provider,
+                "requested_model": requested_model,
+                "evaluator_version": evaluator_version,
+            }
+        )
+    ).hexdigest()
+
+
+def approval_record_hash(record: Mapping[str, Any]) -> str:
+    """Lowercase SHA-256 hex over the record excluding only top-level approval_hash."""
+    payload = {key: value for key, value in record.items() if key != "approval_hash"}
+    return hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
+
+
+def build_approval_record(
+    *,
+    provider: str,
+    requested_model: str,
+    evaluator_version: str,
+    head: str,
+    threshold: float,
+    dataset_id: str,
+    dataset_hash: str,
+    selection_manifest_hash: str,
+    selection_locked_at: str,
+    holdout_report_hash: str,
+    holdout_revealed_at: str,
+    holdout_pristine: bool,
+    review_status: str,
+    support: Mapping[str, Any],
+    approved_by: str,
+    approved_at: str,
+) -> dict[str, Any]:
+    """Construct the locked threshold-approval record including its approval_hash.
+
+    Pure: caller-owned mappings are copied, never mutated.
+    """
+    numeric_threshold = _finite_unit_float(threshold)
+    if numeric_threshold is None:
+        raise ValueError("threshold must be a finite number in [0, 1]")
+    if not isinstance(support, Mapping):
+        raise ValueError("support must be a mapping")
+    record: dict[str, Any] = {
+        "schema_version": APPROVAL_SCHEMA_VERSION,
+        "approval_type": APPROVAL_ARTIFACT_TYPE,
+        "provider": provider,
+        "requested_model": requested_model,
+        "evaluator_version": evaluator_version,
+        "head": head,
+        "threshold": numeric_threshold,
+        "dataset_id": dataset_id,
+        "dataset_hash": dataset_hash,
+        "selection_manifest_hash": selection_manifest_hash,
+        "selection_locked_at": selection_locked_at,
+        "holdout_report_hash": holdout_report_hash,
+        "holdout_revealed_at": holdout_revealed_at,
+        "holdout_pristine": holdout_pristine,
+        "review_status": review_status,
+        "support": {
+            "valid_count": support.get("valid_count"),
+            "positive_count": support.get("positive_count"),
+            "negative_count": support.get("negative_count"),
+        },
+        "approved_by": approved_by,
+        "approved_at": approved_at,
+    }
+    record["approval_hash"] = approval_record_hash(record)
+    return record
+
+
+def verify_approval_record(
+    record: Mapping[str, Any],
+    *,
+    provider: str,
+    requested_model: str,
+    evaluator_version: str,
+    head: str,
+    threshold: Any,
+) -> dict[str, Any]:
+    """Fail-closed verification of one approval record against the expected bucket.
+
+    Deterministic precedence: structural integrity (schema/type/bucket/head/
+    threshold/approval_hash) -> ``APPROVAL_MISMATCH``; then
+    ``REVIEW_NOT_ACCEPTED`` -> ``HOLDOUT_NOT_PRISTINE`` ->
+    ``SUPPORT_INSUFFICIENT``; otherwise ``{"ok": True, "reason": None}``.
+    """
+    def _fail(reason: str) -> dict[str, Any]:
+        return {"ok": False, "reason": reason}
+
+    if not isinstance(record, Mapping):
+        return _fail("APPROVAL_MISMATCH")
+    schema_version = record.get("schema_version")
+    if isinstance(schema_version, bool) or schema_version != APPROVAL_SCHEMA_VERSION:
+        return _fail("APPROVAL_MISMATCH")
+    if record.get("approval_type") != APPROVAL_ARTIFACT_TYPE:
+        return _fail("APPROVAL_MISMATCH")
+    if (
+        record.get("provider") != provider
+        or record.get("requested_model") != requested_model
+        or record.get("evaluator_version") != evaluator_version
+    ):
+        return _fail("APPROVAL_MISMATCH")
+    if record.get("head") != head:
+        return _fail("APPROVAL_MISMATCH")
+
+    expected_threshold = _finite_unit_float(threshold)
+    if expected_threshold is None:
+        return _fail("APPROVAL_MISMATCH")
+    record_threshold = _finite_unit_float(record.get("threshold"))
+    if record_threshold is None or record_threshold != expected_threshold:
+        return _fail("APPROVAL_MISMATCH")
+
+    stored_hash = record.get("approval_hash")
+    try:
+        recomputed = approval_record_hash(record)
+    except (TypeError, ValueError):
+        return _fail("APPROVAL_MISMATCH")
+    if not isinstance(stored_hash, str) or stored_hash != recomputed:
+        return _fail("APPROVAL_MISMATCH")
+
+    if record.get("review_status") != "ACCEPT":
+        return _fail("REVIEW_NOT_ACCEPTED")
+    if record.get("holdout_pristine") is not True:
+        return _fail("HOLDOUT_NOT_PRISTINE")
+
+    support = record.get("support")
+    valid_count = support.get("valid_count") if isinstance(support, Mapping) else None
+    if (
+        isinstance(valid_count, bool)
+        or not isinstance(valid_count, int)
+        or valid_count < 100
+    ):
+        return _fail("SUPPORT_INSUFFICIENT")
+    return {"ok": True, "reason": None}
