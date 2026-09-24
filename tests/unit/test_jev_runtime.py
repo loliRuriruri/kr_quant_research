@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 from kr_quant.research import jev_runtime as rt
+from kr_quant.research import season_jev_shadow
 from kr_quant.research.jev_research_gate import research_gate_path
 
 
@@ -638,3 +639,233 @@ def test_execution_reuse_key_requires_every_locked_field(field: str) -> None:
 @pytest.mark.parametrize("bad", [None, [], "x", 1])
 def test_execution_reuse_key_rejects_non_mapping(bad: object) -> None:
     assert rt.execution_reuse_key(bad) is None
+
+
+# ---------------------------------------------------------------------------
+# Task 1.4 — runtime_status (read-only observability)
+# ---------------------------------------------------------------------------
+
+
+def _fs_snapshot(root: Path) -> dict:
+    snapshot = {}
+    for path in sorted(root.rglob("*")):
+        if path.is_file():
+            snapshot[str(path.relative_to(root))] = path.read_bytes()
+    return snapshot
+
+
+def _mixed_threshold_cfg() -> dict:
+    cfg = _threshold_cfg()
+    cfg["buckets"][0]["thresholds"]["needsNews"] = 0.4
+    return cfg
+
+
+def _write_shadow_artifact(settings, payload: dict) -> Path:
+    path = season_jev_shadow.shadow_path(
+        settings, payload["generation_id"], payload["provider"]
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def test_runtime_status_empty_environment_is_safe_and_read_only(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"enabled": False})
+    settings = _settings(tmp_path)
+    before = _fs_snapshot(tmp_path)
+
+    result = rt.runtime_status(settings)
+
+    assert result["mode"] == "disabled"
+    assert result["shadow"]["present"] is False
+    assert result["shadow"]["counts"] == {
+        "GENERATED": 0,
+        "REUSED": 0,
+        "SKIPPED": 0,
+        "ERROR": 0,
+        "unknown": 0,
+    }
+    assert result["shadow"]["total"] == 0
+    assert result["gate"]["present"] is False
+    assert result["gate"]["calibrated_head_count"] == 0
+    assert result["gate"]["uncalibrated_head_count"] == 0
+    assert result["thresholds"]["status"] == "MISSING"
+    assert _fs_snapshot(tmp_path) == before
+    assert not (tmp_path / "data").exists()
+
+
+def test_runtime_status_shadow_counts(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"mode": "shadow", "enabled": True})
+    settings = _settings(tmp_path)
+    results = [
+        _record("c1"),
+        _record("c2"),
+        _record("c3", status="REUSED"),
+        _record("c4", status="SKIPPED", skip_reason="API_CAP_DAILY", answers={}),
+        _record("c5", status="ERROR", error="RUNNER:RuntimeError", answers={}),
+        _record("c6", status="WEIRD"),
+    ]
+    _write_shadow_artifact(
+        settings, {**_shadow_payload(results=results), "status": "COMPLETE"}
+    )
+
+    result = rt.runtime_status(settings)
+
+    assert result["mode"] == "shadow"
+    assert result["shadow"]["present"] is True
+    assert result["shadow"]["generation_id"] == "gen-1"
+    assert result["shadow"]["provider"] == "typesafe_direct"
+    assert result["shadow"]["status"] == "COMPLETE"
+    assert result["shadow"]["counts"] == {
+        "GENERATED": 2,
+        "REUSED": 1,
+        "SKIPPED": 1,
+        "ERROR": 1,
+        "unknown": 1,
+    }
+    assert result["shadow"]["total"] == 6
+
+
+def test_runtime_status_picks_latest_shadow_artifact(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"mode": "shadow", "enabled": True})
+    settings = _settings(tmp_path)
+    old = {
+        **_shadow_payload(generation_id="gen-old", results=[_record("old")]),
+        "finished_at": "2026-09-01T00:00:00+00:00",
+    }
+    new = {
+        **_shadow_payload(generation_id="gen-new", results=[_record("new")]),
+        "finished_at": "2026-09-02T00:00:00+00:00",
+    }
+    _write_shadow_artifact(settings, old)
+    _write_shadow_artifact(settings, new)
+
+    result = rt.runtime_status(settings)
+
+    assert result["shadow"]["present"] is True
+    assert result["shadow"]["generation_id"] == "gen-new"
+    assert result["shadow"]["total"] == 1
+
+
+def test_runtime_status_gate_calibrated_counts_and_hash(tmp_path: Path) -> None:
+    settings = _active_settings(tmp_path)
+    cfg = _mixed_threshold_cfg()
+    gate_result = rt.run_shadow_gate_pass(
+        settings, shadow_payload=_shadow_payload(), threshold_cfg=cfg
+    )
+    assert gate_result["status"] == "OK"
+
+    result = rt.runtime_status(settings, threshold_cfg=cfg)
+
+    gate = result["gate"]
+    assert gate["present"] is True
+    assert gate["readable"] is True
+    assert gate["generation_id"] == "gen-1"
+    assert gate["provider"] == "typesafe_direct"
+    assert gate["requested_model"] == "jev-latest"
+    assert gate["evaluator_version"] == "season-jev-shadow-v1"
+    assert gate["threshold_config_hash"] == gate_result["gate"]["threshold_config_hash"]
+    assert gate["mode"] == "SHADOW_ONLY"
+    assert gate["side_effects_executed"] is False
+    assert gate["calibrated_heads"] == ["needsNews"]
+    assert gate["calibrated_head_count"] == 1
+    assert gate["uncalibrated_head_count"] == 6
+    assert result["thresholds"]["status"] == "LOADED"
+    assert (
+        result["thresholds"]["current_threshold_config_hash"]
+        == gate["threshold_config_hash"]
+    )
+
+
+def test_runtime_status_shadow_without_gate_is_safe(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"mode": "shadow", "enabled": True})
+    settings = _settings(tmp_path)
+    _write_shadow_artifact(settings, _shadow_payload(results=[_record("c1")]))
+    before = _fs_snapshot(tmp_path)
+
+    result = rt.runtime_status(settings)
+
+    assert result["shadow"]["present"] is True
+    assert result["gate"]["present"] is False
+    assert result["gate"]["threshold_config_hash"] is None
+    assert _fs_snapshot(tmp_path) == before
+    assert not (
+        tmp_path / "data" / "research_snapshots" / "season_jev_research_gate"
+    ).exists()
+
+
+def test_runtime_status_malformed_gate_is_safe_and_read_only(tmp_path: Path) -> None:
+    settings = _active_settings(tmp_path)
+    gate_path = research_gate_path(settings, "gen-1", "typesafe_direct")
+    gate_path.parent.mkdir(parents=True, exist_ok=True)
+    gate_path.write_text("{not-json", encoding="utf-8")
+    before = _fs_snapshot(tmp_path)
+
+    result = rt.runtime_status(settings, threshold_cfg=_mixed_threshold_cfg())
+
+    assert result["gate"]["present"] is True
+    assert result["gate"]["readable"] is False
+    assert result["gate"]["threshold_config_hash"] is None
+    assert _fs_snapshot(tmp_path) == before
+    assert gate_path.read_text(encoding="utf-8") == "{not-json"
+
+
+def test_runtime_status_malformed_shadow_is_skipped(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"mode": "shadow", "enabled": True})
+    settings = _settings(tmp_path)
+    folder = season_jev_shadow.shadow_dir(settings)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "bad__typesafe_direct.json").write_text("{nope", encoding="utf-8")
+    before = _fs_snapshot(tmp_path)
+
+    result = rt.runtime_status(settings)
+
+    assert result["shadow"]["present"] is False
+    assert _fs_snapshot(tmp_path) == before
+
+
+def test_runtime_status_unreadable_thresholds_fail_safe(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"mode": "shadow", "enabled": True})
+    (tmp_path / "config" / "jev_thresholds.json").write_text("{bad", encoding="utf-8")
+    settings = _settings(tmp_path)
+    before = _fs_snapshot(tmp_path)
+
+    result = rt.runtime_status(settings)
+
+    assert result["thresholds"]["status"] == "UNREADABLE"
+    assert result["thresholds"]["current_threshold_config_hash"] is None
+    assert _fs_snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize(
+    "config,expected_mode,expected_reason",
+    [
+        ({"enabled": False}, "disabled", None),
+        ({"enabled": True}, "shadow", "LEGACY_ENABLED_TRUE"),
+        ({"mode": "shadow", "enabled": True}, "shadow", None),
+    ],
+)
+def test_runtime_status_mode_and_reason(
+    tmp_path: Path, config: dict, expected_mode: str, expected_reason: object
+) -> None:
+    _write_config(tmp_path, config)
+    settings = _settings(tmp_path)
+
+    result = rt.runtime_status(settings)
+
+    assert result["mode"] == expected_mode
+    assert result["mode_reason"] == expected_reason
+    assert result["mode_errors"] == []
+
+
+def test_runtime_status_read_only_over_full_fixture(tmp_path: Path) -> None:
+    settings = _active_settings(tmp_path)
+    cfg = _mixed_threshold_cfg()
+    _write_shadow_artifact(settings, _shadow_payload(results=[_record("c1")]))
+    rt.run_shadow_gate_pass(settings, shadow_payload=_shadow_payload(), threshold_cfg=cfg)
+    before = _fs_snapshot(tmp_path)
+
+    rt.runtime_status(settings, threshold_cfg=cfg)
+    rt.runtime_status(settings)
+
+    assert _fs_snapshot(tmp_path) == before

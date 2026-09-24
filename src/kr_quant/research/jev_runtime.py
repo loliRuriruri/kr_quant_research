@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""JEV runtime mode resolution, shadow gate pass, and orchestrator (P1 Tasks 1.1–1.3).
+"""JEV runtime mode resolution, shadow gate pass, orchestrator, and status (P1 Tasks 1.1–1.4).
 
 Pure, fail-closed resolution of the runtime lifecycle mode from the raw
 ``config/season_jev.json`` payload, the lower-level shadow gate pass that wires
-the existing J3 research gate, and the synchronous runtime orchestrator with
-its fire-and-forget wrapper.
+the existing J3 research gate, the synchronous runtime orchestrator with its
+fire-and-forget wrapper, and a read-only runtime status snapshot.
 
 Scope lock: no provider execution beyond the existing shadow public interface,
 no research executor, no evidence verifier, no config writes. The future P3
@@ -13,7 +13,7 @@ until its own authorized task lands; the canary/production executor is an
 explicit injectable Task-1.3 seam, and the overlay resume identity is the
 locked 9-tuple + ``VERIFIED`` execution status contract.
 
-Spec: docs/superpowers/specs/2026-09-23-jev-production-routing-design.md §4.3–§4.6
+Spec: docs/superpowers/specs/2026-09-23-jev-production-routing-design.md §4.3–§4.6, §12
 """
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ from kr_quant.research.jev_research_gate import (
     MODE_SHADOW_ONLY,
     ResearchGateError,
     evaluate_research_gate_generation,
+    research_gate_dir,
     research_gate_path,
     threshold_config_hash,
     write_research_gate_artifact,
@@ -809,3 +810,282 @@ def request_runtime_evaluation(settings, bundle: Mapping[str, Any]) -> None:
         ).start()
     except Exception:
         logger.exception("JEV runtime request failed; ignored")
+
+
+# ---------------------------------------------------------------------------
+# Task 1.4 — read-only runtime status snapshot
+# ---------------------------------------------------------------------------
+
+_EMPTY_SHADOW_STATUS: dict[str, Any] = {
+    "present": False,
+    "error": None,
+    "generation_id": None,
+    "provider": None,
+    "requested_model": None,
+    "evaluator_version": None,
+    "status": None,
+    "path": None,
+    "counts": {"GENERATED": 0, "REUSED": 0, "SKIPPED": 0, "ERROR": 0, "unknown": 0},
+    "total": 0,
+}
+
+_EMPTY_GATE_STATUS: dict[str, Any] = {
+    "present": False,
+    "readable": None,
+    "error": None,
+    "generation_id": None,
+    "provider": None,
+    "requested_model": None,
+    "evaluator_version": None,
+    "threshold_config_hash": None,
+    "mode": None,
+    "side_effects_executed": None,
+    "candidate_count": 0,
+    "calibrated_heads": [],
+    "uncalibrated_heads": [],
+    "calibrated_head_count": 0,
+    "uncalibrated_head_count": 0,
+    "path": None,
+}
+
+
+def _empty_shadow_status() -> dict[str, Any]:
+    return {**_EMPTY_SHADOW_STATUS, "counts": dict(_EMPTY_SHADOW_STATUS["counts"])}
+
+
+def _empty_gate_status() -> dict[str, Any]:
+    return {
+        **_EMPTY_GATE_STATUS,
+        "calibrated_heads": [],
+        "uncalibrated_heads": [],
+    }
+
+
+def _shadow_status(settings) -> dict[str, Any]:
+    """Read-only summary of the latest usable shadow artifact."""
+    from kr_quant.research import season_jev_shadow
+
+    status = _empty_shadow_status()
+    try:
+        folder = season_jev_shadow.shadow_dir(settings)
+        if not folder.is_dir():
+            return status
+        best = None
+        for path in sorted(folder.glob("*.json")):
+            if path.name.startswith("_") or path.name.startswith("."):
+                continue
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(payload, Mapping):
+                continue
+            generation_id = payload.get("generation_id")
+            if not isinstance(generation_id, str) or not generation_id:
+                continue
+            finished_at = payload.get("finished_at")
+            key = (
+                str(finished_at) if isinstance(finished_at, str) else "",
+                generation_id,
+                path.name,
+            )
+            if best is None or key > best[0]:
+                best = (key, payload, path)
+    except OSError as exc:
+        return {**status, "error": type(exc).__name__}
+    if best is None:
+        return status
+
+    _, payload, path = best
+    counts = {"GENERATED": 0, "REUSED": 0, "SKIPPED": 0, "ERROR": 0, "unknown": 0}
+    results = payload.get("results")
+    total = 0
+    if isinstance(results, list):
+        total = len(results)
+        for record in results:
+            record_status = record.get("status") if isinstance(record, Mapping) else None
+            if (
+                isinstance(record_status, str)
+                and record_status in counts
+                and record_status != "unknown"
+            ):
+                counts[record_status] += 1
+            else:
+                counts["unknown"] += 1
+    return {
+        "present": True,
+        "error": None,
+        "generation_id": payload.get("generation_id"),
+        "provider": payload.get("provider"),
+        "requested_model": payload.get("requested_model"),
+        "evaluator_version": payload.get("evaluator_version"),
+        "status": payload.get("status"),
+        "path": str(path),
+        "counts": counts,
+        "total": total,
+    }
+
+
+def _gate_status(settings, shadow_status: Mapping[str, Any]) -> dict[str, Any]:
+    """Read-only summary of the gate artifact matching the latest shadow."""
+    status = _empty_gate_status()
+    try:
+        path = None
+        generation_id = shadow_status.get("generation_id")
+        provider = shadow_status.get("provider")
+        if (
+            shadow_status.get("present") is True
+            and isinstance(generation_id, str)
+            and generation_id
+            and isinstance(provider, str)
+            and provider
+        ):
+            candidate = research_gate_path(settings, generation_id, provider)
+            if candidate.is_file():
+                path = candidate
+        if path is None:
+            folder = research_gate_dir(settings)
+            if folder.is_dir():
+                candidates = sorted(
+                    p
+                    for p in folder.glob("*__gate.json")
+                    if p.is_file() and not p.name.startswith(("_", "."))
+                )
+                if candidates:
+                    path = candidates[-1]
+    except OSError as exc:
+        return {**status, "error": type(exc).__name__}
+    if path is None:
+        return status
+
+    try:
+        gate = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        gate = None
+    if not isinstance(gate, Mapping):
+        return {**status, "present": True, "readable": False, "path": str(path)}
+
+    calibrated: set[str] = set()
+    uncalibrated: set[str] = set()
+    results = gate.get("results")
+    candidate_count = len(results) if isinstance(results, list) else 0
+    if isinstance(results, list):
+        for row in results:
+            if not isinstance(row, Mapping):
+                continue
+            gate_obj = row.get("gate")
+            if not isinstance(gate_obj, Mapping) or gate_obj.get("mode") != MODE_SHADOW_ONLY:
+                continue
+            heads = gate_obj.get("calibrated_heads")
+            if isinstance(heads, list):
+                for head in heads:
+                    if isinstance(head, str) and head:
+                        calibrated.add(head)
+            heads = gate_obj.get("uncalibrated_heads")
+            if isinstance(heads, list):
+                for head in heads:
+                    if isinstance(head, str) and head:
+                        uncalibrated.add(head)
+    return {
+        "present": True,
+        "readable": True,
+        "error": None,
+        "generation_id": gate.get("generation_id"),
+        "provider": gate.get("provider"),
+        "requested_model": gate.get("requested_model"),
+        "evaluator_version": gate.get("evaluator_version"),
+        "threshold_config_hash": gate.get("threshold_config_hash"),
+        "mode": gate.get("mode"),
+        "side_effects_executed": gate.get("side_effects_executed"),
+        "candidate_count": candidate_count,
+        "calibrated_heads": sorted(calibrated),
+        "uncalibrated_heads": sorted(uncalibrated),
+        "calibrated_head_count": len(calibrated),
+        "uncalibrated_head_count": len(uncalibrated),
+        "path": str(path),
+    }
+
+
+def _threshold_status(settings, identity, threshold_cfg) -> dict[str, Any]:
+    cfg = threshold_cfg
+    if cfg is None:
+        from kr_quant.research.jev_calibration import CalibrationError, load_thresholds
+
+        path = Path(settings.root) / "config" / "jev_thresholds.json"
+        if not path.is_file():
+            return {"status": "MISSING", "error": None, "current_threshold_config_hash": None}
+        try:
+            cfg = load_thresholds(path)
+        except (OSError, ValueError, TypeError, CalibrationError) as exc:
+            return {
+                "status": "UNREADABLE",
+                "error": type(exc).__name__,
+                "current_threshold_config_hash": None,
+            }
+
+    current_hash = None
+    if identity is not None:
+        try:
+            current_hash = threshold_config_hash(
+                cfg,
+                provider=identity[0],
+                requested_model=identity[1],
+                evaluator_version=identity[2],
+            )
+        except ResearchGateError as exc:
+            return {
+                "status": "LOADED",
+                "error": _gate_error_code(str(exc)),
+                "current_threshold_config_hash": None,
+            }
+    return {"status": "LOADED", "error": None, "current_threshold_config_hash": current_hash}
+
+
+def runtime_status(
+    settings,
+    *,
+    threshold_cfg: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Read-only snapshot of the current JEV runtime state.
+
+    Never activates, schedules, evaluates, or writes anything: it only reads
+    the raw runtime config, existing shadow/gate artifacts, and (optionally)
+    the calibration threshold config. Missing directories and malformed
+    artifacts fail closed into zero/absent status fields.
+    """
+    raw = load_raw_runtime_config(settings)
+    resolution = resolve_runtime_mode(raw)
+    shadow = _shadow_status(settings)
+    gate = _gate_status(settings, shadow)
+
+    identity = None
+    for source in (gate, shadow):
+        provider = source.get("provider")
+        requested_model = source.get("requested_model")
+        evaluator_version = source.get("evaluator_version")
+        if (
+            isinstance(provider, str)
+            and provider
+            and isinstance(requested_model, str)
+            and requested_model
+            and isinstance(evaluator_version, str)
+            and evaluator_version
+        ):
+            identity = (provider, requested_model, evaluator_version)
+            break
+
+    raw_provider = raw.get("provider")
+    raw_model = raw.get("model")
+    return {
+        "schema_version": RUNTIME_SCHEMA_VERSION,
+        "mode": resolution["mode"],
+        "mode_reason": resolution["reason"],
+        "mode_errors": list(resolution["errors"]),
+        "provider": (raw_provider if isinstance(raw_provider, str) else None)
+        or "typesafe_direct",
+        "requested_model": (raw_model if isinstance(raw_model, str) else None)
+        or "jev-latest",
+        "shadow": shadow,
+        "gate": gate,
+        "thresholds": _threshold_status(settings, identity, threshold_cfg),
+    }
