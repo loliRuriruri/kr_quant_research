@@ -5,6 +5,9 @@ import json
 import logging
 import threading
 import time
+import hashlib
+import re
+from io import BytesIO
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -21,7 +24,7 @@ from kr_quant.universe.tradability import evaluate_candidate_tradability, evalua
 
 logger = logging.getLogger("kr_quant.strategy.seasonality")
 SEASONALITY_CACHE_VERSION = 3
-DISCOVERY_CACHE_VERSION = 9
+DISCOVERY_CACHE_VERSION = 10
 
 EVENT_PRESETS: dict[str, dict[str, Any]] = {
     "winter_heater": {
@@ -161,26 +164,79 @@ _EVENT_TICKERS_CACHE: dict[str, Any] = {
     "ready": False,
     "errors": (),
 }
+
+
+def _committed_scored_source(settings):
+    """Resolve a local committed source, never follow another checkout's pointer.
+
+    A malformed local commitment is an integrity error, not permission to use
+    a stale legacy alias. Foreign copied manifests have no local authority.
+    """
+    manifest_path = settings.output_dir / "current_manifest.json"
+    if not manifest_path.exists():
+        return None
+    raw = manifest_path.read_bytes()
+    manifest = json.loads(raw)
+    directory = Path(str(manifest.get("generation_dir") or "")).resolve()
+    root = (settings.output_dir / "generations").resolve()
+    if not directory.is_relative_to(root):
+        return None
+    run_id = manifest.get("run_id")
+    entry = manifest.get("files", {}).get("latest_all_stocks.parquet", {})
+    path = directory / "latest_all_stocks.parquet"
+    if (not run_id or directory.name != run_id or not path.is_file()
+            or Path(str(entry.get("path") or "")).resolve() != path.resolve()
+            or not re.fullmatch(r"[0-9a-f]{64}", str(entry.get("sha256") or ""))):
+        raise ValueError("Committed classification manifest is incomplete")
+    return {"path": path, "expected_sha256": entry["sha256"], "generation_id": run_id,
+            "manifest_path": str(manifest_path.resolve()),
+            "manifest_sha256": hashlib.sha256(raw).hexdigest()}
+
+
 def _load_scored_map(settings: Settings) -> dict[str, dict[str, Any]]:
     """Load the latest scored universe across current and legacy output names."""
     candidates: list[Path] = [settings.output_dir / "latest_all_stocks.parquet"]
+    try:
+        committed = _committed_scored_source(settings)
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        logger.warning("Classification commitment rejected: %s", exc)
+        return {}
+    if committed:
+        candidates = [committed["path"]]
     for dated in sorted(settings.output_dir.glob("as_of_date=*"), reverse=True):
         if not dated.is_dir():
             continue
         # all_stocks.parquet is the current orchestration output. Keep the
         # legacy name as a compatibility fallback for older saved runs.
-        candidates.extend([dated / "all_stocks.parquet", dated / "scored_all.parquet"])
+        if not committed:
+            candidates.extend([dated / "all_stocks.parquet", dated / "scored_all.parquet"])
 
     for path in candidates:
         if not path.exists():
             continue
         try:
-            frame = pd.read_parquet(path)
+            raw = path.read_bytes()
+            source_sha = hashlib.sha256(raw).hexdigest()
+            if committed:
+                if source_sha != committed["expected_sha256"]:
+                    raise ValueError("Committed classification SHA256 mismatch")
+                if hashlib.sha256(Path(committed["manifest_path"]).read_bytes()).hexdigest() != committed["manifest_sha256"]:
+                    raise ValueError("Classification commitment changed during read")
+            frame = pd.read_parquet(BytesIO(raw))
             if "ticker" not in frame.columns:
                 continue
             frame = frame.copy()
             frame["ticker"] = frame["ticker"].astype(str).str.zfill(6)
-            return {row["ticker"]: row for row in frame.to_dict("records")}
+            provenance = {"file_path": str(path.resolve()), "file_sha256": source_sha,
+                          "file_bytes": len(raw), "generation_id": "sha256:" + source_sha,
+                          "generation_kind": "consumed_scored_file_content"}
+            if committed:
+                provenance.update(generation_id=committed["generation_id"],
+                                  generation_kind="pipeline_committed_generation",
+                                  manifest_path=committed["manifest_path"],
+                                  manifest_sha256=committed["manifest_sha256"])
+            return {row["ticker"]: {**row, "event_source_provenance": dict(provenance)}
+                    for row in frame.to_dict("records")}
         except Exception as exc:
             logger.debug("Scored output read failed for %s: %s", path, exc)
     return {}
@@ -1156,7 +1212,17 @@ def scan_seasonality_discovery(
     # served after deployment.
     cache_file = cache_dir / f"discovery_cache_lb_{lookback_years}_v{DISCOVERY_CACHE_VERSION}.json"
     cached_list: list[dict[str, Any]] = []
-    signature = [date.today().isoformat(), _seasonality_source_signature(settings)]
+    from kr_quant.strategy.event_taxonomy import MAPPING_VERSION
+    classification_paths = [settings.output_dir / "latest_all_stocks.parquet"]
+    classification_paths += sorted(settings.output_dir.glob("as_of_date=*/all_stocks.parquet"))
+    classification_paths += sorted(settings.output_dir.glob("as_of_date=*/scored_all.parquet"))
+    committed = _committed_scored_source(settings)
+    classification_paths.append(settings.output_dir / "current_manifest.json")
+    if committed:
+        classification_paths.append(committed["path"])
+    classification_hashes = [[str(p), hashlib.sha256(p.read_bytes()).hexdigest()]
+                             for p in classification_paths if p.is_file()]
+    signature = [date.today().isoformat(), _seasonality_source_signature(settings), MAPPING_VERSION, classification_hashes]
 
     if cache_file.exists():
         try:

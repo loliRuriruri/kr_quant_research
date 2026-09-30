@@ -28,16 +28,33 @@ def _digest(value) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
 
 
+def _source_file_provenance(paths):
+    result = []
+    for path in sorted({Path(p) for p in paths}, key=str):
+        if not path.is_file():
+            result.append({"path": str(path), "sha256": None})
+            continue
+        sha = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                sha.update(chunk)
+        result.append({"path": str(path), "sha256": sha.hexdigest()})
+    return result
+
+
 def source_identity(settings, lookback: int) -> dict:
     if lookback not in LOOKBACKS:
         raise ValueError("지원 기간: 0(전체), 2, 3, 5년")
-    from kr_quant.strategy.seasonality import _seasonality_source_signature
+    from kr_quant.strategy.seasonality import _seasonality_source_signature, _committed_scored_source
 
     paths = [settings.output_dir / "latest_all_stocks.parquet",
              settings.staged_dir / "live" / "krx_master.parquet",
              settings.data_dir / "cache" / "investor_flow.json"]
     paths += sorted(settings.output_dir.glob("as_of_date=*/all_stocks.parquet"))
     paths += sorted(settings.output_dir.glob("as_of_date=*/scored_all.parquet"))
+    committed = _committed_scored_source(settings)
+    if committed:
+        paths.append(committed["path"])
     code = Path(__file__).resolve().parents[1]
     code_paths = sorted((code / "strategy").glob("*.py")) + sorted((code / "universe").glob("*.py")) + [Path(__file__), code / 'flow' / 'reliability.py', code / 'research' / 'statistical_reliability.py']
     sources = _seasonality_source_signature(settings) + [
@@ -46,7 +63,9 @@ def source_identity(settings, lookback: int) -> dict:
     ]
     return {"schema": SCHEMA, "root": str(settings.root.resolve()),
             "day": date.today().isoformat(), "lookback": lookback,
-            "sources": sources, "config_hash": _digest([settings.config,
+            "sources": sources,
+            "source_file_provenance": _source_file_provenance([entry[0] for entry in sources]),
+            "config_hash": _digest([settings.config,
                 getattr(settings, "universe_rules", None), getattr(settings, "risk_rules", None)]),
             "model_hash": _digest([(str(p), hashlib.sha256(p.read_bytes()).hexdigest()) for p in code_paths])}
 

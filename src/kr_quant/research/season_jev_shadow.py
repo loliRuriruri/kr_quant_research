@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import copy
 import json
 import logging
 import os
@@ -286,6 +287,22 @@ def project_season_state(row: dict[str, Any]) -> dict[str, Any]:
             "remainingPeak": peak,
         },
     }
+    # Do not retroactively add fields to legacy frozen states. Forward rows carry
+    # mapping metadata explicitly, making corrected inputs distinct state hashes.
+    if row.get("event_mapping_version") is not None:
+        state["event"]["mappingProvenance"] = {
+            "version": row.get("event_mapping_version"),
+            "ruleId": row.get("event_mapping_rule_id"),
+            "domain": row.get("event_mapping_domain"),
+            "matchedKeywords": copy.deepcopy(row.get("event_mapping_matched_keywords")),
+            "sourceFields": copy.deepcopy(row.get("event_mapping_source_fields")),
+            "ambiguity": row.get("event_mapping_ambiguity"),
+            "status": row.get("event_mapping_status"),
+            "explanationSource": row.get("event_explanation_source"),
+            "sourceProvenance": copy.deepcopy(row.get("event_source_provenance")),
+            "seasonGenerationId": row.get("generation_id"),
+        }
+        state["event"]["eventHypothesis"] = row.get("event_hypothesis")
     assert_state_clean(state)
     return state
 

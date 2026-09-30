@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import math
+import copy
 from statistics import median
 from typing import Any
 from kr_quant.strategy.discovery_engine import SeasonalityPattern
@@ -124,118 +125,75 @@ EVENT_KNOWLEDGE_BASE: dict[str, dict[str, Any]] = {
 }
 
 
-# A deterministic fallback is intentionally kept separate from the curated
-# knowledge base.  It is used when a ticker has no manually reviewed event
-# thesis, so the UI can show a useful, evidence-backed hypothesis without
-# presenting a generic month label as if it were live news.
-_TICKER_CATALYST_HINTS: dict[str, dict[str, str]] = {
-    "161580": {
-        "event": "반도체·디스플레이 장비 투자와 고객사 가동률 회복",
-        "focus": "수주잔고·신규 장비 발주·고객사 CAPEX 확인",
-        "risk": "고객사 CAPEX 지연 또는 장비 수주 공백",
-    },
-    "267260": {
-        "event": "전력망·변압기 투자와 북미 수주잔고 매출 인식",
-        "focus": "수주잔고 증가·납기·원자재 스프레드 확인",
-        "risk": "북미 발주 지연 또는 원자재·운임 비용 상승",
-    },
-    "003570": {
-        "event": "자동차 부품·방산 수주 및 납품 일정",
-        "focus": "완성차 생산량·방산 수출 계약·납품 인식 확인",
-        "risk": "자동차 생산 감소 또는 방산 수출 일정 지연",
-    },
-    "204270": {
-        "event": "스마트폰·커버글라스 신제품 양산과 고객사 재고 보충",
-        "focus": "신제품 양산 수율·고객사 주문·가동률 확인",
-        "risk": "신제품 수율 저하 또는 고객사 발주 축소",
-    },
-}
-
-
+# Catalyst content keyed by stable taxonomy IDs, not ordered lexical rules.
 _DOMAIN_CATALYST_RULES: tuple[dict[str, Any], ...] = (
     {
-        "keywords": ("전기장비", "전력", "변압", "배전", "전선", "유틸리티"),
+        "rule_id": "power",
         "event": "전력망·인프라 CAPEX 수주와 납품 매출 인식",
         "focus": "수주잔고·출하량·원가 스프레드 확인",
         "risk": "수주 지연·원자재 가격 상승",
     },
     {
-        "keywords": ("반도체", "전자부품", "디스플레이", "기타기계", "레이저", "광학"),
+        "rule_id": "semiconductor",
         "event": "고객사 신제품 양산·장비 발주와 가동률 회복",
         "focus": "고객사 CAPEX·수주 공시·가동률 확인",
         "risk": "고객사 재고조정·CAPEX 지연",
     },
     {
-        "keywords": ("자동차", "자동차부품", "차량"),
+        "rule_id": "automotive",
         "event": "신차 생산·전장 수요와 부품 출하 사이클",
         "focus": "완성차 생산·수출·부품 믹스 확인",
         "risk": "완성차 생산 둔화·원가 부담",
     },
     {
-        "keywords": ("방산", "항공우주", "국방"),
+        "rule_id": "defense",
         "event": "방산 수출 계약·납품 인식과 후속 수주 기대",
         "focus": "수주 공시·납품 일정·수출 승인 확인",
         "risk": "수출 승인 지연·납품 일정 변경",
     },
     {
-        "keywords": ("제약", "바이오", "의료", "헬스"),
+        "rule_id": "healthcare",
         "event": "학회·임상·허가 일정과 파이프라인 가치 재평가",
         "focus": "임상 데이터·허가 일정·기술이전 계약 확인",
         "risk": "임상 지연·허가 불확실성·기술이전 무산",
     },
     {
-        "keywords": ("은행", "금융", "보험", "증권"),
+        "rule_id": "finance",
         "event": "금리·순이자마진과 배당·밸류업 수급 재평가",
         "focus": "순이자마진·대손비용·배당정책 확인",
         "risk": "대손비용 증가·금리 하락·배당 축소",
     },
     {
-        "keywords": ("배터리", "2차전지", "화학", "금속", "알루미늄", "소재"),
+        "rule_id": "battery",
         "event": "배터리·소재 고객사 가동률과 원재료 스프레드 회복",
         "focus": "출하량·판가·원재료 스프레드 확인",
         "risk": "고객사 재고조정·판가 하락·원재료 급등",
     },
     {
-        "keywords": ("화장품", "유통", "소매", "식품", "음식료", "소비재"),
+        "rule_id": "consumer",
         "event": "프로모션·명절·글로벌 쇼핑 시즌의 주문 선반영",
         "focus": "판매량·재고·프로모션 효과 확인",
         "risk": "소비 둔화·재고 부담·프로모션 비용 증가",
     },
     {
-        "keywords": ("게임", "엔터", "미디어", "콘텐츠", "여행", "레저"),
+        "rule_id": "leisure",
         "event": "신작·공연·여행 수요와 결제액 증가 사이클",
         "focus": "출시 일정·트래픽·예약매출 확인",
         "risk": "출시 지연·흥행 실패·마케팅비 증가",
     },
     {
-        "keywords": ("건설", "건축", "부동산", "인프라"),
+        "rule_id": "construction",
         "event": "착공·분양·인프라 발주와 매출 인식 사이클",
         "focus": "수주잔고·착공·원가율 확인",
         "risk": "착공 지연·미분양·원가율 악화",
     },
     {
-        "keywords": ("해운", "항공", "운송", "물류"),
+        "rule_id": "transport",
         "event": "운임·물동량·여행 수요 회복과 실적 레버리지",
         "focus": "운임지수·물동량·유가 확인",
         "risk": "운임 급락·유가 상승·물동량 둔화",
     },
 )
-
-
-_MONTH_CATALYST_HINTS: dict[int, str] = {
-    1: "연초 예산 집행과 신규 제품·수주 계획",
-    2: "춘절 이후 공급망 정상화와 1분기 주문 재개",
-    3: "주주환원·정기주총과 1분기 실적 기대",
-    4: "1분기 실적 발표와 봄철 수요 전환",
-    5: "상반기 재고·발주 조정과 여름 성수기 선반영",
-    6: "여름 성수기 주문과 하반기 CAPEX 선반영",
-    7: "휴가철 소비·신제품 출시와 2분기 실적 확인",
-    8: "하반기 발주 재개와 신제품·학회 일정",
-    9: "3분기 실적 가시화와 연말 주문 선반영",
-    10: "3분기 실적 발표와 연말 재고·배당 기대",
-    11: "글로벌 쇼핑·연말 주문과 배당 매집",
-    12: "연말 배당·리밸런싱과 다음 해 수주 기대",
-}
 
 
 def _text_value(value: Any) -> str:
@@ -257,35 +215,16 @@ def _pct_text(value: Any, digits: int = 1) -> str:
 MIN_SAMPLE_FOR_CATALYST = 3
 
 
-def _fallback_event_context(pattern: SeasonalityPattern, stock_row: dict[str, Any]) -> dict[str, str]:
-    """Build a stock/industry-aware catalyst hypothesis for uncurated tickers."""
-    ticker = str(pattern.ticker).zfill(6)
-    hint = _TICKER_CATALYST_HINTS.get(ticker)
-    if hint:
-        return {**hint, "source": "종목별 업종 매핑"}
-
-    labels = " ".join(
-        value
-        for value in (
-            _text_value(stock_row.get("company")),
-            _text_value(stock_row.get("sector")),
-            _text_value(stock_row.get("industry")),
-        )
-        if value
-    ).lower()
-    for rule in _DOMAIN_CATALYST_RULES:
-        if any(keyword.lower() in labels for keyword in rule["keywords"]):
-            return {**rule, "source": "업종·산업 분류 매핑"}
-
-    month = int(getattr(pattern, "target_start_month", 0) or 0)
-    month_hint = _MONTH_CATALYST_HINTS.get(month, "계절성 수요·분기 실적 확인")
-    industry = _text_value(stock_row.get("industry")) or _text_value(stock_row.get("sector")) or "해당 업종"
-    return {
-        "event": f"{industry}의 {month}월 {month_hint}",
-        "focus": "다음 분기 매출·수주·거래대금 확인",
-        "risk": "실적 추정치 하향·거래대금 급감",
-        "source": "월별 계절성·업종 매핑",
-    }
+def _fallback_event_context(pattern: SeasonalityPattern, stock_row: dict[str, Any]) -> dict[str, Any]:
+    """Exact normalized taxonomy, never company substrings or first-rule wins."""
+    from kr_quant.strategy.event_taxonomy import classify_domain
+    mapping = classify_domain(stock_row)
+    if mapping["status"] != "MAPPED":
+        return {"event": None, "focus": "업종 분류 확인", "risk": "촉매를 확인할 수 없음",
+                "source": "정규화 업종 분류: 촉매 생성 보류", "mapping": mapping}
+    rules = {rule["rule_id"]: rule for rule in _DOMAIN_CATALYST_RULES}
+    rule = rules[mapping["rule_id"]]
+    return {**rule, "source": "정규화 업종 taxonomy 매핑", "mapping": mapping}
 
 
 def _year_win_count(pattern: SeasonalityPattern) -> tuple[int, int]:
@@ -361,6 +300,10 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
     """Assigns AI explanation, computes 100-pt v1.1 discovery score, and determines current status."""
     ticker = str(pattern.ticker).zfill(6)
     s_row = stock_row or {}
+    from kr_quant.strategy.event_taxonomy import MAPPING_VERSION
+    mapping = {"version": MAPPING_VERSION, "rule_id": None, "domain": None, "matched_keywords": [],
+               "source_fields": {key: _text_value(s_row.get(key)) or None for key in ("company", "sector", "industry")},
+               "ambiguity": False, "status": "NOT_APPLICABLE"}
 
     # Explicit historical context must never fall through to today's knowledge.
     if event_context is not None:
@@ -381,6 +324,7 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         f"최근 3년 승률 {_pct_text(pattern.recent_3y_win_rate, 0)}",
     ]
     if kb:
+        mapping.update(rule_id="historical_input" if event_context is not None else f"CURATED:{ticker}:v1", status="CURATED")
         common_event, statistical_evidence = _append_statistical_evidence(
             pattern,
             kb["common_event"],
@@ -410,6 +354,7 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         observations.append(f"표본 {sample_count}개년")
     else:
         context = _fallback_event_context(pattern, s_row)
+        mapping = context["mapping"]
         common_event = _statistical_headline(pattern)
         sec_event = (
             f"계산: 중앙값 {_pct_text(pattern.median_return)} · 최근 3년 승률 {_pct_text(pattern.recent_3y_win_rate, 0)}"
@@ -421,6 +366,13 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         explanation_mode = "RULE_BASED"
         explanation_source = context["source"]
         interpretation = f"업종·월 매핑 가설이지 실시간 뉴스가 아닙니다. {context['event']}"
+        if mapping["status"] != "MAPPED":
+            explanation_mode = "DOMAIN_AMBIGUOUS" if mapping["ambiguity"] else "DOMAIN_UNMAPPED"
+            event_conf = "UNKNOWN"
+            event_hypothesis = None
+            sec_event = "계절성 통계는 참고 가능하나 업종 분류를 확정할 수 없어 촉매를 생성하지 않습니다."
+            invalidation = "업종 분류를 확인하기 전에는 촉매 가설을 사용하지 않습니다."
+            interpretation = sec_event
         observations.append(_statistical_headline(pattern))
 
     # Industry risks and curated, unsourced notes do not establish a year's cause.
@@ -573,6 +525,14 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
         "event_confidence": event_conf,
         "event_explanation_mode": explanation_mode,
         "event_explanation_source": explanation_source,
+        "event_mapping_version": mapping["version"],
+        "event_mapping_rule_id": mapping["rule_id"],
+        "event_mapping_domain": mapping["domain"],
+        "event_mapping_matched_keywords": mapping["matched_keywords"],
+        "event_mapping_source_fields": mapping["source_fields"],
+        "event_mapping_ambiguity": mapping["ambiguity"],
+        "event_mapping_status": mapping["status"],
+        "event_source_provenance": copy.deepcopy(s_row.get("event_source_provenance")),
         "observations": observations,
         "calculations": calculations,
         "interpretation": interpretation,

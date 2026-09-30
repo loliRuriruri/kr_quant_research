@@ -210,7 +210,7 @@ def test_ten_tickers_sharing_month_hypothesis_are_flagged():
             "years_count": 5,
         }
         pat = pattern_from_month_stat(ticker, f"가상종목{index}", "KOSPI", m_stat, lookback_years=5)
-        rows.append(explain_and_score_pattern(pat, {"company": f"가상종목{index}"}))
+        rows.append(explain_and_score_pattern(pat, {"company": f"가상종목{index}", "industry": "전기장비"}))
     quality = repeated_generic_catalysts(rows, min_tickers=10)
     assert quality["ok"] is False
     assert quality["flag"] == "GENERIC_CATALYST_REPEAT"
