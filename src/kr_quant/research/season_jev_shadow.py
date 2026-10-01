@@ -382,6 +382,34 @@ def state_hash(state: dict[str, Any], evaluator_version: str, *, provider: str =
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+def season_jev_admission(row: dict[str, Any]) -> dict[str, Any]:
+    """Fail-closed semantic admission, before reuse or any provider budget work.
+
+    This is an input-quality decision, not a Quant/investment assessment.
+    Calendar-event candidates deliberately do not use this Season-only rule.
+    """
+    mode = row.get("event_explanation_mode")
+    blocked = {
+        "DOMAIN_UNMAPPED": "SEMANTIC_MAPPING_UNMAPPED",
+        "DOMAIN_AMBIGUOUS": "SEMANTIC_MAPPING_AMBIGUOUS",
+        "INSUFFICIENT_EVIDENCE": "SEMANTIC_EVIDENCE_INSUFFICIENT",
+    }
+    reason = blocked.get(mode) if isinstance(mode, str) else None
+    if reason is None:
+        thesis = row.get("event_hypothesis")
+        if not isinstance(thesis, str) or not thesis.strip():
+            reason = "SEMANTIC_THESIS_UNAVAILABLE"
+        elif mode == "RULE_BASED":
+            status = row.get("event_mapping_status")
+            if status == "AMBIGUOUS_MAPPING":
+                reason = "SEMANTIC_MAPPING_AMBIGUOUS"
+            elif status != "MAPPED":
+                reason = "SEMANTIC_MAPPING_UNMAPPED"
+        elif mode != "CURATED_TICKER":
+            reason = "SEMANTIC_MODE_UNSUPPORTED"
+    return {"eligible": reason is None, "reason": reason or "SEMANTIC_ADMITTED"}
+
+
 def collect_candidates(settings, bundle: dict[str, Any], *, config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     cfg = config or load_config(settings)
     horizon = int(cfg.get("horizon_days") or 90)
@@ -397,6 +425,8 @@ def collect_candidates(settings, bundle: dict[str, Any], *, config: dict[str, An
         out.append({
             "id": row.get("signal_id"),
             "candidate_type": "season_pattern",
+            "semantic_input": {key: row.get(key) for key in (
+                "event_explanation_mode", "event_mapping_status", "event_hypothesis")},
             "ticker": row.get("ticker"),
             "state": state,
             "state_hash": state_hash(state, evaluator_version, provider=provider, requested_model=model),
@@ -542,6 +572,11 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
     outcome_by_id: dict[str, dict[str, Any]] = {}
     need_api: list[dict[str, Any]] = []
     for item in candidates:
+        if item.get("candidate_type") == "season_pattern":
+            admission = season_jev_admission(item.get("semantic_input") or {})
+            if not admission["eligible"]:
+                outcome_by_id[str(item["id"])] = _skipped(item, admission["reason"])
+                continue
         key = reuse_key(evaluator_version, provider, model, item["state_hash"])
         source = reuse_index.get(key)
         if source:

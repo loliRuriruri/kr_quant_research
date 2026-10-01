@@ -24,6 +24,7 @@ def _cand(i, **over):
     row = {
         "id": f"sig-{i}",
         "candidate_type": "season_pattern",
+        "semantic_input": {"event_explanation_mode": "CURATED_TICKER", "event_hypothesis": "test thesis"},
         "ticker": f"00000{i}",
         "state": {"identity": {"ticker": f"00000{i}", "signalId": f"sig-{i}"}},
         "state_hash": f"hash-{i}",
@@ -98,7 +99,8 @@ def _bundle(month=None, extra_rows=None):
             "secondary_cluster": None,
             "event_confidence": "medium",
             "invalidating_conditions": ["거래정지"],
-            "event_explanation_mode": "cluster",
+            "event_explanation_mode": "CURATED_TICKER",
+            "event_hypothesis": "test thesis",
             "last_close": 70000,
             "chg_pct": 0.01,
             "remaining_peak": {
