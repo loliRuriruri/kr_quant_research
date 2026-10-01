@@ -401,7 +401,7 @@ def season_jev_admission(row: dict[str, Any]) -> dict[str, Any]:
             reason = "SEMANTIC_THESIS_UNAVAILABLE"
         elif mode == "RULE_BASED":
             status = row.get("event_mapping_status")
-            if status == "AMBIGUOUS_MAPPING":
+            if status == "AMBIGUOUS":
                 reason = "SEMANTIC_MAPPING_AMBIGUOUS"
             elif status != "MAPPED":
                 reason = "SEMANTIC_MAPPING_UNMAPPED"

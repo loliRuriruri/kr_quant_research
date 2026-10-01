@@ -6,12 +6,12 @@ from test_season_jev_shadow import _bundle, _settings, _ok_runner
 
 @pytest.mark.parametrize('mode,status,thesis,reason', [
     ('DOMAIN_UNMAPPED', 'UNMAPPED', None, 'SEMANTIC_MAPPING_UNMAPPED'),
-    ('DOMAIN_AMBIGUOUS', 'AMBIGUOUS_MAPPING', None, 'SEMANTIC_MAPPING_AMBIGUOUS'),
+    ('DOMAIN_AMBIGUOUS', 'AMBIGUOUS', None, 'SEMANTIC_MAPPING_AMBIGUOUS'),
     ('INSUFFICIENT_EVIDENCE', 'MAPPED', None, 'SEMANTIC_EVIDENCE_INSUFFICIENT'),
     ('RULE_BASED', 'MAPPED', '  ', 'SEMANTIC_THESIS_UNAVAILABLE'),
     ('RULE_BASED', None, 'thesis', 'SEMANTIC_MAPPING_UNMAPPED'),
     ('RULE_BASED', 'INVALID_STATUS', 'thesis', 'SEMANTIC_MAPPING_UNMAPPED'),
-    ('RULE_BASED', 'AMBIGUOUS_MAPPING', 'thesis', 'SEMANTIC_MAPPING_AMBIGUOUS'),
+    ('RULE_BASED', 'AMBIGUOUS', 'thesis', 'SEMANTIC_MAPPING_AMBIGUOUS'),
     ('FUTURE_MODE', 'MAPPED', 'thesis', 'SEMANTIC_MODE_UNSUPPORTED'),
 ])
 def test_semantic_skip_precedes_reuse_budget_and_runner(tmp_path, monkeypatch, mode, status, thesis, reason):
