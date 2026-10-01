@@ -23,7 +23,7 @@ def test_cosmax_synthetic_specific_cosmetics_never_battery():
     row = events.explain_and_score_pattern(pattern(), {
         "company": "코스맥스", "sector": "화학", "industry": "화장품 제조업"})
     assert "배터리" not in (row["event_hypothesis"] or "")
-    assert row["event_mapping_rule_id"] == "consumer"
+    assert row["event_mapping_rule_id"] == "LABEL:consumer"
     assert row["event_mapping_source_fields"]["sector"] == "화학"
 
 
@@ -53,7 +53,7 @@ def test_provenance_projects_and_changes_state_hash():
     row = events.explain_and_score_pattern(pattern(), {"industry": "화장품"})
     row.update(signal_id="synthetic", generation_id="forward-generation")
     state = project_season_state(row)
-    assert state["event"]["mappingProvenance"]["ruleId"] == "consumer"
+    assert state["event"]["mappingProvenance"]["ruleId"] == "LABEL:consumer"
     altered = copy.deepcopy(state)
     altered["event"]["mappingProvenance"]["version"] = "different"
     assert state_hash(state, "test") != state_hash(altered, "test")
@@ -111,7 +111,7 @@ def test_forward_bundle_to_state_provenance_in_temporary_workspace(tmp_path, mon
     assert provenance["sourceProvenance"]["file_sha256"] == hashlib.sha256(p.read_bytes()).hexdigest()
     assert provenance["seasonGenerationId"] == bundle["generation_id"]
     assert provenance["sourceFields"]["industry"] == "화장품"
-    assert provenance["ruleId"] == "consumer"
+    assert provenance["ruleId"] == "LABEL:consumer"
     assert state["event"]["eventHypothesis"] == row["event_hypothesis"]
     provenance["sourceFields"]["industry"] = "altered"
     assert row["event_mapping_source_fields"]["industry"] == "화장품"
@@ -155,9 +155,9 @@ def test_domain_field_and_projection_are_explicit():
 
 @pytest.mark.parametrize("industry,domain", [("전자부품반도체", "semiconductor"),
     ("식료품", "consumer"), ("종합건설", "construction"), ("수상운송", "transport")])
-def test_current_source_exact_labels(industry, domain):
+def test_current_coarse_source_labels_cannot_establish_catalyst(industry, domain):
     from kr_quant.strategy.event_taxonomy import classify_domain
-    assert classify_domain({"sector": "제조업", "industry": industry})["domain"] == domain
+    assert classify_domain({"sector": "제조업", "industry": industry})["domain"] is None
 
 
 def committed_fixture(tmp_path):
@@ -221,7 +221,8 @@ def test_committed_source_content_is_part_of_bundle_identity(tmp_path):
     raw, stat = p.read_bytes(), p.stat()
     p.write_bytes(raw[:-1] + bytes([raw[-1] ^ 1]))
     os.utime(p, ns=(stat.st_atime_ns, stat.st_mtime_ns))
-    assert source_identity(s, 5) != before
+    with pytest.raises(RuntimeError, match="SHA256 mismatch"):
+        source_identity(s, 5)
     assert _load_scored_map(s) == {}
 
 
@@ -232,3 +233,74 @@ def test_curated_content_is_unchanged_by_conflicting_classification():
         assert row["event_confidence"] == kb["confidence"]
         assert row["event_mapping_rule_id"] == f"CURATED:{ticker}:v1"
         assert row["event_mapping_domain"] is None
+
+
+@pytest.mark.parametrize("company", ["삼성SDI", "세방전지"])
+def test_coarse_electrical_equipment_does_not_imply_power(company):
+    from kr_quant.strategy.event_taxonomy import classify_domain
+    assert classify_domain({"company": company, "sector": "제조업", "industry": "전기장비"})["domain"] is None
+
+
+def test_observed_precise_battery_code_and_provenance():
+    row = events.explain_and_score_pattern(pattern("006400", "삼성SDI"), {
+        "company": "삼성SDI", "industry": "전기장비", "source_induty_code": "28202"})
+    assert row["event_mapping_domain"] == "battery"
+    assert row["event_mapping_source_fields"]["source_induty_code"] == "28202"
+
+
+def test_unknown_raw_code_fails_closed():
+    from kr_quant.strategy.event_taxonomy import classify_domain
+    assert classify_domain({"industry": "전기장비", "source_induty_code": "99999"})["status"] == "UNMAPPED"
+
+
+def test_raw_metadata_survives_export_without_changing_quant_contract(tmp_path):
+    from kr_quant.ranking.daily import preserve_source_classification, export_table
+    from kr_quant.hashing import sha256_json
+    records = [{"ticker": "006400", "quant_score": 71.2, "quant_rank": 42, "risk_penalty": 0,
+                "sector_code": "C", "industry_code": "C28", "industry": "전기장비"}]
+    before = copy.deepcopy(records)
+    master = pd.DataFrame([{"ticker": "006400", "induty_code": "28202"}]).set_index("ticker")
+    preserve_source_classification(records, master)
+    assert [{k:v for k,v in r.items() if k != "source_induty_code"} for r in records] == before
+    keys = ("ticker", "quant_score", "quant_rank", "risk_penalty")
+    assert sha256_json([{k:r[k] for k in keys} for r in records]) == sha256_json([{k:r[k] for k in keys} for r in before])
+    export_table(records).to_parquet(tmp_path / "latest_all_stocks.parquet")
+    assert _load_scored_map(SimpleNamespace(output_dir=tmp_path))["006400"]["source_induty_code"] == "28202"
+    import hashlib, json
+    committed = tmp_path / "generations" / "metadata-test"
+    committed.mkdir(parents=True)
+    file = committed / "latest_all_stocks.parquet"
+    export_table(records).to_parquet(file)
+    (tmp_path / "current_manifest.json").write_text(json.dumps({
+        "run_id": "metadata-test", "generation_dir": str(committed),
+        "files": {file.name: {"path": str(file), "sha256": hashlib.sha256(file.read_bytes()).hexdigest()}}}))
+    loaded = _load_scored_map(SimpleNamespace(output_dir=tmp_path))["006400"]
+    assert loaded["source_induty_code"] == "28202"
+    assert loaded["event_source_provenance"]["generation_id"] == "metadata-test"
+
+
+def test_unused_historical_fallback_does_not_change_strong_identity(tmp_path):
+    s = SimpleNamespace(root=tmp_path, data_dir=tmp_path / "data", staged_dir=tmp_path / "data/staged",
+                        output_dir=tmp_path / "data/output", status_csv=tmp_path / "status.csv", config={})
+    s.output_dir.mkdir(parents=True)
+    committed_fixture(s.output_dir)
+    first = source_identity(s, 5)
+    unused = s.output_dir / "as_of_date=2099-01-01" / "all_stocks.parquet"
+    unused.parent.mkdir()
+    unused.write_bytes(b"not consumed")
+    assert source_identity(s, 5) == first
+
+
+def test_raw_and_specific_label_conflict_fails_closed():
+    from kr_quant.strategy.event_taxonomy import classify_domain
+    row = classify_domain({"source_induty_code": "28202", "industry": "화장품"})
+    assert row["status"] == "AMBIGUOUS"
+    assert row["domain"] is None
+
+
+def test_raw_rule_order_is_irrelevant(monkeypatch):
+    from kr_quant.strategy import event_taxonomy as taxonomy
+    fields = {"source_induty_code": "28202", "industry_code": "C28", "industry": "전기장비"}
+    expected = taxonomy.classify_domain(fields)
+    monkeypatch.setattr(taxonomy, "RAW_CODE_RULES", dict(reversed(list(taxonomy.RAW_CODE_RULES.items()))))
+    assert taxonomy.classify_domain(fields) == expected

@@ -243,6 +243,8 @@ def run_from_staged(
     if model_break:
         ctx.warnings.append("MODEL_BREAK")
     records = to_records(names, ctx, company_by_ticker, prev)
+    from kr_quant.ranking.daily import preserve_source_classification
+    preserve_source_classification(records, master_map)
     ctx.result_hash = sha256_json(
         [
             {

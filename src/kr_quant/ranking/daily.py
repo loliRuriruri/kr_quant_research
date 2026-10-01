@@ -17,6 +17,7 @@ OUTPUT_COLS = [
     "krx_risk_class",
     "sector",
     "industry",
+    "source_induty_code",
     "quant_rank",
     "quant_score",
     "quant_score_raw",
@@ -54,6 +55,15 @@ OUTPUT_COLS = [
     "source_bundle_hash",
     "config_hash",
 ]
+
+
+def preserve_source_classification(records, master_map):
+    """Forward-only raw metadata; not a peer key, factor or result-hash input."""
+    for record in records:
+        ticker = str(record["ticker"])
+        value = master_map.loc[ticker].get("induty_code") if ticker in master_map.index else None
+        record["source_induty_code"] = None if value is None or pd.isna(value) else str(value)
+    return records
 
 
 def rank_names(names: list[ScoredName]) -> list[ScoredName]:

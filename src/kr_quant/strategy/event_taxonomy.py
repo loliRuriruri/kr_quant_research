@@ -8,7 +8,26 @@ from __future__ import annotations
 import re
 import unicodedata
 
-MAPPING_VERSION = "normalized-domain-v2"
+MAPPING_VERSION = "normalized-domain-v2.1"
+# Exact codes observed in current local master, not guessed prefixes. 28123,
+# 28111, 283*, 313* and 582 are deliberately excluded: sampled constituents
+# include economically different businesses. Comment records the inspected set.
+RAW_CODE_RULES = {
+    "28202": ("battery", "Observed: Samsung SDI, Sebang, LG Energy, battery-material/component makers"),
+    "28112": ("power", "Observed: Sanil Electric; transformer source category"),
+    "28121": ("power", "Observed: LS ELECTRIC; power switching source category"),
+    "25200": ("defense", "Observed: LIG Defense & Aerospace, Samyang Comtech"),
+    "5821": ("leisure", "Observed: 20 game publishers; excludes generic 582 software"),
+    "58211": ("leisure", "Observed: Pearl Abyss"),
+    "58212": ("leisure", "Observed: Shift Up, Devsisters"),
+    "58219": ("leisure", "Observed: Golfzon"),
+}
+# All current two-digit Quant classification labels remain peer-compatible but
+# cannot, on their own, establish a narrower Season economic catalyst.
+COARSE_LABELS = frozenset(("전기장비", "전기장비 제조업", "전자부품반도체", "전자부품", "자동차",
+    "의약품", "금융", "금융업", "금융보험", "금융보험서비스", "보험", "보험업", "소매", "소매업",
+    "식료품", "음료", "종합건설", "전문건설", "건설업", "부동산", "부동산업", "운수창고",
+    "수상운송", "항공운송", "육상운송", "창고운송서비스", "기타운송장비"))
 # Current scored-source label survey: exact aliases only. Broad KSIC groups
 # (chemical, machinery, ICT etc.) deliberately do not assert an economic thesis.
 DOMAIN_ALIASES = {
@@ -44,12 +63,15 @@ def classify_domain(row):
     for domain, labels in DOMAIN_ALIASES.items():
         for label in labels:
             lookup.setdefault(normalize_label(label), set()).add(domain)
-    neutral = {normalize_label(x) for x in NEUTRAL_LABELS}
+    neutral = {normalize_label(x) for x in (*NEUTRAL_LABELS, *COARSE_LABELS)}
     fields = {k: str(row[k]).strip() if normalize_label(row.get(k)) else None
-              for k in ("company", "sector", "industry")}
+              for k in ("company", "sector", "industry", "source_induty_code")}
     matches, domains, unknown = [], set(), []
     for field in ("sector", "industry"):
         value = normalize_label(row.get(field))
+        peer_code = str(row.get("sector_code" if field == "sector" else "industry_code") or "")
+        if re.fullmatch(r"[A-Z]" if field == "sector" else r"[A-Z]\d{2}", peer_code):
+            continue  # Quant's explicitly coarse peer label is not catalyst evidence.
         if not value or value in neutral:
             continue
         # Structured separators are considered independently; no substring matching.
@@ -62,9 +84,20 @@ def classify_domain(row):
                 matches.append(f"{field}:{token}")
             else:
                 unknown.append(f"{field}:{token}")
+    raw_code = normalize_label(row.get("source_induty_code"))
+    raw_rule = RAW_CODE_RULES.get(raw_code)
+    if raw_rule:
+        domains.add(raw_rule[0])
+        matches.append("source_induty_code:" + raw_code)
+    elif raw_code:
+        # Unknown raw codes never lend authority to a plausible label guess.
+        domains.clear()
+        unknown.append("source_induty_code:" + raw_code)
     ambiguous = len(domains) > 1 or bool(domains and unknown)
     status = "AMBIGUOUS" if ambiguous else "MAPPED" if len(domains) == 1 else "UNMAPPED"
     domain = next(iter(domains)) if status == "MAPPED" else None
-    return {"version": MAPPING_VERSION, "rule_id": domain, "domain": domain,
+    rule_id = ("KSIC_EXACT:" + raw_code if raw_rule else "LABEL:" + domain) if domain else None
+    return {"version": MAPPING_VERSION, "rule_id": rule_id, "domain": domain,
+            "resolution": "RAW_CODE" if domain and raw_rule else "SPECIFIC_LABEL" if domain else status,
             "matched_keywords": sorted(set(matches)), "source_fields": fields,
             "ambiguity": ambiguous, "status": status, "unknown_labels": sorted(set(unknown))}

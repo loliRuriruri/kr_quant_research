@@ -50,6 +50,51 @@ def test_restart_reuse_ids_and_copy_isolation(prepared):
         r['signal_id'] for r in snapshots.select_rows(replay)[:3]]
 
 
+def test_read_fast_path_never_rehashes_source_content(prepared, monkeypatch):
+    s, _, _ = prepared
+    snapshots.build_bundle(s)
+    snapshots._MEM.clear()
+    def forbidden(*args):
+        raise AssertionError('read must not rehash consumed data')
+    monkeypatch.setattr(snapshots, '_source_file_provenance', forbidden)
+    assert snapshots.read_bundle(s) is not None
+    assert snapshots.read_bundle(s) is not None
+
+
+def test_cached_read_rejects_modified_immutable_artifact(prepared):
+    s, _, _ = prepared
+    built = snapshots.build_bundle(s)
+    assert snapshots.read_bundle(s) is not None
+    path = snapshots._folder(s) / f"{built['generation_id']}.json"
+    built['identity']['lookback'] = 2
+    path.write_text(json.dumps(built), encoding='utf-8')
+    assert snapshots.read_bundle(s) is None
+
+
+def test_same_size_content_change_is_still_strongly_bound(prepared):
+    import os
+    s, price, _ = prepared
+    first = snapshots.source_identity(s, 5)
+    stat = price.stat()
+    price.write_bytes(b'source 2')
+    os.utime(price, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert snapshots.source_identity(s, 5) != first
+
+
+def test_small_pointer_revision_mismatch_skips_heavy_artifact(prepared, monkeypatch):
+    s, price, _ = prepared
+    snapshots.build_bundle(s)
+    snapshots._MEM.clear()
+    price.write_bytes(b'new source revision')
+    original = type(price).read_text
+    def checked(path, *args, **kwargs):
+        if path.parent == snapshots._folder(s) and path.name != 'latest_lb_5.json':
+            raise AssertionError('stale artifact must not be parsed')
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(type(price), 'read_text', checked)
+    assert snapshots.read_bundle(s) is None
+
+
 def test_source_change_and_failed_build_preserve_previous(prepared, monkeypatch):
     s, price, calls = prepared
     old = snapshots.build_bundle(s)

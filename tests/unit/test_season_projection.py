@@ -41,11 +41,21 @@ def test_unused_heavy_fields_are_never_copied():
 def test_read_cache_does_not_leak_projection_mutation(monkeypatch, tmp_path):
     from types import SimpleNamespace
     from kr_quant import run_generation
-    s = SimpleNamespace(root=tmp_path)
+    import json
+    s = SimpleNamespace(root=tmp_path, data_dir=tmp_path/'data')
     original = bundle()
     identity = original['identity']
     monkeypatch.setattr(run_generation, 'is_updating', lambda _: False)
-    monkeypatch.setattr(snapshots, 'source_identity', lambda *args: identity)
+    identity['revision'] = {'test': 'revision'}
+    monkeypatch.setattr(snapshots, 'source_revision', lambda *args: identity['revision'])
+    generation = snapshots._digest(identity)
+    folder = snapshots._folder(s)
+    folder.mkdir(parents=True)
+    (folder/'latest_lb_0.json').write_text(json.dumps({'generation_id': generation,
+        'revision_hash': snapshots._digest(identity['revision'])}))
+    path = folder / f'{generation}.json'
+    path.write_text('cache fixture')
+    monkeypatch.setattr(snapshots, '_MEM_FILE_STAT', {(str(tmp_path.resolve()), 0): snapshots._stat(path)})
     monkeypatch.setattr(snapshots, '_MEM', {(str(tmp_path.resolve()), 0): (snapshots._digest(identity), original)})
     projected = snapshots.read_bundle(s, 0, listing_view='summary')
     projected['payload']['rows'][0]['years_track'].clear()

@@ -223,7 +223,7 @@ def _fallback_event_context(pattern: SeasonalityPattern, stock_row: dict[str, An
         return {"event": None, "focus": "업종 분류 확인", "risk": "촉매를 확인할 수 없음",
                 "source": "정규화 업종 분류: 촉매 생성 보류", "mapping": mapping}
     rules = {rule["rule_id"]: rule for rule in _DOMAIN_CATALYST_RULES}
-    rule = rules[mapping["rule_id"]]
+    rule = rules[mapping["domain"]]
     return {**rule, "source": "정규화 업종 taxonomy 매핑", "mapping": mapping}
 
 
@@ -302,7 +302,7 @@ def explain_and_score_pattern(pattern: SeasonalityPattern, stock_row: dict[str, 
     s_row = stock_row or {}
     from kr_quant.strategy.event_taxonomy import MAPPING_VERSION
     mapping = {"version": MAPPING_VERSION, "rule_id": None, "domain": None, "matched_keywords": [],
-               "source_fields": {key: _text_value(s_row.get(key)) or None for key in ("company", "sector", "industry")},
+               "source_fields": {key: _text_value(s_row.get(key)) or None for key in ("company", "sector", "industry", "source_induty_code")},
                "ambiguity": False, "status": "NOT_APPLICABLE"}
 
     # Explicit historical context must never fall through to today's knowledge.

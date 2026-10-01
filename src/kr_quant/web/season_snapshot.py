@@ -21,6 +21,8 @@ _BUILD_LOCK = threading.Lock()
 _PENDING: set[tuple[str, int]] = set()
 _ERRORS: dict[tuple[str, int], tuple[float, str]] = {}
 _MEM: dict[tuple[str, int], tuple[str, dict]] = {}
+_MEM_FILE_STAT: dict = {}
+_MODEL_CACHE: dict = {}
 logger = logging.getLogger("kr_quant.season_snapshot")
 
 
@@ -42,32 +44,77 @@ def _source_file_provenance(paths):
     return result
 
 
-def source_identity(settings, lookback: int) -> dict:
+def _stat(path):
+    p = Path(path)
+    try:
+        stat = p.stat()
+        return [str(p.resolve()), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size]
+    except OSError:
+        return [str(p.resolve()), None]
+
+
+def _actual_sources(settings):
+    """Only selected inputs, including the alias actually read by safety gates."""
+    from kr_quant.strategy.seasonality import _committed_scored_source
+    def choose(paths):
+        return next((p for p in paths if p.is_file()), paths[0])
+    live, demo = settings.staged_dir / 'live', settings.staged_dir / 'demo'
+    committed = _committed_scored_source(settings)
+    alias = settings.output_dir / 'latest_all_stocks.parquet'
+    fallback = []
+    if not committed or not alias.exists():
+        for dated in sorted(settings.output_dir.glob('as_of_date=*'), reverse=True):
+            fallback.extend([dated / 'all_stocks.parquet', dated / 'scored_all.parquet'])
+    classification = committed['path'] if committed else choose([alias, *fallback])
+    gate_scored = choose([alias, *[p for p in fallback if p.name == 'scored_all.parquet']])
+    paths = [choose([live / 'prices.parquet', demo / 'prices.parquet']), classification,
+             gate_scored, choose([live / 'krx_master.parquet', live / 'master.parquet']),
+             choose([live / 'corporate_actions.parquet', demo / 'corporate_actions.parquet']),
+             settings.status_csv, settings.data_dir / 'cache/investor_flow.json',
+             settings.output_dir / 'current_manifest.json']
+    return sorted(set(paths), key=str), committed
+
+
+def _model_identity(strong=False):
+    code = Path(__file__).resolve().parents[1]
+    paths = sorted((code / 'strategy').glob('*.py')) + sorted((code / 'universe').glob('*.py')) + [
+        Path(__file__), code / 'flow/reliability.py', code / 'research/statistical_reliability.py']
+    signature = _digest([_stat(p) for p in paths])
+    with _LOCK:
+        if strong or signature not in _MODEL_CACHE:
+            _MODEL_CACHE.clear()
+            _MODEL_CACHE[signature] = _digest([(str(p), hashlib.sha256(p.read_bytes()).hexdigest()) for p in paths])
+        return _MODEL_CACHE[signature]
+
+
+def source_revision(settings, lookback=5):
+    """Cheap currentness, not a claim of content integrity. Trusted local writer
+    publishes immutable generations; changed revision requires a strong rebuild.
+    """
     if lookback not in LOOKBACKS:
         raise ValueError("지원 기간: 0(전체), 2, 3, 5년")
-    from kr_quant.strategy.seasonality import _seasonality_source_signature, _committed_scored_source
-
-    paths = [settings.output_dir / "latest_all_stocks.parquet",
-             settings.staged_dir / "live" / "krx_master.parquet",
-             settings.data_dir / "cache" / "investor_flow.json"]
-    paths += sorted(settings.output_dir.glob("as_of_date=*/all_stocks.parquet"))
-    paths += sorted(settings.output_dir.glob("as_of_date=*/scored_all.parquet"))
-    committed = _committed_scored_source(settings)
-    if committed:
-        paths.append(committed["path"])
-    code = Path(__file__).resolve().parents[1]
-    code_paths = sorted((code / "strategy").glob("*.py")) + sorted((code / "universe").glob("*.py")) + [Path(__file__), code / 'flow' / 'reliability.py', code / 'research' / 'statistical_reliability.py']
-    sources = _seasonality_source_signature(settings) + [
-        [str(p), p.stat().st_mtime_ns, p.stat().st_size] if p.exists() else [str(p), None]
-        for p in paths
-    ]
-    return {"schema": SCHEMA, "root": str(settings.root.resolve()),
+    paths, committed = _actual_sources(settings)
+    manifest = settings.output_dir / 'current_manifest.json'
+    manifest_sha = hashlib.sha256(manifest.read_bytes()).hexdigest() if manifest.is_file() else None
+    return {"revision_schema": 1, "schema": SCHEMA, "root": str(settings.root.resolve()),
             "day": date.today().isoformat(), "lookback": lookback,
-            "sources": sources,
-            "source_file_provenance": _source_file_provenance([entry[0] for entry in sources]),
+            "sources": [_stat(p) for p in paths], "manifest_sha256": manifest_sha,
             "config_hash": _digest([settings.config,
                 getattr(settings, "universe_rules", None), getattr(settings, "risk_rules", None)]),
-            "model_hash": _digest([(str(p), hashlib.sha256(p.read_bytes()).hexdigest()) for p in code_paths])}
+            "model_hash": _model_identity()}
+
+
+def source_identity(settings, lookback: int) -> dict:
+    """Strong build/publication identity. Never used for normal dashboard reads."""
+    paths, committed = _actual_sources(settings)
+    _model_identity(strong=True)
+    revision = source_revision(settings, lookback)
+    provenance = _source_file_provenance(paths)
+    if committed:
+        actual = next(r['sha256'] for r in provenance if Path(r['path']).resolve() == committed['path'].resolve())
+        if actual != committed['expected_sha256']:
+            raise RuntimeError('Committed classification SHA256 mismatch')
+    return {**revision, 'revision': revision, 'source_file_provenance': provenance}
 
 
 def _folder(settings) -> Path:
@@ -113,19 +160,37 @@ def _copy_bundle(bundle, listing_view=None):
 
 def read_bundle(settings, lookback: int = 5, *, listing_view=None) -> dict | None:
     from kr_quant.run_generation import is_updating
+    if lookback not in LOOKBACKS:
+        raise ValueError("지원 기간: 0(전체), 2, 3, 5년")
     if is_updating(settings):
         return None
-    identity = source_identity(settings, lookback)
-    generation = _digest(identity)
-    key = _key(settings, lookback)
-    with _LOCK:
-        cached = _MEM.get(key)
-        if cached and cached[0] == generation:
-            return _copy_bundle(cached[1], listing_view)
-    path = _folder(settings) / f"{generation}.json"
     try:
+        revision = source_revision(settings, lookback)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    key = _key(settings, lookback)
+    try:
+        tip = json.loads((_folder(settings) / f'latest_lb_{lookback}.json').read_text(encoding='utf-8'))
+        if tip.get('revision_hash') != _digest(revision):
+            return None  # Avoid parsing a huge stale/legacy artifact just to reject it.
+        generation = _safe_generation_id(tip.get('generation_id'))
+        if generation is None:
+            return None
+        path = _folder(settings) / f"{generation}.json"
+        artifact_stat = _stat(path)
+        with _LOCK:
+            cached = _MEM.get(key)
+            if cached and cached[0] == generation and _MEM_FILE_STAT.get(key) == artifact_stat:
+                if cached[1]['identity'].get('revision') == revision:
+                    return _copy_bundle(cached[1], listing_view)
+                return None
         bundle = json.loads(path.read_text(encoding="utf-8"))
-        if bundle.get("generation_id") != generation or bundle.get("identity") != identity:
+        identity = bundle.get('identity')
+        if not isinstance(identity, dict) or bundle.get("generation_id") != generation or _digest(identity) != generation:
+            return None
+        if identity.get('schema') != SCHEMA or identity.get('root') != str(settings.root.resolve()) or identity.get('lookback') != lookback:
+            return None
+        if identity.get('revision') != revision:
             return None
         if bundle.get("content_hash") != _digest(bundle.get("payload")):
             return None
@@ -135,6 +200,7 @@ def read_bundle(settings, lookback: int = 5, *, listing_view=None) -> dict | Non
         return None
     with _LOCK:
         _MEM[key] = (generation, bundle)
+        _MEM_FILE_STAT[key] = artifact_stat
     return _copy_bundle(bundle, listing_view)
 
 
@@ -201,7 +267,7 @@ def read_last_known_good(settings, lookback: int = 5, *, listing_view=None) -> d
         identity = bundle.get("identity")
         if not isinstance(identity, dict) or identity.get("lookback") != lookback:
             return None
-        if identity.get("schema") not in (None, SCHEMA):
+        if identity.get("schema") != SCHEMA:
             return None
         # Fail-closed: LKG generation must still bind to the stored identity digest.
         if _digest(identity) != generation:
@@ -323,7 +389,8 @@ def build_bundle(settings, lookback: int = 5) -> dict:
         finally:
             temporary.unlink(missing_ok=True)
         write_json_atomic(_folder(settings) / f"latest_lb_{lookback}.json",
-                          {"generation_id": generation, "generated_at": bundle["generated_at"]})
+                          {"generation_id": generation, "generated_at": bundle["generated_at"],
+                           "revision_hash": _digest(identity['revision'])})
         with _LOCK:
             _MEM[_key(settings, lookback)] = (generation, bundle)
         return copy.deepcopy(bundle)
