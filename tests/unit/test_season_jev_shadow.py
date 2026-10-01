@@ -13,6 +13,21 @@ from kr_quant.web import season_snapshot as snapshots
 from kr_quant.research.season_jev_budget import day_kst, ledger_path, read_ledger, write_ledger
 
 
+@pytest.mark.parametrize('current_day,expected', [('2026-10-02', True), ('2026-10-03', False)])
+def test_execution_gate_next_day_only(tmp_path, monkeypatch, current_day, expected):
+    settings = _settings(tmp_path)
+    bundle = _bundle()
+    bundle['identity'].update(day='2026-10-01', revision={'day': '2026-10-01'})
+    current = copy.deepcopy(bundle['identity'])
+    current.update(day=current_day, revision={'day': current_day})
+    monkeypatch.setattr(shadow, 'source_identity', lambda *args: current)
+    monkeypatch.setattr(shadow, 'provider_key', lambda *args: 'test-placeholder')
+    calls = []
+    out = shadow.evaluate_generation(settings, bundle, runner=_ok_runner(calls))
+    assert (out is not None) is expected
+    assert bool(calls) is expected
+
+
 
 def _complete_answers(choice="monitor"):
     answers = {head: {"type": "boolean", "probability": 0.6, "decision": True} for head in shadow.NOUL_HEADS}

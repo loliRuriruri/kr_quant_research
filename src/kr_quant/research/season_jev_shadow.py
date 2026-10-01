@@ -9,7 +9,7 @@ import os
 import shutil
 import subprocess
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -529,6 +529,29 @@ def request_shadow_evaluation(settings, bundle: dict[str, Any] | None) -> None:
     threading.Thread(target=work, name=f"jev-shadow-{generation[:8]}", daemon=True).start()
 
 
+def shadow_execution_identity_matches(stored, current) -> bool:
+    """Allow only exact identity or one-day execution drift, never source drift."""
+    if not isinstance(stored, dict) or not isinstance(current, dict):
+        return False
+    if stored == current:
+        return True
+    try:
+        previous = date.fromisoformat(stored['day'])
+        today = date.fromisoformat(current['day'])
+        if previous.isoformat() != stored['day'] or today.isoformat() != current['day']:
+            return False
+        if (today - previous).days != 1:
+            return False
+        if stored['revision']['day'] != stored['day'] or current['revision']['day'] != current['day']:
+            return False
+        before, after = copy.deepcopy(stored), copy.deepcopy(current)
+        after['day'] = before['day']
+        after['revision']['day'] = before['revision']['day']
+        return before == after
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, Any] | None = None, runner=None) -> dict[str, Any] | None:
     cfg = config or load_config(settings)
     generation = str(bundle.get("generation_id") or "")
@@ -554,9 +577,11 @@ def evaluate_generation(settings, bundle: dict[str, Any], *, config: dict[str, A
         current = source_identity(settings, int(lookback))
     except Exception as exc:
         return _store_error(settings, bundle, cfg, f"SOURCE_IDENTITY:{type(exc).__name__}")
-    if current != identity:
+    if not shadow_execution_identity_matches(identity, current):
         logger.info("Jev shadow skipped: SOURCE_CHANGED")
         return None
+    if current != identity:
+        logger.info("Jev shadow execution: SOURCE_IDENTITY_NEXT_DAY_GRACE")
 
     started = datetime.now(timezone.utc)
     from kr_quant.research.season_jev_budget import refund_daily_slot, reserve_daily_slot
